@@ -17,10 +17,11 @@
 <!-- ABA GERAL -->
 <div x-show="aba==='geral'" class="max-w-2xl space-y-4">
     <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 space-y-4">
-        <div><label class="block text-sm font-medium text-gray-700 mb-1">Nome da plataforma</label><input type="text" value="O Consultor" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
-        <div><label class="block text-sm font-medium text-gray-700 mb-1">Email de contato</label><input type="email" value="contato@oconsultor.com.br" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
-        <div><label class="block text-sm font-medium text-gray-700 mb-1">Idioma padrão</label><select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"><option>Português (BR)</option><option>English</option><option>Español</option></select></div>
-        <div><label class="block text-sm font-medium text-gray-700 mb-1">Cor primária</label><div class="flex items-center gap-3"><input type="color" value="#1E3A5F" class="w-10 h-10 rounded border"><span class="text-sm text-gray-500">#1E3A5F</span></div></div>
+        <div><label class="block text-sm font-medium text-gray-700 mb-1">Nome da plataforma</label><input type="text" name="config[app_nome]" value="O Consultor" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+        <div><label class="block text-sm font-medium text-gray-700 mb-1">Email de contato</label><input type="email" name="config[app_email_contato]" value="contato@oconsultor.com.br" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+        <div><label class="block text-sm font-medium text-gray-700 mb-1">Idioma padrão</label><select name="config[app_idioma]" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"><option>pt-BR</option><option>en</option><option>es</option></select></div>
+        <div><label class="block text-sm font-medium text-gray-700 mb-1">Cor primária</label><div class="flex items-center gap-3"><input type="color" name="config[app_cor_primaria]" value="#1E3A5F" class="w-10 h-10 rounded border cursor-pointer"><span class="text-sm text-gray-500">#1E3A5F</span></div></div>
+        <button onclick="salvarConfig('geral')" class="w-full bg-accent text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-orange-700">💾 Salvar Configurações Gerais</button>
     </div>
 </div>
 
@@ -40,31 +41,64 @@
 <!-- ABA APIs DE CONTEÚDO -->
 <div x-show="aba==='apis'" style="display:none" class="max-w-3xl">
     <div class="space-y-4">
-        <?php foreach ($dados['apis'] as $api):
-            $stColor = match($api['status']) { 'ativa' => 'bg-green-100 text-green-700', 'inativa' => 'bg-gray-100 text-gray-500', default => 'bg-red-100 text-red-700' };
-        ?>
+        <!-- Perplexity -->
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <div class="flex items-center justify-between mb-4">
                 <div>
-                    <h4 class="font-semibold text-gray-800"><?= htmlspecialchars($api['nome']) ?></h4>
-                    <p class="text-xs text-gray-400 mt-0.5"><?= htmlspecialchars($api['descricao']) ?></p>
+                    <h4 class="font-semibold text-gray-800">Perplexity</h4>
+                    <p class="text-xs text-gray-400 mt-0.5">Busca de notícias e conteúdos da web em tempo real.</p>
                 </div>
-                <div class="flex items-center gap-3">
-                    <span class="px-2 py-0.5 rounded-full text-xs font-medium <?= $stColor ?>"><?= ucfirst($api['status']) ?></span>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" <?= $api['ativo'] ? 'checked' : '' ?> class="sr-only peer">
-                        <div class="w-9 h-5 bg-gray-200 peer-focus:ring-2 peer-focus:ring-primary/20 rounded-full peer peer-checked:bg-primary after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full"></div>
-                    </label>
-                </div>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <span class="text-xs text-gray-500">Ativa</span>
+                    <input type="checkbox" name="config[perplexity_ativo]" value="1" checked class="w-4 h-4 text-primary rounded border-gray-300">
+                </label>
             </div>
             <div class="grid grid-cols-2 gap-3">
-                <div><label class="block text-xs text-gray-500 mb-1">Chave de API</label><input type="password" value="<?= htmlspecialchars($api['chave']) ?>" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 font-mono text-xs"></div>
-                <div><label class="block text-xs text-gray-500 mb-1">Modelo</label><input type="text" value="<?= htmlspecialchars($api['modelo']) ?>" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"></div>
+                <div><label class="block text-xs text-gray-500 mb-1">Chave de API</label><input type="password" name="config[perplexity_key]" placeholder="pplx-..." class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono text-xs outline-none focus:border-primary"></div>
+                <div><label class="block text-xs text-gray-500 mb-1">Modelo</label><input type="text" name="config[perplexity_modelo]" value="sonar-pro" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
             </div>
         </div>
-        <?php endforeach; ?>
 
-        <button onclick="testarApis()" class="w-full bg-primary text-white py-2.5 rounded-lg text-sm font-medium hover:bg-primary-700">🧪 Testar Todas as APIs</button>
+        <!-- OpenAI -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h4 class="font-semibold text-gray-800">OpenAI (GPT + DALL-E)</h4>
+                    <p class="text-xs text-gray-400 mt-0.5">Análise, resumo, geração de conteúdo e imagens.</p>
+                </div>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <span class="text-xs text-gray-500">Ativa</span>
+                    <input type="checkbox" name="config[openai_ativo]" value="1" checked class="w-4 h-4 text-primary rounded border-gray-300">
+                </label>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div><label class="block text-xs text-gray-500 mb-1">Chave de API</label><input type="password" name="config[openai_key]" placeholder="sk-..." class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono text-xs outline-none focus:border-primary"></div>
+                <div><label class="block text-xs text-gray-500 mb-1">Modelo</label><input type="text" name="config[openai_modelo]" value="gpt-4o" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+            </div>
+        </div>
+
+        <!-- Anthropic -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h4 class="font-semibold text-gray-800">Anthropic (Claude)</h4>
+                    <p class="text-xs text-gray-400 mt-0.5">Alternativa ao GPT para análise de conteúdo (fallback).</p>
+                </div>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <span class="text-xs text-gray-500">Ativa</span>
+                    <input type="checkbox" name="config[anthropic_ativo]" value="1" class="w-4 h-4 text-primary rounded border-gray-300">
+                </label>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div><label class="block text-xs text-gray-500 mb-1">Chave de API</label><input type="password" name="config[anthropic_key]" placeholder="sk-ant-..." class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono text-xs outline-none focus:border-primary"></div>
+                <div><label class="block text-xs text-gray-500 mb-1">Modelo</label><input type="text" name="config[anthropic_modelo]" value="claude-sonnet-4-20250514" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+            </div>
+        </div>
+
+        <div class="flex gap-3">
+            <button onclick="salvarConfig('apis')" class="flex-1 bg-accent text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-orange-700">💾 Salvar APIs</button>
+            <button onclick="testarApis()" class="flex-1 bg-primary text-white py-2.5 rounded-lg text-sm font-medium hover:bg-primary-700">🧪 Testar Todas</button>
+        </div>
 
         <!-- Regra de uso -->
         <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 text-xs text-blue-700">
