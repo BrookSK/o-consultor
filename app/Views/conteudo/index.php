@@ -212,9 +212,9 @@
                     </div>
                     <div class="flex flex-col gap-1 flex-shrink-0">
                         <span class="text-xs font-bold px-2 py-0.5 rounded <?= $intel['relevancia'] === 'alta' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600' ?>"><?= ucfirst($intel['relevancia']) ?></span>
-                        <button onclick="alert('Salvo nos seus favoritos!')" class="text-xs text-primary hover:underline">💾 Salvar</button>
+                        <button onclick="salvarItem(this)" class="text-xs text-primary hover:underline">💾 Salvar</button>
                         <?php if (Auth::temAlgumPerfil([Auth::ADMIN_HOLDING, Auth::CONSULTOR_INTERNO])): ?>
-                        <button onclick="alert('Link copiado para compartilhar com o cliente!')" class="text-xs text-primary hover:underline">📤 Compartilhar</button>
+                        <button onclick="compartilharItem(this, '<?= htmlspecialchars(addslashes($intel['titulo'])) ?>')" class="text-xs text-primary hover:underline">📤 Compartilhar</button>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -233,6 +233,24 @@ async function buscarAgora() {
         const data = await res.json();
         if (data.sucesso) { if (typeof Toast !== 'undefined') Toast.sucesso(data.mensagem); else alert(data.mensagem); }
     } catch(e) { alert('Erro.'); }
+}
+
+function salvarItem(btn) {
+    btn.innerHTML = '✓ Salvo';
+    btn.className = 'text-xs text-green-600 font-semibold';
+    btn.disabled = true;
+    if (typeof Toast !== 'undefined') Toast.sucesso('Conteúdo salvo nos seus favoritos!');
+}
+
+function compartilharItem(btn, titulo) {
+    const url = window.location.href;
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(titulo + ' — ' + url);
+    }
+    btn.innerHTML = '✓ Copiado';
+    btn.className = 'text-xs text-green-600 font-semibold';
+    setTimeout(() => { btn.innerHTML = '📤 Compartilhar'; btn.className = 'text-xs text-primary hover:underline'; }, 3000);
+    if (typeof Toast !== 'undefined') Toast.sucesso('Link copiado para a área de transferência!');
 }
 </script>
 
