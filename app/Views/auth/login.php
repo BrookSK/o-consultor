@@ -79,16 +79,6 @@
                 <a href="<?= APP_URL ?>/cadastro" class="text-primary font-medium hover:underline">Criar conta</a>
             </p>
         </div>
-
-        <!-- Credenciais de teste -->
-        <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <p class="text-xs font-medium text-blue-700 mb-2">Credenciais de teste:</p>
-            <div class="space-y-1 text-xs text-blue-600">
-                <p><strong>Admin:</strong> admin@oconsultor.com.br / admin123</p>
-                <p><strong>Consultor:</strong> consultor@oconsultor.com.br / consultor123</p>
-                <p><strong>Cliente:</strong> cliente@empresa.com.br / cliente123</p>
-            </div>
-        </div>
     </div>
 
 </body>

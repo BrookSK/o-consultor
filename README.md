@@ -75,13 +75,10 @@ o-consultor/
 - O Model `Configuracao.php` lê/salva com cache em sessão
 - As migrations SQL ficam em `database/migrations/` — execute manualmente no seu banco
 
-## Credenciais de Teste
+## Primeiro Acesso
 
-| Perfil | Email | Senha |
-|--------|-------|-------|
-| Admin Holding | admin@oconsultor.com.br | admin123 |
-| Consultor Interno | consultor@oconsultor.com.br | consultor123 |
-| Cliente | cliente@empresa.com.br | cliente123 |
+Após executar as migrations, o sistema terá os usuários iniciais definidos na migration 001.
+Para criar novos usuários, acesse `/admin/usuarios` com o perfil Admin.
 
 ## Perfis de Acesso
 

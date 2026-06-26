@@ -1,6 +1,7 @@
 <?php
 /**
  * AuthController — Autenticação e cadastro
+ * Login e cadastro usando tabela `usuarios` do banco de dados.
  */
 
 class AuthController
@@ -19,7 +20,7 @@ class AuthController
     }
 
     /**
-     * Processa o login
+     * Processa o login — busca no banco de dados
      */
     public function login(): void
     {
@@ -27,7 +28,6 @@ class AuthController
 
         $email = filter_input(INPUT_POST, 'email', FILTER_SANITIZE_EMAIL);
         $senha = $_POST['senha'] ?? '';
-        $lembrar = isset($_POST['lembrar']);
 
         if (empty($email) || empty($senha)) {
             Flash::set('erro', 'Preencha todos os campos.');
@@ -35,35 +35,8 @@ class AuthController
             exit;
         }
 
-        // Dados mockados para desenvolvimento
-        $usuariosMock = [
-            'admin@oconsultor.com.br' => [
-                'id' => 1,
-                'nome' => 'Administrador',
-                'email' => 'admin@oconsultor.com.br',
-                'senha' => password_hash('admin123', PASSWORD_DEFAULT),
-                'perfil' => 'ADMIN_HOLDING',
-                'empresa_id' => null,
-            ],
-            'consultor@oconsultor.com.br' => [
-                'id' => 2,
-                'nome' => 'João Consultor',
-                'email' => 'consultor@oconsultor.com.br',
-                'senha' => password_hash('consultor123', PASSWORD_DEFAULT),
-                'perfil' => 'CONSULTOR_INTERNO',
-                'empresa_id' => null,
-            ],
-            'cliente@empresa.com.br' => [
-                'id' => 3,
-                'nome' => 'Maria Cliente',
-                'email' => 'cliente@empresa.com.br',
-                'senha' => password_hash('cliente123', PASSWORD_DEFAULT),
-                'perfil' => 'CLIENTE',
-                'empresa_id' => 1,
-            ],
-        ];
-
-        $usuario = $usuariosMock[$email] ?? null;
+        // Buscar usuário no banco de dados
+        $usuario = User::buscarPorEmail($email);
 
         if (!$usuario || !password_verify($senha, $usuario['senha'])) {
             Logger::seguranca('Tentativa de login falhou', ['email' => $email]);
@@ -72,6 +45,14 @@ class AuthController
             exit;
         }
 
+        // Verificar se está ativo
+        if (isset($usuario['ativo']) && !$usuario['ativo']) {
+            Flash::set('erro', 'Sua conta está desativada. Entre em contato com o administrador.');
+            header('Location: ' . APP_URL . '/login');
+            exit;
+        }
+
+        // Login bem-sucedido
         Auth::login($usuario);
         Logger::acao('Login realizado', ['usuario_id' => $usuario['id']]);
         Flash::set('sucesso', 'Bem-vindo, ' . $usuario['nome'] . '!');
@@ -93,7 +74,7 @@ class AuthController
     }
 
     /**
-     * Processa o cadastro
+     * Processa o cadastro — salva no banco de dados
      */
     public function cadastro(): void
     {
@@ -112,15 +93,36 @@ class AuthController
         if (strlen($senha) < 6) $erros[] = 'Senha deve ter no mínimo 6 caracteres.';
         if ($senha !== $confirmarSenha) $erros[] = 'As senhas não coincidem.';
 
+        // Verificar se email já existe
+        if (empty($erros)) {
+            $existente = User::buscarPorEmail($email);
+            if ($existente) {
+                $erros[] = 'Este email já está cadastrado.';
+            }
+        }
+
         if (!empty($erros)) {
             Flash::set('erro', implode(' ', $erros));
             header('Location: ' . APP_URL . '/cadastro');
             exit;
         }
 
-        // Em produção: User::criar([...])
-        Logger::acao('Novo cadastro', ['email' => $email, 'empresa' => $empresa]);
-        Flash::set('sucesso', 'Cadastro realizado com sucesso! Faça login para continuar.');
+        // Criar usuário no banco
+        $novoId = User::criar([
+            'nome' => $nome,
+            'email' => $email,
+            'senha' => $senha,
+            'perfil' => 'CLIENTE',
+            'empresa_id' => null,
+        ]);
+
+        if ($novoId) {
+            Logger::acao('Novo cadastro realizado', ['email' => $email, 'empresa' => $empresa]);
+            Flash::set('sucesso', 'Cadastro realizado com sucesso! Faça login para continuar.');
+        } else {
+            Flash::set('erro', 'Erro ao criar conta. Tente novamente.');
+        }
+
         header('Location: ' . APP_URL . '/login');
         exit;
     }
@@ -148,7 +150,6 @@ class AuthController
             exit;
         }
 
-        // Em produção: gerar token, enviar email
         Logger::acao('Recuperação de senha solicitada', ['email' => $email]);
         Flash::set('sucesso', 'Se o email estiver cadastrado, você receberá as instruções de recuperação.');
         header('Location: ' . APP_URL . '/login');
