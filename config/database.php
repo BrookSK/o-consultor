@@ -7,8 +7,8 @@
 define('DB_HOST', 'localhost');
 define('DB_PORT', '3306');
 define('DB_NAME', 'o_consultor');
-define('DB_USER', 'root');
-define('DB_PASS', '');
+define('DB_USER', 'o_consultor');
+define('DB_PASS', 'rPlR%3ruzY3zt2_s');
 define('DB_CHARSET', 'utf8mb4');
 
 // Opções PDO padrão
