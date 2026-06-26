@@ -9,7 +9,7 @@
  */
 
 // URL base (ajustar conforme ambiente)
-define('APP_URL', 'http://localhost/o-consultor');
+define('APP_URL', 'https://app.oconsultor.digital');
 
 // Ambiente
 define('APP_ENV', 'development'); // development | production
