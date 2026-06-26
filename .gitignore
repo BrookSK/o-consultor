@@ -1,0 +1,19 @@
+# Logs
+storage/logs/*.log
+
+# Uploads de usuários
+public/uploads/*
+!public/uploads/.gitkeep
+
+# Configurações sensíveis (em produção)
+# config/api_keys.php
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

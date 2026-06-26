@@ -1,0 +1,9 @@
+RewriteEngine On
+
+# Se o arquivo ou diretório existir dentro de /public, entrega direto
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Caso contrário, envia tudo para index.php com a URL como parâmetro
+RewriteRule ^(.*)$ index.php?url=$1 [QSA,L]
