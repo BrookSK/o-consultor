@@ -134,17 +134,40 @@
             <p class="text-sm text-gray-500">Templates de referência visual da marca.</p>
             <label class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700 cursor-pointer">
                 + Adicionar Template
-                <input type="file" accept="image/*" class="hidden" onchange="alert('Template adicionado! (Em produção: salva no servidor)')">
+                <input type="file" accept="image/*" class="hidden" onchange="adicionarTemplate(this)">
             </label>
         </div>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="grid-templates">
             <label class="border-2 border-dashed border-gray-300 rounded-lg p-8 flex items-center justify-center text-gray-400 text-sm hover:border-primary hover:text-primary cursor-pointer transition">
                 <span>+ Upload</span>
-                <input type="file" accept="image/*" class="hidden" onchange="alert('Imagem carregada! (Em produção: upload via AJAX)')">
+                <input type="file" accept="image/*" class="hidden" onchange="adicionarTemplate(this)">
             </label>
         </div>
         <p class="text-xs text-gray-400 mt-4">Envie imagens de posts que representam o estilo visual desejado. A IA usará como referência.</p>
     </div>
+
+<script>
+function adicionarTemplate(input) {
+    if (!input.files || !input.files[0]) return;
+    const file = input.files[0];
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const grid = document.getElementById('grid-templates');
+        const card = document.createElement('div');
+        card.className = 'relative rounded-lg overflow-hidden border border-gray-200 group';
+        card.innerHTML = `
+            <img src="${e.target.result}" class="w-full h-32 object-cover">
+            <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                <button onclick="this.closest('.relative').remove()" class="text-white text-xs bg-red-600 px-2 py-1 rounded">Remover</button>
+            </div>
+            <p class="text-xs text-gray-600 p-2 truncate">${file.name}</p>
+        `;
+        grid.insertBefore(card, grid.lastElementChild);
+    };
+    reader.readAsDataURL(file);
+    input.value = '';
+}
+</script>
 
     <!-- ABA PUBLICAÇÃO -->
     <div x-show="aba === 'publicacao'" x-transition style="display:none;">
