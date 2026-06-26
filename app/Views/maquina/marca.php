@@ -263,12 +263,34 @@ async function removerTemplate(id) {
                         <p class="text-xs text-gray-400"><?= ucfirst($cont['tipo']) ?> • <?= date('d/m/Y', strtotime($cont['data'])) ?></p>
                     </div>
                     <div class="flex gap-2">
-                        <button onclick="let d=prompt('Data para agendar (AAAA-MM-DD):'); if(d) alert('Agendado para '+d+'! (Em produção: salva no banco)')" class="px-3 py-1.5 border border-gray-300 rounded text-xs hover:bg-gray-100">📅 Agendar</button>
+                        <button onclick="abrirModalAgendar('<?= htmlspecialchars($cont['titulo']) ?>')" class="px-3 py-1.5 border border-gray-300 rounded text-xs hover:bg-gray-100">📅 Agendar</button>
                         <button onclick="publicarAgora()" class="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700">Publicar</button>
                     </div>
                 </div>
                 <?php endforeach; ?>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Agendar -->
+<div id="modal-agendar" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg shadow-xl max-w-sm w-full p-6">
+        <h3 class="text-lg font-semibold text-gray-800 mb-2">📅 Agendar Publicação</h3>
+        <p class="text-sm text-gray-500 mb-4" id="agendar-titulo-post"></p>
+        <div class="space-y-3">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Data</label>
+                <input type="date" id="agendar-data" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary" value="<?= date('Y-m-d', strtotime('+1 day')) ?>">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Horário</label>
+                <input type="time" id="agendar-hora" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary" value="10:00">
+            </div>
+        </div>
+        <div class="flex gap-2 mt-5">
+            <button onclick="document.getElementById('modal-agendar').classList.add('hidden')" class="flex-1 border border-gray-300 py-2.5 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Cancelar</button>
+            <button onclick="confirmarAgendamento()" class="flex-1 bg-primary text-white py-2.5 rounded-lg text-sm font-medium hover:bg-primary-700">Confirmar</button>
         </div>
     </div>
 </div>
@@ -314,6 +336,20 @@ document.getElementById('form-gerar').addEventListener('submit', async function(
 });
 
 function publicarAgora() { document.getElementById('modal-publicar').classList.remove('hidden'); }
+
+function abrirModalAgendar(titulo) {
+    document.getElementById('agendar-titulo-post').textContent = titulo;
+    document.getElementById('modal-agendar').classList.remove('hidden');
+}
+
+function confirmarAgendamento() {
+    const data = document.getElementById('agendar-data').value;
+    const hora = document.getElementById('agendar-hora').value;
+    if (!data) { alert('Selecione uma data.'); return; }
+    document.getElementById('modal-agendar').classList.add('hidden');
+    if (typeof Toast !== 'undefined') Toast.sucesso('Agendado para ' + data + ' às ' + hora + '!');
+    else alert('Agendado para ' + data + ' às ' + hora + '!');
+}
 </script>
 
 <?php $conteudo = ob_get_clean(); ?>
