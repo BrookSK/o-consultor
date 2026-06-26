@@ -124,7 +124,6 @@
         <span>Exibindo <?= count($dados['diagnosticos']) ?> diagnósticos</span>
         <div class="flex gap-1">
             <button class="px-3 py-1 bg-primary text-white rounded text-xs">1</button>
-            <button class="px-3 py-1 bg-gray-100 rounded text-xs hover:bg-gray-200">2</button>
         </div>
     </div>
 </div>

@@ -13,7 +13,7 @@
 
 <div class="flex items-center justify-between mb-6">
     <h1 class="text-2xl font-bold text-gray-800">Gestão de Parceiros</h1>
-    <button class="bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700">+ Cadastrar Parceiro</button>
+    <button onclick="alert('Formulário de cadastro de parceiro será implementado em breve. Por enquanto, entre em contato com o suporte.')" class="bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700">+ Cadastrar Parceiro</button>
 </div>
 
 <!-- Workflow -->

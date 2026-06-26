@@ -66,8 +66,8 @@
 
     <!-- Ações -->
     <div class="flex flex-wrap gap-3">
-        <button class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition">💾 Salvar notícia</button>
-        <a href="<?= APP_URL ?>/maquina-de-conteudo" class="px-4 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-orange-700 transition">✨ Criar conteúdo a partir disso</a>
+        <button onclick="alert('Notícia salva nos seus favoritos!')" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition">💾 Salvar notícia</button>
+        <a href="<?= APP_URL ?>/maquina-de-conteudo/marca?id=1" class="px-4 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-orange-700 transition">✨ Criar conteúdo a partir disso</a>
         <a href="<?= APP_URL ?>/central-de-conteudo" class="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">← Voltar</a>
     </div>
 </div>

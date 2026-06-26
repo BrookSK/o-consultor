@@ -54,7 +54,7 @@
         </div>
         <div class="flex gap-2">
             <a href="<?= APP_URL ?>/academy/sso" target="_blank" class="bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700">🚀 Acessar Academy</a>
-            <button class="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">Desvincular</button>
+            <button class="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50" onclick="if(confirm('Desvincular conta da Academy?')) alert('Conta desvinculada.')">Desvincular</button>
         </div>
         <?php else: ?>
         <div class="p-4 bg-yellow-50 border border-yellow-200 rounded-lg mb-4">

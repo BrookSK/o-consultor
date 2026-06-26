@@ -138,17 +138,10 @@ class AdminController
         $this->protegerAdmin();
         Csrf::verificar();
 
-        // Gerar JWT de teste
         $jwt = ApiHelper::gerarJwtAcademy([
             'sub'  => 'teste@oconsultor.com.br',
             'name' => 'Teste Integração',
         ]);
-
-        // Em produção: fazer cURL para a URL da Academy com o token
-        // $ch = curl_init(ACADEMY_URL . ACADEMY_SSO_ROUTE . '?token=' . $jwt);
-        // curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        // curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
-        // $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
         Logger::acao('Teste de integração Academy executado');
         header('Content-Type: application/json');
@@ -157,6 +150,55 @@ class AdminController
             'status' => 'ok',
             'mensagem' => 'JWT gerado com sucesso. Em produção, verificaria resposta HTTP 302 da Academy.',
             'jwt_preview' => substr($jwt, 0, 50) . '...',
+        ]);
+        exit;
+    }
+
+    /**
+     * Testa conexão SMTP e opcionalmente envia email de teste
+     */
+    public function testarSmtp(): void
+    {
+        $this->protegerAdmin();
+        Csrf::verificar();
+
+        $emailTeste = filter_input(INPUT_POST, 'email_teste', FILTER_SANITIZE_EMAIL);
+
+        if (!empty($emailTeste)) {
+            // Enviar email de teste real
+            $resultado = Email::enviar(
+                $emailTeste,
+                'Email de Teste — O Consultor',
+                Email::enviarNotificacao($emailTeste, 'Admin', 'Teste de Email', 'Este é um email de teste do sistema O Consultor. Se você está lendo isso, o SMTP está funcionando corretamente!') ? '' : '',
+                'Admin',
+                'outro'
+            );
+
+            // Forma mais simples: enviar direto
+            $resultado = Email::enviar(
+                $emailTeste,
+                'Teste de Email — O Consultor',
+                '<div style="font-family:Arial,sans-serif;padding:20px;"><h2 style="color:#1E3A5F;">✓ SMTP Funcionando!</h2><p>Este é um email de teste do sistema O Consultor.</p><p>Se você está lendo isso, a configuração SMTP está correta.</p><p style="color:#666;font-size:12px;">Enviado em: ' . date('d/m/Y H:i:s') . '</p></div>',
+                'Admin',
+                'outro'
+            );
+
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => $resultado['sucesso'],
+                'mensagem' => $resultado['sucesso'] ? "Email de teste enviado para {$emailTeste}!" : "Falha: " . $resultado['erro'],
+            ]);
+            exit;
+        }
+
+        // Apenas testar conexão
+        $resultado = Email::testarConexao();
+        Logger::acao('Teste SMTP executado', ['resultado' => $resultado['sucesso'] ? 'ok' : 'erro']);
+
+        header('Content-Type: application/json');
+        echo json_encode([
+            'sucesso' => $resultado['sucesso'],
+            'mensagem' => $resultado['sucesso'] ? $resultado['mensagem'] : "Falha: " . $resultado['erro'],
         ]);
         exit;
     }

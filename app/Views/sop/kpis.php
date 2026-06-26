@@ -65,7 +65,7 @@
                     <td class="px-4 py-3 text-gray-600"><?= htmlspecialchars($kpi['responsavel']) ?></td>
                     <td class="px-4 py-3">
                         <?php if ($kpi['zona'] === 'vermelha'): ?>
-                        <button class="text-xs px-2 py-1 bg-red-600 text-white rounded font-medium hover:bg-red-700">Ver Contingência</button>
+                        <button onclick="alert('Em produção: abre modal com plano de contingência N1/N2/N3 do SOP.')" class="text-xs px-2 py-1 bg-red-600 text-white rounded font-medium hover:bg-red-700">Ver Contingência</button>
                         <?php endif; ?>
                     </td>
                 </tr>

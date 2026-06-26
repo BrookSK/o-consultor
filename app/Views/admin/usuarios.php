@@ -43,9 +43,9 @@
                 <td class="px-4 py-3 text-center text-gray-400 text-xs"><?= $u['ultima_atividade'] ?></td>
                 <td class="px-4 py-3 text-center">
                     <?php if ($u['academy']): ?><span class="text-green-600 text-xs font-medium">✓ Sim</span>
-                    <?php else: ?><button class="text-xs px-2 py-1 bg-accent text-white rounded hover:bg-orange-700">Convidar</button><?php endif; ?>
+                    <?php else: ?><button onclick="alert('Convite enviado para <?= htmlspecialchars($u['email']) ?>! (Em produção: envia email via SMTP)')" class="text-xs px-2 py-1 bg-accent text-white rounded hover:bg-orange-700">Convidar</button><?php endif; ?>
                 </td>
-                <td class="px-4 py-3 text-center"><button class="text-xs text-primary hover:underline">Editar</button></td>
+                <td class="px-4 py-3 text-center"><button onclick="alert('Edição do usuário <?= htmlspecialchars($u['nome']) ?> será disponibilizada em breve.')" class="text-xs text-primary hover:underline">Editar</button></td>
             </tr>
             <?php endforeach; ?>
             </tbody>

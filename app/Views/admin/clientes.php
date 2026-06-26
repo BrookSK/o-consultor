@@ -5,7 +5,7 @@
 
 <div class="flex items-center justify-between mb-6">
     <h1 class="text-2xl font-bold text-gray-800">Gestão de Clientes</h1>
-    <button class="bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700">+ Cadastrar Cliente</button>
+    <button onclick="alert('Formulário de cadastro de cliente será disponibilizado em breve.')" class="bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700">+ Cadastrar Cliente</button>
 </div>
 
 <div class="flex flex-wrap gap-2 mb-4">
@@ -41,7 +41,7 @@
                 <td class="px-4 py-3 text-center font-medium text-gray-800"><?= $c['mrr'] ?></td>
                 <td class="px-4 py-3 text-center"><span class="px-2 py-0.5 rounded-full text-xs font-bold <?= $matCor ?>">N<?= $c['maturidade'] ?> <?= $matLabel ?></span></td>
                 <td class="px-4 py-3 text-center text-gray-400 text-xs"><?= date('d/m/Y', strtotime($c['criado_em'])) ?></td>
-                <td class="px-4 py-3 text-center"><button class="text-xs text-primary hover:underline">Ver perfil</button></td>
+                <td class="px-4 py-3 text-center"><button onclick="alert('Perfil detalhado do cliente <?= htmlspecialchars($c['nome']) ?> será disponibilizado em breve.')" class="text-xs text-primary hover:underline">Ver perfil</button></td>
             </tr>
             <?php endforeach; ?>
             </tbody>

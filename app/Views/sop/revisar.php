@@ -267,8 +267,8 @@
 <div class="bg-gray-50 rounded-lg border border-gray-200 p-6 mb-6">
     <div class="flex flex-col sm:flex-row gap-3">
         <button onclick="aprovarSop()" class="flex-1 bg-green-600 text-white px-5 py-3 rounded-lg text-sm font-semibold hover:bg-green-700 transition text-center">✓ Aprovar SOP</button>
-        <button class="flex-1 bg-blue-600 text-white px-5 py-3 rounded-lg text-sm font-medium hover:bg-blue-700 transition text-center">🤖 Solicitar Ajuste da IA</button>
-        <button class="flex-1 bg-gray-500 text-white px-5 py-3 rounded-lg text-sm font-medium hover:bg-gray-600 transition text-center">🔄 Regenerar do Zero</button>
+        <button onclick="alert('Em produção: solicita ajuste à IA com instruções específicas.')" class="flex-1 bg-blue-600 text-white px-5 py-3 rounded-lg text-sm font-medium hover:bg-blue-700 transition text-center">🤖 Solicitar Ajuste da IA</button>
+        <button onclick="if(confirm('Regenerar o SOP do zero? O conteúdo atual será substituído.')) { location.reload(); }" class="flex-1 bg-gray-500 text-white px-5 py-3 rounded-lg text-sm font-medium hover:bg-gray-600 transition text-center">🔄 Regenerar do Zero</button>
         <button onclick="salvarRascunho()" class="flex-1 border border-gray-300 text-gray-700 px-5 py-3 rounded-lg text-sm font-medium hover:bg-gray-100 transition text-center">💾 Salvar Rascunho</button>
     </div>
 </div>

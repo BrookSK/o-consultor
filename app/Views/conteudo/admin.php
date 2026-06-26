@@ -15,7 +15,7 @@
     <h1 class="text-2xl font-bold text-gray-800">Gestão de Conteúdo</h1>
     <div class="flex gap-2">
         <button onclick="buscarTodos()" class="px-4 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-orange-700">🔍 Buscar para todos</button>
-        <button class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700">+ Adicionar Case</button>
+        <button onclick="alert('Formulário para adicionar case real será disponibilizado em breve.')" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700">+ Adicionar Case</button>
     </div>
 </div>
 
@@ -34,7 +34,7 @@
                     <td class="px-4 py-3 text-gray-500 text-center"><?= htmlspecialchars($n['fonte']) ?></td>
                     <td class="px-4 py-3 text-gray-500 text-center"><?= date('d/m', strtotime($n['data'])) ?></td>
                     <td class="px-4 py-3 text-center"><span class="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Publicado</span></td>
-                    <td class="px-4 py-3 text-right"><button class="text-xs text-red-500 hover:underline">Arquivar</button></td>
+                    <td class="px-4 py-3 text-right"><button onclick="alert('Notícia arquivada!')" class="text-xs text-red-500 hover:underline">Arquivar</button></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
@@ -56,7 +56,7 @@
                     <td class="px-4 py-3 font-medium text-gray-800"><?= htmlspecialchars($c['titulo']) ?></td>
                     <td class="px-4 py-3 text-gray-500 text-center"><?= htmlspecialchars($c['setor']) ?></td>
                     <td class="px-4 py-3 text-center"><?= $c['exclusivo'] ? '⭐' : '—' ?></td>
-                    <td class="px-4 py-3 text-right"><button class="text-xs text-primary hover:underline">Editar</button></td>
+                    <td class="px-4 py-3 text-right"><button onclick="alert('Edição de case será disponibilizada em breve.')" class="text-xs text-primary hover:underline">Editar</button></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>

@@ -54,8 +54,8 @@
                 <div>
                     <img src="<?= htmlspecialchars($slide['imagem_url']) ?>" class="w-full aspect-square rounded-lg object-cover border border-gray-200">
                     <div class="flex gap-2 mt-2">
-                        <button class="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs hover:bg-gray-50">📤 Substituir</button>
-                        <button class="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs hover:bg-gray-50">🔄 Regenerar</button>
+                        <button onclick="alert('Em produção: abre seletor de arquivo para substituir imagem.')" class="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs hover:bg-gray-50">📤 Substituir</button>
+                        <button onclick="alert('Em produção: regenera imagem via DALL-E com prompt editável.')" class="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs hover:bg-gray-50">🔄 Regenerar</button>
                     </div>
                 </div>
                 <!-- Texto -->
@@ -83,8 +83,8 @@
         <!-- Ações -->
         <div class="flex gap-3">
             <button onclick="aprovarConteudo()" class="flex-1 bg-green-600 text-white py-3 rounded-lg text-sm font-semibold hover:bg-green-700 transition">✓ Aprovar Conteúdo</button>
-            <button class="px-6 py-3 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">💾 Salvar</button>
-            <button class="px-6 py-3 border border-red-200 rounded-lg text-sm text-red-600 hover:bg-red-50">🗑️ Descartar</button>
+            <button onclick="alert('Rascunho salvo!')" class="px-6 py-3 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">💾 Salvar</button>
+            <button onclick="if(confirm('Descartar este conteúdo?')) window.location.href='<?= APP_URL ?>/maquina-de-conteudo/marca?id=1'" class="px-6 py-3 border border-red-200 rounded-lg text-sm text-red-600 hover:bg-red-50">🗑️ Descartar</button>
         </div>
     </div>
 </div>

@@ -97,6 +97,7 @@ class Router
         $this->get('admin/configuracoes', 'AdminController', 'configuracoes');
         $this->post('admin/testar-apis', 'AdminController', 'testarApis');
         $this->post('admin/testar-academy', 'AdminController', 'testarAcademy');
+        $this->post('admin/testar-smtp', 'AdminController', 'testarSmtp');
         $this->post('admin/configuracoes/salvar', 'AdminController', 'salvarConfiguracoes');
         $this->get('admin/logs', 'AdminController', 'logs');
         $this->get('admin/relatorios', 'AdminController', 'relatorios');

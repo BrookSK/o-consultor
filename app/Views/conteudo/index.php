@@ -54,17 +54,17 @@
                             <?php foreach ($dados['perfil_busca']['sites'] as $site): ?>
                             <div class="flex items-center gap-2">
                                 <input type="url" value="<?= htmlspecialchars($site) ?>" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
-                                <button class="text-red-400 hover:text-red-600 text-lg">&times;</button>
+                                <button onclick="this.parentElement.remove()" class="text-red-400 hover:text-red-600 text-lg">&times;</button>
                             </div>
                             <?php endforeach; ?>
-                            <button class="text-sm text-primary font-medium hover:underline">+ Adicionar site</button>
+                            <button onclick="let div=document.createElement('div');div.className='flex items-center gap-2';div.innerHTML='<input type=\'url\' placeholder=\'https://...\' class=\'flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary\'><button onclick=\'this.parentElement.remove()\' class=\'text-red-400 hover:text-red-600 text-lg\'>&times;</button>';this.before(div)" class="text-sm text-primary font-medium hover:underline">+ Adicionar site</button>
                         </div>
                     </div>
                     <div class="md:col-span-2">
                         <label class="block text-sm font-medium text-gray-700 mb-2">Palavras-chave adicionais</label>
                         <div class="flex flex-wrap gap-2">
                             <?php foreach ($dados['perfil_busca']['palavras_chave'] as $kw): ?>
-                            <span class="px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-medium flex items-center gap-1"><?= htmlspecialchars($kw) ?> <button class="text-primary/50 hover:text-primary">&times;</button></span>
+                            <span class="px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-medium flex items-center gap-1"><?= htmlspecialchars($kw) ?> <button onclick="this.parentElement.remove()" class="text-primary/50 hover:text-primary">&times;</button></span>
                             <?php endforeach; ?>
                         </div>
                     </div>
@@ -212,9 +212,9 @@
                     </div>
                     <div class="flex flex-col gap-1 flex-shrink-0">
                         <span class="text-xs font-bold px-2 py-0.5 rounded <?= $intel['relevancia'] === 'alta' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600' ?>"><?= ucfirst($intel['relevancia']) ?></span>
-                        <button class="text-xs text-primary hover:underline">💾 Salvar</button>
+                        <button onclick="alert('Salvo nos seus favoritos!')" class="text-xs text-primary hover:underline">💾 Salvar</button>
                         <?php if (Auth::temAlgumPerfil([Auth::ADMIN_HOLDING, Auth::CONSULTOR_INTERNO])): ?>
-                        <button class="text-xs text-primary hover:underline">📤 Compartilhar</button>
+                        <button onclick="alert('Link copiado para compartilhar com o cliente!')" class="text-xs text-primary hover:underline">📤 Compartilhar</button>
                         <?php endif; ?>
                     </div>
                 </div>

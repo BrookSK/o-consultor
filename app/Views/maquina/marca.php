@@ -111,7 +111,7 @@
                     default => ['badge' => 'bg-gray-100 text-gray-600', 'label' => 'Rascunho'],
                 };
             ?>
-            <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition cursor-pointer">
+            <div onclick="window.location.href='<?= APP_URL ?>/maquina-de-conteudo/editar'" class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition cursor-pointer">
                 <div class="h-32 bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-white text-3xl">
                     <?= $cont['tipo'] === 'carrossel' ? '📋' : ($cont['tipo'] === 'story' ? '📱' : '🖼️') ?>
                 </div>
@@ -132,12 +132,16 @@
     <div x-show="aba === 'templates'" x-transition style="display:none;">
         <div class="flex items-center justify-between mb-4">
             <p class="text-sm text-gray-500">Templates de referência visual da marca.</p>
-            <button class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700">+ Adicionar Template</button>
+            <label class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700 cursor-pointer">
+                + Adicionar Template
+                <input type="file" accept="image/*" class="hidden" onchange="alert('Template adicionado! (Em produção: salva no servidor)')">
+            </label>
         </div>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 flex items-center justify-center text-gray-400 text-sm hover:border-primary hover:text-primary cursor-pointer transition">
+            <label class="border-2 border-dashed border-gray-300 rounded-lg p-8 flex items-center justify-center text-gray-400 text-sm hover:border-primary hover:text-primary cursor-pointer transition">
                 <span>+ Upload</span>
-            </div>
+                <input type="file" accept="image/*" class="hidden" onchange="alert('Imagem carregada! (Em produção: upload via AJAX)')">
+            </label>
         </div>
         <p class="text-xs text-gray-400 mt-4">Envie imagens de posts que representam o estilo visual desejado. A IA usará como referência.</p>
     </div>
@@ -182,7 +186,7 @@
                         <p class="text-xs text-gray-400"><?= ucfirst($cont['tipo']) ?> • <?= date('d/m/Y', strtotime($cont['data'])) ?></p>
                     </div>
                     <div class="flex gap-2">
-                        <button class="px-3 py-1.5 border border-gray-300 rounded text-xs hover:bg-gray-100">📅 Agendar</button>
+                        <button onclick="let d=prompt('Data para agendar (AAAA-MM-DD):'); if(d) alert('Agendado para '+d+'! (Em produção: salva no banco)')" class="px-3 py-1.5 border border-gray-300 rounded text-xs hover:bg-gray-100">📅 Agendar</button>
                         <button onclick="publicarAgora()" class="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700">Publicar</button>
                     </div>
                 </div>
@@ -198,7 +202,7 @@
         <span class="text-4xl mb-4 inline-block">📢</span>
         <h3 class="text-lg font-semibold text-gray-800 mb-2">Publicação Automática em Breve</h3>
         <p class="text-sm text-gray-500 mb-4">A funcionalidade de publicação automática nas redes sociais chegará em breve. Por enquanto, faça o download do conteúdo e publique manualmente.</p>
-        <button class="w-full bg-primary text-white py-2.5 rounded-lg text-sm font-medium hover:bg-primary-700 mb-2">📥 Download do Conteúdo (ZIP)</button>
+        <button onclick="alert('Download será disponibilizado em breve. Por enquanto, clique com botão direito nas imagens e salve manualmente.')" class="w-full bg-primary text-white py-2.5 rounded-lg text-sm font-medium hover:bg-primary-700 mb-2">📥 Download do Conteúdo (ZIP)</button>
         <button onclick="document.getElementById('modal-publicar').classList.add('hidden')" class="w-full border border-gray-300 py-2.5 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Fechar</button>
     </div>
 </div>

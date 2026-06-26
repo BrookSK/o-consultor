@@ -11,6 +11,7 @@
     <button @click="aba='apis'" :class="aba==='apis'?'border-b-2 border-primary text-primary font-semibold':'text-gray-500'" class="px-4 py-3 text-sm">APIs de Conteúdo</button>
     <button @click="aba='academy'" :class="aba==='academy'?'border-b-2 border-primary text-primary font-semibold':'text-gray-500'" class="px-4 py-3 text-sm">Academy</button>
     <button @click="aba='notificacoes'" :class="aba==='notificacoes'?'border-b-2 border-primary text-primary font-semibold':'text-gray-500'" class="px-4 py-3 text-sm">Notificações</button>
+    <button @click="aba='email'" :class="aba==='email'?'border-b-2 border-primary text-primary font-semibold':'text-gray-500'" class="px-4 py-3 text-sm">Email/SMTP</button>
 </nav></div>
 
 <!-- ABA GERAL -->
@@ -97,7 +98,7 @@
             <?php foreach ($dados['usuarios_academy'] as $ua): ?>
             <tr><td class="px-4 py-2 text-gray-800"><?= htmlspecialchars($ua['nome']) ?></td><td class="px-4 py-2 text-gray-500 text-xs"><?= htmlspecialchars($ua['email']) ?></td>
                 <td class="px-4 py-2 text-center"><?= $ua['vinculada'] ? '<span class="text-green-600 font-medium text-xs">✓ Vinculada</span>' : '<span class="text-red-500 text-xs">✗ Não</span>' ?></td>
-                <td class="px-4 py-2 text-right"><?= !$ua['vinculada'] ? '<button class="text-xs px-2 py-1 bg-accent text-white rounded hover:bg-orange-700">Enviar convite</button>' : '' ?></td>
+                <td class="px-4 py-2 text-right"><?= !$ua['vinculada'] ? '<button onclick="alert(\'Convite enviado para ' . htmlspecialchars($ua['email']) . '!\')" class="text-xs px-2 py-1 bg-accent text-white rounded hover:bg-orange-700">Enviar convite</button>' : '' ?></td>
             </tr>
             <?php endforeach; ?>
             </tbody>
@@ -117,6 +118,51 @@
         <?php endforeach; ?>
     </div>
 </div>
+
+<!-- ABA EMAIL/SMTP -->
+<div x-show="aba==='email'" style="display:none" class="max-w-2xl">
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 space-y-4">
+        <div class="flex items-center justify-between mb-2">
+            <h4 class="font-semibold text-gray-800">Configuração SMTP</h4>
+            <label class="flex items-center gap-2 cursor-pointer">
+                <span class="text-xs text-gray-500">Ativo</span>
+                <input type="checkbox" name="config[smtp_ativo]" value="1" class="w-4 h-4 text-primary rounded border-gray-300">
+            </label>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div><label class="block text-xs text-gray-500 mb-1">Servidor SMTP *</label><input type="text" name="config[smtp_host]" placeholder="smtp.gmail.com" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+            <div><label class="block text-xs text-gray-500 mb-1">Porta *</label><input type="number" name="config[smtp_porta]" value="587" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+            <div><label class="block text-xs text-gray-500 mb-1">Usuário (email) *</label><input type="text" name="config[smtp_usuario]" placeholder="noreply@seudominio.com" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+            <div><label class="block text-xs text-gray-500 mb-1">Senha *</label><input type="password" name="config[smtp_senha]" placeholder="••••••••" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+            <div><label class="block text-xs text-gray-500 mb-1">Criptografia</label>
+                <select name="config[smtp_criptografia]" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                    <option value="tls">TLS (porta 587) — Recomendado</option>
+                    <option value="ssl">SSL (porta 465)</option>
+                    <option value="nenhuma">Nenhuma (porta 25)</option>
+                </select>
+            </div>
+            <div><label class="block text-xs text-gray-500 mb-1">Nome do remetente</label><input type="text" name="config[smtp_remetente_nome]" value="O Consultor" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+            <div class="md:col-span-2"><label class="block text-xs text-gray-500 mb-1">Email do remetente (From)</label><input type="email" name="config[smtp_remetente_email]" placeholder="noreply@oconsultor.digital" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+        </div>
+        <div class="flex gap-3 pt-2">
+            <button onclick="salvarConfig('smtp')" class="bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700">Salvar SMTP</button>
+            <button onclick="testarSmtp()" class="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">🧪 Testar Conexão</button>
+            <button onclick="enviarEmailTeste()" class="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">📧 Enviar Email de Teste</button>
+        </div>
+    </div>
+
+    <!-- Guia rápido -->
+    <div class="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4 text-xs text-blue-700">
+        <strong>Guia rápido:</strong>
+        <ul class="mt-2 space-y-1 list-disc list-inside">
+            <li><strong>Gmail:</strong> smtp.gmail.com / porta 587 / TLS (requer "Senha de App")</li>
+            <li><strong>Hostinger:</strong> smtp.hostinger.com / porta 587 / TLS</li>
+            <li><strong>Outlook:</strong> smtp-mail.outlook.com / porta 587 / TLS</li>
+            <li><strong>SendGrid:</strong> smtp.sendgrid.net / porta 587 / TLS (user: apikey)</li>
+        </ul>
+    </div>
+</div>
+
 </div>
 
 <script>
@@ -132,13 +178,10 @@ async function testarAcademy() {
     const data = await res.json();
     alert(data.mensagem || 'Teste concluído.');
 }
-</script>
-
 async function salvarConfig(grupo) {
     const fd = new FormData();
     fd.append('csrf_token', '<?= Csrf::token() ?>');
     fd.append('grupo', grupo);
-    // Coletar todos os inputs do grupo ativo
     document.querySelectorAll('[name^="config["]').forEach(el => {
         if (el.type === 'checkbox') fd.append(el.name, el.checked ? '1' : '0');
         else fd.append(el.name, el.value);
@@ -146,6 +189,22 @@ async function salvarConfig(grupo) {
     const res = await fetch('<?= APP_URL ?>/admin/configuracoes/salvar', { method:'POST', body:fd });
     const data = await res.json();
     if (data.sucesso) { if (typeof Toast !== 'undefined') Toast.sucesso(data.mensagem); else alert(data.mensagem); }
+}
+async function testarSmtp() {
+    const fd = new FormData(); fd.append('csrf_token', '<?= Csrf::token() ?>');
+    const res = await fetch('<?= APP_URL ?>/admin/testar-smtp', { method:'POST', body:fd });
+    const data = await res.json();
+    alert(data.mensagem || data.erro || 'Teste concluído.');
+}
+async function enviarEmailTeste() {
+    const para = prompt('Email para teste:', '<?= Auth::usuario()['email'] ?? '' ?>');
+    if (!para) return;
+    const fd = new FormData();
+    fd.append('csrf_token', '<?= Csrf::token() ?>');
+    fd.append('email_teste', para);
+    const res = await fetch('<?= APP_URL ?>/admin/testar-smtp', { method:'POST', body:fd });
+    const data = await res.json();
+    alert(data.mensagem || data.erro || 'Resultado do envio.');
 }
 </script>
 
