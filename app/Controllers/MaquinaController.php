@@ -134,6 +134,126 @@ class MaquinaController
         exit;
     }
 
+    /**
+     * Upload de template — salva arquivo no servidor e registra no banco
+     */
+    public function uploadTemplate(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+
+        $marcaId = (int) ($_POST['marca_id'] ?? 1);
+
+        if (empty($_FILES['arquivo']) || $_FILES['arquivo']['error'] !== UPLOAD_ERR_OK) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Nenhum arquivo enviado.']);
+            exit;
+        }
+
+        $arquivo = $_FILES['arquivo'];
+        $extensao = strtolower(pathinfo($arquivo['name'], PATHINFO_EXTENSION));
+        $permitidos = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+
+        if (!in_array($extensao, $permitidos)) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Formato não permitido. Use: ' . implode(', ', $permitidos)]);
+            exit;
+        }
+
+        // Criar diretório se não existir
+        $dir = PUBLIC_PATH . '/uploads/templates/' . $marcaId;
+        if (!is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+
+        // Nome único
+        $nomeArquivo = uniqid('tpl_') . '.' . $extensao;
+        $caminhoCompleto = $dir . '/' . $nomeArquivo;
+        $caminhoRelativo = '/uploads/templates/' . $marcaId . '/' . $nomeArquivo;
+
+        if (!move_uploaded_file($arquivo['tmp_name'], $caminhoCompleto)) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Falha ao salvar arquivo.']);
+            exit;
+        }
+
+        // Registrar no banco
+        try {
+            Database::execute(
+                "INSERT INTO marca_templates (marca_id, nome_arquivo, caminho, nome_original, tipo, tamanho, criado_em) VALUES (:marca_id, :nome, :caminho, :original, :tipo, :tamanho, NOW())",
+                [
+                    'marca_id' => $marcaId,
+                    'nome' => $nomeArquivo,
+                    'caminho' => $caminhoRelativo,
+                    'original' => $arquivo['name'],
+                    'tipo' => $extensao,
+                    'tamanho' => $arquivo['size'],
+                ]
+            );
+        } catch (\Exception $e) {
+            // Tabela pode não existir ainda — ignora mas mantém o arquivo
+        }
+
+        Logger::acao('Template uploaded', ['marca_id' => $marcaId, 'arquivo' => $nomeArquivo]);
+
+        header('Content-Type: application/json');
+        echo json_encode([
+            'sucesso' => true,
+            'mensagem' => 'Template salvo!',
+            'arquivo' => [
+                'nome' => $arquivo['name'],
+                'url' => APP_URL . $caminhoRelativo,
+                'id' => Database::lastInsertId() ?? 0,
+            ],
+        ]);
+        exit;
+    }
+
+    /**
+     * Lista templates salvos de uma marca (JSON)
+     */
+    public function listarTemplates(): void
+    {
+        Auth::proteger();
+        $marcaId = (int) ($_GET['marca_id'] ?? 1);
+
+        try {
+            $templates = Database::query(
+                "SELECT id, nome_original, caminho, criado_em FROM marca_templates WHERE marca_id = :id ORDER BY criado_em DESC",
+                ['id' => $marcaId]
+            );
+        } catch (\Exception $e) {
+            $templates = [];
+        }
+
+        header('Content-Type: application/json');
+        echo json_encode(['sucesso' => true, 'templates' => $templates]);
+        exit;
+    }
+
+    /**
+     * Remove um template
+     */
+    public function removerTemplate(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        $id = (int) ($_POST['template_id'] ?? 0);
+
+        try {
+            $template = Database::queryOne("SELECT caminho FROM marca_templates WHERE id = :id", ['id' => $id]);
+            if ($template && file_exists(PUBLIC_PATH . $template['caminho'])) {
+                unlink(PUBLIC_PATH . $template['caminho']);
+            }
+            Database::execute("DELETE FROM marca_templates WHERE id = :id", ['id' => $id]);
+        } catch (\Exception $e) {}
+
+        Logger::acao('Template removido', ['id' => $id]);
+        header('Content-Type: application/json');
+        echo json_encode(['sucesso' => true, 'mensagem' => 'Template removido!']);
+        exit;
+    }
+
     // ===== MOCKS =====
 
     private function getMarcasMock(): array

@@ -76,6 +76,9 @@ class Router
         $this->get('maquina-de-conteudo/editar', 'MaquinaController', 'editar');
         $this->post('maquina-de-conteudo/aprovar', 'MaquinaController', 'aprovar');
         $this->post('maquina-de-conteudo/regenerar-imagem', 'MaquinaController', 'regenerarImagem');
+        $this->post('maquina-de-conteudo/upload-template', 'MaquinaController', 'uploadTemplate');
+        $this->get('maquina-de-conteudo/templates', 'MaquinaController', 'listarTemplates');
+        $this->post('maquina-de-conteudo/remover-template', 'MaquinaController', 'removerTemplate');
 
         // Parceiros
         $this->get('parceiros', 'ParceirosController', 'index');

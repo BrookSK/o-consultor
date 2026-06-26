@@ -134,38 +134,92 @@
             <p class="text-sm text-gray-500">Templates de referência visual da marca.</p>
             <label class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700 cursor-pointer">
                 + Adicionar Template
-                <input type="file" accept="image/*" class="hidden" onchange="adicionarTemplate(this)">
+                <input type="file" accept="image/*" class="hidden" onchange="uploadTemplate(this)">
             </label>
         </div>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="grid-templates">
-            <label class="border-2 border-dashed border-gray-300 rounded-lg p-8 flex items-center justify-center text-gray-400 text-sm hover:border-primary hover:text-primary cursor-pointer transition">
+            <!-- Templates carregados do banco aparecerão aqui -->
+            <label class="border-2 border-dashed border-gray-300 rounded-lg p-8 flex items-center justify-center text-gray-400 text-sm hover:border-primary hover:text-primary cursor-pointer transition" id="upload-placeholder">
                 <span>+ Upload</span>
-                <input type="file" accept="image/*" class="hidden" onchange="adicionarTemplate(this)">
+                <input type="file" accept="image/*" class="hidden" onchange="uploadTemplate(this)">
             </label>
         </div>
         <p class="text-xs text-gray-400 mt-4">Envie imagens de posts que representam o estilo visual desejado. A IA usará como referência.</p>
     </div>
 
 <script>
-function adicionarTemplate(input) {
+// Carregar templates salvos ao abrir a aba
+document.addEventListener('DOMContentLoaded', carregarTemplates);
+
+async function carregarTemplates() {
+    try {
+        const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/templates?marca_id=<?= $marca['id'] ?>');
+        const data = await res.json();
+        if (data.sucesso && data.templates.length > 0) {
+            const grid = document.getElementById('grid-templates');
+            const placeholder = document.getElementById('upload-placeholder');
+            data.templates.forEach(t => {
+                const card = criarCardTemplate(t.id, '<?= APP_URL ?>' + t.caminho, t.nome_original);
+                grid.insertBefore(card, placeholder);
+            });
+        }
+    } catch(e) {}
+}
+
+async function uploadTemplate(input) {
     if (!input.files || !input.files[0]) return;
     const file = input.files[0];
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        const grid = document.getElementById('grid-templates');
-        const card = document.createElement('div');
-        card.className = 'relative rounded-lg overflow-hidden border border-gray-200 group';
-        card.innerHTML = `
-            <img src="${e.target.result}" class="w-full h-32 object-cover">
-            <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
-                <button onclick="this.closest('.relative').remove()" class="text-white text-xs bg-red-600 px-2 py-1 rounded">Remover</button>
-            </div>
-            <p class="text-xs text-gray-600 p-2 truncate">${file.name}</p>
-        `;
-        grid.insertBefore(card, grid.lastElementChild);
-    };
-    reader.readAsDataURL(file);
+
+    const fd = new FormData();
+    fd.append('csrf_token', '<?= Csrf::token() ?>');
+    fd.append('marca_id', '<?= $marca['id'] ?>');
+    fd.append('arquivo', file);
+
+    try {
+        const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/upload-template', { method: 'POST', body: fd });
+        const data = await res.json();
+
+        if (data.sucesso) {
+            const grid = document.getElementById('grid-templates');
+            const placeholder = document.getElementById('upload-placeholder');
+            const card = criarCardTemplate(data.arquivo.id, data.arquivo.url, data.arquivo.nome);
+            grid.insertBefore(card, placeholder);
+            if (typeof Toast !== 'undefined') Toast.sucesso('Template salvo!');
+        } else {
+            alert(data.erro || 'Erro no upload.');
+        }
+    } catch(e) { alert('Erro de conexão.'); }
+
     input.value = '';
+}
+
+function criarCardTemplate(id, url, nome) {
+    const card = document.createElement('div');
+    card.className = 'relative rounded-lg overflow-hidden border border-gray-200 group';
+    card.id = 'template-' + id;
+    card.innerHTML = `
+        <img src="${url}" class="w-full h-32 object-cover" loading="lazy">
+        <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+            <button onclick="removerTemplate(${id})" class="text-white text-xs bg-red-600 px-3 py-1.5 rounded hover:bg-red-700">Remover</button>
+        </div>
+        <p class="text-xs text-gray-600 p-2 truncate">${nome}</p>
+    `;
+    return card;
+}
+
+async function removerTemplate(id) {
+    if (!confirm('Remover este template?')) return;
+    const fd = new FormData();
+    fd.append('csrf_token', '<?= Csrf::token() ?>');
+    fd.append('template_id', id);
+    try {
+        const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/remover-template', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.sucesso) {
+            document.getElementById('template-' + id)?.remove();
+            if (typeof Toast !== 'undefined') Toast.sucesso('Template removido!');
+        }
+    } catch(e) {}
 }
 </script>
 
