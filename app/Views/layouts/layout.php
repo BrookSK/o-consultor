@@ -51,7 +51,7 @@ $paginaAtual = $_GET['url'] ?? 'dashboard';
         .sidebar-link.active { background-color: rgba(255,255,255,0.1); border-left: 3px solid #E07B00; }
     </style>
 </head>
-<body class="bg-gray-50 min-h-screen" x-data="{ sidebarOpen: true, mobileMenuOpen: false }">
+<body class="bg-gray-50 min-h-screen" x-data="{ sidebarOpen: true }">
 
     <!-- Skip to main content (Accessibility) -->
     <a href="#main-content" class="sr-only">Ir para o conteúdo principal</a>
@@ -61,12 +61,7 @@ $paginaAtual = $_GET['url'] ?? 'dashboard';
         <div class="flex items-center justify-between h-16 px-4">
             <!-- Logo + Toggle -->
             <div class="flex items-center gap-4">
-                <button @click="sidebarOpen = !sidebarOpen" class="hidden lg:block text-gray-500 hover:text-primary">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
-                    </svg>
-                </button>
-                <button @click="mobileMenuOpen = !mobileMenuOpen" class="lg:hidden text-gray-500 hover:text-primary">
+                <button @click="sidebarOpen = !sidebarOpen" class="text-gray-500 hover:text-primary" aria-label="Alternar menu">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
                     </svg>
@@ -120,10 +115,11 @@ $paginaAtual = $_GET['url'] ?? 'dashboard';
     </header>
 
     <!-- Sidebar -->
-    <aside class="fixed top-16 left-0 bottom-0 z-40 w-64 bg-primary text-white transition-transform duration-300 overflow-y-auto"
-           :class="{ '-translate-x-full': !sidebarOpen && window.innerWidth >= 1024, '-translate-x-full': !mobileMenuOpen && window.innerWidth < 1024 }">
+    <aside class="fixed top-16 left-0 bottom-0 z-40 w-64 bg-primary text-white transition-transform duration-300 flex flex-col"
+           :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'">
         
-        <nav class="p-4 space-y-1">
+        <!-- Menu com scroll -->
+        <nav class="flex-1 overflow-y-auto p-4 space-y-1">
             <?php
             // Menu conforme perfil
             $menuAdmin = [
@@ -177,8 +173,8 @@ $paginaAtual = $_GET['url'] ?? 'dashboard';
             <?php endforeach; ?>
         </nav>
 
-        <!-- Perfil Badge no sidebar -->
-        <div class="absolute bottom-0 left-0 right-0 p-4 border-t border-white/10">
+        <!-- Perfil Badge no sidebar (fixo embaixo) -->
+        <div class="flex-shrink-0 p-4 border-t border-white/10 bg-primary">
             <div class="flex items-center gap-3">
                 <div class="w-8 h-8 rounded-full bg-accent text-white flex items-center justify-center text-xs font-bold">
                     <?= strtoupper(substr($usuario['nome'] ?? 'U', 0, 1)) ?>
@@ -191,8 +187,8 @@ $paginaAtual = $_GET['url'] ?? 'dashboard';
         </div>
     </aside>
 
-    <!-- Mobile Overlay -->
-    <div x-show="mobileMenuOpen" @click="mobileMenuOpen = false" 
+    <!-- Mobile Overlay (fecha sidebar ao clicar fora) -->
+    <div x-show="sidebarOpen" @click="sidebarOpen = false" 
          class="fixed inset-0 bg-black/50 z-30 lg:hidden" x-transition.opacity></div>
 
     <!-- Main Content -->
