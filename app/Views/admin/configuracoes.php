@@ -220,9 +220,20 @@ async function salvarConfig(grupo) {
         if (el.type === 'checkbox') fd.append(el.name, el.checked ? '1' : '0');
         else fd.append(el.name, el.value);
     });
-    const res = await fetch('<?= APP_URL ?>/admin/configuracoes/salvar', { method:'POST', body:fd });
-    const data = await res.json();
-    if (data.sucesso) { if (typeof Toast !== 'undefined') Toast.sucesso(data.mensagem); else alert(data.mensagem); }
+    try {
+        const res = await fetch('<?= APP_URL ?>/admin/configuracoes/salvar', { method:'POST', body:fd });
+        const data = await res.json();
+        if (data.sucesso) {
+            if (typeof Toast !== 'undefined') Toast.sucesso(data.mensagem);
+            else alert('✓ ' + data.mensagem);
+        } else {
+            if (typeof Toast !== 'undefined') Toast.erro(data.mensagem);
+            else alert('✗ ' + data.mensagem);
+        }
+    } catch(e) {
+        alert('Erro de conexão ao salvar. Verifique o console (F12) para detalhes.');
+        console.error('Erro salvarConfig:', e);
+    }
 }
 async function testarSmtp() {
     const fd = new FormData(); fd.append('csrf_token', '<?= Csrf::token() ?>');

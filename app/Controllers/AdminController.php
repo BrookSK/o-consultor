@@ -83,19 +83,41 @@ class AdminController
         $grupo = htmlspecialchars(trim($_POST['grupo'] ?? 'geral'));
         $configs = $_POST['config'] ?? [];
 
+        if (empty($configs)) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'mensagem' => 'Nenhum campo para salvar.']);
+            exit;
+        }
+
+        $salvos = 0;
+        $erros = [];
+
         foreach ($configs as $chave => $valor) {
             $chave = htmlspecialchars(trim($chave));
             $valor = trim($valor);
-            Configuracao::set($chave, $valor, $grupo);
+            $ok = Configuracao::set($chave, $valor, $grupo);
+            if ($ok) {
+                $salvos++;
+            } else {
+                $erros[] = $chave;
+            }
         }
 
         // Limpar cache de configurações
         Configuracao::limparCache();
 
-        Logger::acao('Configurações salvas', ['grupo' => $grupo, 'chaves' => array_keys($configs)]);
+        Logger::acao('Configurações salvas', ['grupo' => $grupo, 'salvos' => $salvos, 'erros' => $erros]);
 
-        header('Content-Type: application/json');
-        echo json_encode(['sucesso' => true, 'mensagem' => 'Configurações salvas com sucesso!']);
+        if ($salvos > 0 && empty($erros)) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => true, 'mensagem' => "{$salvos} configurações salvas com sucesso!"]);
+        } elseif (!empty($erros)) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'mensagem' => 'Erro ao salvar. Verifique se a tabela "configuracoes" existe no banco. Execute a migration 002.']);
+        } else {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'mensagem' => 'Nenhum campo encontrado para salvar.']);
+        }
         exit;
     }
 
