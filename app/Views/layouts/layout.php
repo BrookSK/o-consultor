@@ -89,6 +89,9 @@ $paginaAtual = $_GET['url'] ?? 'dashboard';
                         <div class="max-h-80 overflow-y-auto divide-y divide-gray-100" id="notif-dropdown-list">
                             <div class="p-3 text-xs text-gray-500 text-center">Carregando...</div>
                         </div>
+                        <div class="p-3 border-t border-gray-100">
+                            <button onclick="marcarTodosLidos()" class="w-full text-xs text-primary hover:underline">Marcar todos como lidos</button>
+                        </div>
                     </div>
                 </div>
 
@@ -208,6 +211,9 @@ $paginaAtual = $_GET['url'] ?? 'dashboard';
 
     <!-- Custom JS -->
     <script src="<?= APP_URL ?>/assets/js/app.js"></script>
+    
+    <!-- Microfone de Transcrição -->
+    <script src="<?= APP_URL ?>/assets/js/microfone-transcricao.js"></script>
 
     <!-- Sistema de Notificações -->
     <script>
@@ -226,19 +232,31 @@ $paginaAtual = $_GET['url'] ?? 'dashboard';
                 return;
             }
 
-            const prioIcons = { alta: '🔴', media: '🟡', baixa: '🔵', info: 'ℹ️' };
+            const prioIcons = { critica: '🔴', alta: '🟠', media: '🟡', baixa: '🔵', info: 'ℹ️' };
             lista.innerHTML = data.alertas.map(a => `
-                <a href="<?= APP_URL ?>${a.link}" class="block px-4 py-3 hover:bg-gray-50 transition ${!a.lido ? 'bg-blue-50/30' : ''}">
+                <a href="<?= APP_URL ?>${a.link}" data-alerta-id="${a.id}" class="block px-4 py-3 hover:bg-gray-50 transition ${!a.lido ? 'bg-blue-50/30' : ''}">
                     <div class="flex items-start gap-2">
                         <span class="text-xs mt-0.5">${prioIcons[a.prioridade] || 'ℹ️'}</span>
                         <div class="flex-1 min-w-0">
                             <p class="text-xs font-medium text-gray-800 ${!a.lido ? 'font-semibold' : ''}">${a.titulo}</p>
                             <p class="text-[10px] text-gray-500 truncate mt-0.5">${a.descricao}</p>
+                            ${a.kpi_nome ? `<p class="text-[10px] text-blue-600 mt-0.5">KPI: ${a.kpi_nome}</p>` : ''}
                         </div>
                         <span class="text-[10px] text-gray-400 flex-shrink-0">${new Date(a.data).toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'})}</span>
                     </div>
                 </a>
             `).join('');
+
+            // Atualizar badge de contagem
+            const badge = document.querySelector('.relative p-2 + span');
+            if (badge) {
+                if (data.nao_lidos > 0) {
+                    badge.textContent = data.nao_lidos;
+                    badge.style.display = 'flex';
+                } else {
+                    badge.style.display = 'none';
+                }
+            }
 
         } catch(e) { /* silenciar erros de rede */ }
     }
@@ -262,6 +280,29 @@ $paginaAtual = $_GET['url'] ?? 'dashboard';
         // Atualizar a cada 60 segundos
         setInterval(carregarNotificacoes, 60000);
     });
+
+    // Marcar todos os alertas como lidos
+    async function marcarTodosLidos() {
+        try {
+            const formData = new FormData();
+            formData.append('csrf_token', '<?= Csrf::token() ?>');
+            
+            const res = await fetch('<?= APP_URL ?>/alertas/marcar-todos-lidos', { 
+                method: 'POST', 
+                body: formData 
+            });
+            const data = await res.json();
+            
+            if (data.sucesso) {
+                carregarNotificacoes(); // Recarregar lista
+                showNotifToast('Todos os alertas foram marcados como lidos', 'sucesso');
+            } else {
+                showNotifToast(data.erro || 'Erro ao marcar alertas como lidos', 'erro');
+            }
+        } catch (e) {
+            showNotifToast('Erro ao marcar alertas como lidos', 'erro');
+        }
+    }
     </script>
 </body>
 </html>

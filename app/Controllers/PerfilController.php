@@ -9,36 +9,48 @@ class PerfilController
     {
         Auth::proteger();
 
+        $usuario = Auth::usuario();
+        
+        // Buscar dados reais do usuário
+        $usuarioCompleto = Database::queryOne(
+            "SELECT * FROM usuarios WHERE id = :id",
+            ['id' => $usuario['id']]
+        );
+
+        // Buscar logs de SSO Academy
+        $acessosAcademy = AuditLog::buscarSsoAcademy($usuario['id'], 10);
+        
+        // Buscar histórico geral de ações
+        $historicoGeral = AuditLog::buscarPorUsuario($usuario['id'], 15);
+
         $dados = [
-            'usuario' => Auth::usuario(),
-            'academy_vinculada' => true, // mock
-            'academy_email' => 'cliente@empresa.com.br',
-            'acessos_academy' => [
-                ['data' => '2026-06-26 09:15', 'ip' => '192.168.1.50'],
-                ['data' => '2026-06-25 14:30', 'ip' => '192.168.1.50'],
-                ['data' => '2026-06-22 10:00', 'ip' => '10.0.0.55'],
-            ],
+            'usuario' => $usuarioCompleto,
+            'academy_vinculada' => !empty($usuarioCompleto['email_academy']),
+            'academy_email' => $usuarioCompleto['email_academy'] ?? null,
+            'acessos_academy' => array_map(function($log) {
+                return [
+                    'data' => date('d/m/Y H:i', strtotime($log['timestamp'])),
+                    'ip' => $log['ip_address'],
+                    'acao' => $log['descricao'],
+                ];
+            }, $acessosAcademy),
             'logins' => [
-                ['data' => '2026-06-26 09:15', 'ip' => '192.168.1.50', 'dispositivo' => 'Chrome / Windows'],
-                ['data' => '2026-06-25 14:30', 'ip' => '192.168.1.50', 'dispositivo' => 'Chrome / Windows'],
-                ['data' => '2026-06-24 08:00', 'ip' => '10.0.0.55', 'dispositivo' => 'Safari / macOS'],
-                ['data' => '2026-06-23 09:45', 'ip' => '192.168.1.50', 'dispositivo' => 'Chrome / Windows'],
-                ['data' => '2026-06-22 10:00', 'ip' => '192.168.1.50', 'dispositivo' => 'Chrome / Windows'],
+                // TODO: implementar logs de login quando sistema de sessão for expandido
+                ['data' => date('d/m/Y H:i'), 'ip' => $_SERVER['REMOTE_ADDR'], 'dispositivo' => 'Sessão atual'],
             ],
-            'historico' => [
-                ['data' => '2026-06-26 09:15', 'acao' => 'Login realizado', 'modulo' => 'Auth'],
-                ['data' => '2026-06-25 16:00', 'acao' => 'SOP-TI-OPS-002 aprovado', 'modulo' => 'Manual Operacional'],
-                ['data' => '2026-06-25 14:30', 'acao' => 'Acesso Academy via SSO', 'modulo' => 'Academy'],
-                ['data' => '2026-06-24 15:00', 'acao' => 'Conteúdo carrossel gerado', 'modulo' => 'Máquina de Conteúdo'],
-                ['data' => '2026-06-24 10:00', 'acao' => 'Tarefa atualizada: CRM', 'modulo' => 'Plano de Ação'],
-                ['data' => '2026-06-23 09:00', 'acao' => 'Diagnóstico concluído', 'modulo' => 'Diagnóstico'],
-            ],
+            'historico' => array_map(function($log) {
+                return [
+                    'data' => date('d/m/Y H:i', strtotime($log['timestamp'])),
+                    'acao' => $log['descricao'] ?: ucwords(str_replace('_', ' ', $log['acao'])),
+                    'modulo' => ucfirst($log['modulo']),
+                ];
+            }, $historicoGeral),
             'jornada' => [
-                ['chave' => 'diagnostico', 'label' => 'Diagnóstico realizado', 'completo' => true],
-                ['chave' => 'plano', 'label' => 'Plano de ação criado', 'completo' => true],
-                ['chave' => 'sop', 'label' => 'Primeiro SOP aprovado', 'completo' => true],
-                ['chave' => 'academy', 'label' => 'Academy vinculada', 'completo' => true],
-                ['chave' => 'perfil', 'label' => 'Perfil da empresa completo', 'completo' => false],
+                ['chave' => 'diagnostico', 'label' => 'Diagnóstico realizado', 'completo' => false], // TODO: verificar no banco
+                ['chave' => 'plano', 'label' => 'Plano de ação criado', 'completo' => false], // TODO: verificar no banco  
+                ['chave' => 'sop', 'label' => 'Primeiro SOP aprovado', 'completo' => false], // TODO: verificar no banco
+                ['chave' => 'academy', 'label' => 'Academy vinculada', 'completo' => !empty($usuarioCompleto['email_academy'])],
+                ['chave' => 'perfil', 'label' => 'Perfil da empresa completo', 'completo' => $usuarioCompleto['onboarding_concluido'] == 1],
             ],
         ];
 
@@ -66,10 +78,94 @@ class PerfilController
     {
         Auth::proteger();
         Csrf::verificar();
+        
         $emailAcademy = filter_input(INPUT_POST, 'email_academy', FILTER_SANITIZE_EMAIL);
-        Logger::acao('Academy vinculada', ['email_academy' => $emailAcademy]);
-        header('Content-Type: application/json');
-        echo json_encode(['sucesso' => true, 'mensagem' => 'Academy vinculada com sucesso!']);
+        
+        // Validações
+        if (empty($emailAcademy)) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Email da Academy é obrigatório.']);
+            exit;
+        }
+
+        if (!filter_var($emailAcademy, FILTER_VALIDATE_EMAIL)) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Email inválido.']);
+            exit;
+        }
+
+        $usuario = Auth::usuario();
+
+        // Verificar se este email já está vinculado a outro usuário
+        $emailExistente = Database::queryOne(
+            "SELECT id FROM usuarios WHERE email_academy = :email_academy AND id != :user_id",
+            ['email_academy' => $emailAcademy, 'user_id' => $usuario['id']]
+        );
+
+        if ($emailExistente) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Este email já está vinculado a outra conta.']);
+            exit;
+        }
+
+        // Atualizar usuário
+        $sucesso = User::atualizar($usuario['id'], ['email_academy' => $emailAcademy]);
+
+        if ($sucesso) {
+            // Registrar na auditoria
+            AuditLog::registrar(
+                'academy_vinculada',
+                'academy',
+                'Email Academy vinculado ao perfil',
+                ['email_academy' => $emailAcademy, 'usuario_email' => $usuario['email']]
+            );
+
+            Logger::acao('Academy vinculada', ['email_academy' => $emailAcademy]);
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => true, 'mensagem' => 'Academy vinculada com sucesso!']);
+        } else {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro ao vincular Academy. Tente novamente.']);
+        }
+        exit;
+    }
+
+    /**
+     * Desvincula conta da Academy
+     */
+    public function desvincularAcademy(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        
+        $usuario = Auth::usuario();
+        $emailAcademyAntigo = $usuario['email_academy'] ?? null;
+
+        if (empty($emailAcademyAntigo)) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Nenhuma conta Academy vinculada.']);
+            exit;
+        }
+
+        // Desvinculação
+        $sucesso = User::atualizar($usuario['id'], ['email_academy' => null]);
+
+        if ($sucesso) {
+            // Registrar na auditoria
+            AuditLog::registrar(
+                'academy_desvinculada',
+                'academy',
+                'Email Academy desvinculado do perfil',
+                ['email_academy_removido' => $emailAcademyAntigo, 'usuario_email' => $usuario['email']]
+            );
+
+            Logger::acao('Academy desvinculada', ['email_academy_removido' => $emailAcademyAntigo]);
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => true, 'mensagem' => 'Conta Academy desvinculada com sucesso!']);
+        } else {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro ao desvincular Academy. Tente novamente.']);
+        }
         exit;
     }
 
@@ -96,18 +192,122 @@ class PerfilController
     public function onboarding(): void
     {
         Auth::proteger();
-        $dados = ['usuario' => Auth::usuario()];
+        
+        $usuario = Auth::usuario();
+        
+        // Verificar se onboarding já foi concluído
+        $usuarioCompleto = User::buscarPorId($usuario['id']);
+        if ($usuarioCompleto['onboarding_concluido']) {
+            Flash::set('info', 'Onboarding já foi concluído anteriormente.');
+            header('Location: ' . APP_URL . '/dashboard');
+            exit;
+        }
+
+        // Buscar progresso atual do onboarding
+        $stepAtual = (int) ($_GET['step'] ?? 1);
+        
+        $dados = [
+            'usuario' => $usuario,
+            'step_atual' => $stepAtual,
+            'empresa' => Empresa::buscarPorId($usuario['empresa_id'])
+        ];
+
         require VIEW_PATH . '/perfil/onboarding.php';
+    }
+
+    public function salvarStep(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        
+        $step = (int) ($_POST['step'] ?? 1);
+        $usuario = Auth::usuario();
+        
+        switch ($step) {
+            case 1:
+                // Step 1: Apenas avança (boas-vindas)
+                header('Content-Type: application/json');
+                echo json_encode(['sucesso' => true, 'proximo_step' => 2]);
+                exit;
+                
+            case 2:
+                // Step 2: Dados da empresa (setor, colaboradores, faturamento, desafio)
+                $setor = htmlspecialchars(trim($_POST['setor'] ?? ''));
+                $colaboradores = (int) ($_POST['colaboradores'] ?? 0);
+                $faturamento = htmlspecialchars(trim($_POST['faturamento'] ?? ''));
+                $desafio = htmlspecialchars(trim($_POST['principal_desafio'] ?? ''));
+                
+                if (empty($setor) || $colaboradores <= 0 || empty($faturamento) || empty($desafio)) {
+                    header('Content-Type: application/json');
+                    echo json_encode(['sucesso' => false, 'erro' => 'Todos os campos são obrigatórios']);
+                    exit;
+                }
+                
+                // Salvar dados na empresa
+                Empresa::atualizar($usuario['empresa_id'], [
+                    'segmento' => $setor,
+                    'colaboradores_internos' => $colaboradores,
+                    'faturamento_mensal' => $faturamento,
+                    'principal_desafio' => $desafio
+                ]);
+                
+                Logger::acao('Onboarding step 2 concluído', [
+                    'setor' => $setor,
+                    'colaboradores' => $colaboradores,
+                    'faturamento' => $faturamento
+                ]);
+                
+                header('Content-Type: application/json');
+                echo json_encode(['sucesso' => true, 'proximo_step' => 3]);
+                exit;
+                
+            case 3:
+                // Step 3: Recomendação - sempre direciona para diagnóstico
+                header('Content-Type: application/json');
+                echo json_encode(['sucesso' => true, 'proximo_step' => 4]);
+                exit;
+                
+            case 4:
+                // Step 4: Vinculação Academy
+                $emailAcademy = filter_input(INPUT_POST, 'email_academy', FILTER_SANITIZE_EMAIL);
+                
+                if ($emailAcademy && filter_var($emailAcademy, FILTER_VALIDATE_EMAIL)) {
+                    User::atualizar($usuario['id'], ['email_academy' => $emailAcademy]);
+                    Logger::acao('Email Academy vinculado no onboarding', ['email_academy' => $emailAcademy]);
+                }
+                
+                // Marcar onboarding como concluído
+                User::atualizar($usuario['id'], ['onboarding_concluido' => 1]);
+                
+                Logger::acao('Onboarding concluído completamente');
+                
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'sucesso' => true, 
+                    'concluido' => true,
+                    'redirect' => APP_URL . '/dashboard'
+                ]);
+                exit;
+        }
     }
 
     public function concluirOnboarding(): void
     {
         Auth::proteger();
         Csrf::verificar();
-        Session::set('onboarding_concluido', true);
+        
+        $usuario = Auth::usuario();
+        
+        // Marcar como concluído no banco
+        User::atualizar($usuario['id'], ['onboarding_concluido' => 1]);
+        
         Logger::acao('Onboarding concluído');
+        
         header('Content-Type: application/json');
-        echo json_encode(['sucesso' => true, 'redirect' => APP_URL . '/diagnostico/novo']);
+        echo json_encode([
+            'sucesso' => true, 
+            'redirect' => APP_URL . '/diagnostico/novo'
+        ]);
         exit;
     }
 }

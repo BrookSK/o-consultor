@@ -18,6 +18,64 @@
     <p class="text-gray-500 mt-1"><?= htmlspecialchars(ucfirst($dados['data_atual'])) ?></p>
 </div>
 
+<?php if (!$dados['onboarding_concluido']): ?>
+<!-- Onboarding CTA -->
+<div class="bg-gradient-to-r from-accent to-orange-700 rounded-lg p-6 mb-8 text-white">
+    <div class="flex items-center justify-between">
+        <div>
+            <h3 class="text-lg font-bold">🚀 Complete sua jornada!</h3>
+            <p class="text-white/90 text-sm mt-1">Finalize o onboarding para acessar todos os recursos</p>
+        </div>
+        <a href="<?= APP_URL ?>/onboarding" class="bg-white/20 hover:bg-white/30 text-white px-6 py-2.5 rounded-lg font-medium text-sm transition">
+            Continuar →
+        </a>
+    </div>
+</div>
+<?php elseif ($dados['percentual_conclusao'] < 100): ?>
+<!-- Progress Bar -->
+<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
+    <div class="flex items-center justify-between mb-3">
+        <h3 class="font-semibold text-gray-800">🎯 Complete sua jornada</h3>
+        <span class="text-sm font-medium text-gray-600"><?= $dados['percentual_conclusao'] ?>% concluído</span>
+    </div>
+    <div class="w-full bg-gray-200 rounded-full h-2.5 mb-4">
+        <div class="bg-green-500 h-2.5 rounded-full transition-all duration-700" style="width: <?= $dados['percentual_conclusao'] ?>%"></div>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <?php foreach ($dados['jornada'] as $etapa): ?>
+        <div class="flex items-center gap-2">
+            <div class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold
+                <?= $etapa['completo'] ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500' ?>">
+                <?= $etapa['completo'] ? '✓' : '○' ?>
+            </div>
+            <span class="text-sm <?= $etapa['completo'] ? 'text-green-600 font-medium' : 'text-gray-500' ?>">
+                <?= htmlspecialchars($etapa['label']) ?>
+            </span>
+        </div>
+        <?php endforeach; ?>
+    </div>
+    <?php 
+    $proximaEtapa = null;
+    foreach ($dados['jornada'] as $etapa) {
+        if (!$etapa['completo']) {
+            $proximaEtapa = $etapa;
+            break;
+        }
+    }
+    if ($proximaEtapa): ?>
+    <div class="mt-4 pt-4 border-t border-gray-100">
+        <p class="text-sm text-gray-600">
+            <span class="font-medium">Próximo passo:</span> 
+            <?= htmlspecialchars($proximaEtapa['label']) ?>
+            <?php if ($proximaEtapa['chave'] === 'diagnostico'): ?>
+                <a href="<?= APP_URL ?>/diagnostico/novo" class="text-primary hover:underline ml-2">Fazer agora →</a>
+            <?php endif; ?>
+        </p>
+    </div>
+    <?php endif; ?>
+</div>
+<?php endif; ?>
+
 <!-- KPI Cards -->
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
 <?php foreach ($dados['kpis'] as $kpi): ?>

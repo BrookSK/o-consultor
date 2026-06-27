@@ -33,14 +33,15 @@ class User
     public static function criar(array $dados): int|false
     {
         $sucesso = Database::execute(
-            "INSERT INTO usuarios (nome, email, senha, perfil, empresa_id, criado_em) 
-             VALUES (:nome, :email, :senha, :perfil, :empresa_id, NOW())",
+            "INSERT INTO usuarios (nome, email, senha, perfil, empresa_id, onboarding_concluido, criado_em) 
+             VALUES (:nome, :email, :senha, :perfil, :empresa_id, :onboarding_concluido, NOW())",
             [
                 'nome'       => $dados['nome'],
                 'email'      => $dados['email'],
                 'senha'      => password_hash($dados['senha'], PASSWORD_DEFAULT),
                 'perfil'     => $dados['perfil'] ?? 'CLIENTE',
                 'empresa_id' => $dados['empresa_id'] ?? null,
+                'onboarding_concluido' => $dados['onboarding_concluido'] ?? 0,
             ]
         );
 
@@ -55,7 +56,7 @@ class User
         $campos = [];
         $params = ['id' => $id];
 
-        foreach (['nome', 'email', 'perfil', 'empresa_id'] as $campo) {
+        foreach (['nome', 'email', 'perfil', 'empresa_id', 'email_academy', 'onboarding_concluido', 'telefone', 'cargo'] as $campo) {
             if (isset($dados[$campo])) {
                 $campos[] = "{$campo} = :{$campo}";
                 $params[$campo] = $dados[$campo];

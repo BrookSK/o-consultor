@@ -27,16 +27,16 @@
     <?php foreach ($dados['marcas'] as $marca): ?>
     <a href="<?= APP_URL ?>/maquina-de-conteudo/marca?id=<?= $marca['id'] ?>" class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition block">
         <div class="flex items-center gap-4 mb-4">
-            <div class="w-12 h-12 rounded-full bg-primary text-white flex items-center justify-center text-lg font-bold"><?= $marca['avatar'] ?></div>
+            <div class="w-12 h-12 rounded-full bg-primary text-white flex items-center justify-center text-lg font-bold"><?= strtoupper(substr($marca['nome'], 0, 1)) ?></div>
             <div>
                 <h3 class="font-semibold text-gray-800"><?= htmlspecialchars($marca['nome']) ?></h3>
                 <p class="text-xs text-gray-400"><?= htmlspecialchars($marca['nicho']) ?></p>
             </div>
         </div>
         <div class="flex items-center justify-between">
-            <span class="text-xs text-gray-400"><?= $marca['ultimo'] ? 'Último: ' . date('d/m/Y', strtotime($marca['ultimo'])) : 'Nenhum conteúdo' ?></span>
-            <span class="px-2 py-0.5 rounded-full text-xs font-medium <?= $marca['status'] === 'ativo' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700' ?>">
-                <?= $marca['status'] === 'ativo' ? '✓ Brand Book criado' : '○ Pendente' ?>
+            <span class="text-xs text-gray-400"><?= isset($marca['atualizado_em']) && $marca['atualizado_em'] ? 'Último: ' . date('d/m/Y', strtotime($marca['atualizado_em'])) : 'Nenhum conteúdo' ?></span>
+            <span class="px-2 py-0.5 rounded-full text-xs font-medium <?= ($marca['brand_book_criado'] ?? false) ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700' ?>">
+                <?= ($marca['brand_book_criado'] ?? false) ? '✓ Brand Book criado' : '○ Pendente' ?>
             </span>
         </div>
     </a>

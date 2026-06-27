@@ -342,9 +342,11 @@ SUBTÓPICOS OBRIGATÓRIOS PARA ESTE SOP:
 INSTRUÇÕES DE QUALIDADE — OBRIGATÓRIAS:
 1. PROFUNDIDADE: cada procedimento deve ser detalhado o suficiente para ser executado por qualquer colaborador sem supervisão.
 2. ESPECIFICIDADE: use o nome das ferramentas reais da empresa nos procedimentos.
-3. SUBTÓPICOS: cada subtópico deve ter seu próprio conjunto completo de procedimentos (10+ passos).
-4. PLANOS DE CONTINGÊNCIA: cada nível (N1/N2/N3) deve ter situação gatilho clara, ação passo a passo e responsáveis definidos.
-5. KPIs: metas numéricas específicas com zonas verde/amarela/vermelha e ação automática.
+3. SUBTÓPICOS INDEPENDENTES: cada subtópico deve ter seu próprio conjunto completo de procedimentos (10+ passos ÚNICOS por subtópico).
+4. PROCEDIMENTOS POR SUBTÓPICO: gere procedimentos específicos para cada subtópico, não genéricos.
+5. PLANOS DE CONTINGÊNCIA: cada nível (N1/N2/N3) deve ter situação gatilho clara, ação passo a passo e responsáveis definidos.
+6. KPIs: metas numéricas específicas com zonas verde/amarela/vermelha e ação automática.
+7. N3 JURÍDICO: N3 deve incluir procedimento jurídico detalhado + comunicação externa + documentação legal.
 
 GERE O SOP COMPLETO COM OS 13 COMPONENTES:
 1. objetivo (string 3-5 frases)
@@ -353,13 +355,20 @@ GERE O SOP COMPLETO COM OS 13 COMPONENTES:
 4. responsaveis (array: [{papel, cargo}])
 5. prerequisitos (array de strings, mínimo 6)
 6. ferramentas (array de strings)
-7. procedimentos (array por subtópico: [{subtopico, passos: [{passo, acao, responsavel, prazo, sistema, validacao}]}] — mínimo 10 passos)
+7. procedimentos (array POR SUBTÓPICO: [{subtopico: "A", passos: [{passo, acao, responsavel, prazo, sistema, validacao}]}] — mínimo 10 passos ÚNICOS por subtópico)
 8. checklist (array de strings, mínimo 12)
 9. evidencias (array de strings, mínimo 5)
 10. relatorios (array: [{oque, para_quem, frequencia, canal}])
 11. kpis (array: [{kpi, verde, amarela, vermelha, acao_vermelha}])
 12. contencao (object: {n1: {situacao, acao, quem, escalar}, n2: {situacao, acao, quem, escalar}, n3: {situacao, acao, quem, comunicacao, documentacao}})
 13. versionamento (object: {versao: '1.0', data: '" . date('Y-m-d') . "', aprovador: 'Pendente'})
+
+IMPORTANTE: O campo 'procedimentos' deve ser um ARRAY com um objeto para cada subtópico:
+[
+  {\"subtopico\": \"A\", \"passos\": [{passo: 1, acao: \"...\", responsavel: \"...\", prazo: \"...\", sistema: \"...\", validacao: \"...\"}]},
+  {\"subtopico\": \"B\", \"passos\": [{passo: 1, acao: \"...\", responsavel: \"...\", prazo: \"...\", sistema: \"...\", validacao: \"...\"}]},
+  {\"subtopico\": \"C\", \"passos\": [{passo: 1, acao: \"...\", responsavel: \"...\", prazo: \"...\", sistema: \"...\", validacao: \"...\"}]}
+]
 
 Responda APENAS em JSON válido. Não inclua texto fora do JSON.";
     }
@@ -433,47 +442,96 @@ Gere em JSON:
     }
 
     /**
-     * Gera prompt para geração de conteúdo (Máquina de Conteúdo)
+     * Gera prompt para geração de conteúdo (Máquina de Conteúdo) — F-10
      */
     public static function buildPromptConteudo(array $marca, string $tipo, string $tema, string $objetivo, ?string $noticiaBase = null): string
     {
-        $contextoNoticia = $noticiaBase ? "\nCom base nesta notícia: {$noticiaBase}" : '';
+        $contextoNoticia = $noticiaBase ? "\n\nBASEADO NA NOTÍCIA:\n{$noticiaBase}" : '';
 
-        $instrucaoTipo = $tipo === 'carrossel'
-            ? 'Para CARROSSEL gere JSON com: {slides: [{numero, tipo (capa/conteudo/cta), texto_principal, texto_secundario, prompt_imagem}], legenda, hashtags: [], prompt_imagem_padrao}'
-            : 'Para POST gere JSON com: {titulo_visual, subtitulo, legenda, hashtags: [], prompt_imagem}';
+        $instrucoesTipo = match($tipo) {
+            'carrossel' => 'Para CARROSSEL gere JSON com estrutura: {"slides": [{"numero": 1, "tipo": "capa", "texto": "título principal", "texto_secundario": "subtítulo opcional", "prompt_imagem": "descrição detalhada da imagem"}, {"numero": 2, "tipo": "conteudo", "texto": "conteúdo do slide", "prompt_imagem": "descrição da imagem"}], "legenda": "texto da legenda com call-to-action", "hashtags": "#tag1 #tag2 #tag3"}',
+            'post' => 'Para POST gere JSON com estrutura: {"slides": [{"numero": 1, "tipo": "unico", "texto": "conteúdo principal", "prompt_imagem": "descrição da imagem"}], "legenda": "texto da legenda", "hashtags": "#tag1 #tag2"}',
+            'story' => 'Para STORY gere JSON com estrutura: {"slides": [{"numero": 1, "tipo": "story", "texto": "texto curto e impactante", "prompt_imagem": "descrição da imagem vertical"}], "legenda": "", "hashtags": ""}',
+            default => 'Para CARROSSEL gere JSON com múltiplos slides educativos.'
+        };
 
-        return "{$marca['prompt_master']}
+        return "Você é especialista em marketing digital B2B. Crie conteúdo seguindo exatamente o Brand Book da marca.
 
+DADOS DA MARCA:
+Nome: {$marca['nome']}
+Nicho: {$marca['nicho']}
+Público-alvo: {$marca['publico_alvo']}
+Tom de voz: {$marca['tom']}
+Arquétipo: {$marca['arquetipo']}
+
+PROMPT MASTER DA MARCA:
+{$marca['prompt_master']}
+
+TAREFA:
 Crie um {$tipo} sobre o tema: {$tema}{$contextoNoticia}
-Objetivo: {$objetivo}.
+Objetivo: {$objetivo}
 
-{$instrucaoTipo}
+{$instrucoesTipo}
 
-O campo prompt_imagem deve combinar o estilo visual da marca com o conteúdo do slide.
-Estilo base para imagens: {$marca['prompt_dalle']}
-Não incluir texto ou palavras nas imagens geradas.
+REGRAS IMPORTANTES:
+1. Cada slide deve ter um 'prompt_imagem' detalhado que combine o estilo visual da marca
+2. Para prompt_imagem, use o estilo: {$marca['prompt_dalle']}
+3. NÃO incluir texto, palavras ou números nas descrições de imagem
+4. Manter consistência com o tom de voz e arquétipo da marca
+5. Slides de carrossel: máximo 50 caracteres por linha de texto
+6. Legenda: incluir call-to-action relevante ao objetivo
 
-Responda APENAS em JSON válido.";
+Responda APENAS em JSON válido, sem explicações.";
     }
 
     /**
-     * Gera prompt para análise de KPI em zona vermelha
+     * Gera prompt para análise de KPI em zona vermelha — F-07 Implementation
      */
     public static function buildPromptKpiCritico(array $empresa, array $kpi): string
     {
-        return "KPI crítico — empresa {$empresa['nome']}, setor {$empresa['setor']}, ferramentas: {$empresa['ferramentas']}:
-KPI: {$kpi['nome']}, Meta: {$kpi['meta']}, Atual: {$kpi['atual']}, SOP de origem: {$kpi['sop']}.
-Nível de maturidade da empresa: {$empresa['maturidade']}/4.
+        return "Você é O Consultor, especialista em análise de KPIs críticos empresariais.
 
-Gere em JSON:
+CONTEXTO DA EMPRESA:
+Nome: {$empresa['nome']}
+Setor: {$empresa['setor']}
+Nível de maturidade: {$empresa['maturidade']}/4
+Colaboradores: {$empresa['colaboradores']}
+Ferramentas: {$empresa['ferramentas']}
+
+KPI CRÍTICO DETECTADO:
+Nome: {$kpi['nome']}
+Meta ideal: {$kpi['meta']}
+Valor atual: {$kpi['atual']} (ZONA VERMELHA)
+SOP de origem: {$kpi['sop']}
+
+ANÁLISE NECESSÁRIA:
+Você deve analisar este KPI crítico considerando o contexto específico da empresa e gerar uma análise completa para ação imediata.
+
+Responda APENAS em JSON com esta estrutura exata:
 {
-  \"causas_raiz\": [\"3 hipóteses específicas\"],
-  \"plano_acao_imediato\": [\"3-5 passos específicos e executáveis\"],
-  \"prazo_revisao\": \"X dias\",
-  \"contencao_recomendada\": \"N1|N2|N3\",
-  \"justificativa_contencao\": \"texto explicando por que este nível\"
-}";
+  \"causas_raiz\": [
+    \"Primeira hipótese específica para a empresa\",
+    \"Segunda hipótese considerando o setor {$empresa['setor']}\", 
+    \"Terceira hipótese baseada na maturidade {$empresa['maturidade']}/4\"
+  ],
+  \"plano_acao_imediato\": [
+    \"Ação 1: específica e executável imediatamente\",
+    \"Ação 2: com responsável e prazo claro\",
+    \"Ação 3: usando as ferramentas disponíveis\",
+    \"Ação 4: monitoramento e validação\",
+    \"Ação 5: comunicação aos stakeholders\"
+  ],
+  \"prazo_revisao\": \"X dias (baseado na criticidade)\",
+  \"contencao_recomendada\": \"N1 ou N2 ou N3\",
+  \"justificativa_contencao\": \"Por que este nível de contingência é apropriado\"
+}
+
+IMPORTANTE:
+- Seja específico para o setor {$empresa['setor']}
+- Considere o porte da empresa ({$empresa['colaboradores']} pessoas)
+- Use as ferramentas disponíveis: {$empresa['ferramentas']}
+- Ações devem ser executáveis com a maturidade atual ({$empresa['maturidade']}/4)
+- Prazo deve ser realista mas urgente (KPI crítico)";
     }
 
     /**

@@ -18,6 +18,7 @@
     <div class="flex gap-2">
         <a href="<?= APP_URL ?>/manual-operacional/raci" class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">📊 Matriz RACI</a>
         <a href="<?= APP_URL ?>/manual-operacional/kpis" class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">📈 Painel KPIs</a>
+        <a href="<?= APP_URL ?>/sop/exportar-todos-zip" class="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700">📦 Exportar Todos (ZIP)</a>
     </div>
 </div>
 
@@ -88,6 +89,11 @@
                     <a href="<?= APP_URL ?>/sop/revisar?id=<?= urlencode($sop['id']) ?>" 
                        class="px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-medium hover:bg-primary-700 transition">
                         Revisar →
+                    </a>
+                    <?php else: ?>
+                    <a href="<?= APP_URL ?>/sop/ver/<?= urlencode($sop['id']) ?>" 
+                       class="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 transition">
+                        Ver SOP →
                     </a>
                     <?php endif; ?>
                 </div>

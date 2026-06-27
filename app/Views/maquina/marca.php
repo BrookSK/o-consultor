@@ -40,6 +40,7 @@
                 <h3 class="font-semibold text-gray-800 mb-4">Configurar Geração</h3>
                 <form id="form-gerar" class="space-y-4">
                     <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
+                    <input type="hidden" name="marca_id" value="<?= $marca['id'] ?>">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Tipo de conteúdo</label>
                         <select name="tipo" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
@@ -225,24 +226,38 @@ async function removerTemplate(id) {
 
     <!-- ABA PUBLICAÇÃO -->
     <div x-show="aba === 'publicacao'" x-transition style="display:none;">
-        <!-- Calendário simplificado -->
+        <!-- Calendário Editorial -->
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-            <h3 class="font-semibold text-gray-800 mb-4">📅 Calendário Editorial — Junho 2026</h3>
-            <div class="grid grid-cols-7 gap-1 text-center text-xs">
-                <div class="font-medium text-gray-500 py-2">Seg</div><div class="font-medium text-gray-500 py-2">Ter</div><div class="font-medium text-gray-500 py-2">Qua</div><div class="font-medium text-gray-500 py-2">Qui</div><div class="font-medium text-gray-500 py-2">Sex</div><div class="font-medium text-gray-500 py-2">Sáb</div><div class="font-medium text-gray-500 py-2">Dom</div>
-                <?php for ($d = 1; $d <= 30; $d++):
-                    $cor = match(true) {
-                        $d === 22 => 'bg-green-200 text-green-800',
-                        $d === 25 => 'bg-blue-200 text-blue-800',
-                        $d === 26 => 'bg-orange-200 text-orange-800',
-                        $d === 24 => 'bg-gray-200 text-gray-600',
-                        default => 'hover:bg-gray-100',
-                    };
-                ?>
-                <div class="py-2 rounded <?= $cor ?> cursor-pointer"><?= $d ?></div>
-                <?php endfor; ?>
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="font-semibold text-gray-800">📅 Calendário Editorial</h3>
+                <div class="flex items-center gap-2">
+                    <select id="mes-calendario" class="px-3 py-1.5 border border-gray-300 rounded text-sm" onchange="carregarCalendario()">
+                        <?php for ($m = 1; $m <= 12; $m++): ?>
+                        <option value="<?= $m ?>" <?= $m == date('n') ? 'selected' : '' ?>><?= date('F', mktime(0, 0, 0, $m, 1)) ?></option>
+                        <?php endfor; ?>
+                    </select>
+                    <select id="ano-calendario" class="px-3 py-1.5 border border-gray-300 rounded text-sm" onchange="carregarCalendario()">
+                        <?php for ($a = date('Y') - 1; $a <= date('Y') + 2; $a++): ?>
+                        <option value="<?= $a ?>" <?= $a == date('Y') ? 'selected' : '' ?>><?= $a ?></option>
+                        <?php endfor; ?>
+                    </select>
+                </div>
             </div>
-            <div class="flex gap-4 mt-4 text-xs text-gray-500">
+            
+            <!-- Grade do calendário -->
+            <div id="calendario-grid" class="grid grid-cols-7 gap-1 text-center text-xs">
+                <div class="font-medium text-gray-500 py-2">Dom</div>
+                <div class="font-medium text-gray-500 py-2">Seg</div>
+                <div class="font-medium text-gray-500 py-2">Ter</div>
+                <div class="font-medium text-gray-500 py-2">Qua</div>
+                <div class="font-medium text-gray-500 py-2">Qui</div>
+                <div class="font-medium text-gray-500 py-2">Sex</div>
+                <div class="font-medium text-gray-500 py-2">Sáb</div>
+                <!-- Dias serão carregados via JavaScript -->
+            </div>
+            
+            <!-- Legenda -->
+            <div class="flex flex-wrap gap-4 mt-4 text-xs text-gray-500">
                 <span class="flex items-center gap-1"><span class="w-3 h-3 bg-gray-200 rounded"></span> Rascunho</span>
                 <span class="flex items-center gap-1"><span class="w-3 h-3 bg-blue-200 rounded"></span> Aprovado</span>
                 <span class="flex items-center gap-1"><span class="w-3 h-3 bg-orange-200 rounded"></span> Agendado</span>
@@ -250,24 +265,34 @@ async function removerTemplate(id) {
             </div>
         </div>
 
-        <!-- Lista de conteúdos aprovados -->
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200">
-            <div class="px-6 py-4 border-b border-gray-100">
-                <h3 class="font-semibold text-gray-800">Conteúdos prontos para publicação</h3>
-            </div>
-            <div class="p-4 space-y-3">
-                <?php foreach (array_filter($dados['conteudos'], fn($c) => in_array($c['status'], ['aprovado', 'agendado'])) as $cont): ?>
-                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div>
-                        <p class="text-sm font-medium text-gray-800"><?= htmlspecialchars($cont['titulo']) ?></p>
-                        <p class="text-xs text-gray-400"><?= ucfirst($cont['tipo']) ?> • <?= date('d/m/Y', strtotime($cont['data'])) ?></p>
-                    </div>
-                    <div class="flex gap-2">
-                        <button onclick="abrirModalAgendar('<?= htmlspecialchars($cont['titulo']) ?>')" class="px-3 py-1.5 border border-gray-300 rounded text-xs hover:bg-gray-100">📅 Agendar</button>
-                        <button onclick="publicarAgora()" class="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700">Publicar</button>
+        <!-- Lista de Conteúdos por Status -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Aguardando Publicação -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div class="px-6 py-4 border-b border-gray-100">
+                    <h3 class="font-semibold text-gray-800">📋 Aguardando Publicação</h3>
+                    <p class="text-xs text-gray-500 mt-1">Conteúdos aprovados prontos para agendar</p>
+                </div>
+                <div id="lista-aguardando" class="p-4 space-y-3">
+                    <!-- Carregado via JavaScript -->
+                    <div class="text-center text-gray-400 py-8">
+                        <p class="text-sm">Carregando conteúdos...</p>
                     </div>
                 </div>
-                <?php endforeach; ?>
+            </div>
+            
+            <!-- Agendados -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div class="px-6 py-4 border-b border-gray-100">
+                    <h3 class="font-semibold text-gray-800">🕐 Conteúdos Agendados</h3>
+                    <p class="text-xs text-gray-500 mt-1">Programados para publicação automática</p>
+                </div>
+                <div id="lista-agendados" class="p-4 space-y-3">
+                    <!-- Carregado via JavaScript -->
+                    <div class="text-center text-gray-400 py-8">
+                        <p class="text-sm">Carregando agendamentos...</p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -281,32 +306,73 @@ async function removerTemplate(id) {
         <div class="space-y-3">
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Data</label>
-                <input type="date" id="agendar-data" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary" value="<?= date('Y-m-d', strtotime('+1 day')) ?>">
+                <input type="date" id="agendar-data" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary" value="<?= date('Y-m-d', strtotime('+1 day')) ?>" min="<?= date('Y-m-d', strtotime('+1 day')) ?>">
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Horário</label>
                 <input type="time" id="agendar-hora" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary" value="10:00">
             </div>
         </div>
+        <input type="hidden" id="agendar-conteudo-id" value="">
         <div class="flex gap-2 mt-5">
-            <button onclick="document.getElementById('modal-agendar').classList.add('hidden')" class="flex-1 border border-gray-300 py-2.5 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Cancelar</button>
+            <button onclick="fecharModalAgendar()" class="flex-1 border border-gray-300 py-2.5 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Cancelar</button>
             <button onclick="confirmarAgendamento()" class="flex-1 bg-primary text-white py-2.5 rounded-lg text-sm font-medium hover:bg-primary-700">Confirmar</button>
         </div>
     </div>
 </div>
 
-<!-- Modal publicar -->
+<!-- Modal Publicar -->
 <div id="modal-publicar" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-    <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6 text-center">
-        <span class="text-4xl mb-4 inline-block">📢</span>
-        <h3 class="text-lg font-semibold text-gray-800 mb-2">Publicação Automática em Breve</h3>
-        <p class="text-sm text-gray-500 mb-4">A funcionalidade de publicação automática nas redes sociais chegará em breve. Por enquanto, faça o download do conteúdo e publique manualmente.</p>
-        <button onclick="alert('Download será disponibilizado em breve. Por enquanto, clique com botão direito nas imagens e salve manualmente.')" class="w-full bg-primary text-white py-2.5 rounded-lg text-sm font-medium hover:bg-primary-700 mb-2">📥 Download do Conteúdo (ZIP)</button>
-        <button onclick="document.getElementById('modal-publicar').classList.add('hidden')" class="w-full border border-gray-300 py-2.5 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Fechar</button>
+    <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+        <div class="text-center">
+            <span class="text-4xl mb-4 inline-block">📢</span>
+            <h3 class="text-lg font-semibold text-gray-800 mb-2">Publicação Manual</h3>
+            <p class="text-sm text-gray-500 mb-4">A publicação automática chegará em breve. Por enquanto, faça o download do conteúdo e publique manualmente.</p>
+        </div>
+        
+        <div class="space-y-3">
+            <button onclick="baixarConteudo()" class="w-full bg-primary text-white py-2.5 rounded-lg text-sm font-medium hover:bg-primary-700 flex items-center justify-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                📥 Download do Conteúdo (ZIP)
+            </button>
+            
+            <button onclick="marcarComoPublicado()" class="w-full bg-green-600 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-green-700">
+                ✅ Marcar como Publicado
+            </button>
+            
+            <button onclick="fecharModalPublicar()" class="w-full border border-gray-300 py-2.5 rounded-lg text-sm text-gray-700 hover:bg-gray-50">
+                Fechar
+            </button>
+        </div>
+        
+        <input type="hidden" id="publicar-conteudo-id" value="">
     </div>
 </div>
 
 <script>
+let conteudosData = {
+    aguardando: [],
+    agendados: [],
+    publicados: []
+};
+
+// Carregar dados ao mudar para aba publicação
+document.addEventListener('DOMContentLoaded', function() {
+    // Observar mudanças de aba
+    document.addEventListener('click', function(e) {
+        if (e.target.textContent?.includes('Publicação')) {
+            setTimeout(() => {
+                carregarDadosPublicacao();
+                carregarCalendario();
+            }, 100);
+        }
+    });
+    
+    carregarTemplates();
+});
+
+// === GERAÇÃO DE CONTEÚDO ===
+
 document.getElementById('sel-estilo-img').addEventListener('change', function() {
     document.getElementById('prompt-dalle-preview').classList.toggle('hidden', this.value !== 'ia');
 });
@@ -315,40 +381,352 @@ document.getElementById('form-gerar').addEventListener('submit', async function(
     e.preventDefault();
     const btn = document.getElementById('btn-gerar');
     const preview = document.getElementById('resultado-preview');
-    btn.disabled = true; btn.textContent = '⏳ Gerando texto... → imagem...';
-    preview.innerHTML = '<div class="text-center"><div class="inline-block w-8 h-8 border-4 border-gray-200 border-t-accent rounded-full animate-spin"></div><p class="text-xs text-gray-500 mt-2">Gerando conteúdo e imagens...</p></div>';
+    
+    // Estado de carregamento
+    btn.disabled = true;
+    btn.textContent = '⏳ Gerando texto...';
+    preview.innerHTML = '<div class="text-center"><div class="inline-block w-8 h-8 border-4 border-gray-200 border-t-accent rounded-full animate-spin"></div><p class="text-xs text-gray-500 mt-2">Passo 1: Gerando texto...</p></div>';
+    
     try {
         const fd = new FormData(this);
         const res = await fetch('<?= APP_URL ?>/maquina/gerar', { method:'POST', body:fd });
         const data = await res.json();
+        
         if (data.sucesso) {
+            // Atualizar preview com conteúdo gerado
             let html = '<div class="space-y-3">';
-            data.conteudo.slides.forEach(s => {
-                html += `<div class="border rounded-lg overflow-hidden"><img src="${s.imagem_url}" class="w-full h-32 object-cover"><div class="p-3"><p class="text-xs text-gray-600">${s.texto}</p></div></div>`;
-            });
-            html += `<div class="p-3 bg-gray-50 rounded-lg"><p class="text-xs text-gray-500 font-medium mb-1">Legenda:</p><p class="text-xs text-gray-700 whitespace-pre-line">${data.conteudo.legenda}</p></div>`;
-            html += '<div class="flex gap-2 mt-3"><a href="<?= APP_URL ?>/maquina-de-conteudo/editar" class="flex-1 text-center px-3 py-2 bg-primary text-white rounded text-xs font-medium">✏️ Editar</a><button class="flex-1 px-3 py-2 border border-gray-300 rounded text-xs">💾 Salvo</button></div>';
-            html += '</div>';
+            if (data.conteudo.slides && data.conteudo.slides.length > 0) {
+                data.conteudo.slides.forEach((s, index) => {
+                    html += `<div class="border rounded-lg overflow-hidden">
+                        <img src="${s.imagem_url}" class="w-full h-32 object-cover" loading="lazy" onerror="this.src='https://placehold.co/1080x1080/cccccc/666666?text=Carregando'">
+                        <div class="p-3">
+                            <p class="text-xs text-gray-600">${s.texto || 'Slide ' + (index + 1)}</p>
+                        </div>
+                    </div>`;
+                });
+            }
+            
+            if (data.conteudo.legenda) {
+                html += `<div class="p-3 bg-gray-50 rounded-lg">
+                    <p class="text-xs text-gray-500 font-medium mb-1">Legenda:</p>
+                    <p class="text-xs text-gray-700 whitespace-pre-line">${data.conteudo.legenda}</p>
+                </div>`;
+            }
+            
+            html += '<div class="flex gap-2 mt-3">';
+            if (data.redirect_url) {
+                html += `<a href="${data.redirect_url}" class="flex-1 text-center px-3 py-2 bg-primary text-white rounded text-xs font-medium">✏️ Editar Conteúdo</a>`;
+            } else {
+                html += '<a href="<?= APP_URL ?>/maquina-de-conteudo/editar" class="flex-1 text-center px-3 py-2 bg-primary text-white rounded text-xs font-medium">✏️ Editar</a>';
+            }
+            html += '<button type="button" class="flex-1 px-3 py-2 border border-gray-300 rounded text-xs bg-green-50 text-green-700">💾 Salvo automaticamente</button>';
+            html += '</div></div>';
+            
             preview.innerHTML = html;
-        } else { preview.innerHTML = '<p class="text-red-500 text-sm">' + (data.erro || 'Erro.') + '</p>'; }
-    } catch(e) { preview.innerHTML = '<p class="text-red-500 text-sm">Erro de conexão.</p>'; }
-    btn.disabled = false; btn.textContent = '⚡ Gerar Conteúdo';
+            
+            // Mostrar mensagem de sucesso
+            if (typeof Toast !== 'undefined') {
+                Toast.sucesso(data.mensagem || 'Conteúdo gerado!');
+            }
+        } else {
+            preview.innerHTML = '<p class="text-red-500 text-sm">' + (data.erro || 'Erro na geração.') + '</p>';
+        }
+    } catch(e) {
+        console.error('Erro na geração:', e);
+        preview.innerHTML = '<p class="text-red-500 text-sm">Erro de conexão. Tente novamente.</p>';
+    }
+    
+    // Restaurar botão
+    btn.disabled = false;
+    btn.textContent = '⚡ Gerar Conteúdo';
 });
 
-function publicarAgora() { document.getElementById('modal-publicar').classList.remove('hidden'); }
+// === CALENDÁRIO EDITORIAL ===
 
-function abrirModalAgendar(titulo) {
+async function carregarCalendario() {
+    const mes = document.getElementById('mes-calendario').value;
+    const ano = document.getElementById('ano-calendario').value;
+    
+    try {
+        const res = await fetch(`<?= APP_URL ?>/maquina/calendario?marca_id=<?= $marca['id'] ?>&mes=${mes}&ano=${ano}`);
+        const data = await res.json();
+        
+        if (data.sucesso) {
+            renderizarCalendario(data.mes, data.ano, data.conteudos);
+        }
+    } catch(e) {
+        console.error('Erro ao carregar calendário:', e);
+    }
+}
+
+function renderizarCalendario(mes, ano, conteudos) {
+    const grid = document.getElementById('calendario-grid');
+    const diasSemana = grid.querySelectorAll('div:nth-child(-n+7)'); // Manter cabeçalho
+    
+    // Limpar dias anteriores (manter cabeçalho)
+    const diasAntigos = grid.querySelectorAll('div:nth-child(n+8)');
+    diasAntigos.forEach(dia => dia.remove());
+    
+    // Calcular primeiro dia do mês e quantos dias tem
+    const primeiroDia = new Date(ano, mes - 1, 1).getDay();
+    const diasNoMes = new Date(ano, mes, 0).getDate();
+    
+    // Adicionar espaços vazios antes do primeiro dia
+    for (let i = 0; i < primeiroDia; i++) {
+        const espacoVazio = document.createElement('div');
+        espacoVazio.className = 'py-2';
+        grid.appendChild(espacoVazio);
+    }
+    
+    // Adicionar dias do mês
+    for (let dia = 1; dia <= diasNoMes; dia++) {
+        const divDia = document.createElement('div');
+        divDia.className = 'py-2 rounded cursor-pointer hover:bg-gray-100 relative';
+        divDia.textContent = dia;
+        
+        // Verificar se há conteúdo neste dia
+        const conteudoDoDia = conteudos.filter(c => {
+            const dataConteudo = new Date(c.agendado_para || c.data_publicacao_real);
+            return dataConteudo.getDate() === dia;
+        });
+        
+        if (conteudoDoDia.length > 0) {
+            const primeiroConteudo = conteudoDoDia[0];
+            const cor = primeiroConteudo.status === 'agendado' ? 'bg-orange-200 text-orange-800' : 
+                       primeiroConteudo.status === 'publicado' ? 'bg-green-200 text-green-800' : 'bg-blue-200 text-blue-800';
+            
+            divDia.className = `py-2 rounded cursor-pointer ${cor}`;
+            
+            if (conteudoDoDia.length > 1) {
+                const badge = document.createElement('span');
+                badge.className = 'absolute -top-1 -right-1 bg-gray-600 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center';
+                badge.textContent = conteudoDoDia.length;
+                divDia.appendChild(badge);
+            }
+        }
+        
+        grid.appendChild(divDia);
+    }
+}
+
+// === LISTAS DE CONTEÚDO ===
+
+async function carregarDadosPublicacao() {
+    try {
+        const res = await fetch(`<?= APP_URL ?>/maquina-de-conteudo/marca?id=<?= $marca['id'] ?>&dados=publicacao&ajax=1`);
+        if (!res.ok) {
+            // Fallback: usar dados já disponíveis
+            renderizarListasConteudo();
+            return;
+        }
+        
+        const data = await res.json();
+        if (data.sucesso) {
+            conteudosData = data.conteudos;
+            renderizarListasConteudo();
+        }
+    } catch(e) {
+        console.error('Erro ao carregar dados:', e);
+        // Usar dados mock ou já disponíveis
+        renderizarListasConteudo();
+    }
+}
+
+function renderizarListasConteudo() {
+    renderizarListaAguardando();
+    renderizarListaAgendados();
+}
+
+function renderizarListaAguardando() {
+    const lista = document.getElementById('lista-aguardando');
+    
+    // Simular dados aprovados dos conteúdos já disponíveis
+    const conteudosAprovados = <?= json_encode(array_filter($dados['conteudos'], fn($c) => $c['status'] === 'aprovado')) ?>;
+    
+    if (conteudosAprovados.length === 0) {
+        lista.innerHTML = '<div class="text-center text-gray-400 py-8"><p class="text-sm">Nenhum conteúdo aguardando publicação</p></div>';
+        return;
+    }
+    
+    let html = '';
+    conteudosAprovados.forEach(conteudo => {
+        html += `
+            <div class="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <div class="flex-1">
+                    <p class="text-sm font-medium text-gray-800">${conteudo.titulo || conteudo.tema}</p>
+                    <p class="text-xs text-gray-500">${conteudo.tipo} • Aprovado em ${new Date(conteudo.data || conteudo.criado_em).toLocaleDateString('pt-BR')}</p>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="abrirModalAgendar('${conteudo.titulo || conteudo.tema}', ${conteudo.id})" class="px-3 py-1.5 border border-gray-300 bg-white rounded text-xs hover:bg-gray-50">📅 Agendar</button>
+                    <button onclick="abrirModalPublicar(${conteudo.id})" class="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700">📢 Publicar</button>
+                </div>
+            </div>
+        `;
+    });
+    
+    lista.innerHTML = html;
+}
+
+function renderizarListaAgendados() {
+    const lista = document.getElementById('lista-agendados');
+    
+    // Simular dados agendados
+    const conteudosAgendados = <?= json_encode(array_filter($dados['conteudos'], fn($c) => $c['status'] === 'agendado')) ?>;
+    
+    if (conteudosAgendados.length === 0) {
+        lista.innerHTML = '<div class="text-center text-gray-400 py-8"><p class="text-sm">Nenhum conteúdo agendado</p></div>';
+        return;
+    }
+    
+    let html = '';
+    conteudosAgendados.forEach(conteudo => {
+        const dataAgendamento = new Date(conteudo.agendado_para || conteudo.data);
+        html += `
+            <div class="flex items-center justify-between p-3 bg-orange-50 rounded-lg border border-orange-200">
+                <div class="flex-1">
+                    <p class="text-sm font-medium text-gray-800">${conteudo.titulo || conteudo.tema}</p>
+                    <p class="text-xs text-gray-500">📅 ${dataAgendamento.toLocaleDateString('pt-BR')} às ${dataAgendamento.toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'})}</p>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="reagendar(${conteudo.id})" class="px-3 py-1.5 border border-orange-300 bg-white rounded text-xs hover:bg-gray-50">📝 Reagendar</button>
+                    <button onclick="abrirModalPublicar(${conteudo.id})" class="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700">📢 Publicar Agora</button>
+                </div>
+            </div>
+        `;
+    });
+    
+    lista.innerHTML = html;
+}
+
+// === MODAL FUNCTIONS ===
+
+function abrirModalAgendar(titulo, conteudoId) {
     document.getElementById('agendar-titulo-post').textContent = titulo;
+    document.getElementById('agendar-conteudo-id').value = conteudoId;
     document.getElementById('modal-agendar').classList.remove('hidden');
 }
 
-function confirmarAgendamento() {
+function fecharModalAgendar() {
+    document.getElementById('modal-agendar').classList.add('hidden');
+}
+
+function abrirModalPublicar(conteudoId) {
+    document.getElementById('publicar-conteudo-id').value = conteudoId;
+    document.getElementById('modal-publicar').classList.remove('hidden');
+}
+
+function fecharModalPublicar() {
+    document.getElementById('modal-publicar').classList.add('hidden');
+}
+
+// === AGENDAMENTO ===
+
+async function confirmarAgendamento() {
+    const conteudoId = document.getElementById('agendar-conteudo-id').value;
     const data = document.getElementById('agendar-data').value;
     const hora = document.getElementById('agendar-hora').value;
-    if (!data) { alert('Selecione uma data.'); return; }
-    document.getElementById('modal-agendar').classList.add('hidden');
-    if (typeof Toast !== 'undefined') Toast.sucesso('Agendado para ' + data + ' às ' + hora + '!');
-    else alert('Agendado para ' + data + ' às ' + hora + '!');
+    
+    if (!data || !hora) {
+        alert('Preencha data e horário.');
+        return;
+    }
+    
+    const dataHora = data + ' ' + hora + ':00';
+    
+    const fd = new FormData();
+    fd.append('csrf_token', '<?= Csrf::token() ?>');
+    fd.append('conteudo_id', conteudoId);
+    fd.append('data_hora_publicacao', dataHora);
+    
+    try {
+        const res = await fetch('<?= APP_URL ?>/maquina/agendar', { method: 'POST', body: fd });
+        const data = await res.json();
+        
+        if (data.sucesso) {
+            fecharModalAgendar();
+            if (typeof Toast !== 'undefined') {
+                Toast.sucesso(data.mensagem);
+            } else {
+                alert(data.mensagem);
+            }
+            // Recarregar dados
+            carregarDadosPublicacao();
+            carregarCalendario();
+        } else {
+            alert(data.erro || 'Erro ao agendar.');
+        }
+    } catch(e) {
+        alert('Erro de conexão.');
+    }
+}
+
+function reagendar(conteudoId) {
+    // Reutilizar modal de agendamento
+    abrirModalAgendar('Reagendar conteúdo', conteudoId);
+}
+
+// === PUBLICAÇÃO ===
+
+async function baixarConteudo() {
+    const conteudoId = document.getElementById('publicar-conteudo-id').value;
+    
+    if (!conteudoId) {
+        alert('ID do conteúdo não encontrado.');
+        return;
+    }
+    
+    // Abrir download em nova aba
+    window.open(`<?= APP_URL ?>/maquina/download/${conteudoId}`, '_blank');
+    
+    if (typeof Toast !== 'undefined') {
+        Toast.sucesso('Download iniciado!');
+    }
+}
+
+async function marcarComoPublicado() {
+    const conteudoId = document.getElementById('publicar-conteudo-id').value;
+    
+    if (!conteudoId) {
+        alert('ID do conteúdo não encontrado.');
+        return;
+    }
+    
+    if (!confirm('Marcar este conteúdo como publicado?')) {
+        return;
+    }
+    
+    const fd = new FormData();
+    fd.append('csrf_token', '<?= Csrf::token() ?>');
+    fd.append('conteudo_id', conteudoId);
+    fd.append('canal', 'manual');
+    
+    try {
+        const res = await fetch('<?= APP_URL ?>/maquina/marcar-publicado', { method: 'POST', body: fd });
+        const data = await res.json();
+        
+        if (data.sucesso) {
+            fecharModalPublicar();
+            if (typeof Toast !== 'undefined') {
+                Toast.sucesso(data.mensagem);
+            } else {
+                alert(data.mensagem);
+            }
+            // Recarregar dados
+            carregarDadosPublicacao();
+            carregarCalendario();
+        } else {
+            alert(data.erro || 'Erro ao marcar como publicado.');
+        }
+    } catch(e) {
+        alert('Erro de conexão.');
+    }
+}
+
+// === LEGACY SUPPORT (manter compatibilidade) ===
+
+function publicarAgora() {
+    // Implementação antiga - redirecionar para nova
+    abrirModalPublicar(0); // ID será definido contextualmente
 }
 </script>
 

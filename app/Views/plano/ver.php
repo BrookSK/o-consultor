@@ -123,16 +123,46 @@
                             <p class="text-sm font-medium text-gray-800 leading-tight"><?= htmlspecialchars($tarefa['titulo']) ?></p>
                             <span class="px-1.5 py-0.5 rounded text-[10px] font-bold <?= $prioBadge ?> flex-shrink-0"><?= strtoupper(substr($tarefa['prioridade'], 0, 1)) ?></span>
                         </div>
+                        
                         <div class="flex items-center justify-between text-xs text-gray-400">
                             <span>👤 <?= htmlspecialchars($tarefa['responsavel']) ?></span>
                             <span class="<?= $vencida ? 'text-red-600 font-semibold' : '' ?>"><?= date('d/m', strtotime($tarefa['prazo'])) ?></span>
                         </div>
-                        <?php if ($vencida): ?>
-                        <span class="inline-block mt-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500 text-white">VENCIDA</span>
-                        <?php endif; ?>
-                        <?php if ($semAtualizacao): ?>
-                        <span class="inline-block mt-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-yellow-500 text-white">SEM ATUALIZAÇÃO</span>
-                        <?php endif; ?>
+                        
+                        <!-- Badges de status -->
+                        <div class="mt-2 space-y-1">
+                            <?php if ($vencida): ?>
+                            <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500 text-white">VENCIDA</span>
+                            <?php endif; ?>
+                            
+                            <?php if ($semAtualizacao): ?>
+                            <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-yellow-500 text-white">SEM ATUALIZAÇÃO</span>
+                            <?php endif; ?>
+                            
+                            <!-- F-12: Badge de parceiro solicitado -->
+                            <div class="parceiro-status" data-tarefa-id="<?= $tarefa['id'] ?>">
+                                <!-- Carregado via JavaScript -->
+                            </div>
+                        </div>
+                        
+                        <!-- F-12: Botões de ação -->
+                        <div class="mt-3 pt-2 border-t border-gray-100">
+                            <div class="flex items-center justify-between">
+                                <button onclick="abrirModalParceiro(<?= $tarefa['id'] ?>, '<?= htmlspecialchars($tarefa['titulo']) ?>', '<?= htmlspecialchars($tarefa['area']) ?>')" 
+                                        class="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                                    </svg>
+                                    Acionar Parceiro
+                                </button>
+                                
+                                <button onclick="editarTarefa(<?= $tarefa['id'] ?>)" class="text-xs text-gray-400 hover:text-gray-600">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                     <?php endforeach; ?>
                 </div>
@@ -265,10 +295,219 @@
     </div>
 </div>
 
+<!-- F-12: Modal Acionar Parceiro -->
+<div id="modal-parceiro" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg shadow-xl max-w-lg w-full">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-gray-800">🤝 Acionar Parceiro</h3>
+            <button onclick="fecharModalParceiro()" class="text-gray-400 hover:text-gray-600">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <form id="form-acionar-parceiro" class="p-6 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
+            <input type="hidden" id="parceiro-tarefa-id" name="tarefa_id" value="">
+            
+            <div class="bg-blue-50 p-3 rounded-lg">
+                <p class="text-sm font-medium text-gray-700">Tarefa:</p>
+                <p class="text-sm text-gray-600" id="parceiro-tarefa-titulo"></p>
+                <p class="text-xs text-gray-500 mt-1">Área: <span id="parceiro-tarefa-area"></span></p>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Parceiro *</label>
+                <div id="lista-parceiros" class="space-y-2 max-h-40 overflow-y-auto">
+                    <!-- Carregado via JavaScript -->
+                    <div class="text-center py-4 text-gray-500">
+                        <div class="inline-block w-4 h-4 border-2 border-gray-200 border-t-primary rounded-full animate-spin"></div>
+                        <p class="text-sm mt-2">Carregando parceiros...</p>
+                    </div>
+                </div>
+                <input type="hidden" id="parceiro-selecionado" name="parceiro_id" required>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Urgência *</label>
+                <select name="urgencia" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                    <option value="baixa">🟢 Baixa - Até 30 dias</option>
+                    <option value="media" selected>🟡 Média - Até 15 dias</option>
+                    <option value="alta">🟠 Alta - Até 7 dias</option>
+                    <option value="critica">🔴 Crítica - Até 3 dias</option>
+                </select>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Descrição da necessidade *</label>
+                <textarea name="descricao_necessidade" required rows="4" 
+                          placeholder="Descreva detalhadamente o que precisa do parceiro para esta tarefa..."
+                          class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary resize-none"></textarea>
+            </div>
+            
+            <div class="flex justify-end gap-3 pt-4">
+                <button type="button" onclick="fecharModalParceiro()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Cancelar</button>
+                <button type="submit" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700">🚀 Solicitar Parceiro</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- Sortable.js CDN para drag-and-drop -->
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 
 <script>
+// Variáveis globais F-12
+let parceiroModal = null;
+let parceirosDisponiveis = [];
+
+// Inicialização
+document.addEventListener('DOMContentLoaded', function() {
+    // Carregar status de parceiros para todas as tarefas
+    carregarStatusParceiros();
+    
+    // Configurar Kanban drag-and-drop
+    configurarKanban();
+});
+
+// === F-12: PARCEIROS ===
+
+async function abrirModalParceiro(tarefaId, titulo, area) {
+    document.getElementById('parceiro-tarefa-id').value = tarefaId;
+    document.getElementById('parceiro-tarefa-titulo').textContent = titulo;
+    document.getElementById('parceiro-tarefa-area').textContent = area;
+    document.getElementById('parceiro-selecionado').value = '';
+    
+    // Carregar parceiros da área
+    await carregarParceirosArea(area);
+    
+    document.getElementById('modal-parceiro').classList.remove('hidden');
+}
+
+function fecharModalParceiro() {
+    document.getElementById('modal-parceiro').classList.add('hidden');
+    document.getElementById('form-acionar-parceiro').reset();
+}
+
+async function carregarParceirosArea(area) {
+    const listaParceiros = document.getElementById('lista-parceiros');
+    
+    try {
+        const res = await fetch(`<?= APP_URL ?>/plano/listar-parceiros?area=${encodeURIComponent(area)}`);
+        const data = await res.json();
+        
+        if (data.sucesso && data.parceiros.length > 0) {
+            let html = '';
+            data.parceiros.forEach(parceiro => {
+                const avaliacaoEstrelas = parceiro.avaliacao_media ? '★'.repeat(Math.floor(parceiro.avaliacao_media)) : 'Novo';
+                html += `
+                    <div class="border rounded-lg p-3 cursor-pointer hover:bg-blue-50 transition parceiro-opcao" 
+                         onclick="selecionarParceiro(${parceiro.id}, '${parceiro.nome}')">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="font-medium text-gray-800">${parceiro.nome}</p>
+                                <p class="text-xs text-gray-500">${parceiro.categoria} • ${parceiro.nivel_experiencia || 'Pleno'}</p>
+                                <p class="text-xs text-yellow-600">${avaliacaoEstrelas} ${parceiro.avaliacao_media ? '(' + parceiro.avaliacao_media + ')' : ''}</p>
+                            </div>
+                            <div class="text-xs text-gray-400">
+                                ${parceiro.total_solicitacoes || 0} projetos
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            listaParceiros.innerHTML = html;
+        } else {
+            listaParceiros.innerHTML = '<p class="text-center text-gray-500 py-4">Nenhum parceiro homologado encontrado para esta área.</p>';
+        }
+    } catch (e) {
+        listaParceiros.innerHTML = '<p class="text-center text-red-500 py-4">Erro ao carregar parceiros. Tente novamente.</p>';
+    }
+}
+
+function selecionarParceiro(id, nome) {
+    document.getElementById('parceiro-selecionado').value = id;
+    
+    // Atualizar visual de seleção
+    document.querySelectorAll('.parceiro-opcao').forEach(el => {
+        el.classList.remove('bg-blue-100', 'border-blue-500');
+        el.classList.add('border-gray-300');
+    });
+    
+    event.target.closest('.parceiro-opcao').classList.add('bg-blue-100', 'border-blue-500');
+}
+
+async function carregarStatusParceiros() {
+    const statusElements = document.querySelectorAll('.parceiro-status');
+    
+    for (const element of statusElements) {
+        const tarefaId = element.dataset.tarefaId;
+        
+        try {
+            const res = await fetch(`<?= APP_URL ?>/plano/status-solicitacao-parceiro?tarefa_id=${tarefaId}`);
+            const data = await res.json();
+            
+            if (data.sucesso && data.solicitacao) {
+                const sol = data.solicitacao;
+                const statusConfig = {
+                    'solicitado': { color: 'bg-yellow-100 text-yellow-700', label: '🕐 Solicitado' },
+                    'em_contato': { color: 'bg-blue-100 text-blue-700', label: '📞 Em contato' },
+                    'em_execucao': { color: 'bg-purple-100 text-purple-700', label: '⚡ Em execução' },
+                    'concluido': { color: 'bg-green-100 text-green-700', label: '✅ Concluído' },
+                    'cancelado': { color: 'bg-gray-100 text-gray-600', label: '❌ Cancelado' }
+                };
+                
+                const config = statusConfig[sol.status] || statusConfig.solicitado;
+                element.innerHTML = `<span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${config.color}">${config.label}</span>`;
+            }
+        } catch (e) {
+            // Silencioso - não há solicitação para esta tarefa
+        }
+    }
+}
+
+// Form submission
+document.getElementById('form-acionar-parceiro').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const parceiroId = document.getElementById('parceiro-selecionado').value;
+    if (!parceiroId) {
+        alert('Selecione um parceiro.');
+        return;
+    }
+    
+    const formData = new FormData(this);
+    const button = this.querySelector('button[type="submit"]');
+    const originalText = button.textContent;
+    
+    button.disabled = true;
+    button.textContent = '⏳ Solicitando...';
+    
+    try {
+        const res = await fetch('<?= APP_URL ?>/plano/acionar-parceiro', { method: 'POST', body: formData });
+        const data = await res.json();
+        
+        if (data.sucesso) {
+            fecharModalParceiro();
+            if (typeof Toast !== 'undefined') {
+                Toast.sucesso(data.mensagem);
+            } else {
+                alert(data.mensagem);
+            }
+            
+            // Recarregar status de parceiros
+            setTimeout(carregarStatusParceiros, 1000);
+        } else {
+            alert(data.erro || 'Erro ao solicitar parceiro.');
+        }
+    } catch (e) {
+        alert('Erro de conexão. Tente novamente.');
+    } finally {
+        button.disabled = false;
+        button.textContent = originalText;
+    }
+});
+
+// === KANBAN & REUNIÕES (código existente) ===
+
 // Form reunião
 document.getElementById('form-reuniao').addEventListener('submit', async function(e) {
     e.preventDefault();
@@ -286,8 +525,7 @@ document.getElementById('form-reuniao').addEventListener('submit', async functio
     } catch (err) { alert('Erro de conexão.'); }
 });
 
-// Sortable — Kanban drag-and-drop
-document.addEventListener('DOMContentLoaded', function() {
+function configurarKanban() {
     document.querySelectorAll('.kanban-column').forEach(col => {
         new Sortable(col, {
             group: 'kanban',
@@ -306,7 +544,11 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
-});
+}
+
+function editarTarefa(id) {
+    alert('Funcionalidade de edição será implementada em breve.');
+}
 </script>
 
 <?php $conteudo = ob_get_clean(); ?>

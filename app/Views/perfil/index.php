@@ -42,7 +42,7 @@
 
 <!-- ABA ACADEMY -->
 <div x-show="aba==='academy'" style="display:none" class="max-w-2xl space-y-6">
-    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+    <div id="academy-section" class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
         <h3 class="font-semibold text-gray-800 mb-4">Status da conta Academy</h3>
         <?php if ($dados['academy_vinculada']): ?>
         <div class="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-lg mb-4">
@@ -215,8 +215,37 @@ document.getElementById('form-vincular')?.addEventListener('submit', async funct
     const fd = new FormData(this);
     const res = await fetch('<?= APP_URL ?>/perfil/vincular-academy', { method:'POST', body:fd });
     const data = await res.json();
-    if (data.sucesso) { alert(data.mensagem); location.reload(); }
+    if (data.sucesso) { 
+        alert(data.mensagem); 
+        location.reload(); 
+    } else {
+        alert(data.erro || 'Erro ao vincular Academy');
+    }
 });
+
+// Desvincular Academy
+async function desvincularAcademy() {
+    if (!confirm('Tem certeza que deseja desvincular sua conta da Academy?\n\nVocê perderá o acesso automático aos cursos.')) {
+        return;
+    }
+    
+    const fd = new FormData();
+    fd.append('csrf_token', '<?= Csrf::token() ?>');
+    
+    try {
+        const res = await fetch('<?= APP_URL ?>/academy/desvincular', { method: 'POST', body: fd });
+        const data = await res.json();
+        
+        if (data.sucesso) {
+            alert(data.mensagem);
+            location.reload();
+        } else {
+            alert(data.erro || 'Erro ao desvincular Academy');
+        }
+    } catch (e) {
+        alert('Erro de conexão');
+    }
+}
 
 async function salvarPrefs() {
     const fd = new FormData();

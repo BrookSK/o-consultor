@@ -36,6 +36,53 @@ class Empresa
     }
 
     /**
+     * Atualizar empresa por ID
+     */
+    public static function atualizar(int $id, array $dados): bool
+    {
+        $campos = [];
+        $parametros = ['id' => $id];
+        
+        if (isset($dados['nome'])) {
+            $campos[] = 'nome = :nome';
+            $parametros['nome'] = $dados['nome'];
+        }
+        
+        if (isset($dados['cnpj'])) {
+            $campos[] = 'cnpj = :cnpj';
+            $parametros['cnpj'] = $dados['cnpj'];
+        }
+        
+        if (isset($dados['segmento'])) {
+            $campos[] = 'segmento = :segmento';
+            $parametros['segmento'] = $dados['segmento'];
+        }
+        
+        if (isset($dados['colaboradores_internos'])) {
+            $campos[] = 'colaboradores_internos = :colaboradores_internos';
+            $parametros['colaboradores_internos'] = $dados['colaboradores_internos'];
+        }
+        
+        if (isset($dados['faturamento_mensal'])) {
+            $campos[] = 'faturamento_mensal = :faturamento_mensal';
+            $parametros['faturamento_mensal'] = $dados['faturamento_mensal'];
+        }
+        
+        if (isset($dados['principal_desafio'])) {
+            $campos[] = 'principal_desafio = :principal_desafio';
+            $parametros['principal_desafio'] = $dados['principal_desafio'];
+        }
+        
+        if (empty($campos)) {
+            return true; // Nada para atualizar
+        }
+        
+        $sql = "UPDATE empresas SET " . implode(', ', $campos) . ", atualizado_em = NOW() WHERE id = :id";
+        
+        return Database::execute($sql, $parametros);
+    }
+
+    /**
      * Listar todas as empresas
      */
     public static function listar(): array

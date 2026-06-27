@@ -44,13 +44,26 @@ class Auth
      */
     public static function login(array $usuario): void
     {
+        // Regenerar session_id por segurança (previne session fixation)
         Session::regenerar();
+        
         Session::set('usuario_id', $usuario['id']);
         Session::set('usuario_nome', $usuario['nome']);
         Session::set('usuario_email', $usuario['email']);
         Session::set('usuario_perfil', $usuario['perfil']);
         Session::set('usuario_empresa_id', $usuario['empresa_id'] ?? null);
         Session::set('login_time', time());
+        
+        // Atualizar último login no banco
+        try {
+            Database::execute(
+                "UPDATE usuarios SET ultimo_login = NOW() WHERE id = ?", 
+                [$usuario['id']]
+            );
+        } catch (Exception $e) {
+            // Log do erro mas não impedir o login
+            Logger::erro('Erro ao atualizar ultimo_login: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -67,7 +80,13 @@ class Auth
     public static function proteger(): void
     {
         if (!self::check()) {
-            Flash::set('erro', 'Você precisa estar logado para acessar esta página.');
+            // Salvar URL atual para redirecionamento após login
+            $currentUrl = $_SERVER['REQUEST_URI'] ?? '';
+            if (!empty($currentUrl) && $currentUrl !== '/login' && $currentUrl !== '/logout') {
+                Session::set('redirect_after_login', APP_URL . $currentUrl);
+            }
+            
+            Flash::set('erro', 'Faça login para continuar.');
             header('Location: ' . APP_URL . '/login');
             exit;
         }
@@ -97,8 +116,20 @@ class Auth
         self::proteger();
 
         if (!self::temAlgumPerfil($perfisPermitidos)) {
-            Flash::set('erro', 'Você não tem permissão para acessar esta página.');
-            header('Location: ' . APP_URL . '/dashboard');
+            // Log da tentativa de acesso não autorizado
+            Logger::seguranca('Tentativa de acesso não autorizado', [
+                'usuario_id' => self::usuario()['id'],
+                'email' => self::usuario()['email'],
+                'perfil' => self::perfil(),
+                'perfis_permitidos' => $perfisPermitidos,
+                'url_tentada' => $_SERVER['REQUEST_URI'] ?? '',
+                'ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
+            
+            // Retornar 403 Forbidden
+            http_response_code(403);
+            require VIEW_PATH . '/errors/403.php';
             exit;
         }
     }
@@ -133,5 +164,23 @@ class Auth
     public static function isCliente(): bool
     {
         return self::temPerfil(self::CLIENTE);
+    }
+
+    /**
+     * Retorna o ID da empresa do usuário logado
+     */
+    public static function empresa(): ?int
+    {
+        $empresaId = Session::get('usuario_empresa_id');
+        return $empresaId ? (int) $empresaId : null;
+    }
+
+    /**
+     * Retorna o ID do usuário logado
+     */
+    public static function usuarioId(): ?int
+    {
+        $usuarioId = Session::get('usuario_id');
+        return $usuarioId ? (int) $usuarioId : null;
     }
 }

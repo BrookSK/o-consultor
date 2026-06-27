@@ -35,26 +35,53 @@ class Router
         // Diagnóstico
         $this->get('diagnostico', 'DiagnosticoController', 'index');
         $this->get('diagnostico/novo', 'DiagnosticoController', 'novo');
+        $this->get('diagnostico/bloco', 'DiagnosticoController', 'bloco');
+        $this->post('diagnostico/salvar-bloco', 'DiagnosticoController', 'salvarBloco');
+        $this->post('diagnostico/gerar', 'DiagnosticoController', 'gerar');
         $this->post('diagnostico/salvar', 'DiagnosticoController', 'salvar');
         $this->get('diagnostico/resultado', 'DiagnosticoController', 'resultado');
 
         // Plano de Ação
         $this->get('plano-de-acao', 'PlanoController', 'index');
         $this->get('plano-de-acao/novo', 'PlanoController', 'novo');
-        $this->post('plano-de-acao/salvar', 'PlanoController', 'salvar');
+        $this->post('plano-de-acao/salvar-step1', 'PlanoController', 'salvarStep1');
+        $this->get('plano-de-acao/prioridades', 'PlanoController', 'prioridades');
+        $this->post('plano-de-acao/confirmar-prioridades', 'PlanoController', 'confirmarPrioridades');
+        $this->get('plano-de-acao/tarefas', 'PlanoController', 'tarefas');
+        $this->post('plano-de-acao/salvar-tarefas', 'PlanoController', 'salvarTarefas');
         $this->get('plano-de-acao/ver', 'PlanoController', 'ver');
-        $this->post('plano-de-acao/tarefa-status', 'PlanoController', 'atualizarTarefaStatus');
+        $this->post('plano-de-acao/mover-tarefa', 'PlanoController', 'moverTarefa');
         $this->post('plano-de-acao/reuniao', 'PlanoController', 'registrarReuniao');
+        
+        // F-12: Acionamento de Parceiros via Plano
+        $this->post('plano/acionar-parceiro', 'PlanoController', 'acionarParceiro');
+        $this->get('plano/listar-parceiros', 'PlanoController', 'listarParceiros');
+        $this->get('plano/status-solicitacao-parceiro', 'PlanoController', 'statusSolicitacaoParceiro');
+        
+        // Plano legado
+        $this->post('plano-de-acao/salvar', 'PlanoController', 'salvar');
+        $this->post('plano-de-acao/tarefa-status', 'PlanoController', 'atualizarTarefaStatus');
 
         // Manual Operacional (SOP)
         $this->get('manual-operacional', 'SopController', 'index');
         $this->post('sop/gerar', 'SopController', 'gerar');
+        $this->get('sop/ver/{id}', 'SopController', 'ver');
         $this->get('sop/revisar', 'SopController', 'revisar');
         $this->post('sop/aprovar', 'SopController', 'aprovar');
+        $this->post('sop/ajustar', 'SopController', 'ajustar');
         $this->post('sop/salvar-rascunho', 'SopController', 'salvarRascunho');
+        $this->get('sop/contencao/{id}', 'SopController', 'contencao');
+        $this->post('contencao/acionar', 'SopController', 'acionarContencao');
+        $this->get('sop/exportar-pdf/{id}', 'SopController', 'exportarPdf');
+        $this->get('sop/exportar-todos-zip', 'SopController', 'exportarTodosZip');
         $this->get('manual-operacional/raci', 'SopController', 'raci');
-        $this->get('manual-operacional/kpis', 'SopController', 'kpis');
-        $this->post('manual-operacional/kpi-registrar', 'SopController', 'registrarKpi');
+        $this->get('manual-operacional/kpis', 'KpiController', 'index');
+
+        // KPI Management (F-07)
+        $this->get('manual-operacional/kpis', 'KpiController', 'index');
+        $this->get('kpis/ver', 'KpiController', 'ver');
+        $this->post('kpis/registrar', 'KpiController', 'registrar');
+        $this->post('kpis/alerta/marcar-lido', 'KpiController', 'marcarAlertaLido');
 
         // Central de Conteúdo
         $this->get('central-de-conteudo', 'ConteudoController', 'index');
@@ -64,10 +91,18 @@ class Router
         $this->post('central-de-conteudo/buscar-agora', 'ConteudoController', 'buscarAgora');
         $this->get('central-de-conteudo/admin', 'ConteudoController', 'admin');
 
+        // Sistema de Notícias por IA (F-09)
+        $this->get('noticias/buscar', 'NoticiasController', 'buscar');
+        $this->post('noticias/inicializar-perfil', 'NoticiasController', 'inicializarPerfil');
+        $this->post('noticias/adicionar-site', 'NoticiasController', 'adicionarSite');
+        $this->post('noticias/remover-site', 'NoticiasController', 'removerSite');
+
         // Academy SSO
         $this->get('academy/sso', 'AcademyController', 'sso');
+        $this->get('academy/logs', 'AcademyController', 'logs');
+        $this->post('academy/desvincular', 'PerfilController', 'desvincularAcademy');
 
-        // Máquina de Conteúdo
+        // Máquina de Conteúdo (F-10 + F-11)
         $this->get('maquina-de-conteudo', 'MaquinaController', 'index');
         $this->get('maquina-de-conteudo/marca', 'MaquinaController', 'marca');
         $this->get('maquina-de-conteudo/nova-marca', 'MaquinaController', 'novaMarca');
@@ -76,9 +111,17 @@ class Router
         $this->get('maquina-de-conteudo/editar', 'MaquinaController', 'editar');
         $this->post('maquina-de-conteudo/aprovar', 'MaquinaController', 'aprovar');
         $this->post('maquina-de-conteudo/regenerar-imagem', 'MaquinaController', 'regenerarImagem');
+        $this->post('maquina-de-conteudo/upload-imagem', 'MaquinaController', 'uploadImagem');
+        $this->post('maquina-de-conteudo/atualizar-slide', 'MaquinaController', 'atualizarSlide');
         $this->post('maquina-de-conteudo/upload-template', 'MaquinaController', 'uploadTemplate');
         $this->get('maquina-de-conteudo/templates', 'MaquinaController', 'listarTemplates');
         $this->post('maquina-de-conteudo/remover-template', 'MaquinaController', 'removerTemplate');
+        
+        // F-11: Publicação e Agendamento
+        $this->post('maquina/agendar', 'MaquinaController', 'agendar');
+        $this->get('maquina/download', 'MaquinaController', 'download');
+        $this->post('maquina/marcar-publicado', 'MaquinaController', 'marcarPublicado');
+        $this->get('maquina/calendario', 'MaquinaController', 'calendario');
 
         // Parceiros
         $this->get('parceiros', 'ParceirosController', 'index');
@@ -86,6 +129,10 @@ class Router
         $this->post('parceiros/solicitar', 'ParceirosController', 'solicitar');
         $this->get('parceiros/admin', 'ParceirosController', 'admin');
         $this->post('parceiros/status', 'ParceirosController', 'atualizarStatus');
+        
+        // F-12: Admin de Solicitações de Parceiros
+        $this->get('parceiros/solicitacoes', 'ParceirosController', 'solicitacoes');
+        $this->post('parceiros/atualizar-status-solicitacao', 'ParceirosController', 'atualizarStatusSolicitacao');
 
         // Governança
         $this->get('governanca', 'GovernancaController', 'index');
@@ -97,11 +144,24 @@ class Router
         $this->get('admin/usuarios', 'AdminController', 'usuarios');
         $this->post('admin/usuarios/salvar', 'AdminController', 'salvarUsuario');
         $this->get('admin/clientes', 'AdminController', 'clientes');
+        
+        // F-13: Gestão de Clientes
+        $this->get('admin/clientes/novo', 'AdminController', 'novoCliente');
+        $this->post('admin/clientes/criar', 'AdminController', 'criarCliente');
+        $this->get('admin/clientes/perfil', 'AdminController', 'perfilCliente');
+        $this->post('admin/clientes/trocar-consultor', 'AdminController', 'trocarConsultor');
+        $this->post('admin/clientes/alterar-status', 'AdminController', 'alterarStatusCliente');
+        
         $this->get('admin/configuracoes', 'AdminController', 'configuracoes');
         $this->post('admin/testar-apis', 'AdminController', 'testarApis');
         $this->post('admin/testar-academy', 'AdminController', 'testarAcademy');
         $this->post('admin/testar-smtp', 'AdminController', 'testarSmtp');
         $this->post('admin/configuracoes/salvar', 'AdminController', 'salvarConfiguracoes');
+        
+        // F-14: Configuração de APIs de IA
+        $this->post('admin/api/toggle', 'AdminController', 'toggleApi');
+        $this->post('admin/api/salvar-chave', 'AdminController', 'salvarChaveApi');
+        $this->post('admin/api/testar', 'AdminController', 'testarApiIndividual');
         $this->get('admin/logs', 'AdminController', 'logs');
         $this->get('admin/relatorios', 'AdminController', 'relatorios');
 
@@ -113,14 +173,24 @@ class Router
 
         // Onboarding
         $this->get('onboarding', 'PerfilController', 'onboarding');
+        $this->post('onboarding/step1', 'PerfilController', 'salvarStep');
+        $this->post('onboarding/step2', 'PerfilController', 'salvarStep');
+        $this->post('onboarding/step3', 'PerfilController', 'salvarStep');
+        $this->post('onboarding/step4', 'PerfilController', 'salvarStep');
+        $this->post('onboarding/salvar-step', 'PerfilController', 'salvarStep');
         $this->post('onboarding/concluir', 'PerfilController', 'concluirOnboarding');
+        $this->post('onboarding/vincular-academy', 'PerfilController', 'vincularAcademy');
 
         // Alertas e Notificações
         $this->get('alertas', 'AlertaController', 'index');
         $this->post('alertas/marcar-lido', 'AlertaController', 'marcarLido');
         $this->post('alertas/resolver', 'AlertaController', 'resolver');
         $this->get('alertas/recentes', 'AlertaController', 'recentes');
+        $this->post('alertas/marcar-todos-lidos', 'AlertaController', 'marcarTodosLidos');
         $this->post('alertas/preferencias', 'AlertaController', 'salvarPreferencias');
+
+        // API Interna
+        $this->post('api/transcricao', 'ApiController', 'transcricao');
     }
 
     /**
@@ -146,6 +216,56 @@ class Router
     {
         $metodo = $_SERVER['REQUEST_METHOD'];
 
+        // Tratar rotas dinâmicas específicas
+        if (preg_match('/^diagnostico\/resultado\/(\d+)$/', $url)) {
+            $this->executarAction('DiagnosticoController', 'resultado');
+            return;
+        }
+        
+        if (preg_match('/^diagnostico\/bloco\/(\d+)$/', $url)) {
+            $this->executarAction('DiagnosticoController', 'bloco');
+            return;
+        }
+        
+        if (preg_match('/^plano-de-acao\/prioridades\/(\d+)$/', $url)) {
+            $this->executarAction('PlanoController', 'prioridades');
+            return;
+        }
+        
+        if (preg_match('/^plano-de-acao\/tarefas\/(\d+)$/', $url)) {
+            $this->executarAction('PlanoController', 'tarefas');
+            return;
+        }
+        
+        if (preg_match('/^plano-de-acao\/(\d+)$/', $url)) {
+            $this->executarAction('PlanoController', 'show');
+            return;
+        }
+
+        // F-13: Cliente perfil dinâmico
+        if (preg_match('/^admin\/clientes\/perfil\/(\d+)$/', $url, $matches)) {
+            $_GET['id'] = (int) $matches[1];
+            $this->executarAction('AdminController', 'perfilCliente');
+            return;
+        }
+
+        if (preg_match('/^maquina-de-conteudo\/editar\/(\d+)$/', $url)) {
+            $this->executarAction('MaquinaController', 'editar');
+            return;
+        }
+
+        if (preg_match('/^maquina\/download\/(\d+)$/', $url)) {
+            $_GET['id'] = (int) preg_replace('/.*\/(\d+)$/', '$1', $url);
+            $this->executarAction('MaquinaController', 'download');
+            return;
+        }
+
+        if (preg_match('/^maquina\/marcar-publicado\/(\d+)$/', $url)) {
+            $_POST['conteudo_id'] = (int) preg_replace('/.*\/(\d+)$/', '$1', $url);
+            $this->executarAction('MaquinaController', 'marcarPublicado');
+            return;
+        }
+
         if ($metodo === 'GET' && isset($this->rotasGet[$url])) {
             $rota = $this->rotasGet[$url];
         } elseif ($metodo === 'POST' && isset($this->rotasPost[$url])) {
@@ -155,9 +275,14 @@ class Router
             return;
         }
 
-        $controllerName = $rota['controller'];
-        $actionName = $rota['action'];
+        $this->executarAction($rota['controller'], $rota['action']);
+    }
 
+    /**
+     * Executa uma action específica
+     */
+    private function executarAction(string $controllerName, string $actionName): void
+    {
         $controllerFile = APP_PATH . '/Controllers/' . $controllerName . '.php';
 
         if (!file_exists($controllerFile)) {

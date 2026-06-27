@@ -267,8 +267,8 @@
 <div class="bg-gray-50 rounded-lg border border-gray-200 p-6 mb-6">
     <div class="flex flex-col sm:flex-row gap-3">
         <button onclick="aprovarSop()" class="flex-1 bg-green-600 text-white px-5 py-3 rounded-lg text-sm font-semibold hover:bg-green-700 transition text-center">✓ Aprovar SOP</button>
-        <button onclick="alert('Em produção: solicita ajuste à IA com instruções específicas.')" class="flex-1 bg-blue-600 text-white px-5 py-3 rounded-lg text-sm font-medium hover:bg-blue-700 transition text-center">🤖 Solicitar Ajuste da IA</button>
-        <button onclick="if(confirm('Regenerar o SOP do zero? O conteúdo atual será substituído.')) { location.reload(); }" class="flex-1 bg-gray-500 text-white px-5 py-3 rounded-lg text-sm font-medium hover:bg-gray-600 transition text-center">🔄 Regenerar do Zero</button>
+        <button onclick="mostrarAjusteIA()" class="flex-1 bg-blue-600 text-white px-5 py-3 rounded-lg text-sm font-medium hover:bg-blue-700 transition text-center">🤖 Solicitar Ajuste da IA</button>
+        <button onclick="if(confirm('Regenerar o SOP do zero? O conteúdo atual será substituído.')) { regenerarSop(); }" class="flex-1 bg-gray-500 text-white px-5 py-3 rounded-lg text-sm font-medium hover:bg-gray-600 transition text-center">🔄 Regenerar do Zero</button>
         <button onclick="salvarRascunho()" class="flex-1 border border-gray-300 text-gray-700 px-5 py-3 rounded-lg text-sm font-medium hover:bg-gray-100 transition text-center">💾 Salvar Rascunho</button>
     </div>
 </div>
@@ -278,7 +278,7 @@ async function aprovarSop() {
     if (!confirm('Confirma a aprovação deste SOP? Os KPIs serão enviados ao painel automaticamente.')) return;
     const formData = new FormData();
     formData.append('csrf_token', '<?= Csrf::token() ?>');
-    formData.append('sop_id', '<?= htmlspecialchars($sop['id']) ?>');
+    formData.append('sop_id', '<?= $sop['id'] === 'SOP-TI-ONB-001' ? '1' : $sop['id'] ?>');
     try {
         const res = await fetch('<?= APP_URL ?>/sop/aprovar', { method: 'POST', body: formData });
         const data = await res.json();
@@ -286,6 +286,8 @@ async function aprovarSop() {
             if (typeof Toast !== 'undefined') Toast.sucesso(data.mensagem);
             else alert(data.mensagem);
             setTimeout(() => window.location.href = '<?= APP_URL ?>/manual-operacional', 1000);
+        } else {
+            alert(data.erro || 'Erro ao aprovar SOP.');
         }
     } catch(e) { alert('Erro de conexão.'); }
 }
@@ -293,15 +295,78 @@ async function aprovarSop() {
 async function salvarRascunho() {
     const formData = new FormData();
     formData.append('csrf_token', '<?= Csrf::token() ?>');
-    formData.append('sop_id', '<?= htmlspecialchars($sop['id']) ?>');
+    formData.append('sop_id', '<?= $sop['id'] === 'SOP-TI-ONB-001' ? '1' : $sop['id'] ?>');
     try {
         const res = await fetch('<?= APP_URL ?>/sop/salvar-rascunho', { method: 'POST', body: formData });
         const data = await res.json();
         if (data.sucesso) {
             if (typeof Toast !== 'undefined') Toast.sucesso(data.mensagem);
             else alert(data.mensagem);
+        } else {
+            alert(data.erro || 'Erro ao salvar rascunho.');
         }
     } catch(e) { alert('Erro de conexão.'); }
+}
+
+function mostrarAjusteIA() {
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center';
+    modal.innerHTML = `
+        <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 class="text-lg font-semibold mb-4">Solicitar Ajuste da IA</h3>
+            <p class="text-sm text-gray-600 mb-4">Descreva o que você gostaria que a IA ajuste neste SOP:</p>
+            <textarea id="instrucao-ajuste" rows="4" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none" placeholder="Ex: O procedimento de backup precisa incluir validação do hash MD5"></textarea>
+            <div class="mt-4 flex gap-2">
+                <button onclick="executarAjusteIA()" class="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">🤖 Solicitar Ajuste</button>
+                <button onclick="this.closest('.fixed').remove()" class="flex-1 border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-100">Cancelar</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
+
+async function executarAjusteIA() {
+    const instrucao = document.getElementById('instrucao-ajuste').value.trim();
+    if (!instrucao) {
+        alert('Por favor, descreva o ajuste desejado.');
+        return;
+    }
+
+    const modal = document.querySelector('.fixed');
+    modal.innerHTML = `
+        <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4 text-center">
+            <div class="animate-spin w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full mx-auto mb-4"></div>
+            <p class="text-sm font-medium">IA processando ajuste...</p>
+            <p class="text-xs text-gray-500 mt-1">Isso pode levar alguns segundos</p>
+        </div>
+    `;
+
+    const formData = new FormData();
+    formData.append('csrf_token', '<?= Csrf::token() ?>');
+    formData.append('sop_id', '<?= $sop['id'] === 'SOP-TI-ONB-001' ? '1' : $sop['id'] ?>');
+    formData.append('instrucao', instrucao);
+    formData.append('secoes_a_ajustar', JSON.stringify(['procedimentos', 'checklist'])); // Seções mais comuns de ajuste
+
+    try {
+        const res = await fetch('<?= APP_URL ?>/sop/ajustar', { method: 'POST', body: formData });
+        const data = await res.json();
+        modal.remove();
+        
+        if (data.sucesso) {
+            alert(data.mensagem);
+            location.reload(); // Recarregar para mostrar versão atualizada
+        } else {
+            alert(data.erro || 'Erro ao processar ajuste.');
+        }
+    } catch(e) {
+        modal.remove();
+        alert('Erro de conexão.');
+    }
+}
+
+async function regenerarSop() {
+    // Redirecionar para gerar novamente (substitui o atual)
+    window.location.href = '<?= APP_URL ?>/manual-operacional';
 }
 </script>
 

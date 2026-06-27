@@ -43,8 +43,10 @@ class Session
      */
     public static function destroy(): void
     {
+        // Limpar array da sessão
         $_SESSION = [];
 
+        // Remover cookie de sessão se usar cookies
         if (ini_get('session.use_cookies')) {
             $params = session_get_cookie_params();
             setcookie(
@@ -58,7 +60,12 @@ class Session
             );
         }
 
+        // Destruir sessão
         session_destroy();
+        
+        // Iniciar nova sessão com novo ID (para flash messages funcionarem)
+        session_start();
+        session_regenerate_id(true);
     }
 
     /**
@@ -66,6 +73,11 @@ class Session
      */
     public static function regenerar(): void
     {
+        // Garantir que a sessão está iniciada
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            session_start();
+        }
+        
         session_regenerate_id(true);
     }
 }

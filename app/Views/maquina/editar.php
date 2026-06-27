@@ -44,7 +44,7 @@
     <!-- Painel principal: edição -->
     <div class="lg:col-span-2 space-y-4">
         <?php foreach ($cont['slides'] as $i => $slide): ?>
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5" data-slide-index="<?= $i ?>">
             <div class="flex items-center justify-between mb-3">
                 <h4 class="text-sm font-semibold text-gray-700"><?= $slide['tipo'] === 'capa' ? '📌 Slide de Capa' : ($slide['tipo'] === 'cta' ? '🚀 Slide CTA' : '📝 Slide ' . $slide['numero']) ?></h4>
                 <span class="text-xs text-gray-400"><?= $slide['numero'] ?>/<?= count($cont['slides']) ?></span>
@@ -54,14 +54,31 @@
                 <div>
                     <img src="<?= htmlspecialchars($slide['imagem_url']) ?>" class="w-full aspect-square rounded-lg object-cover border border-gray-200">
                     <div class="flex gap-2 mt-2">
-                        <button onclick="alert('Em produção: abre seletor de arquivo para substituir imagem.')" class="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs hover:bg-gray-50">📤 Substituir</button>
-                        <button onclick="alert('Em produção: regenera imagem via DALL-E com prompt editável.')" class="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs hover:bg-gray-50">🔄 Regenerar</button>
+                        <label class="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs hover:bg-gray-50 cursor-pointer text-center">
+                            📤 Substituir
+                            <input type="file" accept="image/*" class="hidden" onchange="uploadImagem(this, <?= $conteudo['id'] ?>, <?= $i ?>)">
+                        </label>
+                        <button onclick="regenerarImagem(<?= $conteudo['id'] ?>, <?= $i ?>)" class="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs hover:bg-gray-50">🔄 Regenerar</button>
                     </div>
                 </div>
                 <!-- Texto -->
                 <div>
                     <label class="block text-xs text-gray-500 mb-1">Texto do slide</label>
-                    <textarea rows="6" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary resize-none"><?= htmlspecialchars($slide['texto']) ?></textarea>
+                    <textarea 
+                        rows="6" 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary resize-none"
+                        onchange="atualizarTextoSlide(<?= $conteudo['id'] ?>, <?= $i ?>, this.value)"
+                        placeholder="Digite o texto do slide..."
+                    ><?= htmlspecialchars($slide['texto']) ?></textarea>
+                    <?php if ($slide['tipo'] === 'cta'): ?>
+                    <input 
+                        type="text" 
+                        placeholder="Texto do botão (opcional)"
+                        class="w-full mt-2 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"
+                        onchange="atualizarTextoSlide(<?= $conteudo['id'] ?>, <?= $i ?>, document.querySelector('textarea').value, this.value)"
+                        value="<?= htmlspecialchars($slide['cta'] ?? '') ?>"
+                    >
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -82,22 +99,157 @@
 
         <!-- Ações -->
         <div class="flex gap-3">
-            <button onclick="aprovarConteudo()" class="flex-1 bg-green-600 text-white py-3 rounded-lg text-sm font-semibold hover:bg-green-700 transition">✓ Aprovar Conteúdo</button>
-            <button onclick="alert('Rascunho salvo!')" class="px-6 py-3 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">💾 Salvar</button>
-            <button onclick="if(confirm('Descartar este conteúdo?')) window.location.href='<?= APP_URL ?>/maquina-de-conteudo/marca?id=1'" class="px-6 py-3 border border-red-200 rounded-lg text-sm text-red-600 hover:bg-red-50">🗑️ Descartar</button>
+            <button onclick="aprovarConteudo(<?= $conteudo['id'] ?>)" class="flex-1 bg-green-600 text-white py-3 rounded-lg text-sm font-semibold hover:bg-green-700 transition">✓ Aprovar Conteúdo</button>
+            <button onclick="salvarRascunho()" class="px-6 py-3 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">💾 Salvar</button>
+            <button onclick="descartarConteudo()" class="px-6 py-3 border border-red-200 rounded-lg text-sm text-red-600 hover:bg-red-50">🗑️ Descartar</button>
         </div>
     </div>
 </div>
 
 <script>
-async function aprovarConteudo() {
+async function aprovarConteudo(conteudoId) {
+    if (!conteudoId) {
+        alert('ID do conteúdo inválido.');
+        return;
+    }
+    
     const fd = new FormData();
     fd.append('csrf_token', '<?= Csrf::token() ?>');
+    fd.append('conteudo_id', conteudoId);
+    
     try {
         const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/aprovar', { method:'POST', body:fd });
         const data = await res.json();
-        if (data.sucesso) { alert(data.mensagem); window.location.href = '<?= APP_URL ?>/maquina-de-conteudo/marca?id=1'; }
-    } catch(e) { alert('Erro.'); }
+        
+        if (data.sucesso) {
+            if (typeof Toast !== 'undefined') {
+                Toast.sucesso(data.mensagem);
+            } else {
+                alert(data.mensagem);
+            }
+            // Redirecionar para biblioteca da marca
+            setTimeout(() => {
+                window.location.href = '<?= APP_URL ?>/maquina-de-conteudo/marca?id=1&aba=biblioteca';
+            }, 1000);
+        } else {
+            alert(data.erro || 'Erro ao aprovar.');
+        }
+    } catch(e) {
+        console.error('Erro:', e);
+        alert('Erro de conexão.');
+    }
+}
+
+async function uploadImagem(input, conteudoId, slideIndex) {
+    if (!input.files || !input.files[0]) return;
+    
+    const fd = new FormData();
+    fd.append('csrf_token', '<?= Csrf::token() ?>');
+    fd.append('conteudo_id', conteudoId);
+    fd.append('slide_index', slideIndex);
+    fd.append('imagem', input.files[0]);
+    
+    try {
+        const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/upload-imagem', { method: 'POST', body: fd });
+        const data = await res.json();
+        
+        if (data.sucesso) {
+            // Atualizar imagem na tela
+            const img = input.closest('.grid').querySelector('img');
+            if (img) {
+                img.src = data.imagem_url;
+            }
+            if (typeof Toast !== 'undefined') {
+                Toast.sucesso(data.mensagem);
+            }
+        } else {
+            alert(data.erro || 'Erro no upload.');
+        }
+    } catch(e) {
+        alert('Erro de conexão.');
+    }
+    
+    input.value = ''; // Limpar input
+}
+
+async function regenerarImagem(conteudoId, slideIndex) {
+    const prompt = prompt('Digite o prompt para a nova imagem:', '');
+    if (!prompt) return;
+    
+    const fd = new FormData();
+    fd.append('csrf_token', '<?= Csrf::token() ?>');
+    fd.append('conteudo_id', conteudoId);
+    fd.append('slide_index', slideIndex);
+    fd.append('prompt_editado', prompt);
+    
+    try {
+        const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/regenerar-imagem', { method: 'POST', body: fd });
+        const data = await res.json();
+        
+        if (data.sucesso) {
+            // Atualizar imagem na tela
+            const slideContainer = document.querySelector(`[data-slide-index="${slideIndex}"]`);
+            const img = slideContainer ? slideContainer.querySelector('img') : null;
+            if (img) {
+                img.src = data.imagem_url;
+            }
+            if (typeof Toast !== 'undefined') {
+                Toast.sucesso(data.mensagem);
+            }
+        } else {
+            alert(data.erro || 'Erro na regeneração.');
+        }
+    } catch(e) {
+        alert('Erro de conexão.');
+    }
+}
+
+async function atualizarTextoSlide(conteudoId, slideIndex, texto, cta = '') {
+    const fd = new FormData();
+    fd.append('csrf_token', '<?= Csrf::token() ?>');
+    fd.append('conteudo_id', conteudoId);
+    fd.append('slide_index', slideIndex);
+    fd.append('texto', texto);
+    fd.append('cta', cta);
+    
+    try {
+        const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/atualizar-slide', { method: 'POST', body: fd });
+        const data = await res.json();
+        
+        if (data.sucesso) {
+            // Feedback sutil de salvamento
+            if (typeof Toast !== 'undefined') {
+                Toast.sucesso('Texto salvo automaticamente');
+            }
+        }
+    } catch(e) {
+        console.error('Erro ao salvar texto:', e);
+    }
+}
+
+function salvarRascunho() {
+    if (typeof Toast !== 'undefined') {
+        Toast.sucesso('Rascunho salvo automaticamente!');
+    } else {
+        alert('Rascunho salvo!');
+    }
+}
+
+function descartarConteudo() {
+    if (confirm('Descartar este conteúdo? Esta ação não pode ser desfeita.')) {
+        window.location.href = '<?= APP_URL ?>/maquina-de-conteudo/marca?id=1';
+    }
+}
+
+// Contador de caracteres para legenda
+const legendaTextarea = document.querySelector('textarea[rows="5"]');
+if (legendaTextarea) {
+    legendaTextarea.addEventListener('input', function() {
+        const charCount = document.getElementById('char-count');
+        if (charCount) {
+            charCount.textContent = this.value.length;
+        }
+    });
 }
 </script>
 

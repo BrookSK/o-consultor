@@ -245,6 +245,29 @@ class DashboardController
      */
     private function dadosCliente(array &$dados): void
     {
+        $usuario = $dados['usuario'];
+        
+        // Verificar se onboarding foi concluído
+        $usuarioCompleto = User::buscarPorId($usuario['id']);
+        $onboardingConcluido = $usuarioCompleto['onboarding_concluido'] ?? false;
+        
+        // Calcular progresso da jornada
+        $jornada = [
+            ['chave' => 'onboarding', 'label' => 'Onboarding completo', 'completo' => $onboardingConcluido],
+            ['chave' => 'diagnostico', 'label' => 'Diagnóstico realizado', 'completo' => false], // TODO: verificar no banco
+            ['chave' => 'plano', 'label' => 'Plano de ação criado', 'completo' => false], // TODO: verificar no banco  
+            ['chave' => 'sop', 'label' => 'Primeiro SOP aprovado', 'completo' => false], // TODO: verificar no banco
+            ['chave' => 'academy', 'label' => 'Academy vinculada', 'completo' => !empty($usuarioCompleto['email_academy'])],
+        ];
+        
+        $totalEtapas = count($jornada);
+        $etapasConcluidas = array_reduce($jornada, fn($acc, $item) => $acc + ($item['completo'] ? 1 : 0), 0);
+        $percentualConclusao = $totalEtapas > 0 ? round(($etapasConcluidas / $totalEtapas) * 100) : 0;
+        
+        $dados['onboarding_concluido'] = $onboardingConcluido;
+        $dados['jornada'] = $jornada;
+        $dados['percentual_conclusao'] = $percentualConclusao;
+        
         $dados['kpis'] = [
             [
                 'titulo' => 'Maturidade',

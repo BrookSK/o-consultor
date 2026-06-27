@@ -56,26 +56,28 @@
     <div x-show="step===3" style="display:none" class="p-8">
         <h2 class="text-xl font-bold text-gray-800 mb-2 text-center">Conte-nos sobre sua empresa</h2>
         <p class="text-sm text-gray-500 text-center mb-6">Informações básicas para personalizar sua experiência.</p>
-        <div class="space-y-4 max-w-md mx-auto">
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Nome da empresa</label><input type="text" x-model="form.empresa" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary" placeholder="Nome da sua empresa"></div>
+        <form @submit.prevent="salvarStep2()" class="space-y-4 max-w-md mx-auto">
             <div><label class="block text-sm font-medium text-gray-700 mb-1">Setor</label>
-                <select x-model="form.setor" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                <select x-model="form.setor" required class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
                     <option value="">Selecione...</option>
                     <option>Tecnologia</option><option>Varejo</option><option>Serviços</option><option>Saúde</option><option>Construção</option><option>Alimentação</option><option>Educação</option><option>Indústria</option><option>Logística</option><option>Costura/Moda</option><option>Financeiro</option><option>Jurídico</option><option>Imobiliário</option><option>Outro</option>
                 </select>
             </div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Colaboradores</label><input type="number" x-model="form.colaboradores" min="1" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary" placeholder="Quantas pessoas na empresa?"></div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Colaboradores</label><input type="number" x-model="form.colaboradores" min="1" required class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary" placeholder="Quantas pessoas na empresa?"></div>
             <div><label class="block text-sm font-medium text-gray-700 mb-1">Faturamento mensal</label>
-                <select x-model="form.faturamento" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                <select x-model="form.faturamento" required class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
                     <option value="">Selecione...</option>
                     <option>Até R$ 50 mil</option><option>R$ 50-100 mil</option><option>R$ 100-300 mil</option><option>R$ 300-500 mil</option><option>R$ 500 mil - R$ 1 milhão</option><option>Acima de R$ 1 milhão</option>
                 </select>
             </div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Principal desafio</label><textarea x-model="form.desafio" rows="2" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary resize-none" placeholder="Qual o maior desafio da sua empresa hoje?"></textarea></div>
-        </div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Principal desafio</label><textarea x-model="form.desafio" rows="2" required class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary resize-none" placeholder="Qual o maior desafio da sua empresa hoje?"></textarea></div>
+        </form>
         <div class="flex justify-between mt-6">
             <button @click="step=2" class="text-sm text-gray-500 hover:text-gray-700">← Voltar</button>
-            <button @click="step=4" class="bg-primary text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-primary-700">Próximo →</button>
+            <button @click="salvarStep2()" class="bg-primary text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-primary-700" :disabled="loading">
+                <span x-show="!loading">Próximo →</span>
+                <span x-show="loading">Salvando...</span>
+            </button>
         </div>
     </div>
 
@@ -109,14 +111,20 @@
                 <button @click="temConta=false" :class="temConta===false?'bg-primary text-white':'bg-gray-100 text-gray-700'" class="flex-1 py-2.5 rounded-lg text-sm font-medium transition">Não tenho</button>
             </div>
             <div x-show="temConta===true" class="space-y-3">
-                <input type="email" placeholder="email@myacademy.com.br" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
-                <button @click="concluir()" class="w-full bg-accent text-white py-2.5 rounded-lg text-sm font-medium hover:bg-orange-700">Vincular agora</button>
+                <input type="email" x-model="form.email_academy" placeholder="email@myacademy.com.br" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                <button @click="salvarAcademy(form.email_academy)" :disabled="loading" class="w-full bg-accent text-white py-2.5 rounded-lg text-sm font-medium hover:bg-orange-700">
+                    <span x-show="!loading">Vincular agora</span>
+                    <span x-show="loading">Finalizando...</span>
+                </button>
             </div>
             <div x-show="temConta===false" class="space-y-3">
                 <p class="text-xs text-gray-500">Criaremos seu acesso. Você receberá um convite por email.</p>
-                <button @click="concluir()" class="w-full bg-primary text-white py-2.5 rounded-lg text-sm font-medium hover:bg-primary-700">Criar conta Academy</button>
+                <button @click="salvarAcademy()" :disabled="loading" class="w-full bg-primary text-white py-2.5 rounded-lg text-sm font-medium hover:bg-primary-700">
+                    <span x-show="!loading">Criar conta Academy</span>
+                    <span x-show="loading">Finalizando...</span>
+                </button>
             </div>
-            <button @click="concluir()" class="mt-4 text-sm text-gray-400 hover:text-gray-600">Fazer isso depois</button>
+            <button @click="salvarAcademy()" :disabled="loading" class="mt-4 text-sm text-gray-400 hover:text-gray-600">Fazer isso depois</button>
         </div>
     </div>
 </div>
@@ -125,7 +133,67 @@
 function onboardingWizard() {
     return {
         step: 1,
-        form: { empresa: '', setor: '', colaboradores: '', faturamento: '', desafio: '' },
+        loading: false,
+        form: { setor: '', colaboradores: '', faturamento: '', desafio: '', email_academy: '' },
+        
+        async salvarStep2() {
+            if (!this.form.setor || !this.form.colaboradores || !this.form.faturamento || !this.form.desafio) {
+                alert('Todos os campos são obrigatórios');
+                return;
+            }
+            
+            this.loading = true;
+            try {
+                const fd = new FormData();
+                fd.append('csrf_token', '<?= Csrf::token() ?>');
+                fd.append('step', '2');
+                fd.append('setor', this.form.setor);
+                fd.append('colaboradores', this.form.colaboradores);
+                fd.append('faturamento', this.form.faturamento);
+                fd.append('principal_desafio', this.form.desafio);
+                
+                const res = await fetch('<?= APP_URL ?>/onboarding/salvar-step', { method:'POST', body:fd });
+                const data = await res.json();
+                
+                if (data.sucesso) {
+                    this.step = data.proximo_step;
+                } else {
+                    alert(data.erro || 'Erro ao salvar dados');
+                }
+            } catch(e) {
+                alert('Erro na conexão');
+            } finally {
+                this.loading = false;
+            }
+        },
+        
+        async salvarAcademy(emailAcademy = null) {
+            this.loading = true;
+            try {
+                const fd = new FormData();
+                fd.append('csrf_token', '<?= Csrf::token() ?>');
+                fd.append('step', '4');
+                if (emailAcademy) {
+                    fd.append('email_academy', emailAcademy);
+                }
+                
+                const res = await fetch('<?= APP_URL ?>/onboarding/salvar-step', { method:'POST', body:fd });
+                const data = await res.json();
+                
+                if (data.sucesso) {
+                    if (data.concluido) {
+                        window.location.href = data.redirect || '<?= APP_URL ?>/dashboard';
+                    }
+                } else {
+                    alert(data.erro || 'Erro ao finalizar onboarding');
+                }
+            } catch(e) {
+                window.location.href = '<?= APP_URL ?>/dashboard';
+            } finally {
+                this.loading = false;
+            }
+        },
+        
         async concluir() {
             const fd = new FormData();
             fd.append('csrf_token', '<?= Csrf::token() ?>');
