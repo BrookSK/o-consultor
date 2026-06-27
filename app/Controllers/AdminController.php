@@ -1219,74 +1219,21 @@ class AdminController
         Csrf::verificar();
 
         $grupo = htmlspecialchars(trim($_POST['grupo'] ?? 'geral'));
-        $configs = [];
-        
-        // Extrair configurações do POST
-        foreach ($_POST as $key => $value) {
-            if (strpos($key, 'config[') === 0) {
-                $configKey = str_replace(['config[', ']'], '', $key);
-                $configs[$configKey] = is_string($value) ? trim($value) : $value;
-            }
-        }
-
-        $salvos = 0;
-        $erros = [];
+        $configs = $_POST['config'] ?? [];
 
         foreach ($configs as $chave => $valor) {
-            // Determinar grupo da configuração se não especificado
-            $grupoConfig = $grupo;
-            if ($grupo === 'geral') {
-                if (strpos($chave, 'openai_') === 0) $grupoConfig = 'api_openai';
-                elseif (strpos($chave, 'anthropic_') === 0) $grupoConfig = 'api_anthropic';
-                elseif (strpos($chave, 'perplexity_') === 0) $grupoConfig = 'api_perplexity';
-                elseif (strpos($chave, 'academy_') === 0) $grupoConfig = 'academy';
-                elseif (strpos($chave, 'smtp_') === 0) $grupoConfig = 'smtp';
-                elseif (strpos($chave, 'modulo_') === 0) $grupoConfig = 'modulos';
-                elseif (strpos($chave, 'notif_') === 0) $grupoConfig = 'notificacoes';
-                elseif (strpos($chave, 'api_') === 0) $grupoConfig = 'api_config';
-            }
-
-            // Não salvar valores mascarados de senha
-            if ($valor === '••••••••••••••••') {
-                continue;
-            }
-
-            $descricao = $this->getDescricaoConfig($chave);
-            
-            if (Configuracao::set($chave, $valor, $grupoConfig, $descricao)) {
-                $salvos++;
-            } else {
-                $erros[] = $chave;
-            }
+            $chave = htmlspecialchars(trim($chave));
+            $valor = trim($valor);
+            Configuracao::set($chave, $valor, $grupo);
         }
 
         // Limpar cache de configurações
         Configuracao::limparCache();
 
-        Logger::acao('Configurações salvas', [
-            'grupo' => $grupo, 
-            'chaves_salvas' => $salvos,
-            'chaves_erro' => $erros
-        ]);
+        Logger::acao('Configurações salvas', ['grupo' => $grupo, 'chaves' => array_keys($configs)]);
 
         header('Content-Type: application/json');
-        
-        if ($salvos > 0 && empty($erros)) {
-            echo json_encode([
-                'sucesso' => true, 
-                'mensagem' => "Configurações salvas com sucesso! ({$salvos} items)"
-            ]);
-        } elseif ($salvos > 0 && !empty($erros)) {
-            echo json_encode([
-                'sucesso' => true, 
-                'mensagem' => "Configurações salvas com avisos. {$salvos} salvas, " . count($erros) . " com erro."
-            ]);
-        } else {
-            echo json_encode([
-                'sucesso' => false, 
-                'erro' => 'Nenhuma configuração foi salva. Verifique os dados.'
-            ]);
-        }
+        echo json_encode(['sucesso' => true, 'mensagem' => 'Configurações salvas com sucesso!']);
         exit;
     }
 

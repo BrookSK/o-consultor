@@ -428,32 +428,9 @@ async function salvarConfig(grupo) {
             fd.append(el.name, el.value);
         }
     });
-    
-    try {
-        const res = await fetch('<?= APP_URL ?>/admin/configuracoes/salvar', { 
-            method: 'POST', 
-            body: fd 
-        });
-        const data = await res.json();
-        
-        if (data.sucesso) {
-            if (typeof showNotifToast !== 'undefined') {
-                showNotifToast(data.mensagem, 'sucesso');
-            } else {
-                alert(data.mensagem);
-            }
-            
-            // Recarregar a página após salvar para mostrar novos valores
-            if (grupo === 'apis' || grupo === 'smtp' || grupo === 'academy') {
-                setTimeout(() => location.reload(), 1000);
-            }
-        } else {
-            alert(data.erro || 'Erro ao salvar configurações');
-        }
-    } catch (error) {
-        console.error('Erro:', error);
-        alert('Erro de conexão ao salvar configurações');
-    }
+    const res = await fetch('<?= APP_URL ?>/admin/configuracoes/salvar', { method:'POST', body:fd });
+    const data = await res.json();
+    if (data.sucesso) { if (typeof Toast !== 'undefined') Toast.sucesso(data.mensagem); else alert(data.mensagem); }
 }
 async function testarSmtp() {
     const fd = new FormData(); fd.append('csrf_token', '<?= Csrf::token() ?>');
