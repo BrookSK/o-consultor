@@ -897,10 +897,10 @@ class SopController
         if (!isset($raciPadroes[$sopId])) {
             if (strpos($sopId, '-COM-') !== false) {
                 return in_array($cargo, ['Diretor TI', 'Gerente Comercial']) ? 'A' : 
-                       in_array($cargo, ['Vendedor', 'Analista Comercial']) ? 'R' : 'I';
+                       (in_array($cargo, ['Vendedor', 'Analista Comercial']) ? 'R' : 'I');
             } elseif (strpos($sopId, '-FIN-') !== false) {
                 return in_array($cargo, ['Diretor Financeiro', 'Controller']) ? 'A' :
-                       in_array($cargo, ['Analista Financeiro', 'Contador']) ? 'R' : 'I';
+                       (in_array($cargo, ['Analista Financeiro', 'Contador']) ? 'R' : 'I');
             }
             return 'I'; // Padrão para SOPs não mapeados
         }

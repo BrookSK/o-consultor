@@ -77,7 +77,7 @@ class DashboardController
                 [
                     'titulo' => 'Clientes Ativos',
                     'valor' => (string) $totalClientes,
-                    'variacao' => $this->calcularVariacaoMensal('clientes_ativos', $totalClientes)
+                    'variacao' => $this->calcularVariacaoMensal('clientes_ativos', $totalClientes),
                     'direcao' => 'up',
                     'icone' => 'users',
                     'cor' => 'blue',
@@ -85,7 +85,7 @@ class DashboardController
                 [
                     'titulo' => 'Diagnósticos no Mês',
                     'valor' => (string) $diagnosticosNoMes,
-                    'variacao' => $this->calcularVariacaoMensal('diagnosticos_mes', $diagnosticosNoMes)
+                    'variacao' => $this->calcularVariacaoMensal('diagnosticos_mes', $diagnosticosNoMes),
                     'direcao' => 'up',
                     'icone' => 'clipboard',
                     'cor' => 'green',
@@ -93,7 +93,7 @@ class DashboardController
                 [
                     'titulo' => 'Planos Ativos',
                     'valor' => (string) $planosAtivos,
-                    'variacao' => $this->calcularVariacaoMensal('planos_ativos', $planosAtivos)
+                    'variacao' => $this->calcularVariacaoMensal('planos_ativos', $planosAtivos),
                     'direcao' => 'up',
                     'icone' => 'target',
                     'cor' => 'purple',
@@ -101,7 +101,7 @@ class DashboardController
                 [
                     'titulo' => 'SOPs Gerados',
                     'valor' => (string) $totalSOPs,
-                    'variacao' => $this->calcularVariacaoMensal('sops_gerados', $totalSOPs)
+                    'variacao' => $this->calcularVariacaoMensal('sops_gerados', $totalSOPs),
                     'direcao' => 'up',
                     'icone' => 'book',
                     'cor' => 'indigo',
@@ -109,7 +109,7 @@ class DashboardController
                 [
                     'titulo' => 'MRR',
                     'valor' => $mrrFormatado,
-                    'variacao' => $this->calcularVariacaoMensal('mrr_total', $mrrTotal)
+                    'variacao' => $this->calcularVariacaoMensal('mrr_total', $mrrTotal),
                     'direcao' => 'up',
                     'icone' => 'currency',
                     'cor' => 'orange',
@@ -117,7 +117,7 @@ class DashboardController
                 [
                     'titulo' => 'Churn',
                     'valor' => $churnPercent . '%',
-                    'variacao' => $this->calcularVariacaoMensal('churn_rate', $churnPercent)
+                    'variacao' => $this->calcularVariacaoMensal('churn_rate', $churnPercent),
                     'direcao' => 'down',
                     'icone' => 'alert',
                     'cor' => 'red',

@@ -265,7 +265,10 @@ class ConteudoController
             'setor' => $empresa['segmento'] ?? 'Tecnologia',
             'lingua' => $empresa['lingua_principal'] ?? 'Português',
             'sites' => array_column($sites, 'site_url'),
-            // Buscar palavras-chave e configurações reais da empresa
+        ];
+
+        // Buscar palavras-chave e configurações reais da empresa
+        try {
             $configBusca = Database::queryOne(
                 "SELECT palavras_chave, frequencia_busca FROM configuracoes_conteudo WHERE empresa_id = :empresa_id",
                 ['empresa_id' => $empresa['id']]
@@ -273,11 +276,14 @@ class ConteudoController
             
             $palavrasChave = $configBusca ? explode(',', $configBusca['palavras_chave']) : ['IA empresarial', 'automação', 'produtividade'];
             $frequencia = $configBusca['frequencia_busca'] ?? 'diaria';
-            
-            'palavras_chave' => $palavrasChave,
-            'frequencia' => $frequencia,
-            'ultimo_update' => $ultimaBusca['criado_em'] ?? date('Y-m-d H:i:s'),
-        ];
+        } catch (Exception $e) {
+            $palavrasChave = ['IA empresarial', 'automação', 'produtividade'];
+            $frequencia = 'diaria';
+        }
+
+        $dados['perfil_busca']['palavras_chave'] = $palavrasChave;
+        $dados['perfil_busca']['frequencia'] = $frequencia;
+        $dados['perfil_busca']['ultimo_update'] = $ultimaBusca['criado_em'] ?? date('Y-m-d H:i:s');
     }
 
     /**
