@@ -67,3 +67,25 @@ class Flash
         return $html;
     }
 }
+    /**
+     * Atalhos para métodos comuns
+     */
+    public static function sucesso(string $mensagem): void
+    {
+        self::set('sucesso', $mensagem);
+    }
+
+    public static function erro(string $mensagem): void
+    {
+        self::set('erro', $mensagem);
+    }
+
+    public static function aviso(string $mensagem): void
+    {
+        self::set('aviso', $mensagem);
+    }
+
+    public static function info(string $mensagem): void
+    {
+        self::set('info', $mensagem);
+    }

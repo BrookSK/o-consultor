@@ -319,12 +319,17 @@ class AdminController
             
             Database::commit();
             
-            AuditLog::registrar('admin_criar_cliente', [
-                'empresa_id' => $empresaId,
-                'empresa_nome' => $nomeEmpresa,
-                'usuario_id' => $usuarioId,
-                'email_enviado' => $emailEnviado
-            ]);
+            AuditLog::registrar(
+                'admin_criar_cliente',
+                'admin',
+                "Novo cliente criado: {$nomeEmpresa}",
+                [
+                    'empresa_id' => $empresaId,
+                    'empresa_nome' => $nomeEmpresa,
+                    'usuario_id' => $usuarioId,
+                    'email_enviado' => $emailEnviado
+                ]
+            );
             
             if ($emailEnviado) {
                 Flash::set('sucesso', "Cliente {$nomeEmpresa} criado com sucesso! Email de boas-vindas enviado para {$emailResponsavel}");
@@ -528,12 +533,17 @@ class AdminController
             
             Database::commit();
             
-            AuditLog::registrar('admin_trocar_consultor', [
-                'empresa_id' => $empresaId,
-                'consultor_anterior' => $empresa['consultor_id'],
-                'consultor_novo' => $novoConsultorId,
-                'observacoes' => $observacoes
-            ]);
+            AuditLog::registrar(
+                'admin_trocar_consultor',
+                'admin',
+                "Consultor alterado para empresa {$empresa['nome']}",
+                [
+                    'empresa_id' => $empresaId,
+                    'consultor_anterior' => $empresa['consultor_id'],
+                    'consultor_novo' => $novoConsultorId,
+                    'observacoes' => $observacoes
+                ]
+            );
             
             header('Content-Type: application/json');
             echo json_encode([
@@ -628,12 +638,17 @@ class AdminController
             
             Database::commit();
             
-            AuditLog::registrar('admin_alterar_status_cliente', [
-                'empresa_id' => $empresaId,
-                'status_anterior' => $empresa['status'],
-                'status_novo' => $novoStatus,
-                'motivo' => $motivo
-            ]);
+            AuditLog::registrar(
+                'admin_alterar_status_cliente',
+                'admin',
+                "Status da empresa {$empresa['nome']} alterado de {$empresa['status']} para {$novoStatus}",
+                [
+                    'empresa_id' => $empresaId,
+                    'status_anterior' => $empresa['status'],
+                    'status_novo' => $novoStatus,
+                    'motivo' => $motivo
+                ]
+            );
             
             $statusLabel = match($novoStatus) {
                 'ativo' => 'Ativo',
@@ -687,17 +702,27 @@ class AdminController
             if ($sucesso) {
                 // Limpar cache de status se estiver desativando
                 if ($status === 0) {
-                    Database::execute(
-                        "UPDATE api_status_cache SET status = 'desconhecido', ultimo_teste = NULL WHERE provedor = :provedor",
-                        ['provedor' => $provedor]
-                    );
+                    try {
+                        Database::execute(
+                            "UPDATE api_status_cache SET status = 'desconhecido', ultimo_teste = NULL WHERE provedor = :provedor",
+                            ['provedor' => $provedor]
+                        );
+                    } catch (Exception $e) {
+                        // Tabela pode não existir ainda - ignorar erro
+                        Logger::info('Tabela api_status_cache não existe ainda', ['erro' => $e->getMessage()]);
+                    }
                 }
                 
-                AuditLog::registrar('api_toggle', [
-                    'provedor' => $provedor,
-                    'novo_status' => $novoStatus,
-                    'admin_id' => Auth::id()
-                ]);
+                AuditLog::registrar(
+                    'api_toggle',
+                    'admin',
+                    "Toggle API {$provedor} para {$statusLabel}",
+                    [
+                        'provedor' => $provedor,
+                        'novo_status' => $novoStatus,
+                        'admin_id' => Auth::id()
+                    ]
+                );
                 
                 $statusLabel = $status ? 'ativada' : 'desativada';
                 header('Content-Type: application/json');
@@ -777,16 +802,26 @@ class AdminController
             
             if ($sucesso) {
                 // Invalidar cache de status para forçar novo teste
-                Database::execute(
-                    "UPDATE api_status_cache SET status = 'desconhecido', ultimo_teste = NULL WHERE provedor = :provedor",
-                    ['provedor' => $provedor]
-                );
+                try {
+                    Database::execute(
+                        "UPDATE api_status_cache SET status = 'desconhecido', ultimo_teste = NULL WHERE provedor = :provedor",
+                        ['provedor' => $provedor]
+                    );
+                } catch (Exception $e) {
+                    // Tabela pode não existir ainda - ignorar erro
+                    Logger::info('Tabela api_status_cache não existe ainda', ['erro' => $e->getMessage()]);
+                }
                 
-                AuditLog::registrar('api_chave_alterada', [
-                    'provedor' => $provedor,
-                    'admin_id' => Auth::id(),
-                    'chave_prefixo' => substr($chave, 0, 8) . '...' // Log apenas início para auditoria
-                ]);
+                AuditLog::registrar(
+                    'api_chave_alterada',
+                    'admin',
+                    "Chave da API {$provedor} foi alterada",
+                    [
+                        'provedor' => $provedor,
+                        'admin_id' => Auth::id(),
+                        'chave_prefixo' => substr($chave, 0, 8) . '...' // Log apenas início para auditoria
+                    ]
+                );
                 
                 header('Content-Type: application/json');
                 echo json_encode([
@@ -851,23 +886,28 @@ class AdminController
             $resultado = $this->fazerTesteApi($provedor, $chave);
             
             // Atualizar cache de status
-            Database::execute(
-                "UPDATE api_status_cache SET 
-                 status = :status, 
-                 ultimo_teste = NOW(), 
-                 erro_detalhes = :erro,
-                 tempo_resposta_ms = :tempo,
-                 tentativas_falhas = CASE WHEN :sucesso THEN 0 ELSE tentativas_falhas + 1 END,
-                 proximo_teste = DATE_ADD(NOW(), INTERVAL 1 HOUR)
-                 WHERE provedor = :provedor",
-                [
-                    'provedor' => $provedor,
-                    'status' => $resultado['sucesso'] ? 'ativa' : 'erro',
-                    'erro' => $resultado['erro'] ?? null,
-                    'tempo' => $resultado['tempo_ms'] ?? null,
-                    'sucesso' => $resultado['sucesso']
-                ]
-            );
+            try {
+                Database::execute(
+                    "UPDATE api_status_cache SET 
+                     status = :status, 
+                     ultimo_teste = NOW(), 
+                     erro_detalhes = :erro,
+                     tempo_resposta_ms = :tempo,
+                     tentativas_falhas = CASE WHEN :sucesso THEN 0 ELSE tentativas_falhas + 1 END,
+                     proximo_teste = DATE_ADD(NOW(), INTERVAL 1 HOUR)
+                     WHERE provedor = :provedor",
+                    [
+                        'provedor' => $provedor,
+                        'status' => $resultado['sucesso'] ? 'ativa' : 'erro',
+                        'erro' => $resultado['erro'] ?? null,
+                        'tempo' => $resultado['tempo_ms'] ?? null,
+                        'sucesso' => $resultado['sucesso']
+                    ]
+                );
+            } catch (Exception $e) {
+                // Tabela pode não existir ainda - ignorar erro
+                Logger::info('Tabela api_status_cache não existe ainda', ['erro' => $e->getMessage()]);
+            }
             
             // Log da tentativa
             Database::execute(

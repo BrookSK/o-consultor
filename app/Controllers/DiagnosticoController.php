@@ -93,8 +93,9 @@ class DiagnosticoController
                     ['empresa_id' => $empresaId]
                 );
             } catch (Exception $e) {
-                // Tabela pode não existir ainda
+                // Tabela pode não existir ainda - ignorar erro silenciosamente
                 $documentosExistentes = [];
+                Logger::info('Tabela documentos_empresa não existe ainda', ['erro' => $e->getMessage()]);
             }
         }
         
@@ -292,7 +293,7 @@ class DiagnosticoController
             ]);
             
         } catch (Exception $e) {
-            Logger::erro('Erro ao salvar bloco diagnóstico: ' . $e->getMessage());
+            Logger::error('Erro ao salvar bloco diagnóstico: ' . $e->getMessage());
             header('Content-Type: application/json');
             echo json_encode(['sucesso' => false, 'mensagem' => 'Erro ao salvar: ' . $e->getMessage()]);
         }
@@ -338,8 +339,17 @@ class DiagnosticoController
             if ($this->apiConfigurada()) {
                 // Buscar documentos relevantes da empresa
                 $empresaId = $rascunho['empresa_id'] ?? Auth::empresa();
-                $documentosRelevantes = DocumentoProcessor::buscarDocumentosRelevantes($empresaId);
-                $contextoDocumentos = DocumentoProcessor::construirContextoDocumentos($documentosRelevantes);
+                $documentosRelevantes = [];
+                $contextoDocumentos = '';
+                
+                if (class_exists('DocumentoProcessor') && DocumentoProcessor::isAvailable()) {
+                    try {
+                        $documentosRelevantes = DocumentoProcessor::buscarDocumentosRelevantes($empresaId);
+                        $contextoDocumentos = DocumentoProcessor::construirContextoDocumentos($documentosRelevantes);
+                    } catch (Exception $e) {
+                        Logger::warning('Erro ao buscar documentos para diagnóstico', ['erro' => $e->getMessage()]);
+                    }
+                }
                 
                 $resultadoIA = $this->chamarOpenAIAnalise($dadosCompletos, $contextoDocumentos);
                 if ($resultadoIA) {
@@ -347,7 +357,7 @@ class DiagnosticoController
                 }
                 
                 // Registrar uso dos documentos
-                if (!empty($documentosRelevantes)) {
+                if (class_exists('DocumentoProcessor') && !empty($documentosRelevantes)) {
                     foreach ($documentosRelevantes as $doc) {
                         DocumentoProcessor::registrarUso($doc['id'], $empresaId, Auth::id(), 'diagnostico', null);
                     }
@@ -439,7 +449,7 @@ class DiagnosticoController
             ]);
             
         } catch (Exception $e) {
-            Logger::erro('Erro ao gerar diagnóstico: ' . $e->getMessage());
+            Logger::error('Erro ao gerar diagnóstico: ' . $e->getMessage());
             header('Content-Type: application/json');
             echo json_encode(['sucesso' => false, 'mensagem' => 'Erro ao gerar diagnóstico: ' . $e->getMessage()]);
         }
@@ -470,37 +480,51 @@ class DiagnosticoController
             exit;
         }
         
-        // Processar uploads
-        $resultados = DocumentoProcessor::processarUploads($_FILES['documentos'], $empresaId, $usuarioId);
-        
-        // Contar sucessos e falhas
-        $sucessos = array_filter($resultados, fn($r) => $r['sucesso']);
-        $falhas = array_filter($resultados, fn($r) => !$r['sucesso']);
-        
-        $mensagem = sprintf(
-            '%d documento(s) enviado(s) com sucesso',
-            count($sucessos)
-        );
-        
-        if (!empty($falhas)) {
-            $mensagem .= sprintf(', %d falha(s)', count($falhas));
+        // Verificar se a classe DocumentoProcessor está disponível
+        if (!class_exists('DocumentoProcessor')) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Sistema de processamento de documentos não está disponível.']);
+            exit;
         }
         
-        Logger::acao('Upload de documentos para diagnóstico', [
-            'empresa_id' => $empresaId,
-            'total_enviados' => count($resultados),
-            'sucessos' => count($sucessos),
-            'falhas' => count($falhas)
-        ]);
+        try {
+            // Processar uploads
+            $resultados = DocumentoProcessor::processarUploads($_FILES['documentos'], $empresaId, $usuarioId);
+            
+            // Contar sucessos e falhas
+            $sucessos = array_filter($resultados, fn($r) => $r['sucesso']);
+            $falhas = array_filter($resultados, fn($r) => !$r['sucesso']);
+            
+            $mensagem = sprintf(
+                '%d documento(s) enviado(s) com sucesso',
+                count($sucessos)
+            );
+            
+            if (!empty($falhas)) {
+                $mensagem .= sprintf(', %d falha(s)', count($falhas));
+            }
+            
+            Logger::acao('Upload de documentos para diagnóstico', [
+                'empresa_id' => $empresaId,
+                'total_enviados' => count($resultados),
+                'sucessos' => count($sucessos),
+                'falhas' => count($falhas)
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => !empty($sucessos),
+                'mensagem' => $mensagem,
+                'resultados' => $resultados,
+                'total_sucessos' => count($sucessos),
+                'total_falhas' => count($falhas)
+            ]);
+        } catch (Exception $e) {
+            Logger::error('Erro no upload de documentos: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno no processamento dos documentos.']);
+        }
         
-        header('Content-Type: application/json');
-        echo json_encode([
-            'sucesso' => !empty($sucessos),
-            'mensagem' => $mensagem,
-            'resultados' => $resultados,
-            'total_sucessos' => count($sucessos),
-            'total_falhas' => count($falhas)
-        ]);
         exit;
     }
 
@@ -642,7 +666,7 @@ class DiagnosticoController
             ]);
             
         } catch (Exception $e) {
-            Logger::erro('Erro ao salvar diagnóstico: ' . $e->getMessage());
+            Logger::error('Erro ao salvar diagnóstico: ' . $e->getMessage());
             header('Content-Type: application/json');
             echo json_encode([
                 'sucesso' => false, 
@@ -769,7 +793,7 @@ class DiagnosticoController
             }
             
         } catch (Exception $e) {
-            Logger::erro('Erro na análise IA do diagnóstico: ' . $e->getMessage());
+            Logger::error('Erro na análise IA do diagnóstico: ' . $e->getMessage());
         }
         
         return null;

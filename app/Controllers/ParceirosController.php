@@ -25,7 +25,7 @@ class ParceirosController
                 ['empresa_id' => $empresaId]
             );
         } catch (\Exception $e) {
-            Logger::erro('Erro ao buscar parceiros: ' . $e->getMessage());
+            Logger::error('Erro ao buscar parceiros: ' . $e->getMessage());
         }
         
         $dados = ['parceiros' => $parceiros];

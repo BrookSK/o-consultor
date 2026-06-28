@@ -32,17 +32,17 @@
             <tbody class="divide-y divide-gray-100">
             <?php foreach ($dados['usuarios'] as $u):
                 $perfilBadge = match($u['perfil']) { 'ADMIN_HOLDING' => 'bg-red-100 text-red-700', 'CONSULTOR_INTERNO' => 'bg-blue-100 text-blue-700', default => 'bg-green-100 text-green-700' };
-                $statusBadge = ($u['ativo'] ?? 1) ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500';
+                $statusBadge = ($u['status'] ?? 'ativo') === 'ativo' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500';
             ?>
             <tr class="hover:bg-gray-50">
                 <td class="px-4 py-3 font-medium text-gray-800"><?= htmlspecialchars($u['nome']) ?></td>
                 <td class="px-4 py-3 text-gray-600 text-xs"><?= htmlspecialchars($u['email']) ?></td>
                 <td class="px-4 py-3 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold <?= $perfilBadge ?>"><?= $u['perfil'] ?></span></td>
-                <td class="px-4 py-3 text-center text-gray-600 text-xs"><?= htmlspecialchars($u['empresa_nome'] ?? 'N/A') ?></td>
-                <td class="px-4 py-3 text-center"><span class="px-2 py-0.5 rounded-full text-xs font-medium <?= $statusBadge ?>"><?= ($u['ativo'] ?? 1) ? 'Ativo' : 'Inativo' ?></span></td>
-                <td class="px-4 py-3 text-center text-gray-400 text-xs"><?= isset($u['ultima_atividade']) ? date('d/m/Y', strtotime($u['ultima_atividade'])) : 'Nunca' ?></td>
+                <td class="px-4 py-3 text-center text-gray-600 text-xs"><?= htmlspecialchars($u['empresa'] ?? 'N/A') ?></td>
+                <td class="px-4 py-3 text-center"><span class="px-2 py-0.5 rounded-full text-xs font-medium <?= $statusBadge ?>"><?= ($u['status'] ?? 'ativo') === 'ativo' ? 'Ativo' : 'Inativo' ?></span></td>
+                <td class="px-4 py-3 text-center text-gray-400 text-xs"><?= isset($u['ultima_atividade']) && $u['ultima_atividade'] ? date('d/m/Y', strtotime($u['ultima_atividade'])) : 'Nunca' ?></td>
                 <td class="px-4 py-3 text-center">
-                    <?php if ($u['academy_vinculada'] ?? false): ?><span class="text-green-600 text-xs font-medium">✓ Sim</span>
+                    <?php if ($u['academy'] ?? false): ?><span class="text-green-600 text-xs font-medium">✓ Sim</span>
                     <?php else: ?><button onclick="alert('Convite enviado para <?= htmlspecialchars($u['email']) ?>! (Em produção: envia email via SMTP)')" class="text-xs px-2 py-1 bg-accent text-white rounded hover:bg-orange-700">Convidar</button><?php endif; ?>
                 </td>
                 <td class="px-4 py-3 text-center"><button onclick="alert('Edição do usuário <?= htmlspecialchars($u['nome']) ?> será disponibilizada em breve.')" class="text-xs text-primary hover:underline">Editar</button></td>

@@ -18,7 +18,7 @@ class SopController
         
         $empresaId = Auth::empresa();
         if (!$empresaId) {
-            Flash::erro('Empresa não identificada.');
+            Flash::set('erro', 'Empresa não identificada.');
             header('Location: ' . APP_URL . '/dashboard');
             exit;
         }
@@ -28,7 +28,7 @@ class SopController
         $diagnostico = Diagnostico::buscarUltimoPorEmpresa($empresaId);
         
         if (!$empresa) {
-            Flash::erro('Empresa não encontrada.');
+            Flash::set('erro', 'Empresa não encontrada.');
             header('Location: ' . APP_URL . '/dashboard');
             exit;
         }
@@ -119,8 +119,11 @@ class SopController
         
         try {
             $areas = [$this->getDepartamentoPorId($sopCodigo)];
-            $documentosRelevantes = DocumentoProcessor::buscarDocumentosRelevantes($empresaId, $areas);
-            $contextoDocumentos = DocumentoProcessor::construirContextoDocumentos($documentosRelevantes);
+            // Verificar se a classe DocumentoProcessor está disponível
+            if (class_exists('DocumentoProcessor')) {
+                $documentosRelevantes = DocumentoProcessor::buscarDocumentosRelevantes($empresaId, $areas);
+                $contextoDocumentos = DocumentoProcessor::construirContextoDocumentos($documentosRelevantes);
+            }
             
             Logger::info('Documentos encontrados para SOP', [
                 'sop_codigo' => $sopCodigo,
@@ -145,8 +148,10 @@ class SopController
             
             if ($sopId) {
                 // Registrar uso dos documentos que contribuíram para o SOP
-                foreach ($documentosRelevantes as $doc) {
-                    DocumentoProcessor::registrarUso($doc['id'], $empresaId, Auth::id(), 'sop_geracao', $sopId);
+                if (class_exists('DocumentoProcessor') && !empty($documentosRelevantes)) {
+                    foreach ($documentosRelevantes as $doc) {
+                        DocumentoProcessor::registrarUso($doc['id'], $empresaId, Auth::id(), 'sop_geracao', $sopId);
+                    }
                 }
                 
                 Logger::acao('SOP gerado via IA', [
@@ -243,7 +248,7 @@ class SopController
 
         $sopId = (int) ($_GET['id'] ?? 0);
         if (!$sopId) {
-            Flash::erro('SOP não encontrado.');
+            Flash::set('erro', 'SOP não encontrado.');
             header('Location: ' . APP_URL . '/manual-operacional');
             exit;
         }
@@ -251,7 +256,7 @@ class SopController
         // Buscar SOP no banco
         $sop = Sop::buscarPorId($sopId);
         if (!$sop || $sop['empresa_id'] != Auth::empresa()) {
-            Flash::erro('SOP não encontrado ou sem permissão.');
+            Flash::set('erro', 'SOP não encontrado ou sem permissão.');
             header('Location: ' . APP_URL . '/manual-operacional');
             exit;
         }
@@ -259,7 +264,7 @@ class SopController
         // Decodificar conteúdo completo
         $conteudoCompleto = json_decode($sop['conteudo_completo'], true);
         if (!$conteudoCompleto) {
-            Flash::erro('Conteúdo do SOP não encontrado ou corrompido.');
+            Flash::set('erro', 'Conteúdo do SOP não encontrado ou corrompido.');
             header('Location: ' . APP_URL . '/manual-operacional');
             exit;
         }
@@ -362,7 +367,7 @@ class SopController
 
         $sopId = (int) ($_GET['id'] ?? 0);
         if (!$sopId) {
-            Flash::erro('SOP não encontrado.');
+            Flash::set('erro', 'SOP não encontrado.');
             header('Location: ' . APP_URL . '/manual-operacional');
             exit;
         }
@@ -370,13 +375,13 @@ class SopController
         // Buscar SOP
         $sop = Sop::buscarPorId($sopId);
         if (!$sop || $sop['empresa_id'] != Auth::empresa()) {
-            Flash::erro('SOP não encontrado ou sem permissão.');
+            Flash::set('erro', 'SOP não encontrado ou sem permissão.');
             header('Location: ' . APP_URL . '/manual-operacional');
             exit;
         }
 
         if ($sop['status'] !== 'ativo') {
-            Flash::aviso('Este SOP ainda não foi aprovado.');
+            Flash::set('aviso', 'Este SOP ainda não foi aprovado.');
             header('Location: ' . APP_URL . '/sop/revisar?id=' . $sopId);
             exit;
         }
@@ -384,7 +389,7 @@ class SopController
         // Decodificar conteúdo completo
         $conteudoCompleto = json_decode($sop['conteudo_completo'], true);
         if (!$conteudoCompleto) {
-            Flash::erro('Conteúdo do SOP não encontrado.');
+            Flash::set('erro', 'Conteúdo do SOP não encontrado.');
             header('Location: ' . APP_URL . '/manual-operacional');
             exit;
         }
@@ -653,7 +658,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         
         $empresaId = Auth::empresa();
         if (!$empresaId) {
-            Flash::erro('Empresa não identificada.');
+            Flash::set('erro', 'Empresa não identificada.');
             header('Location: ' . APP_URL . '/dashboard');
             exit;
         }
@@ -769,7 +774,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
 
         $sopId = (int) ($_GET['id'] ?? 0);
         if (!$sopId) {
-            Flash::erro('SOP não encontrado.');
+            Flash::set('erro', 'SOP não encontrado.');
             header('Location: ' . APP_URL . '/manual-operacional');
             exit;
         }
@@ -777,7 +782,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         // Buscar SOP
         $sop = Sop::buscarPorId($sopId);
         if (!$sop || $sop['empresa_id'] != Auth::empresa()) {
-            Flash::erro('SOP não encontrado ou sem permissão.');
+            Flash::set('erro', 'SOP não encontrado ou sem permissão.');
             header('Location: ' . APP_URL . '/manual-operacional');
             exit;
         }
@@ -812,7 +817,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
 
         $empresaId = Auth::empresa();
         if (!$empresaId) {
-            Flash::erro('Empresa não identificada.');
+            Flash::set('erro', 'Empresa não identificada.');
             header('Location: ' . APP_URL . '/manual-operacional');
             exit;
         }
@@ -824,7 +829,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         );
 
         if (empty($sops)) {
-            Flash::erro('Nenhum SOP aprovado encontrado para exportar.');
+            Flash::set('erro', 'Nenhum SOP aprovado encontrado para exportar.');
             header('Location: ' . APP_URL . '/manual-operacional');
             exit;
         }

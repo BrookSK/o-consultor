@@ -39,7 +39,7 @@ class ConteudoController
         
         $id = (int) ($_GET['id'] ?? 0);
         if (!$id) {
-            Flash::erro('Notícia não encontrada.');
+            Flash::set('erro', 'Notícia não encontrada.');
             header('Location: ' . APP_URL . '/central-de-conteudo');
             exit;
         }
@@ -52,7 +52,7 @@ class ConteudoController
         );
 
         if (!$noticia) {
-            Flash::erro('Notícia não encontrada ou sem permissão.');
+            Flash::set('erro', 'Notícia não encontrada ou sem permissão.');
             header('Location: ' . APP_URL . '/central-de-conteudo');
             exit;
         }

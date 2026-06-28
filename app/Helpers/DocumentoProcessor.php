@@ -11,6 +11,31 @@ class DocumentoProcessor
     private const ALLOWED_TYPES = ['pdf', 'doc', 'docx', 'txt', 'md', 'rtf'];
     
     /**
+     * Verificar se o sistema de documentos está disponível
+     */
+    public static function isAvailable(): bool
+    {
+        try {
+            // Verificar se as constantes necessárias estão definidas
+            if (!defined('UPLOAD_PATH')) {
+                return false;
+            }
+            
+            // Verificar se o diretório base existe
+            if (!is_dir(UPLOAD_PATH)) {
+                return false;
+            }
+            
+            // Verificar se a tabela existe (teste simples)
+            Database::queryOne("SELECT 1 FROM documentos_empresa LIMIT 1");
+            
+            return true;
+        } catch (Exception $e) {
+            return false;
+        }
+    }
+    
+    /**
      * Processar upload de múltiplos documentos
      */
     public static function processarUploads(array $arquivos, int $empresaId, int $usuarioId): array

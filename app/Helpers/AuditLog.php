@@ -19,13 +19,20 @@ class AuditLog
     ): bool {
         try {
             // Se não especificado, usa usuário logado
-            if ($userId === null && Auth::check()) {
-                $userId = Auth::usuarioId();
+            if ($userId === null && class_exists('Auth') && Auth::check()) {
+                $userId = Auth::id();
             }
             
             // Se não especificado, usa empresa do usuário logado
-            if ($empresaId === null && Auth::check()) {
+            if ($empresaId === null && class_exists('Auth') && Auth::check()) {
                 $empresaId = Auth::empresa();
+            }
+
+            // Verificar se a tabela existe antes de tentar inserir
+            $tableExists = Database::queryOne("SHOW TABLES LIKE 'audit_log'");
+            if (!$tableExists) {
+                Logger::info('Tabela audit_log não existe - pulando auditoria');
+                return false;
             }
 
             $sucesso = Database::execute(
@@ -46,7 +53,8 @@ class AuditLog
             return (bool) $sucesso;
 
         } catch (Exception $e) {
-            Logger::error('Erro ao registrar audit log', [
+            // Log da auditoria falhou - apenas registrar no log normal sem causar erro 500
+            Logger::error('Erro ao registrar audit log (tabela pode não existir)', [
                 'erro' => $e->getMessage(),
                 'acao' => $acao,
                 'modulo' => $modulo
