@@ -769,24 +769,41 @@ class AdminController
             exit;
         }
         
-        // Validação básica do formato da chave
+        // Validação básica do formato da chave (mais flexível)
         $formatosValidos = [
-            'openai' => '/^sk-[a-zA-Z0-9]{20,}$/',
-            'perplexity' => '/^pplx-[a-zA-Z0-9]{20,}$/',
-            'anthropic' => '/^sk-ant-[a-zA-Z0-9]{20,}$/'
+            'openai' => '/^sk-[a-zA-Z0-9_-]{20,}$/',
+            'anthropic' => '/^sk-ant-[a-zA-Z0-9_-]{20,}$/',
+            'perplexity' => '/^pplx-[a-zA-Z0-9_-]{20,}$/'
         ];
         
-        if (!preg_match($formatosValidos[$provedor], $chave)) {
+        // DEBUG: Log para identificar o problema
+        Logger::warning("Tentativa de salvar chave API", [
+            'provedor' => $provedor,
+            'chave_length' => strlen($chave),
+            'chave_prefix' => substr($chave, 0, 10) . '...',
+            'user_id' => Auth::id()
+        ]);
+        
+        // Para desenvolvimento/teste, permitir chaves de exemplo
+        $chavesDesenvolvimento = [
+            'openai' => ['sk-test', 'sk-exemplo', 'sk-desenvolvimento'],
+            'anthropic' => ['sk-ant-test', 'sk-ant-exemplo'],  
+            'perplexity' => ['pplx-test', 'pplx-exemplo']
+        ];
+        
+        $isChaveDesenvolvimento = in_array($chave, $chavesDesenvolvimento[$provedor] ?? []);
+        
+        if (!$isChaveDesenvolvimento && isset($formatosValidos[$provedor]) && !preg_match($formatosValidos[$provedor], $chave)) {
             $exemplos = [
-                'openai' => 'sk-...',
-                'perplexity' => 'pplx-...',
-                'anthropic' => 'sk-ant-...'
+                'openai' => 'sk-proj-xxx... (mínimo 30 caracteres)',
+                'anthropic' => 'sk-ant-xxx... (mínimo 30 caracteres)',
+                'perplexity' => 'pplx-xxx... (mínimo 30 caracteres)'
             ];
             
             header('Content-Type: application/json');
             echo json_encode([
                 'sucesso' => false, 
-                'erro' => "Formato inválido. Esperado: {$exemplos[$provedor]}"
+                'erro' => "Formato inválido. Esperado: {$exemplos[$provedor]}. Para testes, use: sk-test"
             ]);
             exit;
         }
@@ -946,6 +963,184 @@ class AdminController
             ]);
         }
         exit;
+    }
+
+    // === MÉTODOS SMTP ===
+
+    /**
+     * Salvar configuração SMTP
+     */
+    public function salvarSmtp(): void
+    {
+        $this->protegerAdmin();
+        Csrf::verificar();
+        
+        $configs = [
+            'smtp_host' => trim($_POST['smtp_host'] ?? ''),
+            'smtp_port' => (int)($_POST['smtp_port'] ?? 587),
+            'smtp_email' => filter_input(INPUT_POST, 'smtp_email', FILTER_SANITIZE_EMAIL),
+            'smtp_nome' => htmlspecialchars(trim($_POST['smtp_nome'] ?? '')),
+            'smtp_usuario' => trim($_POST['smtp_usuario'] ?? ''),
+            'smtp_senha' => trim($_POST['smtp_senha'] ?? ''),
+            'smtp_seguranca' => in_array($_POST['smtp_seguranca'], ['tls', 'ssl', 'none']) ? $_POST['smtp_seguranca'] : 'tls'
+        ];
+        
+        // Validações
+        if (empty($configs['smtp_host']) || empty($configs['smtp_email']) || empty($configs['smtp_usuario']) || empty($configs['smtp_senha'])) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Todos os campos são obrigatórios.']);
+            exit;
+        }
+        
+        if (!filter_var($configs['smtp_email'], FILTER_VALIDATE_EMAIL)) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'E-mail inválido.']);
+            exit;
+        }
+        
+        try {
+            // Salvar cada configuração individualmente
+            foreach ($configs as $chave => $valor) {
+                $criptografar = ($chave === 'smtp_senha') ? 1 : 0;
+                
+                // Verificar se já existe
+                $existe = Database::queryOne(
+                    "SELECT id FROM configuracoes WHERE chave = :chave",
+                    ['chave' => $chave]
+                );
+                
+                if ($existe) {
+                    Database::execute(
+                        "UPDATE configuracoes SET valor = :valor, criptografado = :cripto WHERE chave = :chave",
+                        ['valor' => $valor, 'cripto' => $criptografar, 'chave' => $chave]
+                    );
+                } else {
+                    Database::execute(
+                        "INSERT INTO configuracoes (chave, valor, descricao, categoria, criptografado) VALUES (:chave, :valor, :desc, 'smtp', :cripto)",
+                        [
+                            'chave' => $chave,
+                            'valor' => $valor,
+                            'desc' => "Configuração SMTP: {$chave}",
+                            'cripto' => $criptografar
+                        ]
+                    );
+                }
+            }
+            
+            Logger::acao('Configuração SMTP salva', ['admin_id' => Auth::id()]);
+            
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => true, 'mensagem' => 'Configuração SMTP salva com sucesso!']);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao salvar SMTP', ['erro' => $e->getMessage()]);
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno ao salvar.']);
+        }
+        exit;
+    }
+
+    /**
+     * Testar envio de e-mail SMTP
+     */
+    public function testarSmtp(): void
+    {
+        $this->protegerAdmin();
+        Csrf::verificar();
+        
+        try {
+            // Buscar configurações SMTP
+            $configs = Database::query(
+                "SELECT chave, valor FROM configuracoes WHERE categoria = 'smtp' AND chave LIKE 'smtp_%'"
+            );
+            
+            if (empty($configs)) {
+                header('Content-Type: application/json');
+                echo json_encode(['sucesso' => false, 'erro' => 'Configuração SMTP não encontrada. Salve primeiro.']);
+                exit;
+            }
+            
+            // Montar array de configurações
+            $smtp = [];
+            foreach ($configs as $config) {
+                $smtp[$config['chave']] = $config['valor'];
+            }
+            
+            // Verificar se configuração está completa
+            $camposRequeridos = ['smtp_host', 'smtp_email', 'smtp_usuario', 'smtp_senha'];
+            foreach ($camposRequeridos as $campo) {
+                if (empty($smtp[$campo])) {
+                    header('Content-Type: application/json');
+                    echo json_encode(['sucesso' => false, 'erro' => "Campo {$campo} não configurado."]);
+                    exit;
+                }
+            }
+            
+            // Tentar enviar e-mail de teste
+            $sucesso = $this->enviarEmailTeste($smtp);
+            
+            if ($sucesso) {
+                Logger::acao('Teste SMTP realizado com sucesso');
+                header('Content-Type: application/json');
+                echo json_encode(['sucesso' => true, 'mensagem' => 'E-mail de teste enviado com sucesso!']);
+            } else {
+                header('Content-Type: application/json');
+                echo json_encode(['sucesso' => false, 'erro' => 'Falha ao enviar e-mail. Verifique as configurações.']);
+            }
+            
+        } catch (Exception $e) {
+            Logger::error('Erro no teste SMTP', ['erro' => $e->getMessage()]);
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
+        }
+        exit;
+    }
+
+    /**
+     * Enviar e-mail de teste usando configurações SMTP
+     */
+    private function enviarEmailTeste(array $smtp): bool
+    {
+        try {
+            $usuario = Auth::usuario();
+            $emailDestino = $usuario['email'] ?? 'admin@exemplo.com';
+            
+            $assunto = 'Teste de Configuração SMTP - O Consultor';
+            $mensagem = "
+            <h2>Teste de Configuração SMTP</h2>
+            <p>Este é um e-mail de teste para verificar a configuração SMTP do sistema O Consultor.</p>
+            
+            <p><strong>Dados do teste:</strong></p>
+            <ul>
+                <li>Servidor: {$smtp['smtp_host']}:{$smtp['smtp_port']}</li>
+                <li>Usuário: {$smtp['smtp_usuario']}</li>
+                <li>Segurança: " . (strtoupper($smtp['smtp_seguranca'] ?? 'TLS')) . "</li>
+                <li>Data/Hora: " . date('d/m/Y H:i:s') . "</li>
+            </ul>
+            
+            <p>Se você recebeu este e-mail, a configuração está funcionando corretamente!</p>
+            
+            <hr>
+            <p><small>Este e-mail foi enviado automaticamente pelo sistema O Consultor.</small></p>
+            ";
+            
+            // Headers do e-mail
+            $headers = [
+                'MIME-Version: 1.0',
+                'Content-type: text/html; charset=UTF-8',
+                'From: ' . ($smtp['smtp_nome'] ?? 'O Consultor') . ' <' . $smtp['smtp_email'] . '>',
+                'Reply-To: ' . $smtp['smtp_email'],
+                'X-Mailer: PHP/' . phpversion()
+            ];
+            
+            // Tentar envio usando função mail() do PHP com configuração SMTP
+            // Em produção, recomenda-se usar PHPMailer ou similar para SMTP direto
+            return mail($emailDestino, $assunto, $mensagem, implode("\r\n", $headers));
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao enviar e-mail de teste', ['erro' => $e->getMessage()]);
+            return false;
+        }
     }
 
     // === MÉTODOS PRIVADOS F-14 ===
@@ -1135,7 +1330,139 @@ class AdminController
         ];
     }
 
-    // === MÉTODOS PRIVADOS F-13 ===
+    /**
+     * Salvar configuração SMTP
+     */
+    public function salvarSmtp(): void
+    {
+        $this->protegerAdmin();
+        Csrf::verificar();
+        
+        $config = [
+            'smtp_host' => trim($_POST['smtp_host'] ?? ''),
+            'smtp_port' => (int) ($_POST['smtp_port'] ?? 587),
+            'smtp_email' => filter_input(INPUT_POST, 'smtp_email', FILTER_SANITIZE_EMAIL),
+            'smtp_nome' => htmlspecialchars(trim($_POST['smtp_nome'] ?? '')),
+            'smtp_usuario' => trim($_POST['smtp_usuario'] ?? ''),
+            'smtp_senha' => trim($_POST['smtp_senha'] ?? ''),
+            'smtp_seguranca' => in_array($_POST['smtp_seguranca'] ?? '', ['tls', 'ssl', 'none']) ? $_POST['smtp_seguranca'] : 'tls'
+        ];
+        
+        // Validações
+        if (empty($config['smtp_host']) || empty($config['smtp_email']) || empty($config['smtp_usuario']) || empty($config['smtp_senha'])) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Todos os campos são obrigatórios.']);
+            exit;
+        }
+        
+        if (!filter_var($config['smtp_email'], FILTER_VALIDATE_EMAIL)) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'E-mail inválido.']);
+            exit;
+        }
+        
+        try {
+            // Salvar configurações no banco
+            foreach ($config as $chave => $valor) {
+                $criptografado = in_array($chave, ['smtp_senha']) ? 1 : 0;
+                
+                Database::execute(
+                    "INSERT INTO configuracoes (chave, valor, descricao, grupo, criptografado) 
+                     VALUES (:chave, :valor, :descricao, 'smtp', :criptografado)
+                     ON DUPLICATE KEY UPDATE valor = :valor2, criptografado = :criptografado2",
+                    [
+                        'chave' => $chave,
+                        'valor' => $valor,
+                        'valor2' => $valor,
+                        'descricao' => $this->getDescricaoSmtp($chave),
+                        'criptografado' => $criptografado,
+                        'criptografado2' => $criptografado
+                    ]
+                );
+            }
+            
+            Logger::acao('Configuração SMTP salva', ['smtp_host' => $config['smtp_host']]);
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => true,
+                'mensagem' => 'Configuração SMTP salva com sucesso!'
+            ]);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao salvar SMTP: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno ao salvar.']);
+        }
+        exit;
+    }
+    
+    /**
+     * Testar configuração SMTP
+     */
+    public function testarSmtp(): void
+    {
+        $this->protegerAdmin();
+        Csrf::verificar();
+        
+        try {
+            // Buscar configurações SMTP
+            $config = [];
+            $chaves = ['smtp_host', 'smtp_port', 'smtp_email', 'smtp_nome', 'smtp_usuario', 'smtp_senha', 'smtp_seguranca'];
+            
+            foreach ($chaves as $chave) {
+                $valor = Configuracao::buscar($chave);
+                if ($valor === null) {
+                    header('Content-Type: application/json');
+                    echo json_encode(['sucesso' => false, 'erro' => 'Configure o SMTP antes de testar.']);
+                    exit;
+                }
+                $config[$chave] = $valor;
+            }
+            
+            // Tentar enviar e-mail de teste
+            $resultado = Email::testar($config, Auth::usuario()['email']);
+            
+            if ($resultado['sucesso']) {
+                Logger::acao('Teste SMTP realizado com sucesso');
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'sucesso' => true,
+                    'mensagem' => 'E-mail de teste enviado com sucesso!'
+                ]);
+            } else {
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'sucesso' => false,
+                    'erro' => $resultado['erro']
+                ]);
+            }
+            
+        } catch (Exception $e) {
+            Logger::error('Erro no teste SMTP: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
+        }
+        exit;
+    }
+    
+    /**
+     * Helper para descrições SMTP
+     */
+    private function getDescricaoSmtp(string $chave): string
+    {
+        $descricoes = [
+            'smtp_host' => 'Servidor SMTP',
+            'smtp_port' => 'Porta SMTP',
+            'smtp_email' => 'E-mail remetente',
+            'smtp_nome' => 'Nome do remetente',
+            'smtp_usuario' => 'Usuário SMTP',
+            'smtp_senha' => 'Senha SMTP',
+            'smtp_seguranca' => 'Tipo de segurança'
+        ];
+        
+        return $descricoes[$chave] ?? $chave;
+    } // === MÉTODOS PRIVADOS F-13 ===
 
     /**
      * Gerar senha temporária

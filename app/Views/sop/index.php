@@ -16,6 +16,9 @@
         <p class="text-gray-500 mt-1"><?= htmlspecialchars($dados['empresa']) ?> — Padrão <?= htmlspecialchars($dados['norma']) ?></p>
     </div>
     <div class="flex gap-2">
+        <?php if (Auth::perfil() === 'ADMIN_HOLDING' || Auth::perfil() === 'CONSULTOR_INTERNO'): ?>
+        <a href="<?= APP_URL ?>/sop/gerenciar?empresa_id=<?= Auth::empresa() ?>" class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">⚙️ Gerenciar SOPs</a>
+        <?php endif; ?>
         <a href="<?= APP_URL ?>/manual-operacional/raci" class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">📊 Matriz RACI</a>
         <a href="<?= APP_URL ?>/manual-operacional/kpis" class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">📈 Painel KPIs</a>
         <a href="<?= APP_URL ?>/sop/exportar-todos-zip" class="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700">📦 Exportar Todos (ZIP)</a>
@@ -77,6 +80,9 @@
                 <div class="flex items-center gap-3">
                     <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold text-gray-500 bg-gray-100"><?= htmlspecialchars($sop['id']) ?></span>
                     <span class="text-sm text-gray-800"><?= htmlspecialchars($sop['nome']) ?></span>
+                    <?php if (!empty($sop['customizado'])): ?>
+                    <span class="px-2 py-0.5 rounded text-[9px] font-bold text-purple-600 bg-purple-100">PERSONALIZADO</span>
+                    <?php endif; ?>
                 </div>
                 <div class="flex items-center gap-2">
                     <span class="px-2 py-0.5 rounded-full text-xs font-medium <?= $statusConfig['badge'] ?>"><?= $statusConfig['label'] ?></span>

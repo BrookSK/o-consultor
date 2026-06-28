@@ -67,6 +67,9 @@ class Router
 
         // Manual Operacional (SOP)
         $this->get('manual-operacional', 'SopController', 'index');
+        $this->get('sop/gerenciar', 'SopController', 'gerenciarSOPs');
+        $this->post('sop/adicionar', 'SopController', 'adicionarSOP');
+        $this->post('sop/remover', 'SopController', 'removerSOP');
         $this->post('sop/gerar', 'SopController', 'gerar');
         $this->get('sop/ver/{id}', 'SopController', 'ver');
         $this->get('sop/revisar', 'SopController', 'revisar');
@@ -175,6 +178,8 @@ class Router
         $this->post('admin/api/toggle', 'AdminController', 'toggleApi');
         $this->post('admin/api/salvar-chave', 'AdminController', 'salvarChaveApi');
         $this->post('admin/api/testar', 'AdminController', 'testarApiIndividual');
+        $this->post('admin/smtp/salvar', 'AdminController', 'salvarSmtp');
+        $this->post('admin/smtp/testar', 'AdminController', 'testarSmtp');
         $this->get('admin/logs', 'AdminController', 'logs');
         $this->get('admin/relatorios', 'AdminController', 'relatorios');
         $this->post('admin/selecionar-empresa', 'AdminController', 'selecionarEmpresa');

@@ -49,6 +49,219 @@ class SopController
     }
 
     /**
+     * Interface para criar/gerenciar SOPs personalizados
+     */
+    public function gerenciarSOPs(): void
+    {
+        Auth::proteger();
+        Auth::exigirPerfil([Auth::ADMIN_HOLDING, Auth::CONSULTOR_INTERNO]);
+        
+        $empresaId = (int) ($_GET['empresa_id'] ?? Auth::empresa());
+        
+        if (!$empresaId) {
+            Flash::set('erro', 'Empresa não especificada.');
+            header('Location: ' . APP_URL . '/manual-operacional');
+            exit;
+        }
+        
+        // Buscar empresa
+        $empresa = Database::queryOne(
+            "SELECT * FROM empresas WHERE id = :id",
+            ['id' => $empresaId]
+        );
+        
+        if (!$empresa) {
+            Flash::set('erro', 'Empresa não encontrada.');
+            header('Location: ' . APP_URL . '/manual-operacional');
+            exit;
+        }
+        
+        // Buscar SOPs customizados da empresa
+        $sopsCustomizados = Database::query(
+            "SELECT * FROM sops_customizados WHERE empresa_id = :empresa_id ORDER BY departamento, nome",
+            ['empresa_id' => $empresaId]
+        );
+        
+        $dados = [
+            'empresa' => $empresa,
+            'sops_customizados' => $sopsCustomizados,
+            'setores_disponiveis' => $this->getSetoresDisponiveis(),
+            'icone_helper' => function($icone) { return $this->converterIconeParaEmoji($icone); }
+        ];
+        
+        require VIEW_PATH . '/sop/gerenciar.php';
+    }
+
+    /**
+     * Adicionar novo SOP personalizado
+     */
+    public function adicionarSOP(): void
+    {
+        Auth::proteger();
+        Auth::exigirPerfil([Auth::ADMIN_HOLDING, Auth::CONSULTOR_INTERNO]);
+        Csrf::verificar();
+        
+        $empresaId = (int) ($_POST['empresa_id'] ?? 0);
+        $sopCodigo = strtoupper(trim($_POST['sop_codigo'] ?? ''));
+        $nome = htmlspecialchars(trim($_POST['nome'] ?? ''));
+        $departamento = htmlspecialchars(trim($_POST['departamento'] ?? ''));
+        $descricao = htmlspecialchars(trim($_POST['descricao'] ?? ''));
+        
+        // Validações
+        if (!$empresaId || empty($sopCodigo) || empty($nome) || empty($departamento)) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Todos os campos são obrigatórios.']);
+            exit;
+        }
+        
+        // Verificar se código já existe
+        $existe = Database::queryOne(
+            "SELECT id FROM sops_customizados WHERE empresa_id = :empresa_id AND sop_codigo = :codigo",
+            ['empresa_id' => $empresaId, 'codigo' => $sopCodigo]
+        );
+        
+        if ($existe) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Código SOP já existe para esta empresa.']);
+            exit;
+        }
+        
+        try {
+            // Inserir SOP customizado
+            Database::execute(
+                "INSERT INTO sops_customizados (empresa_id, sop_codigo, nome, departamento, descricao, criado_por, criado_em) 
+                 VALUES (:empresa_id, :codigo, :nome, :depto, :descricao, :user_id, NOW())",
+                [
+                    'empresa_id' => $empresaId,
+                    'codigo' => $sopCodigo,
+                    'nome' => $nome,
+                    'depto' => $departamento,
+                    'descricao' => $descricao,
+                    'user_id' => Auth::id()
+                ]
+            );
+            
+            Logger::acao('SOP personalizado criado', [
+                'empresa_id' => $empresaId,
+                'sop_codigo' => $sopCodigo,
+                'nome' => $nome
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => true, 'mensagem' => 'SOP personalizado criado com sucesso!']);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao criar SOP personalizado: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno ao criar SOP.']);
+        }
+        exit;
+    }
+
+    /**
+     * Remover SOP personalizado
+     */
+    public function removerSOP(): void
+    {
+        Auth::proteger();
+        Auth::exigirPerfil([Auth::ADMIN_HOLDING, Auth::CONSULTOR_INTERNO]);
+        Csrf::verificar();
+        
+        $sopId = (int) ($_POST['sop_id'] ?? 0);
+        
+        if (!$sopId) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'ID do SOP é obrigatório.']);
+            exit;
+        }
+        
+        try {
+            // Verificar se SOP existe e buscar dados
+            $sop = Database::queryOne(
+                "SELECT * FROM sops_customizados WHERE id = :id",
+                ['id' => $sopId]
+            );
+            
+            if (!$sop) {
+                header('Content-Type: application/json');
+                echo json_encode(['sucesso' => false, 'erro' => 'SOP não encontrado.']);
+                exit;
+            }
+            
+            // Remover SOP customizado
+            Database::execute("DELETE FROM sops_customizados WHERE id = :id", ['id' => $sopId]);
+            
+            // Remover SOP gerado se existir
+            Database::execute(
+                "DELETE FROM sops WHERE sop_codigo = :codigo AND empresa_id = :empresa_id",
+                ['codigo' => $sop['sop_codigo'], 'empresa_id' => $sop['empresa_id']]
+            );
+            
+            Logger::acao('SOP personalizado removido', [
+                'sop_id' => $sopId,
+                'sop_codigo' => $sop['sop_codigo']
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => true, 'mensagem' => 'SOP removido com sucesso!']);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao remover SOP: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno.']);
+        }
+        exit;
+    }
+
+    /**
+     * Retorna lista de setores disponíveis
+     */
+    private function getSetoresDisponiveis(): array
+    {
+        return [
+            'Construção Civil' => 'Construção Civil',
+            'Tecnologia' => 'Tecnologia',
+            'Saúde' => 'Saúde',
+            'Educação' => 'Educação',
+            'Consultoria' => 'Consultoria',
+            'Varejo' => 'Varejo',
+            'Indústria' => 'Indústria',
+            'Alimentício' => 'Alimentício',
+            'Geral' => 'Outros Setores'
+        ];
+    }
+
+    /**
+     * Converte ícones de texto para emojis para exibição
+     */
+    private function converterIconeParaEmoji(string $icone): string
+    {
+        $mapeamento = [
+            'documento' => '📋',
+            'pacote' => '📦',
+            'chave' => '🔑',
+            'comercial' => '💼',
+            'operacional' => '⚙️',
+            'administrativo' => '📊',
+            'financeiro' => '💰',
+            'rh' => '👥',
+            'juridico' => '⚖️',
+            'ti' => '💻',
+            'vendas' => '🛒',
+            'producao' => '🏭',
+            'saude' => '🏥',
+            'educacao' => '🎓',
+            'construcao' => '🚧',
+            'alimenticio' => '🍽️',
+            'consultoria' => '📈',
+            'seguranca' => '🔒',
+            'logistica' => '🚚'
+        ];
+        
+        return $mapeamento[strtolower($icone)] ?? '📋';
+    }
+
+    /**
      * Gera um SOP individual via AJAX (F-05 Implementation)
      */
     public function gerar(): void
@@ -1023,7 +1236,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
      */
     private function getDepartamentosPorSetor(string $setor, int $empresaId): array
     {
-        // Buscar SOPs existentes no banco
+        // Buscar SOPs existentes no banco (padrão do sistema)
         $sopsExistentes = Sop::buscarPorEmpresa($empresaId);
         $sopsMap = [];
         foreach ($sopsExistentes as $sop) {
@@ -1038,8 +1251,183 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             ];
         }
 
-        // Template padrão (Tech/TI - pode ser expandido para outros setores)
-        $templateSOPs = [
+        // Templates por setor específico
+        $templatesSOP = $this->getSOPsPorSetor($setor);
+
+        // Buscar SOPs customizados da empresa
+        $sopsCustomizados = [];
+        try {
+            $sopsCustomizados = Database::query(
+                "SELECT * FROM sops_customizados WHERE empresa_id = :empresa_id AND ativo = 1 ORDER BY departamento, nome",
+                ['empresa_id' => $empresaId]
+            );
+        } catch (Exception $e) {
+            // Tabela pode não existir ainda - continuar sem SOPs customizados
+            Logger::warning('Tabela sops_customizados não encontrada', ['erro' => $e->getMessage()]);
+        }
+
+        // Aplicar status aos SOPs padrão do setor
+        foreach ($templatesSOP as &$dept) {
+            foreach ($dept['sops'] as &$sop) {
+                if (isset($sopsMap[$sop['id']])) {
+                    $sop['status'] = $sopsMap[$sop['id']]['status'];
+                } else {
+                    $sop['status'] = 'nao_gerado';
+                }
+            }
+        }
+
+        // Integrar SOPs customizados nos departamentos
+        foreach ($sopsCustomizados as $sopCustomizado) {
+            $departamento = $sopCustomizado['departamento'];
+            $icone = $sopCustomizado['icone'] ?? '📋';
+            
+            // Procurar se departamento já existe
+            $deptIndex = null;
+            foreach ($templatesSOP as $index => $dept) {
+                if (strtolower($dept['nome']) === strtolower($departamento)) {
+                    $deptIndex = $index;
+                    break;
+                }
+            }
+            
+            // Se departamento não existe, criar novo
+            if ($deptIndex === null) {
+                $templatesSOP[] = [
+                    'nome' => $departamento,
+                    'icone' => $this->converterIconeParaEmoji($sopCustomizado['icone'] ?? 'documento'),
+                    'sops' => []
+                ];
+                $deptIndex = count($templatesSOP) - 1;
+            }
+            
+            // Adicionar SOP customizado ao departamento
+            $status = isset($sopsMap[$sopCustomizado['sop_codigo']]) 
+                ? $sopsMap[$sopCustomizado['sop_codigo']]['status'] 
+                : 'nao_gerado';
+            
+            $templatesSOP[$deptIndex]['sops'][] = [
+                'id' => $sopCustomizado['sop_codigo'],
+                'nome' => $sopCustomizado['nome'],
+                'status' => $status,
+                'customizado' => true,
+                'descricao' => $sopCustomizado['descricao']
+            ];
+        }
+
+        return $templatesSOP;
+    }
+
+    /**
+     * Retorna SOPs específicos por setor da empresa
+     */
+    private function getSOPsPorSetor(string $setor): array
+    {
+        switch (strtolower($setor)) {
+            case 'construção civil':
+            case 'construcao civil':
+                return $this->getSOPsConstrutoraCivil();
+                
+            case 'tecnologia':
+            case 'ti':
+            case 'software':
+                return $this->getSOPsTecnologia();
+                
+            case 'saúde':
+            case 'saude':
+            case 'medicina':
+                return $this->getSOPsSaude();
+                
+            case 'educação':
+            case 'educacao':
+            case 'ensino':
+                return $this->getSOPsEducacao();
+                
+            case 'consultoria':
+                return $this->getSOPsConsultoria();
+                
+            case 'varejo':
+            case 'comercio':
+                return $this->getSOPsVarejo();
+                
+            case 'industria':
+            case 'industrial':
+                return $this->getSOPsIndustrial();
+                
+            case 'alimenticio':
+            case 'restaurante':
+            case 'food':
+                return $this->getSOPsAlimenticio();
+                
+            default:
+                return $this->getSOPsGeral();
+        }
+    }
+
+    /**
+     * SOPs específicos para Construção Civil
+     */
+    private function getSOPsConstrutoraCivil(): array
+    {
+        return [
+            [
+                'nome' => 'Comercial',
+                'icone' => '💼',
+                'sops' => [
+                    ['id' => 'SOP-CC-COM-001', 'nome' => 'Prospecção e visita técnica'],
+                    ['id' => 'SOP-CC-COM-002', 'nome' => 'Orçamento e memorial descritivo'],
+                    ['id' => 'SOP-CC-COM-003', 'nome' => 'Negociação e contrato de obra'],
+                    ['id' => 'SOP-CC-COM-004', 'nome' => 'Aprovação de projetos e licenças'],
+                ],
+            ],
+            [
+                'nome' => 'Planejamento de Obra',
+                'icone' => '📋',
+                'sops' => [
+                    ['id' => 'SOP-CC-PLAN-001', 'nome' => 'Cronograma executivo de obra'],
+                    ['id' => 'SOP-CC-PLAN-002', 'nome' => 'Compra e logística de materiais'],
+                    ['id' => 'SOP-CC-PLAN-003', 'nome' => 'Contratação de mão de obra'],
+                    ['id' => 'SOP-CC-PLAN-004', 'nome' => 'Gestão de subcontratados'],
+                ],
+            ],
+            [
+                'nome' => 'Execução',
+                'icone' => '🚧',
+                'sops' => [
+                    ['id' => 'SOP-CC-EXEC-001', 'nome' => 'Controle de qualidade e fiscalização'],
+                    ['id' => 'SOP-CC-EXEC-002', 'nome' => 'Segurança do trabalho na obra'],
+                    ['id' => 'SOP-CC-EXEC-003', 'nome' => 'Medições e controle de avanço'],
+                    ['id' => 'SOP-CC-EXEC-004', 'nome' => 'Gestão de mudanças e aditivos'],
+                    ['id' => 'SOP-CC-EXEC-005', 'nome' => 'Controle de custos e orçamento'],
+                ],
+            ],
+            [
+                'nome' => 'Financeiro',
+                'icone' => '💰',
+                'sops' => [
+                    ['id' => 'SOP-CC-FIN-001', 'nome' => 'Faturamento e medições'],
+                    ['id' => 'SOP-CC-FIN-002', 'nome' => 'Controle de fluxo de caixa da obra'],
+                    ['id' => 'SOP-CC-FIN-003', 'nome' => 'Gestão de garantias e retenções'],
+                ],
+            ],
+            [
+                'nome' => 'Entrega',
+                'icone' => '🏠',
+                'sops' => [
+                    ['id' => 'SOP-CC-ENT-001', 'nome' => 'Vistoria e entrega da obra'],
+                    ['id' => 'SOP-CC-ENT-002', 'nome' => 'Documentação técnica e As Built'],
+                    ['id' => 'SOP-CC-ENT-003', 'nome' => 'Pós-entrega e assistência técnica'],
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * SOPs específicos para Tecnologia
+     */
+    private function getSOPsTecnologia(): array
+    {
+        return [
             [
                 'nome' => 'Comercial',
                 'icone' => '💼',
@@ -1050,62 +1438,237 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                 ],
             ],
             [
-                'nome' => 'Onboarding',
-                'icone' => '🚀',
+                'nome' => 'Desenvolvimento',
+                'icone' => '⚙️',
                 'sops' => [
-                    ['id' => 'SOP-TI-ONB-001', 'nome' => 'Recebimento e migração de clientes'],
-                    ['id' => 'SOP-TI-ONB-002', 'nome' => 'Configuração inicial de ambiente'],
-                    ['id' => 'SOP-TI-ONB-003', 'nome' => 'Treinamento e ativação'],
+                    ['id' => 'SOP-TI-DEV-001', 'nome' => 'Gestão de projetos ágeis'],
+                    ['id' => 'SOP-TI-DEV-002', 'nome' => 'Code review e qualidade'],
+                    ['id' => 'SOP-TI-DEV-003', 'nome' => 'Deploy e CI/CD'],
+                    ['id' => 'SOP-TI-DEV-004', 'nome' => 'Gestão de bugs e suporte'],
+                ],
+            ],
+            [
+                'nome' => 'Infraestrutura',
+                'icone' => '🔧',
+                'sops' => [
+                    ['id' => 'SOP-TI-INF-001', 'nome' => 'Monitoramento de serviços'],
+                    ['id' => 'SOP-TI-INF-002', 'nome' => 'Backup e disaster recovery'],
+                    ['id' => 'SOP-TI-INF-003', 'nome' => 'Gestão de acessos e segurança'],
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * SOPs específicos para Saúde
+     */
+    private function getSOPsSaude(): array
+    {
+        return [
+            [
+                'nome' => 'Atendimento',
+                'icone' => '🏥',
+                'sops' => [
+                    ['id' => 'SOP-SA-ATD-001', 'nome' => 'Agendamento e triagem'],
+                    ['id' => 'SOP-SA-ATD-002', 'nome' => 'Consulta e anamnese'],
+                    ['id' => 'SOP-SA-ATD-003', 'nome' => 'Prescrição e orientações'],
+                ],
+            ],
+            [
+                'nome' => 'Procedimentos',
+                'icone' => '⚕️',
+                'sops' => [
+                    ['id' => 'SOP-SA-PROC-001', 'nome' => 'Esterilização e biossegurança'],
+                    ['id' => 'SOP-SA-PROC-002', 'nome' => 'Controle de infecção hospitalar'],
+                    ['id' => 'SOP-SA-PROC-003', 'nome' => 'Gestão de materiais médicos'],
+                ],
+            ],
+            [
+                'nome' => 'Administrativo',
+                'icone' => '📋',
+                'sops' => [
+                    ['id' => 'SOP-SA-ADM-001', 'nome' => 'Prontuário eletrônico e LGPD'],
+                    ['id' => 'SOP-SA-ADM-002', 'nome' => 'Faturamento e convênios'],
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * SOPs gerais para setores não mapeados
+     */
+    private function getSOPsGeral(): array
+    {
+        return [
+            [
+                'nome' => 'Comercial',
+                'icone' => '💼',
+                'sops' => [
+                    ['id' => 'SOP-GER-COM-001', 'nome' => 'Prospecção de clientes'],
+                    ['id' => 'SOP-GER-COM-002', 'nome' => 'Proposta comercial'],
+                    ['id' => 'SOP-GER-COM-003', 'nome' => 'Fechamento de vendas'],
                 ],
             ],
             [
                 'nome' => 'Operacional',
                 'icone' => '⚙️',
                 'sops' => [
-                    ['id' => 'SOP-TI-OPS-001', 'nome' => 'Gestão de chamados e SLA'],
-                    ['id' => 'SOP-TI-OPS-002', 'nome' => 'Rotina de segurança e backups'],
-                    ['id' => 'SOP-TI-OPS-003', 'nome' => 'Gestão de acessos e senhas'],
-                    ['id' => 'SOP-TI-OPS-004', 'nome' => 'Monitoramento de infraestrutura'],
+                    ['id' => 'SOP-GER-OPS-001', 'nome' => 'Atendimento ao cliente'],
+                    ['id' => 'SOP-GER-OPS-002', 'nome' => 'Controle de qualidade'],
+                    ['id' => 'SOP-GER-OPS-003', 'nome' => 'Gestão de fornecedores'],
                 ],
             ],
             [
-                'nome' => 'Financeiro',
-                'icone' => '💰',
+                'nome' => 'Administrativo',
+                'icone' => '📋',
                 'sops' => [
-                    ['id' => 'SOP-TI-FIN-001', 'nome' => 'Faturamento e cobrança'],
-                    ['id' => 'SOP-TI-FIN-002', 'nome' => 'Gestão de contratos e renovações'],
-                ],
-            ],
-            [
-                'nome' => 'Jurídico / Compliance',
-                'icone' => '⚖️',
-                'sops' => [
-                    ['id' => 'SOP-TI-JUR-001', 'nome' => 'LGPD e tratamento de dados'],
-                    ['id' => 'SOP-TI-JUR-002', 'nome' => 'Gestão de contratos de prestação de serviço'],
-                ],
-            ],
-            [
-                'nome' => 'RH',
-                'icone' => '👥',
-                'sops' => [
-                    ['id' => 'SOP-TI-RH-001', 'nome' => 'Contratação técnica'],
-                    ['id' => 'SOP-TI-RH-002', 'nome' => 'Offboarding e reavaliação de acessos'],
+                    ['id' => 'SOP-GER-ADM-001', 'nome' => 'Gestão financeira'],
+                    ['id' => 'SOP-GER-ADM-002', 'nome' => 'Recursos humanos'],
                 ],
             ],
         ];
+    }
 
-        // Aplicar status baseado nos SOPs existentes
-        foreach ($templateSOPs as &$dept) {
-            foreach ($dept['sops'] as &$sop) {
-                if (isset($sopsMap[$sop['id']])) {
-                    $sop['status'] = $sopsMap[$sop['id']]['status'];
-                } else {
-                    $sop['status'] = 'nao_gerado';
-                }
-            }
-        }
+    /**
+     * SOPs para Educação
+     */
+    private function getSOPsEducacao(): array
+    {
+        return [
+            [
+                'nome' => 'Acadêmico',
+                'icone' => '🎓',
+                'sops' => [
+                    ['id' => 'SOP-EDU-ACA-001', 'nome' => 'Planejamento pedagógico'],
+                    ['id' => 'SOP-EDU-ACA-002', 'nome' => 'Avaliação e recuperação'],
+                    ['id' => 'SOP-EDU-ACA-003', 'nome' => 'Gestão de turmas e horários'],
+                ],
+            ],
+            [
+                'nome' => 'Administrativo',
+                'icone' => '📋',
+                'sops' => [
+                    ['id' => 'SOP-EDU-ADM-001', 'nome' => 'Matrícula e rematrícula'],
+                    ['id' => 'SOP-EDU-ADM-002', 'nome' => 'Controle de frequência'],
+                    ['id' => 'SOP-EDU-ADM-003', 'nome' => 'Comunicação com responsáveis'],
+                ],
+            ],
+        ];
+    }
 
-        return $templateSOPs;
+    /**
+     * SOPs para Consultoria
+     */
+    private function getSOPsConsultoria(): array
+    {
+        return [
+            [
+                'nome' => 'Comercial',
+                'icone' => '💼',
+                'sops' => [
+                    ['id' => 'SOP-CON-COM-001', 'nome' => 'Diagnóstico empresarial'],
+                    ['id' => 'SOP-CON-COM-002', 'nome' => 'Proposta de projeto'],
+                    ['id' => 'SOP-CON-COM-003', 'nome' => 'Contratação de consultoria'],
+                ],
+            ],
+            [
+                'nome' => 'Execução',
+                'icone' => '⚙️',
+                'sops' => [
+                    ['id' => 'SOP-CON-EXEC-001', 'nome' => 'Gestão de projetos'],
+                    ['id' => 'SOP-CON-EXEC-002', 'nome' => 'Entrega de resultados'],
+                    ['id' => 'SOP-CON-EXEC-003', 'nome' => 'Acompanhamento pós-projeto'],
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * SOPs para Varejo
+     */
+    private function getSOPsVarejo(): array
+    {
+        return [
+            [
+                'nome' => 'Vendas',
+                'icone' => '🛒',
+                'sops' => [
+                    ['id' => 'SOP-VAR-VEN-001', 'nome' => 'Atendimento e vendas'],
+                    ['id' => 'SOP-VAR-VEN-002', 'nome' => 'Gestão do caixa'],
+                    ['id' => 'SOP-VAR-VEN-003', 'nome' => 'Pós-venda e trocas'],
+                ],
+            ],
+            [
+                'nome' => 'Estoque',
+                'icone' => '📦',
+                'sops' => [
+                    ['id' => 'SOP-VAR-EST-001', 'nome' => 'Controle de estoque'],
+                    ['id' => 'SOP-VAR-EST-002', 'nome' => 'Compras e fornecedores'],
+                    ['id' => 'SOP-VAR-EST-003', 'nome' => 'Inventário e perdas'],
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * SOPs para Indústria
+     */
+    private function getSOPsIndustrial(): array
+    {
+        return [
+            [
+                'nome' => 'Produção',
+                'icone' => '🏭',
+                'sops' => [
+                    ['id' => 'SOP-IND-PROD-001', 'nome' => 'Planejamento de produção'],
+                    ['id' => 'SOP-IND-PROD-002', 'nome' => 'Controle de qualidade'],
+                    ['id' => 'SOP-IND-PROD-003', 'nome' => 'Manutenção preventiva'],
+                ],
+            ],
+            [
+                'nome' => 'Segurança',
+                'icone' => '🦺',
+                'sops' => [
+                    ['id' => 'SOP-IND-SEG-001', 'nome' => 'Segurança do trabalho'],
+                    ['id' => 'SOP-IND-SEG-002', 'nome' => 'Meio ambiente e resíduos'],
+                    ['id' => 'SOP-IND-SEG-003', 'nome' => 'Emergências e acidentes'],
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * SOPs para Alimentício/Restaurante
+     */
+    private function getSOPsAlimenticio(): array
+    {
+        return [
+            [
+                'nome' => 'Produção',
+                'icone' => '👨‍🍳',
+                'sops' => [
+                    ['id' => 'SOP-ALI-PROD-001', 'nome' => 'Manipulação de alimentos'],
+                    ['id' => 'SOP-ALI-PROD-002', 'nome' => 'Controle de temperatura'],
+                    ['id' => 'SOP-ALI-PROD-003', 'nome' => 'Higienização e limpeza'],
+                ],
+            ],
+            [
+                'nome' => 'Atendimento',
+                'icone' => '🍽️',
+                'sops' => [
+                    ['id' => 'SOP-ALI-ATD-001', 'nome' => 'Atendimento ao cliente'],
+                    ['id' => 'SOP-ALI-ATD-002', 'nome' => 'Delivery e take-away'],
+                ],
+            ],
+            [
+                'nome' => 'Controle',
+                'icone' => '📋',
+                'sops' => [
+                    ['id' => 'SOP-ALI-CTRL-001', 'nome' => 'Controle de estoque'],
+                    ['id' => 'SOP-ALI-CTRL-002', 'nome' => 'APPCC e vigilância sanitária'],
+                ],
+            ],
+        ];
     }
 
     // ===== F-06 HELPER METHODS =====

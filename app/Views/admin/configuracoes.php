@@ -78,7 +78,7 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
                     <div>
                         <label class="block text-xs text-gray-500 mb-1">Chave de API</label>
-                        <input type="password" id="chave-openai" placeholder="sk-..." 
+                        <input type="password" id="chave-openai" placeholder="sk-proj-xxx... ou sk-test (para desenvolvimento)" 
                                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono outline-none focus:border-primary">
                     </div>
                     <div>
@@ -129,7 +129,7 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
                     <div>
                         <label class="block text-xs text-gray-500 mb-1">Chave de API</label>
-                        <input type="password" id="chave-perplexity" placeholder="pplx-..." 
+                        <input type="password" id="chave-perplexity" placeholder="pplx-xxx... ou pplx-test (para desenvolvimento)" 
                                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono outline-none focus:border-primary">
                     </div>
                     <div>
@@ -154,6 +154,62 @@
             </div>
         </div>
     </div>
+
+    <!-- API Anthropic (Claude) -->
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+        <div class="flex items-center justify-between mb-4">
+            <div>
+                <h3 class="font-semibold text-gray-800">API Anthropic (Claude)</h3>
+                <p class="text-sm text-gray-500">Modelo avançado de IA para análise e geração de conteúdo</p>
+            </div>
+            <div class="flex items-center">
+                <span class="text-sm text-gray-500 mr-3">Status:</span>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="toggle-anthropic" onchange="toggleApiF14('anthropic')" class="sr-only peer">
+                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+            </div>
+        </div>
+        
+        <div id="form-anthropic" style="display:none;">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Chave de API</label>
+                    <input type="password" id="chave-anthropic" placeholder="sk-ant-xxx... ou sk-ant-test (para desenvolvimento)" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono outline-none focus:border-primary">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Modelo</label>
+                    <select id="modelo-anthropic" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                        <option value="claude-3-sonnet-20240229">Claude 3 Sonnet</option>
+                        <option value="claude-3-haiku-20240307">Claude 3 Haiku</option>
+                        <option value="claude-3-opus-20240229">Claude 3 Opus</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Max Tokens</label>
+                    <select id="max-tokens-anthropic" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                        <option value="1024">1.024</option>
+                        <option value="2048">2.048</option>
+                        <option value="4096" selected>4.096</option>
+                        <option value="8192">8.192</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="flex gap-2">
+                <button type="button" onclick="salvarChaveF14('anthropic')" 
+                        class="bg-accent text-white px-4 py-2 rounded-lg text-sm hover:bg-orange-700">
+                    💾 Salvar Chave
+                </button>
+                <button type="button" onclick="testarApiF14('anthropic')" 
+                        class="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
+                    🧪 Testar API
+                </button>
+            </div>
+        </div>
+    </div>
+    
     <!-- Outras abas simplificadas -->
     <div x-show="aba==='academy'" style="display:none" class="max-w-2xl">
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -165,7 +221,69 @@
     <div x-show="aba==='email'" style="display:none" class="max-w-2xl">
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <h3 class="font-semibold text-gray-800 mb-4">Configuração SMTP</h3>
-            <p class="text-sm text-gray-500">Configuração em desenvolvimento...</p>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Servidor SMTP</label>
+                    <input type="text" id="smtp-host" placeholder="smtp.gmail.com" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Porta</label>
+                    <select id="smtp-port" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                        <option value="587">587 (TLS)</option>
+                        <option value="465">465 (SSL)</option>
+                        <option value="25">25 (Não seguro)</option>
+                        <option value="2525">2525 (Alternativo)</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Email Remetente</label>
+                    <input type="email" id="smtp-email" placeholder="noreply@suaempresa.com" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Nome do Remetente</label>
+                    <input type="text" id="smtp-nome" placeholder="O Consultor" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Usuário SMTP</label>
+                    <input type="text" id="smtp-usuario" placeholder="usuario@gmail.com" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Senha/Token</label>
+                    <input type="password" id="smtp-senha" placeholder="senha ou token de aplicativo" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono outline-none focus:border-primary">
+                </div>
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-xs text-gray-500 mb-1">Segurança</label>
+                <select id="smtp-seguranca" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                    <option value="tls">TLS</option>
+                    <option value="ssl">SSL</option>
+                    <option value="none">Nenhuma</option>
+                </select>
+            </div>
+            
+            <div class="flex gap-2">
+                <button type="button" onclick="salvarSmtp()" 
+                        class="bg-primary text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">
+                    💾 Salvar Configuração
+                </button>
+                <button type="button" onclick="testarSmtp()" 
+                        class="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
+                    📧 Testar Envio
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -356,6 +474,118 @@ function showToast(message, type) {
     setTimeout(() => {
         toast.remove();
     }, 3000);
+}
+
+// Função para carregar dados das APIs ao inicializar
+async function loadApiData() {
+    try {
+        const response = await fetch('<?= APP_URL ?>/admin/configuracoes');
+        // Por enquanto vamos assumir que os dados estão disponíveis via PHP
+        // Em versões futuras, podemos criar um endpoint específico para buscar os dados via AJAX
+        
+        // Carregar status de cada API
+        const apis = ['openai', 'perplexity', 'anthropic'];
+        
+        apis.forEach(provedor => {
+            const toggle = document.getElementById('toggle-' + provedor);
+            const form = document.getElementById('form-' + provedor);
+            
+            if (toggle && form) {
+                toggle.addEventListener('change', function() {
+                    if (this.checked) {
+                        form.style.display = 'block';
+                        toggleApiF14(provedor, true);
+                    } else {
+                        form.style.display = 'none';
+                        toggleApiF14(provedor, false);
+                    }
+                });
+            }
+        });
+        
+    } catch (error) {
+        console.error('Erro ao carregar dados das APIs:', error);
+    }
+}
+
+// Inicializar quando a página carregar
+document.addEventListener('DOMContentLoaded', loadApiData);
+
+// Funções SMTP
+async function salvarSmtp() {
+    const config = {
+        smtp_host: document.getElementById('smtp-host').value.trim(),
+        smtp_port: document.getElementById('smtp-port').value,
+        smtp_email: document.getElementById('smtp-email').value.trim(),
+        smtp_nome: document.getElementById('smtp-nome').value.trim(),
+        smtp_usuario: document.getElementById('smtp-usuario').value.trim(),
+        smtp_senha: document.getElementById('smtp-senha').value.trim(),
+        smtp_seguranca: document.getElementById('smtp-seguranca').value
+    };
+    
+    // Validações básicas
+    if (!config.smtp_host || !config.smtp_email || !config.smtp_usuario || !config.smtp_senha) {
+        showToast('Preencha todos os campos obrigatórios', 'error');
+        return;
+    }
+    
+    try {
+        const formData = new FormData();
+        formData.append('csrf_token', '<?= Csrf::token() ?>');
+        Object.keys(config).forEach(key => {
+            formData.append(key, config[key]);
+        });
+        
+        const response = await fetch('<?= APP_URL ?>/admin/smtp/salvar', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.sucesso) {
+            showToast('Configuração SMTP salva com sucesso!', 'success');
+            // Limpar senha por segurança
+            document.getElementById('smtp-senha').value = '••••••••••';
+        } else {
+            showToast(result.erro || 'Erro ao salvar configuração', 'error');
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+        showToast('Erro de conexão', 'error');
+    }
+}
+
+async function testarSmtp() {
+    const btn = event.target;
+    const originalText = btn.textContent;
+    
+    btn.disabled = true;
+    btn.textContent = '📤 Enviando...';
+    
+    try {
+        const formData = new FormData();
+        formData.append('csrf_token', '<?= Csrf::token() ?>');
+        
+        const response = await fetch('<?= APP_URL ?>/admin/smtp/testar', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.sucesso) {
+            showToast('E-mail de teste enviado com sucesso!', 'success');
+        } else {
+            showToast(result.erro || 'Erro ao enviar e-mail de teste', 'error');
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+        showToast('Erro de conexão', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+    }
 }
 </script>
 
