@@ -358,7 +358,7 @@ GERE O SOP COMPLETO COM OS 13 COMPONENTES:
 4. responsaveis (array: [{papel, cargo}])
 5. prerequisitos (array de strings, mínimo 6)
 6. ferramentas (array de strings)
-7. procedimentos (array POR SUBTÓPICO: [{subtopico: "A", passos: [{passo, acao, responsavel, prazo, sistema, validacao}]}] — mínimo 10 passos ÚNICOS por subtópico)
+7. procedimentos (array POR SUBTÓPICO: [{subtopico: \"A\", passos: [{passo, acao, responsavel, prazo, sistema, validacao}]}] — mínimo 10 passos ÚNICOS por subtópico)
 8. checklist (array de strings, mínimo 12)
 9. evidencias (array de strings, mínimo 5)
 10. relatorios (array: [{oque, para_quem, frequencia, canal}])

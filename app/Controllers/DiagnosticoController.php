@@ -860,7 +860,6 @@ Retorne JSON exatamente neste formato:
 
 IMPORTANTE: Use as informações dos documentos internos para personalizar completamente a análise, adaptando as recomendações ao que já existe na empresa e identificando gaps específicos." : "");
     }
-    }
 
     /**
      * Calcula o score de maturidade (1-4)

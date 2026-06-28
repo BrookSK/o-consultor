@@ -178,7 +178,7 @@ class ConteudoController
     {
         // Buscar dados da empresa
         $empresa = Database::queryOne(
-            "SELECT setor, lingua_principal FROM empresas WHERE id = :id",
+            "SELECT segmento, lingua_principal FROM empresas WHERE id = :id",
             ['id' => $empresaId]
         );
 
@@ -199,7 +199,7 @@ class ConteudoController
         );
 
         return [
-            'setor' => $empresa['setor'] ?? 'Tecnologia',
+            'setor' => $empresa['segmento'] ?? 'Tecnologia',
             'lingua' => $empresa['lingua_principal'] ?? 'Português',
             'sites' => array_column($sites, 'site_url'),
             'palavras_chave' => ['IA empresarial', 'automação', 'produtividade'], // TODO: implementar tabela própria

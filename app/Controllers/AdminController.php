@@ -1527,3 +1527,4 @@ class AdminController
         echo json_encode(['sucesso' => true, 'mensagem' => 'Modo acesso global ativado.']);
         exit;
     }
+}
