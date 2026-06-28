@@ -124,6 +124,98 @@
                 </div>
             </div>
 
+            <!-- Sistema de Upload de Documentos -->
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-6 mt-8">
+                <h3 class="text-lg font-semibold text-blue-800 mb-4 flex items-center gap-2">
+                    📄 Documentos da Empresa (Opcional)
+                </h3>
+                <p class="text-blue-700 mb-4">
+                    Faça upload de documentos internos da empresa (processos, manuais, políticas, etc.) para que a IA 
+                    possa personalizar o diagnóstico e SOPs com informações reais que já existem na empresa.
+                </p>
+                
+                <?php if (!empty($dados['documentos_existentes'])): ?>
+                <div class="mb-4">
+                    <h4 class="font-medium text-blue-800 mb-2">Documentos já enviados:</h4>
+                    <div class="space-y-2">
+                        <?php foreach ($dados['documentos_existentes'] as $doc): ?>
+                        <div class="flex items-center justify-between bg-white rounded-lg p-3 border">
+                            <div>
+                                <span class="font-medium"><?= htmlspecialchars($doc['nome_original']) ?></span>
+                                <span class="text-xs text-gray-500 ml-2">
+                                    <?= number_format($doc['tamanho_bytes']/1024, 1) ?>KB • 
+                                    <?= date('d/m/Y', strtotime($doc['criado_em'])) ?> •
+                                    <?= $doc['processado_ia'] ? '✅ Processado' : '⏳ Aguardando' ?>
+                                </span>
+                            </div>
+                            <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                <?= htmlspecialchars($doc['tipo_documento']) ?>
+                            </span>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+                <?php endif; ?>
+
+                <div x-data="documentUpload()" class="space-y-4">
+                    <div class="border-2 border-dashed border-blue-300 rounded-lg p-6 text-center" 
+                         @drop.prevent="handleDrop($event)" 
+                         @dragover.prevent 
+                         @dragenter.prevent>
+                        <div class="mb-4">
+                            <svg class="mx-auto h-12 w-12 text-blue-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                                <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                            </svg>
+                        </div>
+                        <p class="text-blue-600 font-medium">Arraste e solte arquivos aqui ou</p>
+                        <input type="file" 
+                               x-ref="fileInput"
+                               multiple 
+                               accept=".pdf,.doc,.docx,.txt,.rtf" 
+                               @change="handleFileSelect($event)"
+                               class="hidden">
+                        <button type="button" 
+                                @click="$refs.fileInput.click()"
+                                class="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                            Selecionar Arquivos
+                        </button>
+                        <p class="text-xs text-gray-500 mt-2">
+                            PDF, DOC, DOCX, TXT, RTF • Máximo 5MB por arquivo
+                        </p>
+                    </div>
+
+                    <!-- Lista de arquivos selecionados -->
+                    <div x-show="selectedFiles.length > 0" class="space-y-2">
+                        <h4 class="font-medium text-gray-700">Arquivos selecionados:</h4>
+                        <template x-for="(file, index) in selectedFiles" :key="index">
+                            <div class="flex items-center justify-between bg-gray-50 rounded-lg p-3 border">
+                                <div>
+                                    <span class="font-medium" x-text="file.name"></span>
+                                    <span class="text-xs text-gray-500 ml-2" x-text="formatFileSize(file.size)"></span>
+                                </div>
+                                <button type="button" 
+                                        @click="removeFile(index)"
+                                        class="text-red-600 hover:text-red-800 transition">
+                                    ✕
+                                </button>
+                            </div>
+                        </template>
+                        
+                        <button type="button" 
+                                @click="uploadDocuments()"
+                                :disabled="uploading"
+                                class="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center justify-center gap-2"
+                                :class="{ 'opacity-50 cursor-not-allowed': uploading }">
+                            <span x-show="!uploading">📤 Enviar Documentos</span>
+                            <span x-show="uploading" class="flex items-center gap-2">
+                                <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                Enviando...
+                            </span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Botões de Navegação -->
             <div class="flex justify-between pt-6 border-t border-gray-100">
                 <a href="<?= APP_URL ?>/diagnostico" 
@@ -203,6 +295,95 @@ function diagnosticoBloco1() {
                 alert('Erro na conexão. Tente novamente.');
             } finally {
                 this.loading = false;
+            }
+        }
+    };
+}
+
+// Componente para upload de documentos
+function documentUpload() {
+    return {
+        selectedFiles: [],
+        uploading: false,
+
+        handleFileSelect(event) {
+            const files = Array.from(event.target.files);
+            this.addFiles(files);
+        },
+
+        handleDrop(event) {
+            const files = Array.from(event.dataTransfer.files);
+            this.addFiles(files);
+        },
+
+        addFiles(files) {
+            for (const file of files) {
+                // Validar tipo de arquivo
+                const allowedTypes = ['.pdf', '.doc', '.docx', '.txt', '.rtf'];
+                const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+                
+                if (!allowedTypes.includes(fileExtension)) {
+                    alert(`Arquivo ${file.name} não é suportado. Use apenas: PDF, DOC, DOCX, TXT, RTF`);
+                    continue;
+                }
+
+                // Validar tamanho (5MB)
+                if (file.size > 5 * 1024 * 1024) {
+                    alert(`Arquivo ${file.name} é muito grande. Máximo 5MB por arquivo.`);
+                    continue;
+                }
+
+                // Verificar se não é duplicado
+                if (!this.selectedFiles.some(f => f.name === file.name && f.size === file.size)) {
+                    this.selectedFiles.push(file);
+                }
+            }
+        },
+
+        removeFile(index) {
+            this.selectedFiles.splice(index, 1);
+        },
+
+        formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        },
+
+        async uploadDocuments() {
+            if (this.selectedFiles.length === 0) return;
+
+            this.uploading = true;
+
+            try {
+                const formData = new FormData();
+                formData.append('csrf_token', '<?= Csrf::token() ?>');
+                
+                for (let i = 0; i < this.selectedFiles.length; i++) {
+                    formData.append('documentos[]', this.selectedFiles[i]);
+                }
+
+                const response = await fetch('<?= APP_URL ?>/diagnostico/upload-documentos', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.sucesso) {
+                    alert(result.mensagem);
+                    this.selectedFiles = [];
+                    // Recarregar a página para mostrar os documentos enviados
+                    window.location.reload();
+                } else {
+                    alert(result.erro || 'Erro ao enviar documentos');
+                }
+            } catch (error) {
+                alert('Erro na conexão. Tente novamente.');
+            } finally {
+                this.uploading = false;
             }
         }
     };

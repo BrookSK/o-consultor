@@ -63,13 +63,14 @@ class DiagnosticoController
     }
 
     /**
-     * Iniciar novo diagnóstico (Bloco 1)
+     * Iniciar novo diagnóstico (Bloco 1) - Inclui upload de documentos
      */
     public function novo(): void
     {
         Auth::proteger();
         
         $usuario = Auth::usuario();
+        $empresaId = Auth::empresa();
         
         // Buscar ou criar rascunho em andamento
         $rascunho = Diagnostico::buscarOuCriarRascunho($usuario['id']);
@@ -78,6 +79,23 @@ class DiagnosticoController
             Flash::set('erro', 'Erro ao iniciar diagnóstico. Tente novamente.');
             header('Location: ' . APP_URL . '/diagnostico');
             exit;
+        }
+        
+        // Buscar documentos já enviados pela empresa
+        $documentosExistentes = [];
+        if ($empresaId) {
+            try {
+                $documentosExistentes = Database::query(
+                    "SELECT id, nome_original, tipo_documento, tamanho_bytes, processado_ia, criado_em 
+                     FROM documentos_empresa 
+                     WHERE empresa_id = :empresa_id AND ativo = 1 
+                     ORDER BY criado_em DESC",
+                    ['empresa_id' => $empresaId]
+                );
+            } catch (Exception $e) {
+                // Tabela pode não existir ainda
+                $documentosExistentes = [];
+            }
         }
         
         // Determinar em qual bloco deve começar
@@ -96,7 +114,8 @@ class DiagnosticoController
             'rascunho' => $rascunho,
             'bloco_atual' => 1,
             'total_blocos' => 5,
-            'opcoes' => $opcoes
+            'opcoes' => $opcoes,
+            'documentos_existentes' => $documentosExistentes
         ];
 
         require VIEW_PATH . '/diagnostico/bloco1.php';
@@ -317,9 +336,21 @@ class DiagnosticoController
             $sitesReferencia = [];
             
             if ($this->apiConfigurada()) {
-                $resultadoIA = $this->chamarOpenAIAnalise($dadosCompletos);
+                // Buscar documentos relevantes da empresa
+                $empresaId = $rascunho['empresa_id'] ?? Auth::empresa();
+                $documentosRelevantes = DocumentoProcessor::buscarDocumentosRelevantes($empresaId);
+                $contextoDocumentos = DocumentoProcessor::construirContextoDocumentos($documentosRelevantes);
+                
+                $resultadoIA = $this->chamarOpenAIAnalise($dadosCompletos, $contextoDocumentos);
                 if ($resultadoIA) {
                     $sitesReferencia = $resultadoIA['sites_referencia'] ?? [];
+                }
+                
+                // Registrar uso dos documentos
+                if (!empty($documentosRelevantes)) {
+                    foreach ($documentosRelevantes as $doc) {
+                        DocumentoProcessor::registrarUso($doc['id'], $empresaId, Auth::id(), 'diagnostico', null);
+                    }
                 }
             }
             
@@ -413,6 +444,63 @@ class DiagnosticoController
             echo json_encode(['sucesso' => false, 'mensagem' => 'Erro ao gerar diagnóstico: ' . $e->getMessage()]);
         }
         
+        exit;
+    }
+    
+    /**
+     * Upload de documentos da empresa para enriquecer IA
+     */
+    public function uploadDocumentos(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        
+        $empresaId = Auth::empresa();
+        $usuarioId = Auth::id();
+        
+        if (!$empresaId) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Empresa não identificada.']);
+            exit;
+        }
+        
+        if (empty($_FILES['documentos']) || empty($_FILES['documentos']['tmp_name'])) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Nenhum documento foi enviado.']);
+            exit;
+        }
+        
+        // Processar uploads
+        $resultados = DocumentoProcessor::processarUploads($_FILES['documentos'], $empresaId, $usuarioId);
+        
+        // Contar sucessos e falhas
+        $sucessos = array_filter($resultados, fn($r) => $r['sucesso']);
+        $falhas = array_filter($resultados, fn($r) => !$r['sucesso']);
+        
+        $mensagem = sprintf(
+            '%d documento(s) enviado(s) com sucesso',
+            count($sucessos)
+        );
+        
+        if (!empty($falhas)) {
+            $mensagem .= sprintf(', %d falha(s)', count($falhas));
+        }
+        
+        Logger::acao('Upload de documentos para diagnóstico', [
+            'empresa_id' => $empresaId,
+            'total_enviados' => count($resultados),
+            'sucessos' => count($sucessos),
+            'falhas' => count($falhas)
+        ]);
+        
+        header('Content-Type: application/json');
+        echo json_encode([
+            'sucesso' => !empty($sucessos),
+            'mensagem' => $mensagem,
+            'resultados' => $resultados,
+            'total_sucessos' => count($sucessos),
+            'total_falhas' => count($falhas)
+        ]);
         exit;
     }
 
@@ -614,10 +702,11 @@ class DiagnosticoController
             Session::remove('diagnostico_dados');
         }
         
-        // Se ainda não houver resultado, usar mock para visualização
+        // Se ainda não houver resultado, mostrar empty state
         if (!$resultado) {
-            $resultado = $this->getResultadoMock();
-            $dadosForm = ['empresa_nome' => 'Empresa Exemplo'];
+            Flash::erro('Resultado do diagnóstico não encontrado.');
+            header('Location: ' . APP_URL . '/diagnostico');
+            exit;
         }
 
         $dados = [
@@ -664,14 +753,19 @@ class DiagnosticoController
     /**
      * Chamar OpenAI para análise completa
      */
-    private function chamarOpenAIAnalise(array $dados): ?array
+    private function chamarOpenAIAnalise(array $dados, string $contextoDocumentos = ''): ?array
     {
         try {
-            $prompt = $this->montarPromptAnalise($dados);
-            $response = ApiHelper::chamarOpenAI($prompt, 'gpt-4');
+            $prompt = ApiHelper::buildPromptDiagnostico($dados);
             
-            if ($response && isset($response['content'])) {
-                return json_decode($response['content'], true);
+            if (!empty($contextoDocumentos)) {
+                $prompt .= "\n\nDOCUMENTOS DA EMPRESA:\n" . $contextoDocumentos . "\n\nIMPORTANTE: Use as informações dos documentos para enriquecer sua análise e tornar as recomendações mais específicas e aderentes à realidade da empresa.";
+            }
+            
+            $response = ApiHelper::chamarAnalise($prompt, true);
+            
+            if ($response['sucesso'] && is_array($response['conteudo'])) {
+                return $response['conteudo'];
             }
             
         } catch (Exception $e) {
@@ -684,12 +778,33 @@ class DiagnosticoController
     /**
      * Montar prompt para análise da IA
      */
-    private function montarPromptAnalise(array $dados): string
+    private function montarPromptAnalise(array $dados, string $contextoDocumentos = ''): string
     {
         $empresa = $dados['empresa_nome'] ?? 'Empresa';
         $setor = $dados['setor'] ?? 'Não informado';
         
-        return "Analise o diagnóstico empresarial completo da empresa '{$empresa}' do setor '{$setor}' e retorne um JSON estruturado com:
+        return "Analise o diagnóstico empresarial completo desta empresa e gere insights estratégicos:
+
+EMPRESA: {$empresa}
+SETOR: {$setor}
+
+DADOS DO DIAGNÓSTICO:
+" . json_encode($dados, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . "
+
+{$contextoDocumentos}
+
+Com base nas informações do diagnóstico" . (!empty($contextoDocumentos) ? " e nos documentos internos da empresa" : "") . ", forneça:
+
+1. **sites_referencia**: Array com 5-10 sites especializados no setor para busca de notícias
+2. **insights**: Array com principais insights estratégicos
+3. **recomendacoes**: Array com recomendações prioritárias
+4. **riscos**: Array com riscos identificados
+5. **oportunidades**: Array com oportunidades de melhoria
+
+Responda APENAS em JSON válido." . (!empty($contextoDocumentos) ? "
+
+IMPORTANTE: Use as informações dos documentos internos para personalizar completamente a análise, adaptando as recomendações ao que já existe na empresa e identificando gaps específicos." : "");
+    }gnóstico empresarial completo da empresa '{$empresa}' do setor '{$setor}' e retorne um JSON estruturado com:
 
 **DADOS DA EMPRESA:**
 - Nome: {$empresa}
@@ -833,31 +948,6 @@ Retorne JSON exatamente neste formato:
             'areas' => $areas,
             'riscos' => $riscos,
             'empresa' => $dados['empresa_nome'],
-        ];
-    }
-
-    /**
-     * Resultado mock para visualização
-     */
-    private function getResultadoMock(): array
-    {
-        return [
-            'score' => 2,
-            'nivel' => ['label' => 'Desenvolvimento', 'cor' => '#f59e0b', 'descricao' => 'A empresa está desenvolvendo processos. Há alguma documentação mas falta consistência.'],
-            'pontuacao_percentual' => 50,
-            'areas' => [
-                ['area' => 'Estratégia', 'status' => 'atenção', 'comentario' => 'Necessita formalizar planejamento estratégico.'],
-                ['area' => 'Operações', 'status' => 'crítico', 'comentario' => '25% dos processos documentados. Urgente: mapear processos críticos.'],
-                ['area' => 'Financeiro', 'status' => 'adequado', 'comentario' => 'Metas financeiras definidas.'],
-                ['area' => 'Pessoas', 'status' => 'crítico', 'comentario' => 'RISCO: processos sem backup de conhecimento.'],
-                ['area' => 'Riscos', 'status' => 'atenção', 'comentario' => 'Dependência de fornecedor insubstituível identificada.'],
-            ],
-            'riscos' => [
-                ['tipo' => 'Operacional', 'descricao' => 'Processos sem backup de conhecimento', 'criticidade' => 'alta', 'acao' => 'Documentar SOPs e treinar equipe backup'],
-                ['tipo' => 'Fornecimento', 'descricao' => 'Fornecedor crítico insubstituível', 'criticidade' => 'alta', 'acao' => 'Mapear fornecedores alternativos'],
-                ['tipo' => 'Comercial', 'descricao' => 'Cliente com mais de 30% do faturamento', 'criticidade' => 'media', 'acao' => 'Diversificar carteira de clientes'],
-            ],
-            'empresa' => 'Empresa Exemplo',
         ];
     }
 

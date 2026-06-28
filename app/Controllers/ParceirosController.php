@@ -9,14 +9,54 @@ class ParceirosController
     public function index(): void
     {
         Auth::proteger();
-        $dados = ['parceiros' => $this->getMock()];
+        
+        // Buscar parceiros reais do banco
+        $empresaId = Auth::empresa();
+        $parceiros = [];
+        
+        try {
+            $parceiros = Database::query(
+                "SELECT p.*, COUNT(sp.id) as total_solicitacoes
+                 FROM parceiros p
+                 LEFT JOIN solicitacoes_parceiros sp ON p.id = sp.parceiro_id AND sp.empresa_id = :empresa_id
+                 WHERE p.ativo = 1
+                 GROUP BY p.id
+                 ORDER BY p.nome ASC",
+                ['empresa_id' => $empresaId]
+            );
+        } catch (\Exception $e) {
+            Logger::erro('Erro ao buscar parceiros: ' . $e->getMessage());
+        }
+        
+        $dados = ['parceiros' => $parceiros];
         require VIEW_PATH . '/parceiros/index.php';
     }
 
     public function perfil(): void
     {
         Auth::proteger();
-        $dados = ['parceiro' => $this->getPerfilMock()];
+        
+        $parceiroId = (int) ($_GET['id'] ?? 0);
+        $parceiro = null;
+        
+        if ($parceiroId > 0) {
+            try {
+                $parceiro = Database::queryOne(
+                    "SELECT * FROM parceiros WHERE id = :id AND ativo = 1",
+                    ['id' => $parceiroId]
+                );
+            } catch (\Exception $e) {
+                Logger::erro('Erro ao buscar parceiro: ' . $e->getMessage());
+            }
+        }
+        
+        if (!$parceiro) {
+            Flash::set('erro', 'Parceiro não encontrado.');
+            header('Location: ' . APP_URL . '/parceiros');
+            exit;
+        }
+        
+        $dados = ['parceiro' => $parceiro];
         require VIEW_PATH . '/parceiros/perfil.php';
     }
 
@@ -33,7 +73,18 @@ class ParceirosController
     public function admin(): void
     {
         Auth::exigirPerfil([Auth::ADMIN_HOLDING]);
-        $dados = ['parceiros' => $this->getMock()];
+        
+        // Buscar parceiros reais do banco
+        try {
+            $parceiros = Database::query(
+                "SELECT * FROM parceiros WHERE ativo = 1 ORDER BY nome ASC"
+            );
+        } catch (Exception $e) {
+            // Se tabela não existir, mostrar empty state
+            $parceiros = [];
+        }
+        
+        $dados = ['parceiros' => $parceiros];
         require VIEW_PATH . '/parceiros/admin.php';
     }
 
@@ -237,37 +288,5 @@ class ParceirosController
             echo json_encode(['sucesso' => false, 'erro' => 'Erro interno.']);
         }
         exit;
-    }
-
-    private function getMock(): array
-    {
-        return [
-            ['id' => 1, 'nome' => 'CloudTech Soluções', 'categoria' => 'Tecnologia', 'especialidades' => ['Cloud AWS', 'Segurança', 'DevOps'], 'status' => 'homologado', 'avaliacao' => 4.8, 'sobre' => 'Especialista em infraestrutura cloud para PMEs.'],
-            ['id' => 2, 'nome' => 'Marketing Pro Digital', 'categoria' => 'Marketing', 'especialidades' => ['SEO', 'Tráfego pago', 'Social media'], 'status' => 'homologado', 'avaliacao' => 4.5, 'sobre' => 'Agência focada em performance para empresas B2B.'],
-            ['id' => 3, 'nome' => 'Jurídico Empresarial', 'categoria' => 'Jurídico', 'especialidades' => ['LGPD', 'Contratos', 'Societário'], 'status' => 'homologado', 'avaliacao' => 4.9, 'sobre' => 'Escritório especializado em direito empresarial e compliance.'],
-            ['id' => 4, 'nome' => 'Contabilidade Express', 'categoria' => 'Finanças', 'especialidades' => ['Contabilidade', 'BPO financeiro', 'Planejamento tributário'], 'status' => 'em_avaliacao', 'avaliacao' => 4.2, 'sobre' => 'Contabilidade digital para empresas de tecnologia.'],
-            ['id' => 5, 'nome' => 'RH Conecta', 'categoria' => 'RH', 'especialidades' => ['Recrutamento tech', 'Cultura organizacional', 'Treinamento'], 'status' => 'homologado', 'avaliacao' => 4.6, 'sobre' => 'Soluções de pessoas para empresas em crescimento.'],
-            ['id' => 6, 'nome' => 'LogiSmart', 'categoria' => 'Logística', 'especialidades' => ['Last mile', 'Fulfillment', 'WMS'], 'status' => 'suspenso', 'avaliacao' => 3.8, 'sobre' => 'Logística inteligente para e-commerce.'],
-        ];
-    }
-
-    private function getPerfilMock(): array
-    {
-        return [
-            'id' => 1, 'nome' => 'CloudTech Soluções', 'categoria' => 'Tecnologia',
-            'especialidades' => ['Cloud AWS', 'Segurança', 'DevOps', 'Backup', 'Monitoramento'],
-            'status' => 'homologado', 'avaliacao' => 4.8,
-            'sobre' => 'Empresa especializada em infraestrutura cloud para PMEs, com mais de 8 anos de experiência e certificações AWS, Azure e Google Cloud. Atendemos mais de 120 empresas no Brasil.',
-            'portfolio' => [
-                ['titulo' => 'Migração AWS para empresa de 200 usuários', 'resultado' => 'Redução de 40% no custo de infra'],
-                ['titulo' => 'Implementação de SOC 24/7', 'resultado' => 'Zero incidentes de segurança em 18 meses'],
-                ['titulo' => 'Disaster Recovery multi-region', 'resultado' => 'RTO de 15 minutos garantido'],
-            ],
-            'avaliacoes' => [
-                ['nota' => 5, 'comentario' => 'Excelente suporte e proatividade. Recomendo.', 'data' => '2026-06-10'],
-                ['nota' => 5, 'comentario' => 'Migração sem downtime. Time muito competente.', 'data' => '2026-05-20'],
-                ['nota' => 4, 'comentario' => 'Bom trabalho, apenas o prazo ficou um pouco apertado.', 'data' => '2026-04-15'],
-            ],
-        ];
     }
 }

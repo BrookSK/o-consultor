@@ -315,7 +315,7 @@ class ApiHelper
     /**
      * Gera prompt para SOP individual
      */
-    public static function buildPromptSop(array $empresa, array $sop): string
+    public static function buildPromptSop(array $empresa, array $sop, string $contextoDocumentos = ''): string
     {
         $normas = self::getNormasPorSetor($empresa['setor']);
 
@@ -333,6 +333,8 @@ Objetivos estratégicos: {$empresa['objetivos']}
 PADRÃO DE MERCADO APLICÁVEL:
 {$normas}
 
+{$contextoDocumentos}
+
 SOP A GERAR: {$sop['id']} — {$sop['nome']}
 DEPARTAMENTO: {$sop['departamento']}
 
@@ -347,6 +349,7 @@ INSTRUÇÕES DE QUALIDADE — OBRIGATÓRIAS:
 5. PLANOS DE CONTINGÊNCIA: cada nível (N1/N2/N3) deve ter situação gatilho clara, ação passo a passo e responsáveis definidos.
 6. KPIs: metas numéricas específicas com zonas verde/amarela/vermelha e ação automática.
 7. N3 JURÍDICO: N3 deve incluir procedimento jurídico detalhado + comunicação externa + documentação legal.
+8. DOCUMENTOS EXISTENTES: Se foram fornecidos documentos da empresa, use-os como base para adaptar os procedimentos à realidade atual da empresa, identificando o que já existe e o que precisa ser melhorado ou criado.
 
 GERE O SOP COMPLETO COM OS 13 COMPONENTES:
 1. objetivo (string 3-5 frases)

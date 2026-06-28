@@ -20,14 +20,14 @@ class MaquinaController
                  ORDER BY m.nome ASC"
             );
             
-            // Se não tem marcas, usar mock
+            // Se não tem marcas, retorna empty array para permitir criação
             if (empty($marcas)) {
-                $marcas = $this->getMarcasMock();
+                $marcas = [];
             }
             
         } catch (\Exception $e) {
-            // Fallback para mock se tabela não existir
-            $marcas = $this->getMarcasMock();
+            // Tabela pode não existir - retornar empty array
+            $marcas = [];
         }
         
         $dados = ['marcas' => $marcas];
@@ -79,8 +79,8 @@ class MaquinaController
                 ['marca_id' => $marcaId, 'user_id' => Auth::id()]
             );
         } catch (\Exception $e) {
-            // Fallback para mock se tabela não existir
-            $conteudos = $this->getConteudosMock();
+            // Tabela pode não existir - usar array vazio
+            $conteudos = [];
         }
         
         // Carregar notícias disponíveis para usar como base
@@ -91,8 +91,8 @@ class MaquinaController
                 ['user_id' => Auth::id()]
             );
         } catch (\Exception $e) {
-            // Fallback para mock se não há sistema de notícias
-            $noticias = $this->getNoticiasMock();
+            // Tabela pode não existir - usar array vazio
+            $noticias = [];
         }
         
         $dados = [
@@ -285,11 +285,17 @@ class MaquinaController
             }
         }
         
-        // Fallback para dados da sessão ou mock
+        // Fallback para dados da sessão ou empty state
         if (!$conteudo) {
-            $conteudo = Session::get('conteudo_gerado') ?? $this->gerarConteudoMock('carrossel', 'Gestão financeira para PMEs', 'educar');
+            $conteudo = Session::get('conteudo_gerado');
+            if (!$conteudo) {
+                // Se não há conteúdo, redirecionar para página principal
+                Flash::erro('Conteúdo não encontrado.');
+                header('Location: ' . APP_URL . '/maquina-de-conteudo');
+                exit;
+            }
             $conteudo['id'] = 0;
-            $conteudo['marca_nome'] = 'Tech Solutions';
+            $conteudo['marca_nome'] = 'Marca sem nome';
         }
         
         $dados = ['conteudo' => $conteudo];
@@ -732,8 +738,8 @@ class MaquinaController
             }
             return $marca;
         } catch (\Exception $e) {
-            // Fallback para mock se tabela não existir
-            return $this->getMarcaDetalheMock();
+            // Tabela pode não existir - retornar null para forçar redirecionamento
+            return null;
         }
     }
 
@@ -1115,77 +1121,30 @@ class MaquinaController
         exit;
     }
 
-    // ===== MOCKS =====
+    // ===== EMPTY STATE HELPERS =====
 
-    private function getMarcasMock(): array
+    /**
+     * Criar marca padrão se não existir nenhuma
+     */
+    private function criarMarcaPadrao(): array
     {
-        return [
-            ['id' => 1, 'nome' => 'Tech Solutions', 'nicho' => 'Tecnologia/MSP', 'ultimo' => '2026-06-25', 'status' => 'ativo', 'avatar' => 'T'],
-            ['id' => 2, 'nome' => 'Varejo Express', 'nicho' => 'Varejo', 'ultimo' => '2026-06-20', 'status' => 'ativo', 'avatar' => 'V'],
-            ['id' => 3, 'nome' => 'FoodService', 'nicho' => 'Alimentação', 'ultimo' => null, 'status' => 'pendente', 'avatar' => 'F'],
-        ];
-    }
-
-    private function getMarcaDetalheMock(): array
-    {
-        return [
-            'id' => 1, 'nome' => 'Tech Solutions', 'nicho' => 'Tecnologia/MSP',
-            'publico' => 'Empresários de PMEs que precisam de TI gerenciada',
-            'tom' => 'Semiformal', 'arquetipo' => 'Sábio',
-            'paleta' => ['#1E3A5F', '#E07B00', '#FFFFFF', '#F5F7FA', '#1a7a1a'],
-            'fonte_principal' => 'Inter', 'fonte_secundaria' => 'Roboto Mono',
-            'estilo_visual' => 'Tecnológico, clean, fundo escuro com destaques em laranja',
-            'prompt_dalle' => 'Imagem tecnológica, clean, fundo azul escuro (#1E3A5F), elementos geométricos sutis, ícones de tecnologia/cloud/segurança em destaque, estilo corporativo moderno, sem texto sobreposto, iluminação suave gradiente',
-            'brand_book_criado' => true,
-        ];
-    }
-
-    private function getConteudosMock(): array
-    {
-        return [
-            ['id' => 1, 'tipo' => 'carrossel', 'titulo' => '5 sinais de que sua empresa precisa de backup profissional', 'status' => 'aprovado', 'data' => '2026-06-25', 'slides' => 7],
-            ['id' => 2, 'tipo' => 'post', 'titulo' => 'Você sabia? 60% das PMEs que sofrem ransomware fecham em 6 meses', 'status' => 'rascunho', 'data' => '2026-06-24', 'slides' => 1],
-            ['id' => 3, 'tipo' => 'carrossel', 'titulo' => 'LGPD para empresas de TI: o que muda em 2026', 'status' => 'agendado', 'data' => '2026-06-26', 'slides' => 8],
-            ['id' => 4, 'tipo' => 'story', 'titulo' => 'Dica rápida: como escolher um bom firewall', 'status' => 'publicado', 'data' => '2026-06-22', 'slides' => 1],
-        ];
-    }
-
-    private function getNoticiasMock(): array
-    {
-        return [
-            ['id' => 1, 'titulo' => 'Novas regras de LGPD para empresas de TI'],
-            ['id' => 2, 'titulo' => 'Adoção de IA em MSPs cresce 340%'],
-            ['id' => 4, 'titulo' => 'Ransomware mira PMEs brasileiras'],
-        ];
-    }
-
-    private function gerarConteudoMock(string $tipo, string $tema, string $objetivo): array
-    {
-        $base = [
-            'tipo' => $tipo ?: 'carrossel',
-            'tema' => $tema,
-            'objetivo' => $objetivo,
-            'status' => 'rascunho',
-            'legenda' => "📌 {$tema}\n\nVocê sabia que a maioria das empresas ainda não tem esse processo estruturado?\n\nNeste conteúdo, vamos te mostrar passo a passo como implementar de forma simples e eficiente.\n\n💡 Salve este post para consultar depois!\n\n#gestão #consultoria #negócios #empreendedorismo",
-            'hashtags' => '#gestão #consultoria #pme #negócios #empreendedorismo #tecnologia',
-        ];
-
-        if ($tipo === 'carrossel' || $tipo === '') {
-            $base['slides'] = [
-                ['numero' => 1, 'tipo' => 'capa', 'texto' => $tema, 'imagem_url' => 'https://placehold.co/1080x1080/1E3A5F/ffffff?text=Capa'],
-                ['numero' => 2, 'tipo' => 'conteudo', 'texto' => 'O cenário atual mostra que empresas que não se adaptam ficam para trás. Veja os dados:', 'imagem_url' => 'https://placehold.co/1080x1080/E07B00/ffffff?text=Slide+2'],
-                ['numero' => 3, 'tipo' => 'conteudo', 'texto' => 'Passo 1: Faça um diagnóstico completo da situação atual da sua empresa.', 'imagem_url' => 'https://placehold.co/1080x1080/1a7a1a/ffffff?text=Slide+3'],
-                ['numero' => 4, 'tipo' => 'conteudo', 'texto' => 'Passo 2: Identifique as prioridades e crie um plano de ação com prazos realistas.', 'imagem_url' => 'https://placehold.co/1080x1080/1E3A5F/ffffff?text=Slide+4'],
-                ['numero' => 5, 'tipo' => 'conteudo', 'texto' => 'Passo 3: Documente seus processos em SOPs claros e treináveis.', 'imagem_url' => 'https://placehold.co/1080x1080/333333/ffffff?text=Slide+5'],
-                ['numero' => 6, 'tipo' => 'conteudo', 'texto' => 'Passo 4: Monitore os KPIs e ajuste continuamente.', 'imagem_url' => 'https://placehold.co/1080x1080/E07B00/ffffff?text=Slide+6'],
-                ['numero' => 7, 'tipo' => 'cta', 'texto' => '🚀 Quer estruturar sua empresa? Fale com a gente! Link na bio.', 'imagem_url' => 'https://placehold.co/1080x1080/1E3A5F/E07B00?text=CTA'],
+        try {
+            Database::execute(
+                "INSERT INTO marcas (nome, nicho, publico, tom, arquetipo, prompt_dalle, ativo, criado_em) 
+                 VALUES ('Exemplo Empresa', 'Tecnologia', 'PMEs', 'Profissional', 'Consultor', 'Imagem corporativa moderna', 1, NOW())"
+            );
+            
+            return [
+                'id' => Database::lastInsertId(),
+                'nome' => 'Exemplo Empresa',
+                'nicho' => 'Tecnologia',
+                'ultimo' => date('Y-m-d'),
+                'status' => 'ativo',
+                'avatar' => 'E'
             ];
-        } else {
-            $base['slides'] = [
-                ['numero' => 1, 'tipo' => 'unico', 'texto' => $tema . "\n\nConteúdo gerado para engajamento.", 'imagem_url' => 'https://placehold.co/1080x1080/1E3A5F/ffffff?text=Post'],
-            ];
+        } catch (Exception $e) {
+            // Se falhar, retorna empty state
+            return [];
         }
-
-        return $base;
     }
 }

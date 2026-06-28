@@ -113,8 +113,28 @@ class SopController
             'subtopicos_texto' => $this->getSubtopicosPorId($sopCodigo),
         ];
 
-        // Gerar prompt estruturado
-        $prompt = ApiHelper::buildPromptSop($empresaDados, $sopData);
+        // Buscar documentos relevantes da empresa para enriquecer o SOP
+        $documentosRelevantes = [];
+        $contextoDocumentos = '';
+        
+        try {
+            $areas = [$this->getDepartamentoPorId($sopCodigo)];
+            $documentosRelevantes = DocumentoProcessor::buscarDocumentosRelevantes($empresaId, $areas);
+            $contextoDocumentos = DocumentoProcessor::construirContextoDocumentos($documentosRelevantes);
+            
+            Logger::info('Documentos encontrados para SOP', [
+                'sop_codigo' => $sopCodigo,
+                'documentos_encontrados' => count($documentosRelevantes)
+            ]);
+        } catch (Exception $e) {
+            Logger::warning('Erro ao buscar documentos para SOP', [
+                'sop_codigo' => $sopCodigo,
+                'erro' => $e->getMessage()
+            ]);
+        }
+
+        // Gerar prompt estruturado com contexto dos documentos
+        $prompt = ApiHelper::buildPromptSop($empresaDados, $sopData, $contextoDocumentos);
 
         // Chamar IA (GPT ou Claude conforme config)
         $resultado = ApiHelper::chamarAnalise($prompt, true);
@@ -124,11 +144,21 @@ class SopController
             $sopId = $this->criarSopNoBanco($sopCodigo, $sopNome, $empresaId, $diagnostico['id'] ?? null, $resultado['conteudo']);
             
             if ($sopId) {
-                Logger::acao('SOP gerado via IA', ['sop_codigo' => $sopCodigo, 'sop_id' => $sopId]);
+                // Registrar uso dos documentos que contribuíram para o SOP
+                foreach ($documentosRelevantes as $doc) {
+                    DocumentoProcessor::registrarUso($doc['id'], $empresaId, Auth::id(), 'sop_geracao', $sopId);
+                }
+                
+                Logger::acao('SOP gerado via IA', [
+                    'sop_codigo' => $sopCodigo, 
+                    'sop_id' => $sopId,
+                    'documentos_utilizados' => count($documentosRelevantes)
+                ]);
                 header('Content-Type: application/json');
                 echo json_encode([
                     'sucesso' => true,
-                    'mensagem' => 'SOP gerado com sucesso!',
+                    'mensagem' => 'SOP gerado com sucesso!' . 
+                        (count($documentosRelevantes) > 0 ? " Utilizou {count($documentosRelevantes)} documento(s) da empresa." : ''),
                     'redirect' => APP_URL . '/sop/revisar?id=' . $sopId,
                 ]);
             } else {
@@ -136,9 +166,9 @@ class SopController
                 echo json_encode(['sucesso' => false, 'erro' => 'Erro ao salvar SOP no banco de dados.']);
             }
         } else {
-            // IA falhou: criar com mock e avisar
-            $sopId = $this->criarSopComMock($sopCodigo, $sopNome, $empresaId, $diagnostico['id'] ?? null);
-            Logger::warning('SOP gerado com mock (IA falhou)', ['sop_codigo' => $sopCodigo, 'erro' => $resultado['erro']]);
+            // IA falhou: criar SOP básico e avisar
+            $sopId = $this->criarSopBasico($sopCodigo, $sopNome, $empresaId, $diagnostico['id'] ?? null);
+            Logger::warning('SOP gerado básico (IA falhou)', ['sop_codigo' => $sopCodigo, 'erro' => $resultado['erro']]);
             
             header('Content-Type: application/json');
             echo json_encode([
@@ -638,9 +668,9 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             ['empresa_id' => $empresaId]
         );
 
-        // Se não há KPIs reais, mostrar mock para demonstração
+        // Se não há KPIs reais, mostrar empty state
         if (empty($kpisReais)) {
-            $dados = ['kpis' => $this->getKpisMock()];
+            $dados = ['kpis' => []];
         } else {
             $dados = ['kpis' => $this->formatarKpisParaView($kpisReais)];
         }
@@ -894,23 +924,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
     }
 
     /**
-     * Mock de KPIs para demonstração quando não há dados reais
-     */
-    private function getKpisMock(): array
-    {
-        return [
-            ['kpi' => 'Tempo de migração sem downtime', 'sop' => 'SOP-TI-ONB-001', 'atual' => '12 min', 'meta_verde' => '0 min', 'meta_amarela' => '1-30 min', 'meta_vermelha' => '>30 min', 'zona' => 'amarela', 'frequencia' => 'Por migração', 'responsavel' => 'Gerente Ops'],
-            ['kpi' => 'SLA de chamados atendidos', 'sop' => 'SOP-TI-OPS-001', 'atual' => '94%', 'meta_verde' => '>95%', 'meta_amarela' => '90-95%', 'meta_vermelha' => '<90%', 'zona' => 'amarela', 'frequencia' => 'Semanal', 'responsavel' => 'Analista N2'],
-            ['kpi' => 'Backup validado com sucesso', 'sop' => 'SOP-TI-OPS-002', 'atual' => '100%', 'meta_verde' => '100%', 'meta_amarela' => '95-99%', 'meta_vermelha' => '<95%', 'zona' => 'verde', 'frequencia' => 'Diário', 'responsavel' => 'Suporte N1'],
-            ['kpi' => 'Tempo de resposta cobrança', 'sop' => 'SOP-TI-FIN-001', 'atual' => '72h', 'meta_verde' => '<48h', 'meta_amarela' => '48-96h', 'meta_vermelha' => '>96h', 'zona' => 'amarela', 'frequencia' => 'Mensal', 'responsavel' => 'Financeiro'],
-            ['kpi' => 'Conformidade LGPD', 'sop' => 'SOP-TI-JUR-001', 'atual' => '88%', 'meta_verde' => '>95%', 'meta_amarela' => '80-95%', 'meta_vermelha' => '<80%', 'zona' => 'amarela', 'frequencia' => 'Trimestral', 'responsavel' => 'Jurídico'],
-        ];
-    }
-
-    // ===== F-05 HELPER METHODS =====
-
-    /**
-     * Cria SOP no banco com conteúdo da IA
+     * Formatar KPIs do banco para a view
      */
     private function criarSopNoBanco(string $sopCodigo, string $sopNome, int $empresaId, ?int $diagnosticoId, array $conteudoIA): int|false
     {
@@ -929,12 +943,18 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
     }
 
     /**
-     * Cria SOP com mock quando IA falha
+     * Cria SOP básico quando IA falha
      */
-    private function criarSopComMock(string $sopCodigo, string $sopNome, int $empresaId, ?int $diagnosticoId): int|false
+    private function criarSopBasico(string $sopCodigo, string $sopNome, int $empresaId, ?int $diagnosticoId): int|false
     {
-        $mockData = $this->gerarSopMock($sopCodigo, $sopNome);
-        return $this->criarSopNoBanco($sopCodigo, $sopNome, $empresaId, $diagnosticoId, $mockData);
+        $basicData = [
+            'objetivo' => 'Definir procedimento para ' . $sopNome,
+            'escopo' => ['aplica_se' => 'A definir', 'nao_aplica' => 'A definir'],
+            'subtopicos' => ['A definir procedimentos específicos'],
+            'kpis' => [],
+            'contencao' => ['n1' => [], 'n2' => [], 'n3' => []]
+        ];
+        return $this->criarSopNoBanco($sopCodigo, $sopNome, $empresaId, $diagnosticoId, $basicData);
     }
 
     /**
@@ -1095,166 +1115,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             }
         }
 
-    // ===== DADOS MOCKADOS =====
-
-    private function getDepartamentosMock(): array
-    {
-        return [
-            [
-                'nome' => 'Comercial',
-                'icone' => '💼',
-                'sops' => [
-                    ['id' => 'SOP-TI-COM-001', 'nome' => 'Prospecção e qualificação', 'status' => 'aprovado'],
-                    ['id' => 'SOP-TI-COM-002', 'nome' => 'Proposta técnica e comercial', 'status' => 'gerado'],
-                    ['id' => 'SOP-TI-COM-003', 'nome' => 'Negociação e fechamento', 'status' => 'nao_gerado'],
-                ],
-            ],
-            [
-                'nome' => 'Onboarding',
-                'icone' => '🚀',
-                'sops' => [
-                    ['id' => 'SOP-TI-ONB-001', 'nome' => 'Recebimento e migração de clientes', 'status' => 'em_revisao'],
-                    ['id' => 'SOP-TI-ONB-002', 'nome' => 'Configuração inicial de ambiente', 'status' => 'nao_gerado'],
-                    ['id' => 'SOP-TI-ONB-003', 'nome' => 'Treinamento e ativação', 'status' => 'nao_gerado'],
-                ],
-            ],
-            [
-                'nome' => 'Operacional',
-                'icone' => '⚙️',
-                'sops' => [
-                    ['id' => 'SOP-TI-OPS-001', 'nome' => 'Gestão de chamados e SLA', 'status' => 'aprovado'],
-                    ['id' => 'SOP-TI-OPS-002', 'nome' => 'Rotina de segurança e backups', 'status' => 'aprovado'],
-                    ['id' => 'SOP-TI-OPS-003', 'nome' => 'Gestão de acessos e senhas', 'status' => 'gerado'],
-                    ['id' => 'SOP-TI-OPS-004', 'nome' => 'Monitoramento de infraestrutura', 'status' => 'nao_gerado'],
-                ],
-            ],
-            [
-                'nome' => 'Financeiro',
-                'icone' => '💰',
-                'sops' => [
-                    ['id' => 'SOP-TI-FIN-001', 'nome' => 'Faturamento e cobrança', 'status' => 'aprovado'],
-                    ['id' => 'SOP-TI-FIN-002', 'nome' => 'Gestão de contratos e renovações', 'status' => 'nao_gerado'],
-                ],
-            ],
-            [
-                'nome' => 'Jurídico / Compliance',
-                'icone' => '⚖️',
-                'sops' => [
-                    ['id' => 'SOP-TI-JUR-001', 'nome' => 'LGPD e tratamento de dados', 'status' => 'gerado'],
-                    ['id' => 'SOP-TI-JUR-002', 'nome' => 'Gestão de contratos de prestação de serviço', 'status' => 'nao_gerado'],
-                ],
-            ],
-            [
-                'nome' => 'RH',
-                'icone' => '👥',
-                'sops' => [
-                    ['id' => 'SOP-TI-RH-001', 'nome' => 'Contratação técnica', 'status' => 'nao_gerado'],
-                    ['id' => 'SOP-TI-RH-002', 'nome' => 'Offboarding e reavaliação de acessos', 'status' => 'nao_gerado'],
-                ],
-            ],
-        ];
-    }
-
-    private function gerarSopMock(string $sopId, string $sopNome): array
-    {
-        return [
-            'id' => $sopId ?: 'SOP-TI-ONB-001',
-            'nome' => $sopNome ?: 'Recebimento e migração de clientes',
-            'versao' => '1.0',
-            'empresa' => 'Tech Solutions',
-            'setor' => 'Tecnologia',
-            'norma' => 'ITIL v4 / ISO 27001',
-            'objetivo' => 'Este SOP garante que o processo de recepção e migração de novos clientes seja executado de forma segura, minimizando riscos de perda de dados, falhas de continuidade de serviço e conflitos com fornecedores anteriores, independentemente da postura do provedor anterior (amistoso ou não amistoso). Define etapas claras de responsabilidade, comunicação e validação técnica em cada fase da transição.',
-            'escopo_aplica' => 'Todos os processos de migração de novos clientes que possuam infraestrutura de TI gerenciada por fornecedor anterior. Aplica-se à equipe de Operações, Suporte N2 e Gerência Técnica.',
-            'escopo_nao_aplica' => 'Clientes novos sem infraestrutura prévia (greenfield). Migrações internas entre ambientes já gerenciados pela Tech Solutions.',
-            'subtopicos' => [
-                ['nome' => 'Fornecedor Amistoso', 'descricao' => 'Quando o fornecedor anterior colabora ativamente com a transição, fornecendo acesso, documentação e suporte durante o processo.'],
-                ['nome' => 'Fornecedor Não Amistoso', 'descricao' => 'Quando o fornecedor anterior dificulta, atrasa ou não coopera com a migração, exigindo abordagens alternativas e documentação legal.'],
-                ['nome' => 'Etapas Seguras de Migração', 'descricao' => 'Sequência técnica padronizada de transferência de serviços garantindo zero downtime ou downtime mínimo planejado.'],
-            ],
-            'responsaveis' => [
-                ['papel' => 'Executor', 'cargo' => 'Analista de Infraestrutura N2'],
-                ['papel' => 'Aprovador', 'cargo' => 'Gerente de Operações'],
-                ['papel' => 'Supervisor', 'cargo' => 'Diretor de TI'],
-                ['papel' => 'Informado', 'cargo' => 'Cliente (ponto focal designado)'],
-                ['papel' => 'Substituto', 'cargo' => 'Analista de Infraestrutura N2 (backup)'],
-            ],
-            'prerequisitos' => [
-                'Contrato assinado com o novo cliente contendo cláusula de migração e SLA definido.',
-                'Inventário completo do ambiente atual do cliente obtido (lista de serviços, senhas, acessos, domínios).',
-                'Janela de manutenção agendada e comunicada a todos os usuários com 72h de antecedência.',
-                'Ambiente de homologação preparado para testes de restauração antes da migração definitiva.',
-                'Termo de responsabilidade assinado pelo cliente autorizando o início da migração.',
-                'Equipe de plantão escalada para suporte durante as primeiras 48h pós-migração.',
-            ],
-            'ferramentas' => ['Zabbix', 'GLPI', 'Veeam Backup', 'Azure DevOps', 'Microsoft 365 Admin', 'FortiGate', 'RDP/SSH', 'Slack/Teams'],
-            'procedimento_subtopico_1' => [
-                ['passo' => 1, 'acao' => 'Agendar reunião de handover com fornecedor anterior e cliente, definindo escopo, cronograma e ponto focal de cada parte.', 'responsavel' => 'Gerente Ops', 'prazo' => 'D-15', 'sistema' => 'Teams/Email', 'validacao' => 'Ata de reunião assinada por todos'],
-                ['passo' => 2, 'acao' => 'Solicitar ao fornecedor anterior o inventário completo: servidores, IPs, credenciais, licenças, contratos de terceiros e documentação de rede.', 'responsavel' => 'Analista N2', 'prazo' => 'D-12', 'sistema' => 'Email + GLPI', 'validacao' => 'Inventário recebido e conferido'],
-                ['passo' => 3, 'acao' => 'Validar inventário recebido comparando com scan ativo de rede (Nmap/Zabbix discovery) para identificar ativos não declarados.', 'responsavel' => 'Analista N2', 'prazo' => 'D-10', 'sistema' => 'Zabbix', 'validacao' => 'Relatório de divergências zerado ou tratado'],
-                ['passo' => 4, 'acao' => 'Realizar backup completo de todos os sistemas em produção no formato nativo, validar integridade via hash SHA-256 e restauração de teste em homologação.', 'responsavel' => 'Analista N2', 'prazo' => 'D-7', 'sistema' => 'Veeam', 'validacao' => 'Log de backup + teste de restore OK'],
-                ['passo' => 5, 'acao' => 'Configurar ambiente de destino com infraestrutura espelhada, replicar configurações de firewall, DNS e políticas de grupo.', 'responsavel' => 'Analista N2', 'prazo' => 'D-5', 'sistema' => 'Azure/FortiGate', 'validacao' => 'Checklist de configuração 100%'],
-                ['passo' => 6, 'acao' => 'Executar migração piloto com 1-2 serviços não críticos para validar o processo completo antes da migração geral.', 'responsavel' => 'Analista N2', 'prazo' => 'D-3', 'sistema' => 'Ambiente destino', 'validacao' => 'Serviço piloto funcional 24h sem falhas'],
-                ['passo' => 7, 'acao' => 'Comunicar a todos os usuários o cronograma final de migração com instruções de contingência caso percebam indisponibilidade.', 'responsavel' => 'Gerente Ops', 'prazo' => 'D-2', 'sistema' => 'Email/Teams', 'validacao' => 'Confirmação de recebimento >90% usuários'],
-                ['passo' => 8, 'acao' => 'Executar migração definitiva na janela agendada: transferir DNS, sincronizar dados finais, redirecionar tráfego e validar conectividade em tempo real.', 'responsavel' => 'Analista N2', 'prazo' => 'D-Day', 'sistema' => 'Todos', 'validacao' => 'Todos os serviços respondendo no destino'],
-                ['passo' => 9, 'acao' => 'Monitorar ambiente 48h pós-migração com alertas proativos configurados no Zabbix para CPU, memória, disco e latência.', 'responsavel' => 'Suporte N1', 'prazo' => 'D+2', 'sistema' => 'Zabbix', 'validacao' => 'Zero alertas críticos em 48h'],
-                ['passo' => 10, 'acao' => 'Formalizar encerramento com fornecedor anterior: solicitar cancelamento de serviços, confirmar devolução de credenciais e assinar termo de encerramento.', 'responsavel' => 'Gerente Ops', 'prazo' => 'D+5', 'sistema' => 'Email/Contrato', 'validacao' => 'Termo assinado + serviços cancelados'],
-            ],
-            'checklist' => [
-                'Contrato de migração assinado pelo cliente',
-                'Inventário de ativos validado e sem divergências',
-                'Backup completo realizado com hash de integridade',
-                'Teste de restauração executado com sucesso em homologação',
-                'Ambiente de destino configurado e testado',
-                'Migração piloto concluída sem falhas',
-                'Comunicação enviada a todos os usuários (>90% confirmação)',
-                'DNS redirecionado e propagação validada',
-                'Todos os serviços funcionando no novo ambiente',
-                'Monitoramento ativo configurado com alertas',
-                'Credenciais do fornecedor anterior revogadas',
-                'Termo de encerramento com fornecedor anterior assinado',
-                'Relatório final de migração entregue ao cliente',
-                'Feedback do cliente coletado (pesquisa pós-migração)',
-            ],
-            'evidencias' => [
-                'Laudo de inventário assinado pelo cliente antes da migração',
-                'Registro de backup com hash SHA-256 de validação',
-                'Log de testes de restauração em homologação',
-                'Termo de aceite de migração assinado pós-conclusão',
-                'Relatório de monitoramento 48h pós-migração',
-                'Termo de encerramento com fornecedor anterior',
-                'Prints de todos os serviços funcionando no novo ambiente',
-            ],
-            'relatorios' => [
-                ['oque' => 'Status da migração', 'para_quem' => 'Cliente + Diretor TI', 'frequencia' => 'Diário (durante migração)', 'canal' => 'Email + Teams'],
-                ['oque' => 'Incidentes pós-migração', 'para_quem' => 'Gerente Ops + Cliente', 'frequencia' => 'Imediato', 'canal' => 'GLPI + Email'],
-                ['oque' => 'Relatório final de migração', 'para_quem' => 'Cliente + Diretoria', 'frequencia' => 'Único (D+5)', 'canal' => 'PDF + Reunião'],
-            ],
-            'kpis' => [
-                ['kpi' => 'Tempo de downtime na migração', 'verde' => '0 minutos', 'amarela' => '1-30 min (parcial)', 'vermelha' => '>30 min ou falha crítica', 'acao_vermelha' => 'Acionar plano de contingência N2 imediatamente e notificar cliente'],
-                ['kpi' => 'Taxa de sucesso na migração', 'verde' => '100% serviços OK', 'amarela' => '95-99% (degradação leve)', 'vermelha' => '<95% serviços operacionais', 'acao_vermelha' => 'Rollback parcial + escalar para N2/N3'],
-                ['kpi' => 'Satisfação do cliente pós-migração', 'verde' => 'NPS ≥ 9', 'amarela' => 'NPS 7-8', 'vermelha' => 'NPS ≤ 6', 'acao_vermelha' => 'Reunião imediata com cliente + plano de correção'],
-            ],
-            'contencao_n1' => [
-                'situacao' => 'Serviço individual não responde após migração mas demais serviços estão operacionais. Impacto parcial e controlável.',
-                'acao' => "1. Identificar o serviço afetado no Zabbix e isolar o problema (rede, aplicação, DNS).\n2. Verificar logs de erro do serviço específico no servidor de destino.\n3. Tentar restart do serviço com monitoramento ativo.\n4. Se não resolver em 15 min, redirecionar tráfego do serviço para backup/origem temporariamente.\n5. Documentar incidente no GLPI e comunicar ao cliente que está sendo tratado.",
-                'quem' => 'Analista N2 — prazo máximo de 30 minutos para resolução ou escalação.',
-                'escalar' => 'Se não resolver em 30 min OU se mais de 2 serviços forem afetados simultaneamente.',
-            ],
-            'contencao_n2' => [
-                'situacao' => 'Múltiplos serviços falharam OU downtime ultrapassou 30 minutos OU cliente reporta impacto significativo em sua operação.',
-                'acao' => "1. Acionar Gerente de Operações e informar status completo da situação.\n2. Avaliar viabilidade de rollback completo vs. correção individual.\n3. Se rollback: executar procedimento de reversão documentado (Veeam restore).\n4. Comunicar ao cliente: status, previsão de resolução e medidas sendo tomadas.\n5. Mobilizar equipe de plantão se fora do horário comercial.",
-                'quem' => 'Gerente de Operações + Analista N2 — resposta em até 15 minutos após escalação.',
-                'escalar' => 'Se rollback falhar OU downtime ultrapassar 2 horas OU cliente ameaçar ação legal.',
-            ],
-            'contencao_n3' => [
-                'situacao' => 'Perda de dados confirmada OU downtime >2h com impacto financeiro ao cliente OU risco legal/contratual identificado OU fornecedor anterior agiu de má-fé.',
-                'acao' => "1. Acionar Diretor de TI e Jurídico imediatamente.\n2. Preservar todas as evidências (logs, emails, backups) para fins legais.\n3. Comunicação formal ao cliente pelo Diretor com plano de recuperação detalhado.\n4. Se má-fé do fornecedor anterior: notificação extrajudicial imediata.\n5. Acionar seguro de responsabilidade civil se aplicável.",
-                'quem' => 'Diretor de TI + Jurídico + CEO — resposta imediata.',
-                'comunicacao' => 'Cliente informado a cada 30 min. Se impacto público: preparar nota oficial. Se dados pessoais: notificar ANPD conforme LGPD.',
-                'documentacao' => 'Relatório de incidente detalhado, timeline de eventos, evidências de backup, comunicações realizadas, ações corretivas e preventivas.',
-            ],
-        ];
+        return $templateSOPs;
     }
 
     // ===== F-06 HELPER METHODS =====
