@@ -71,6 +71,46 @@ $paginaAtual = $_GET['url'] ?? 'dashboard';
                 </a>
             </div>
 
+            <!-- Seletor de Empresa (ADMIN_HOLDING) -->
+            <?php if (Auth::isAdmin()): ?>
+            <div class="flex items-center gap-3" x-data="{ empresaMenu: false }">
+                <span class="text-sm text-gray-600">Empresa:</span>
+                <div class="relative">
+                    <button @click="empresaMenu = !empresaMenu" class="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 text-sm">
+                        <span id="empresa-selecionada">
+                            <?php 
+                            $empresaSel = Auth::empresa();
+                            if ($empresaSel) {
+                                $empData = Database::queryOne("SELECT nome FROM empresas WHERE id = ?", [$empresaSel]);
+                                echo htmlspecialchars($empData['nome'] ?? 'Empresa #' . $empresaSel);
+                            } else {
+                                echo 'Todas as empresas';
+                            }
+                            ?>
+                        </span>
+                        <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </button>
+                    <div x-show="empresaMenu" @click.away="empresaMenu = false" x-transition
+                         class="absolute left-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50 max-h-60 overflow-y-auto">
+                        <button onclick="selecionarEmpresa(null, 'Todas as empresas')" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                            🌐 Todas as empresas (Modo Global)
+                        </button>
+                        <hr class="my-1">
+                        <?php 
+                        $empresas = Database::query("SELECT id, nome FROM empresas ORDER BY nome ASC");
+                        foreach ($empresas as $emp): ?>
+                        <button onclick="selecionarEmpresa(<?= $emp['id'] ?>, '<?= htmlspecialchars($emp['nome']) ?>')" 
+                                class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                            🏢 <?= htmlspecialchars($emp['nome']) ?>
+                        </button>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+
             <!-- Notificações (Sino) + User Menu -->
             <div class="flex items-center gap-3" x-data="{ userMenu: false, notifOpen: false, notifCount: 4 }">
                 <!-- Sino -->
@@ -301,6 +341,38 @@ $paginaAtual = $_GET['url'] ?? 'dashboard';
             }
         } catch (e) {
             showNotifToast('Erro ao marcar alertas como lidos', 'erro');
+        }
+    }
+
+    // Seleção de empresa (ADMIN_HOLDING)
+    async function selecionarEmpresa(empresaId, nomeEmpresa) {
+        try {
+            const formData = new FormData();
+            formData.append('csrf_token', '<?= Csrf::token() ?>');
+            if (empresaId) {
+                formData.append('empresa_id', empresaId);
+            }
+            
+            const res = await fetch('<?= APP_URL ?>/admin/selecionar-empresa', { 
+                method: 'POST', 
+                body: formData 
+            });
+            const data = await res.json();
+            
+            if (data.sucesso) {
+                // Atualizar texto do seletor
+                document.getElementById('empresa-selecionada').textContent = nomeEmpresa;
+                showNotifToast(data.mensagem, 'sucesso');
+                
+                // Recarregar página para aplicar novo contexto de empresa
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } else {
+                showNotifToast(data.erro || 'Erro ao selecionar empresa', 'erro');
+            }
+        } catch (e) {
+            showNotifToast('Erro ao selecionar empresa', 'erro');
         }
     }
     </script>

@@ -341,7 +341,7 @@ class AdminController
             
         } catch (Exception $e) {
             Database::rollback();
-            Logger::erro('Erro ao criar cliente: ' . $e->getMessage());
+            Logger::error('Erro ao criar cliente: ' . $e->getMessage());
             Flash::set('erro', 'Erro interno ao criar cliente. Tente novamente.');
             header('Location: ' . APP_URL . '/admin/clientes/novo');
         }
@@ -553,7 +553,7 @@ class AdminController
             
         } catch (Exception $e) {
             Database::rollback();
-            Logger::erro('Erro ao trocar consultor: ' . $e->getMessage());
+            Logger::error('Erro ao trocar consultor: ' . $e->getMessage());
             header('Content-Type: application/json');
             echo json_encode(['sucesso' => false, 'erro' => 'Erro interno.']);
         }
@@ -665,7 +665,7 @@ class AdminController
             
         } catch (Exception $e) {
             Database::rollback();
-            Logger::erro('Erro ao alterar status: ' . $e->getMessage());
+            Logger::error('Erro ao alterar status: ' . $e->getMessage());
             header('Content-Type: application/json');
             echo json_encode(['sucesso' => false, 'erro' => 'Erro interno.']);
         }
@@ -737,7 +737,7 @@ class AdminController
             }
             
         } catch (Exception $e) {
-            Logger::erro('Erro ao toggle API: ' . $e->getMessage());
+            Logger::error('Erro ao toggle API: ' . $e->getMessage());
             header('Content-Type: application/json');
             echo json_encode(['sucesso' => false, 'erro' => 'Erro interno.']);
         }
@@ -834,7 +834,7 @@ class AdminController
             }
             
         } catch (Exception $e) {
-            Logger::erro('Erro ao salvar chave API: ' . $e->getMessage());
+            Logger::error('Erro ao salvar chave API: ' . $e->getMessage());
             header('Content-Type: application/json');
             echo json_encode(['sucesso' => false, 'erro' => 'Erro interno ao salvar chave.']);
         }
@@ -936,7 +936,7 @@ class AdminController
             ]);
             
         } catch (Exception $e) {
-            Logger::erro('Erro no teste de API: ' . $e->getMessage());
+            Logger::error('Erro no teste de API: ' . $e->getMessage());
             header('Content-Type: application/json');
             echo json_encode([
                 'sucesso' => false,
@@ -1199,7 +1199,7 @@ class AdminController
             return $emailEnviado;
             
         } catch (Exception $e) {
-            Logger::erro('Erro ao enviar email de boas-vindas: ' . $e->getMessage());
+            Logger::error('Erro ao enviar email de boas-vindas: ' . $e->getMessage());
             return false;
         }
     }
@@ -1498,3 +1498,32 @@ class AdminController
         ];
     }
 }
+    /**
+     * Permite ao ADMIN_HOLDING selecionar qual empresa gerenciar
+     */
+    public function selecionarEmpresa(): void
+    {
+        $this->protegerAdmin();
+        Csrf::verificar();
+        
+        $empresaId = (int) ($_POST['empresa_id'] ?? 0);
+        
+        if ($empresaId > 0) {
+            // Verificar se a empresa existe
+            $empresa = Database::queryOne("SELECT id, nome FROM empresas WHERE id = :id", ['id' => $empresaId]);
+            if ($empresa) {
+                Auth::selecionarEmpresa($empresaId);
+                Logger::acao('Empresa selecionada pelo admin', ['empresa_id' => $empresaId, 'empresa_nome' => $empresa['nome']]);
+                header('Content-Type: application/json');
+                echo json_encode(['sucesso' => true, 'mensagem' => "Empresa '{$empresa['nome']}' selecionada."]);
+                exit;
+            }
+        }
+        
+        // Limpar seleção (acesso global)
+        Auth::selecionarEmpresa(null);
+        Logger::acao('Modo acesso global ativado pelo admin');
+        header('Content-Type: application/json');
+        echo json_encode(['sucesso' => true, 'mensagem' => 'Modo acesso global ativado.']);
+        exit;
+    }

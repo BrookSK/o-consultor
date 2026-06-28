@@ -807,28 +807,7 @@ class DiagnosticoController
         $empresa = $dados['empresa_nome'] ?? 'Empresa';
         $setor = $dados['setor'] ?? 'Não informado';
         
-        return "Analise o diagnóstico empresarial completo desta empresa e gere insights estratégicos:
-
-EMPRESA: {$empresa}
-SETOR: {$setor}
-
-DADOS DO DIAGNÓSTICO:
-" . json_encode($dados, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . "
-
-{$contextoDocumentos}
-
-Com base nas informações do diagnóstico" . (!empty($contextoDocumentos) ? " e nos documentos internos da empresa" : "") . ", forneça:
-
-1. **sites_referencia**: Array com 5-10 sites especializados no setor para busca de notícias
-2. **insights**: Array com principais insights estratégicos
-3. **recomendacoes**: Array com recomendações prioritárias
-4. **riscos**: Array com riscos identificados
-5. **oportunidades**: Array com oportunidades de melhoria
-
-Responda APENAS em JSON válido." . (!empty($contextoDocumentos) ? "
-
-IMPORTANTE: Use as informações dos documentos internos para personalizar completamente a análise, adaptando as recomendações ao que já existe na empresa e identificando gaps específicos." : "");
-    }gnóstico empresarial completo da empresa '{$empresa}' do setor '{$setor}' e retorne um JSON estruturado com:
+        return "Analise o diagnóstico empresarial completo da empresa '{$empresa}' do setor '{$setor}' e retorne um JSON estruturado com:
 
 **DADOS DA EMPRESA:**
 - Nome: {$empresa}
@@ -854,6 +833,10 @@ IMPORTANTE: Use as informações dos documentos internos para personalizar compl
 - Pontos fortes: " . ($dados['pontos_fortes'] ?? 'Não informado') . "
 - Pontos de melhoria: " . ($dados['pontos_melhoria'] ?? 'Não informado') . "
 
+{$contextoDocumentos}
+
+Com base nas informações do diagnóstico" . (!empty($contextoDocumentos) ? " e nos documentos internos da empresa" : "") . ", forneça:
+
 Retorne JSON exatamente neste formato:
 {
   \"score_maturidade\": 1-4,
@@ -873,7 +856,10 @@ Retorne JSON exatamente neste formato:
     {\"url\": \"https://site1.com\", \"categoria\": \"Notícias do setor\"},
     {\"url\": \"https://site2.com\", \"categoria\": \"Referências técnicas\"}
   ]
-}";
+}" . (!empty($contextoDocumentos) ? "
+
+IMPORTANTE: Use as informações dos documentos internos para personalizar completamente a análise, adaptando as recomendações ao que já existe na empresa e identificando gaps específicos." : "");
+    }
     }
 
     /**

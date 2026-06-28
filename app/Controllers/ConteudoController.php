@@ -10,12 +10,7 @@ class ConteudoController
     {
         Auth::proteger();
 
-        $empresaId = Auth::empresa();
-        if (!$empresaId) {
-            Flash::set('erro', 'Empresa não identificada.');
-            header('Location: ' . APP_URL . '/dashboard');
-            exit;
-        }
+        $empresaId = Auth::garantirEmpresa();
 
         // Buscar dados reais do banco
         $noticias = $this->buscarNoticiasReais($empresaId);
@@ -47,8 +42,8 @@ class ConteudoController
         // Buscar notícia real do banco
         $noticia = Database::queryOne(
             "SELECT * FROM noticias 
-             WHERE id = :id AND empresa_id = :empresa_id",
-            ['id' => $id, 'empresa_id' => Auth::empresa()]
+             WHERE id = :id AND (empresa_id = :empresa_id OR :is_admin = 1)",
+            ['id' => $id, 'empresa_id' => Auth::empresa(), 'is_admin' => Auth::isAdmin()]
         );
 
         if (!$noticia) {
@@ -89,12 +84,7 @@ class ConteudoController
         Auth::proteger();
         Csrf::verificar();
         
-        $empresaId = Auth::empresa();
-        if (!$empresaId) {
-            header('Content-Type: application/json');
-            echo json_encode(['sucesso' => false, 'erro' => 'Empresa não identificada.']);
-            exit;
-        }
+        $empresaId = Auth::garantirEmpresa();
 
         // Verificar se alguma API está configurada
         if (!Configuracao::apiAtiva('perplexity') && !Configuracao::apiAtiva('openai') && !Configuracao::apiAtiva('anthropic')) {

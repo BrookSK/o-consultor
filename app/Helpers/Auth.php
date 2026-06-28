@@ -62,7 +62,7 @@ class Auth
             );
         } catch (Exception $e) {
             // Log do erro mas não impedir o login
-            Logger::erro('Erro ao atualizar ultimo_login: ' . $e->getMessage());
+            Logger::error('Erro ao atualizar ultimo_login: ' . $e->getMessage());
         }
     }
 
@@ -168,11 +168,49 @@ class Auth
 
     /**
      * Retorna o ID da empresa do usuário logado
+     * Para ADMIN_HOLDING, permite acesso global
      */
     public static function empresa(): ?int
     {
+        // ADMIN_HOLDING tem acesso global - pode gerenciar qualquer empresa
+        if (self::isAdmin()) {
+            // Se não há empresa específica na sessão, pode retornar null (acesso total)
+            return Session::get('admin_empresa_selecionada');
+        }
+        
         $empresaId = Session::get('usuario_empresa_id');
         return $empresaId ? (int) $empresaId : null;
+    }
+
+    /**
+     * Define qual empresa o ADMIN_HOLDING quer gerenciar temporariamente
+     */
+    public static function selecionarEmpresa(?int $empresaId): void
+    {
+        if (self::isAdmin()) {
+            Session::set('admin_empresa_selecionada', $empresaId);
+        }
+    }
+
+    /**
+     * Retorna o ID da empresa para operações que exigem empresa específica
+     * Para ADMIN_HOLDING, retorna a primeira empresa disponível se não selecionada
+     */
+    public static function empresaObrigatoria(): ?int
+    {
+        $empresaId = self::empresa();
+        
+        // Se é ADMIN_HOLDING e não tem empresa selecionada, pegar a primeira disponível
+        if (self::isAdmin() && !$empresaId) {
+            try {
+                $primeiraEmpresa = Database::queryOne("SELECT id FROM empresas ORDER BY id ASC LIMIT 1");
+                return $primeiraEmpresa ? (int) $primeiraEmpresa['id'] : null;
+            } catch (Exception $e) {
+                return null;
+            }
+        }
+        
+        return $empresaId;
     }
 
     /**
@@ -183,4 +221,52 @@ class Auth
         $usuarioId = Session::get('usuario_id');
         return $usuarioId ? (int) $usuarioId : null;
     }
-}
+
+    /**
+     * Alias for usuarioId() for convenience
+     */
+    public static function id(): ?int
+    {
+        return self::usuarioId();
+    }
+    /**
+     * Middleware para garantir acesso a empresa (ADMIN_HOLDING tem acesso global)
+     * Retorna empresa_id ou redireciona com erro
+     */
+    public static function garantirEmpresa(): int
+    {
+        // Para ADMIN_HOLDING, sempre permitir acesso (pegar primeira empresa se necessário)
+        if (self::isAdmin()) {
+            $empresaId = self::empresaObrigatoria();
+            if (!$empresaId) {
+                Flash::set('erro', 'Nenhuma empresa encontrada no sistema.');
+                header('Location: ' . APP_URL . '/admin');
+                exit;
+            }
+            return $empresaId;
+        }
+        
+        // Para outros perfis, empresa deve estar definida
+        $empresaId = self::empresa();
+        if (!$empresaId) {
+            Flash::set('erro', 'Empresa não identificada.');
+            header('Location: ' . APP_URL . '/dashboard');
+            exit;
+        }
+        
+        return $empresaId;
+    }
+    /**
+     * Verifica se o usuário tem permissão para acessar um recurso de uma empresa
+     * ADMIN_HOLDING tem acesso a todas as empresas
+     */
+    public static function podeAcessarEmpresa(int $empresaId): bool
+    {
+        // ADMIN_HOLDING pode acessar qualquer empresa
+        if (self::isAdmin()) {
+            return true;
+        }
+        
+        // Outros perfis só podem acessar sua própria empresa
+        return self::empresa() === $empresaId;
+    }

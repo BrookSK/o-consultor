@@ -165,6 +165,7 @@ class Router
         $this->post('admin/api/testar', 'AdminController', 'testarApiIndividual');
         $this->get('admin/logs', 'AdminController', 'logs');
         $this->get('admin/relatorios', 'AdminController', 'relatorios');
+        $this->post('admin/selecionar-empresa', 'AdminController', 'selecionarEmpresa');
 
         // Perfil
         $this->get('perfil', 'PerfilController', 'index');

@@ -16,12 +16,7 @@ class SopController
     {
         Auth::proteger();
         
-        $empresaId = Auth::empresa();
-        if (!$empresaId) {
-            Flash::set('erro', 'Empresa não identificada.');
-            header('Location: ' . APP_URL . '/dashboard');
-            exit;
-        }
+        $empresaId = Auth::garantirEmpresa();
 
         // Dados da empresa e diagnóstico
         $empresa = Empresa::buscarPorId($empresaId);
@@ -63,7 +58,7 @@ class SopController
 
         $sopCodigo = htmlspecialchars(trim($_POST['sop_id'] ?? ''));
         $sopNome = htmlspecialchars(trim($_POST['sop_nome'] ?? ''));
-        $empresaId = Auth::empresa();
+        $empresaId = Auth::garantirEmpresa();
 
         if (empty($sopCodigo) || !$empresaId) {
             header('Content-Type: application/json');
@@ -255,7 +250,7 @@ class SopController
 
         // Buscar SOP no banco
         $sop = Sop::buscarPorId($sopId);
-        if (!$sop || $sop['empresa_id'] != Auth::empresa()) {
+        if (!$sop || !Auth::podeAcessarEmpresa($sop['empresa_id'])) {
             Flash::set('erro', 'SOP não encontrado ou sem permissão.');
             header('Location: ' . APP_URL . '/manual-operacional');
             exit;
@@ -298,7 +293,7 @@ class SopController
 
         // Verificar permissão
         $sop = Sop::buscarPorId($sopId);
-        if (!$sop || $sop['empresa_id'] != Auth::empresa()) {
+        if (!$sop || !Auth::podeAcessarEmpresa($sop['empresa_id'])) {
             header('Content-Type: application/json');
             echo json_encode(['sucesso' => false, 'erro' => 'SOP não encontrado ou sem permissão.']);
             exit;
@@ -342,7 +337,7 @@ class SopController
 
         // Verificar permissão
         $sop = Sop::buscarPorId($sopId);
-        if (!$sop || $sop['empresa_id'] != Auth::empresa()) {
+        if (!$sop || !Auth::podeAcessarEmpresa($sop['empresa_id'])) {
             header('Content-Type: application/json');
             echo json_encode(['sucesso' => false, 'erro' => 'SOP não encontrado ou sem permissão.']);
             exit;
@@ -374,7 +369,7 @@ class SopController
 
         // Buscar SOP
         $sop = Sop::buscarPorId($sopId);
-        if (!$sop || $sop['empresa_id'] != Auth::empresa()) {
+        if (!$sop || !Auth::podeAcessarEmpresa($sop['empresa_id'])) {
             Flash::set('erro', 'SOP não encontrado ou sem permissão.');
             header('Location: ' . APP_URL . '/manual-operacional');
             exit;
@@ -431,7 +426,7 @@ class SopController
 
         // Buscar SOP
         $sop = Sop::buscarPorId($sopId);
-        if (!$sop || $sop['empresa_id'] != Auth::empresa()) {
+        if (!$sop || !Auth::podeAcessarEmpresa($sop['empresa_id'])) {
             echo '<div class="text-center py-8 text-red-600">SOP não encontrado ou sem permissão.</div>';
             exit;
         }
@@ -480,7 +475,7 @@ class SopController
 
         // Verificar permissão
         $sop = Sop::buscarPorId($sopId);
-        if (!$sop || $sop['empresa_id'] != Auth::empresa()) {
+        if (!$sop || !Auth::podeAcessarEmpresa($sop['empresa_id'])) {
             header('Content-Type: application/json');
             echo json_encode(['sucesso' => false, 'erro' => 'SOP não encontrado ou sem permissão.']);
             exit;
@@ -567,7 +562,7 @@ class SopController
 
         // Verificar permissão
         $sop = Sop::buscarPorId($sopId);
-        if (!$sop || $sop['empresa_id'] != Auth::empresa()) {
+        if (!$sop || !Auth::podeAcessarEmpresa($sop['empresa_id'])) {
             header('Content-Type: application/json');
             echo json_encode(['sucesso' => false, 'erro' => 'SOP não encontrado ou sem permissão.']);
             exit;
@@ -656,12 +651,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
     {
         Auth::proteger();
         
-        $empresaId = Auth::empresa();
-        if (!$empresaId) {
-            Flash::set('erro', 'Empresa não identificada.');
-            header('Location: ' . APP_URL . '/dashboard');
-            exit;
-        }
+        $empresaId = Auth::garantirEmpresa();
 
         // Buscar KPIs de todos os SOPs aprovados da empresa
         $kpisReais = Database::query(
@@ -781,7 +771,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
 
         // Buscar SOP
         $sop = Sop::buscarPorId($sopId);
-        if (!$sop || $sop['empresa_id'] != Auth::empresa()) {
+        if (!$sop || !Auth::podeAcessarEmpresa($sop['empresa_id'])) {
             Flash::set('erro', 'SOP não encontrado ou sem permissão.');
             header('Location: ' . APP_URL . '/manual-operacional');
             exit;
@@ -815,12 +805,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
     {
         Auth::proteger();
 
-        $empresaId = Auth::empresa();
-        if (!$empresaId) {
-            Flash::set('erro', 'Empresa não identificada.');
-            header('Location: ' . APP_URL . '/manual-operacional');
-            exit;
-        }
+        $empresaId = Auth::garantirEmpresa();
 
         // Buscar todos os SOPs aprovados
         $sops = Database::query(
