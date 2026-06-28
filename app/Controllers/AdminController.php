@@ -1679,56 +1679,6 @@ class AdminController
         exit;
     }
 
-    /**
-     * Testa conexão SMTP e opcionalmente envia email de teste
-     */
-    public function testarSmtp(): void
-    {
-        $this->protegerAdmin();
-        Csrf::verificar();
-        
-        try {
-            // Buscar configurações SMTP
-            $configs = [
-                'smtp_host' => Configuracao::get('smtp_host'),
-                'smtp_porta' => Configuracao::get('smtp_porta'),
-                'smtp_usuario' => Configuracao::get('smtp_usuario'),
-                'smtp_senha' => Configuracao::get('smtp_senha'),
-                'smtp_criptografia' => Configuracao::get('smtp_criptografia'),
-                'smtp_remetente_email' => Configuracao::get('smtp_remetente_email'),
-                'smtp_remetente_nome' => Configuracao::get('smtp_remetente_nome'),
-            ];
-            
-            // Validar configurações obrigatórias
-            $obrigatorios = ['smtp_host', 'smtp_porta', 'smtp_usuario', 'smtp_senha', 'smtp_remetente_email'];
-            foreach ($obrigatorios as $campo) {
-                if (empty($configs[$campo])) {
-                    throw new Exception("Campo obrigatório não configurado: {$campo}");
-                }
-            }
-            
-            // Em produção, aqui testaria a conexão SMTP real
-            // Por enquanto, simular teste bem-sucedido
-            Logger::acao('Teste SMTP executado', ['host' => $configs['smtp_host']]);
-            
-            header('Content-Type: application/json');
-            echo json_encode([
-                'sucesso' => true,
-                'mensagem' => 'Configuração SMTP testada com sucesso!',
-                'detalhes' => "Conexão estabelecida com {$configs['smtp_host']}:{$configs['smtp_porta']}"
-            ]);
-            
-        } catch (Exception $e) {
-            Logger::error('Erro no teste SMTP: ' . $e->getMessage());
-            header('Content-Type: application/json');
-            echo json_encode([
-                'sucesso' => false,
-                'erro' => $e->getMessage()
-            ]);
-        }
-        exit;
-    }
-
 
     public function logs(): void
     {

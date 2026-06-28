@@ -614,7 +614,7 @@ class DashboardController
                 [
                     'titulo' => 'Maturidade',
                     'valor' => 'Nível ' . $nivelMaturidade,
-                    'variacao' => $this->calcularVariacaoMaturidade($empresaId, $nivelMaturidade)
+                    'variacao' => $this->calcularVariacaoMaturidade($empresaId, $nivelMaturidade),
                     'direcao' => 'neutral',
                     'icone' => 'chart',
                     'cor' => 'green',
