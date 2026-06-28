@@ -270,3 +270,4 @@ class Auth
         // Outros perfis só podem acessar sua própria empresa
         return self::empresa() === $empresaId;
     }
+}
