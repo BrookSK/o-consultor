@@ -317,13 +317,13 @@ class ApiHelper
      */
     public static function buildPromptSop(array $empresa, array $sop, string $contextoDocumentos = ''): string
     {
-        $normas = self::getNormasPorSetor($empresa['setor']);
+        $normas = self::getNormasPorSetor($empresa['setor'] ?? $empresa['segmento'] ?? 'Tecnologia');
 
         return "Você é O Consultor, especialista em padronização operacional empresarial com profundo conhecimento em normas e padrões de mercado.
 
 DADOS DA EMPRESA:
 Nome: {$empresa['nome']}
-Setor: {$empresa['setor']}
+Setor: {$empresa['setor'] ?? $empresa['segmento'] ?? 'Tecnologia'}
 Porte: {$empresa['colaboradores']} colaboradores, faturamento {$empresa['faturamento']}, nível de maturidade {$empresa['maturidade']}/4
 Departamentos ativos: {$empresa['departamentos']}
 Ferramentas utilizadas: {$empresa['ferramentas']}
@@ -496,7 +496,7 @@ Responda APENAS em JSON válido, sem explicações.";
 
 CONTEXTO DA EMPRESA:
 Nome: {$empresa['nome']}
-Setor: {$empresa['setor']}
+Setor: {$empresa['setor'] ?? $empresa['segmento'] ?? 'Tecnologia'}
 Nível de maturidade: {$empresa['maturidade']}/4
 Colaboradores: {$empresa['colaboradores']}
 Ferramentas: {$empresa['ferramentas']}
@@ -514,7 +514,7 @@ Responda APENAS em JSON com esta estrutura exata:
 {
   \"causas_raiz\": [
     \"Primeira hipótese específica para a empresa\",
-    \"Segunda hipótese considerando o setor {$empresa['setor']}\", 
+    \"Segunda hipótese considerando o setor {$empresa['setor'] ?? $empresa['segmento'] ?? 'Tecnologia'}\", 
     \"Terceira hipótese baseada na maturidade {$empresa['maturidade']}/4\"
   ],
   \"plano_acao_imediato\": [
@@ -530,7 +530,7 @@ Responda APENAS em JSON com esta estrutura exata:
 }
 
 IMPORTANTE:
-- Seja específico para o setor {$empresa['setor']}
+- Seja específico para o setor {$empresa['setor'] ?? $empresa['segmento'] ?? 'Tecnologia'}
 - Considere o porte da empresa ({$empresa['colaboradores']} pessoas)
 - Use as ferramentas disponíveis: {$empresa['ferramentas']}
 - Ações devem ser executáveis com a maturidade atual ({$empresa['maturidade']}/4)

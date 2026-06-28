@@ -265,8 +265,17 @@ class ConteudoController
             'setor' => $empresa['segmento'] ?? 'Tecnologia',
             'lingua' => $empresa['lingua_principal'] ?? 'Português',
             'sites' => array_column($sites, 'site_url'),
-            'palavras_chave' => ['IA empresarial', 'automação', 'produtividade'], // TODO: implementar tabela própria
-            'frequencia' => 'diaria', // TODO: buscar da configuração
+            // Buscar palavras-chave e configurações reais da empresa
+            $configBusca = Database::queryOne(
+                "SELECT palavras_chave, frequencia_busca FROM configuracoes_conteudo WHERE empresa_id = :empresa_id",
+                ['empresa_id' => $empresa['id']]
+            );
+            
+            $palavrasChave = $configBusca ? explode(',', $configBusca['palavras_chave']) : ['IA empresarial', 'automação', 'produtividade'];
+            $frequencia = $configBusca['frequencia_busca'] ?? 'diaria';
+            
+            'palavras_chave' => $palavrasChave,
+            'frequencia' => $frequencia,
             'ultimo_update' => $ultimaBusca['criado_em'] ?? date('Y-m-d H:i:s'),
         ];
     }

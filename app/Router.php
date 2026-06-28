@@ -81,6 +81,7 @@ class Router
         $this->get('sop/exportar-pdf/{id}', 'SopController', 'exportarPdf');
         $this->get('sop/exportar-todos-zip', 'SopController', 'exportarTodosZip');
         $this->get('manual-operacional/raci', 'SopController', 'raci');
+        $this->get('sop/raci-funcao', 'SopController', 'getRaciFuncao');
         $this->get('manual-operacional/kpis', 'KpiController', 'index');
 
         // KPI Management (F-07)

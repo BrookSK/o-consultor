@@ -35,8 +35,7 @@ class PerfilController
                 ];
             }, $acessosAcademy),
             'logins' => [
-                // TODO: implementar logs de login quando sistema de sessão for expandido
-                ['data' => date('d/m/Y H:i'), 'ip' => $_SERVER['REMOTE_ADDR'], 'dispositivo' => 'Sessão atual'],
+                ['data' => date('d/m/Y H:i'), 'ip' => $_SERVER['REMOTE_ADDR'] ?? 'localhost', 'dispositivo' => 'Sessão atual'],
             ],
             'historico' => array_map(function($log) {
                 return [
@@ -46,15 +45,63 @@ class PerfilController
                 ];
             }, $historicoGeral),
             'jornada' => [
-                ['chave' => 'diagnostico', 'label' => 'Diagnóstico realizado', 'completo' => false], // TODO: verificar no banco
-                ['chave' => 'plano', 'label' => 'Plano de ação criado', 'completo' => false], // TODO: verificar no banco  
-                ['chave' => 'sop', 'label' => 'Primeiro SOP aprovado', 'completo' => false], // TODO: verificar no banco
+                ['chave' => 'diagnostico', 'label' => 'Diagnóstico realizado', 'completo' => $this->verificarDiagnostico($empresa_id)],
+                ['chave' => 'plano', 'label' => 'Plano de ação criado', 'completo' => $this->verificarPlano($empresa_id)],
+                ['chave' => 'sop', 'label' => 'Primeiro SOP aprovado', 'completo' => $this->verificarSOP($empresa_id)],
                 ['chave' => 'academy', 'label' => 'Academy vinculada', 'completo' => !empty($usuarioCompleto['email_academy'])],
                 ['chave' => 'perfil', 'label' => 'Perfil da empresa completo', 'completo' => $usuarioCompleto['onboarding_concluido'] == 1],
             ],
         ];
 
         require VIEW_PATH . '/perfil/index.php';
+    }
+
+    /**
+     * Verificar se diagnóstico foi realizado
+     */
+    private function verificarDiagnostico(int $empresaId): bool
+    {
+        try {
+            $diagnostico = Database::queryOne(
+                "SELECT id FROM diagnosticos WHERE empresa_id = :empresa_id AND status = 'concluido' LIMIT 1",
+                ['empresa_id' => $empresaId]
+            );
+            return !empty($diagnostico);
+        } catch (Exception $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Verificar se plano de ação foi criado
+     */
+    private function verificarPlano(int $empresaId): bool
+    {
+        try {
+            $plano = Database::queryOne(
+                "SELECT id FROM planos_acao WHERE empresa_id = :empresa_id AND status IN ('ativo', 'em_andamento') LIMIT 1",
+                ['empresa_id' => $empresaId]
+            );
+            return !empty($plano);
+        } catch (Exception $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Verificar se SOP foi aprovado
+     */
+    private function verificarSOP(int $empresaId): bool
+    {
+        try {
+            $sop = Database::queryOne(
+                "SELECT id FROM sops WHERE empresa_id = :empresa_id AND status = 'ativo' LIMIT 1",
+                ['empresa_id' => $empresaId]
+            );
+            return !empty($sop);
+        } catch (Exception $e) {
+            return false;
+        }
     }
 
     public function salvar(): void

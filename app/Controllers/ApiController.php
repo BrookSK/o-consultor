@@ -164,21 +164,11 @@ class ApiController
     }
     
     /**
-     * Transcrição fallback (mock para desenvolvimento)
+     * Transcrição fallback quando OpenAI não está disponível
      */
     private function transcricaoFallback(): string
     {
-        // Simular processamento
-        sleep(1);
-        
-        $frasesMock = [
-            "Este é um texto transcrito automaticamente pelo sistema.",
-            "A transcrição foi processada com sucesso usando tecnologia de IA.",
-            "O áudio foi convertido para texto usando algoritmos avançados.",
-            "Esta funcionalidade permite converter voz em texto de forma rápida.",
-            "O sistema de transcrição está funcionando corretamente."
-        ];
-        
-        return $frasesMock[array_rand($frasesMock)];
+        // Quando OpenAI não está configurada, retornar erro explicativo
+        throw new Exception('Transcrição não disponível. Configure a API Key da OpenAI nas configurações do sistema.');
     }
 }

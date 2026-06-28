@@ -30,19 +30,19 @@ class AcademyController
 
             // 3. Validar configuração
             if (!$academyAtivo) {
-                Flash::erro('Integração Academy não está ativa. Contate o suporte.');
+                Flash::set('erro', 'Integração Academy não está ativa. Contate o suporte.');
                 header('Location: ' . APP_URL . '/central-de-conteudo');
                 exit;
             }
 
             if (empty($jwtSecret)) {
-                Flash::erro('Integração Academy não configurada. Contate o suporte.');
+                Flash::set('erro', 'Integração Academy não configurada. Contate o suporte.');
                 header('Location: ' . APP_URL . '/central-de-conteudo');
                 exit;
             }
 
             if (empty($academyUrl)) {
-                Flash::erro('URL da Academy não configurada. Contate o suporte.');
+                Flash::set('erro', 'URL da Academy não configurada. Contate o suporte.');
                 header('Location: ' . APP_URL . '/central-de-conteudo');
                 exit;
             }
@@ -57,7 +57,7 @@ class AcademyController
                     ['usuario_email' => $usuario['email']]
                 );
 
-                Flash::erro('Conta Academy não encontrada. Vincule sua conta Academy primeiro.');
+                Flash::set('erro', 'Conta Academy não encontrada. Vincule sua conta Academy primeiro.');
                 header('Location: ' . APP_URL . '/perfil#academy-section');
                 exit;
             }
@@ -138,7 +138,7 @@ class AcademyController
                 ['usuario_id' => $usuario['id'] ?? null]
             );
 
-            Flash::erro('Erro ao acessar Academy. Tente novamente em alguns minutos.');
+            Flash::set('erro', 'Erro ao acessar Academy. Tente novamente em alguns minutos.');
             header('Location: ' . APP_URL . '/central-de-conteudo');
             exit;
         }

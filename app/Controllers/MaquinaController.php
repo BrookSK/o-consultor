@@ -290,7 +290,7 @@ class MaquinaController
             $conteudo = Session::get('conteudo_gerado');
             if (!$conteudo) {
                 // Se não há conteúdo, redirecionar para página principal
-                Flash::erro('Conteúdo não encontrado.');
+                Flash::set('erro', 'Conteúdo não encontrado.');
                 header('Location: ' . APP_URL . '/maquina-de-conteudo');
                 exit;
             }

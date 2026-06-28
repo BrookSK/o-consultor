@@ -124,7 +124,7 @@ class Plano
             
             return true;
         } catch (Exception $e) {
-            Logger::erro('Erro ao salvar prioridades: ' . $e->getMessage());
+            Logger::error('Erro ao salvar prioridades: ' . $e->getMessage());
             return false;
         }
     }
@@ -163,7 +163,7 @@ class Plano
             
             return true;
         } catch (Exception $e) {
-            Logger::erro('Erro ao confirmar prioridades: ' . $e->getMessage());
+            Logger::error('Erro ao confirmar prioridades: ' . $e->getMessage());
             return false;
         }
     }
@@ -199,7 +199,7 @@ class Plano
             
             return true;
         } catch (Exception $e) {
-            Logger::erro('Erro ao criar tarefas: ' . $e->getMessage());
+            Logger::error('Erro ao criar tarefas: ' . $e->getMessage());
             return false;
         }
     }
@@ -265,7 +265,7 @@ class Plano
 
             return $sucesso;
         } catch (Exception $e) {
-            Logger::erro('Erro ao mover tarefa: ' . $e->getMessage());
+            Logger::error('Erro ao mover tarefa: ' . $e->getMessage());
             return false;
         }
     }

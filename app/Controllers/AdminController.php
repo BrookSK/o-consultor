@@ -13,12 +13,50 @@ class AdminController
     public function index(): void
     {
         $this->protegerAdmin();
+        
+        // Buscar estatísticas reais do banco
+        try {
+            $totalUsuarios = Database::queryOne("SELECT COUNT(*) as count FROM usuarios WHERE ativo = 1")['count'] ?? 0;
+            $totalEmpresas = Database::queryOne("SELECT COUNT(*) as count FROM empresas WHERE status = 'ativo'")['count'] ?? 0;
+            $totalDiagnosticos = Database::queryOne("SELECT COUNT(*) as count FROM diagnosticos WHERE status = 'concluido'")['count'] ?? 0;
+            $totalSops = Database::queryOne("SELECT COUNT(*) as count FROM sops WHERE status = 'ativo'")['count'] ?? 0;
+            
+            // MRR total das empresas ativas
+            $mrrTotal = Database::queryOne("SELECT SUM(mrr) as total FROM empresas WHERE status = 'ativo' AND mrr > 0")['total'] ?? 0;
+            $mrrFormatado = 'R$ ' . number_format($mrrTotal, 2, ',', '.');
+            
+            // Calcular churn (empresas canceladas nos últimos 30 dias vs total ativo)
+            $empresasCanceladas30d = Database::queryOne("SELECT COUNT(*) as count FROM empresas WHERE status = 'cancelado' AND DATE(atualizado_em) >= DATE_SUB(NOW(), INTERVAL 30 DAY)")['count'] ?? 0;
+            $churnPercent = $totalEmpresas > 0 ? round(($empresasCanceladas30d / $totalEmpresas) * 100, 1) : 0;
+            
+            // Academy - contar usuários com campo academy_vinculado
+            $academyVinculadas = Database::queryOne("SELECT COUNT(*) as count FROM usuarios WHERE academy_vinculado = 1 AND ativo = 1")['count'] ?? 0;
+            $academyPendentes = Database::queryOne("SELECT COUNT(*) as count FROM usuarios WHERE (academy_vinculado = 0 OR academy_vinculado IS NULL) AND ativo = 1 AND perfil = 'CLIENTE'")['count'] ?? 0;
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao buscar estatísticas do dashboard: ' . $e->getMessage());
+            // Fallback para valores zero em caso de erro
+            $totalUsuarios = 0;
+            $totalEmpresas = 0;
+            $totalDiagnosticos = 0;
+            $totalSops = 0;
+            $mrrFormatado = 'R$ 0,00';
+            $churnPercent = 0;
+            $academyVinculadas = 0;
+            $academyPendentes = 0;
+        }
+        
         $dados = [
-            'totalUsuarios' => 47, 'totalEmpresas' => 23,
-            'totalDiagnosticos' => 128, 'totalSops' => 312,
-            'mrr' => 'R$ 85.400', 'churn' => '2,1%',
-            'academyVinculadas' => 31, 'academyPendentes' => 16,
+            'totalUsuarios' => $totalUsuarios,
+            'totalEmpresas' => $totalEmpresas,
+            'totalDiagnosticos' => $totalDiagnosticos,
+            'totalSops' => $totalSops,
+            'mrr' => $mrrFormatado,
+            'churn' => $churnPercent . '%',
+            'academyVinculadas' => $academyVinculadas,
+            'academyPendentes' => $academyPendentes,
         ];
+        
         require VIEW_PATH . '/admin/index.php';
     }
 
@@ -1338,51 +1376,7 @@ class AdminController
     /**
      * Testar configuração SMTP
      */
-    public function testarSmtp(): void
-    {
-        $this->protegerAdmin();
-        Csrf::verificar();
-        
-        try {
-            // Buscar configurações SMTP
-            $config = [];
-            $chaves = ['smtp_host', 'smtp_port', 'smtp_email', 'smtp_nome', 'smtp_usuario', 'smtp_senha', 'smtp_seguranca'];
-            
-            foreach ($chaves as $chave) {
-                $valor = Configuracao::buscar($chave);
-                if ($valor === null) {
-                    header('Content-Type: application/json');
-                    echo json_encode(['sucesso' => false, 'erro' => 'Configure o SMTP antes de testar.']);
-                    exit;
-                }
-                $config[$chave] = $valor;
-            }
-            
-            // Tentar enviar e-mail de teste
-            $resultado = Email::testar($config, Auth::usuario()['email']);
-            
-            if ($resultado['sucesso']) {
-                Logger::acao('Teste SMTP realizado com sucesso');
-                header('Content-Type: application/json');
-                echo json_encode([
-                    'sucesso' => true,
-                    'mensagem' => 'E-mail de teste enviado com sucesso!'
-                ]);
-            } else {
-                header('Content-Type: application/json');
-                echo json_encode([
-                    'sucesso' => false,
-                    'erro' => $resultado['erro']
-                ]);
-            }
-            
-        } catch (Exception $e) {
-            Logger::error('Erro no teste SMTP: ' . $e->getMessage());
-            header('Content-Type: application/json');
-            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
-        }
-        exit;
-    }
+
     
     /**
      * Helper para descrições SMTP
@@ -1550,7 +1544,24 @@ class AdminController
     {
         $descricoes = [
             // APIs
-            'openai_key' => 'Chave de API da OpenAI (GPT + DALL-E + Whisper)',
+            'openai_key' => 'Chave da API OpenAI',
+            'perplexity_key' => 'Chave da API Perplexity',  
+            'anthropic_key' => 'Chave da API Anthropic',
+            
+            // Academy
+            'academy_url' => 'URL base da Academy',
+            'academy_token' => 'Token de integração SSO',
+            
+            // SMTP
+            'smtp_host' => 'Servidor SMTP',
+            'smtp_port' => 'Porta SMTP',
+            'smtp_usuario' => 'Usuário SMTP',
+            'smtp_senha' => 'Senha SMTP',
+        ];
+        
+        return $descricoes[$chave] ?? ucwords(str_replace(['_', '-'], ' ', $chave));
+    }
+} API da OpenAI (GPT + DALL-E + Whisper)',
             'openai_modelo' => 'Modelo padrão do OpenAI para geração de texto',
             'openai_modelo_mini' => 'Modelo econômico do OpenAI para tarefas simples',
             'openai_max_tokens' => 'Máximo de tokens por resposta OpenAI',
@@ -1673,49 +1684,55 @@ class AdminController
     /**
      * Testa conexão SMTP e opcionalmente envia email de teste
      */
-    public function testarSmtp(): void
-    {
-        $this->protegerAdmin();
-        Csrf::verificar();
 
-        $emailTeste = filter_input(INPUT_POST, 'email_teste', FILTER_SANITIZE_EMAIL);
-
-        if (!empty($emailTeste)) {
-            // Enviar email de teste real
-            $resultado = Email::enviarNotificacao(
-                $emailTeste,
-                'Admin',
-                'Teste de Email — O Consultor',
-                'Este é um email de teste do sistema O Consultor.<br><br>Se você está lendo isso, a configuração SMTP está funcionando corretamente!<br><br><strong>Enviado em:</strong> ' . date('d/m/Y H:i:s'),
-                'teste'
-            );
-
-            Logger::acao('Email de teste enviado', ['para' => $emailTeste, 'sucesso' => $resultado['sucesso']]);
-
-            header('Content-Type: application/json');
-            echo json_encode([
-                'sucesso' => $resultado['sucesso'],
-                'mensagem' => $resultado['sucesso'] ? "Email de teste enviado para {$emailTeste}!" : "Falha: " . $resultado['erro'],
-            ]);
-            exit;
-        }
-
-        // Apenas testar conexão
-        $resultado = Email::testarConexao();
-        Logger::acao('Teste SMTP executado', ['resultado' => $resultado['sucesso'] ? 'ok' : 'erro']);
-
-        header('Content-Type: application/json');
-        echo json_encode([
-            'sucesso' => $resultado['sucesso'],
-            'mensagem' => $resultado['sucesso'] ? $resultado['mensagem'] : "Falha: " . $resultado['erro'],
-        ]);
-        exit;
-    }
 
     public function logs(): void
     {
         $this->protegerAdmin();
-        $dados = ['logs' => $this->getLogsMock()];
+        
+        try {
+            // Buscar logs reais do sistema
+            $logs = Database::query(
+                "SELECT al.*, u.nome as usuario_nome, e.nome as empresa_nome
+                 FROM audit_log al
+                 LEFT JOIN usuarios u ON al.usuario_id = u.id
+                 LEFT JOIN empresas e ON al.empresa_id = e.id
+                 ORDER BY al.criado_em DESC
+                 LIMIT 100"
+            );
+            
+            // Formatar logs para a view
+            $logsFormatados = array_map(function($log) {
+                return [
+                    'id' => $log['id'],
+                    'acao' => $log['acao'],
+                    'usuario' => $log['usuario_nome'] ?? 'Sistema',
+                    'empresa' => $log['empresa_nome'] ?? 'N/A',
+                    'detalhes' => $log['detalhes'],
+                    'ip' => $log['ip_address'] ?? 'N/A',
+                    'data' => $log['criado_em'],
+                    'timestamp' => date('d/m/Y H:i:s', strtotime($log['criado_em']))
+                ];
+            }, $logs);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao buscar logs: ' . $e->getMessage());
+            // Fallback básico em caso de erro
+            $logsFormatados = [
+                [
+                    'id' => 1,
+                    'acao' => 'Sistema inicializado',
+                    'usuario' => 'Sistema',
+                    'empresa' => 'N/A',
+                    'detalhes' => 'Logs sendo carregados do banco de dados',
+                    'ip' => 'localhost',
+                    'data' => date('Y-m-d H:i:s'),
+                    'timestamp' => date('d/m/Y H:i:s')
+                ]
+            ];
+        }
+        
+        $dados = ['logs' => $logsFormatados];
         require VIEW_PATH . '/admin/logs.php';
     }
 
@@ -1724,44 +1741,6 @@ class AdminController
         $this->protegerAdmin();
         $dados = [];
         require VIEW_PATH . '/admin/relatorios.php';
-    }
-
-    // ===== MOCKS =====
-    private function getUsuariosMock(): array
-    {
-        return [
-            ['id' => 1, 'nome' => 'Administrador', 'email' => 'admin@oconsultor.com.br', 'perfil' => 'ADMIN_HOLDING', 'empresa' => 'Holding Digital', 'status' => 'ativo', 'criado_em' => '2026-01-01', 'ultima_atividade' => '2026-06-26 09:15', 'academy' => true],
-            ['id' => 2, 'nome' => 'João Consultor', 'email' => 'consultor@oconsultor.com.br', 'perfil' => 'CONSULTOR_INTERNO', 'empresa' => 'Holding Digital', 'status' => 'ativo', 'criado_em' => '2026-02-15', 'ultima_atividade' => '2026-06-26 08:42', 'academy' => true],
-            ['id' => 3, 'nome' => 'Maria Cliente', 'email' => 'cliente@empresa.com.br', 'perfil' => 'CLIENTE', 'empresa' => 'Tech Solutions', 'status' => 'ativo', 'criado_em' => '2026-03-20', 'ultima_atividade' => '2026-06-25 14:30', 'academy' => true],
-            ['id' => 4, 'nome' => 'Pedro Rocha', 'email' => 'pedro@varejo.com.br', 'perfil' => 'CLIENTE', 'empresa' => 'Varejo Express', 'status' => 'ativo', 'criado_em' => '2026-04-10', 'ultima_atividade' => '2026-06-24 16:00', 'academy' => true],
-            ['id' => 5, 'nome' => 'Ana Costa', 'email' => 'ana@foodservice.com.br', 'perfil' => 'CLIENTE', 'empresa' => 'FoodService', 'status' => 'inativo', 'criado_em' => '2026-05-01', 'ultima_atividade' => '2026-05-20 11:00', 'academy' => false],
-            ['id' => 6, 'nome' => 'Lucas Tech', 'email' => 'lucas@digital.com.br', 'perfil' => 'CLIENTE', 'empresa' => 'Digital Commerce', 'status' => 'ativo', 'criado_em' => '2026-05-15', 'ultima_atividade' => '2026-06-26 07:50', 'academy' => false],
-        ];
-    }
-
-    private function getClientesMock(): array
-    {
-        return [
-            ['id' => 1, 'nome' => 'Tech Solutions', 'setor' => 'Tecnologia', 'consultor' => 'João Consultor', 'status' => 'ativo', 'mrr' => 'R$ 4.500', 'criado_em' => '2026-03-01', 'maturidade' => 3],
-            ['id' => 2, 'nome' => 'Digital Commerce', 'setor' => 'Varejo', 'consultor' => 'João Consultor', 'status' => 'ativo', 'mrr' => 'R$ 3.200', 'criado_em' => '2026-04-15', 'maturidade' => 2],
-            ['id' => 3, 'nome' => 'Varejo Express', 'setor' => 'Varejo', 'consultor' => 'João Consultor', 'status' => 'ativo', 'mrr' => 'R$ 2.800', 'criado_em' => '2026-05-01', 'maturidade' => 2],
-            ['id' => 4, 'nome' => 'FoodService', 'setor' => 'Alimentação', 'consultor' => 'João Consultor', 'status' => 'pausado', 'mrr' => 'R$ 0', 'criado_em' => '2026-05-10', 'maturidade' => 1],
-            ['id' => 5, 'nome' => 'Construtora ABC', 'setor' => 'Construção', 'consultor' => 'João Consultor', 'status' => 'concluido', 'mrr' => 'R$ 5.000', 'criado_em' => '2026-02-01', 'maturidade' => 4],
-        ];
-    }
-
-    private function getLogsMock(): array
-    {
-        return [
-            ['data' => '2026-06-26 09:15:32', 'usuario' => 'admin@oconsultor.com.br', 'acao' => 'Login', 'modulo' => 'Auth', 'detalhes' => 'Login realizado com sucesso', 'ip' => '192.168.1.100'],
-            ['data' => '2026-06-26 08:42:10', 'usuario' => 'consultor@oconsultor.com.br', 'acao' => 'Geração de SOP', 'modulo' => 'Manual Operacional', 'detalhes' => 'SOP-TI-ONB-002 gerado para Tech Solutions', 'ip' => '192.168.1.101'],
-            ['data' => '2026-06-25 16:30:00', 'usuario' => 'cliente@empresa.com.br', 'acao' => 'Aprovação de SOP', 'modulo' => 'Manual Operacional', 'detalhes' => 'SOP-TI-OPS-002 aprovado', 'ip' => '10.0.0.55'],
-            ['data' => '2026-06-25 14:30:45', 'usuario' => 'cliente@empresa.com.br', 'acao' => 'Acesso SSO Academy', 'modulo' => 'Academy', 'detalhes' => 'Redirecionamento para myacademy.com.br', 'ip' => '10.0.0.55'],
-            ['data' => '2026-06-25 10:15:00', 'usuario' => 'consultor@oconsultor.com.br', 'acao' => 'Aprovação de conteúdo', 'modulo' => 'Máquina de Conteúdo', 'detalhes' => 'Carrossel "5 sinais de backup" aprovado', 'ip' => '192.168.1.101'],
-            ['data' => '2026-06-24 18:00:00', 'usuario' => 'admin@oconsultor.com.br', 'acao' => 'Alteração de cliente', 'modulo' => 'Admin', 'detalhes' => 'Status FoodService alterado para Pausado', 'ip' => '192.168.1.100'],
-            ['data' => '2026-06-24 09:00:00', 'usuario' => 'consultor@oconsultor.com.br', 'acao' => 'Login', 'modulo' => 'Auth', 'detalhes' => 'Login realizado com sucesso', 'ip' => '192.168.1.101'],
-            ['data' => '2026-06-23 15:45:00', 'usuario' => 'admin@oconsultor.com.br', 'acao' => 'Logout', 'modulo' => 'Auth', 'detalhes' => 'Sessão encerrada', 'ip' => '192.168.1.100'],
-        ];
     }
 
     /**

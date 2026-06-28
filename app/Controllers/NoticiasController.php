@@ -30,13 +30,13 @@ class NoticiasController
 
             // Buscar dados da empresa
             $empresa = Database::queryOne(
-                "SELECT setor, lingua_principal FROM empresas WHERE id = :id",
+                "SELECT segmento, lingua_principal FROM empresas WHERE id = :id",
                 ['id' => $empresaId]
             );
 
             if (!$empresa) return false;
 
-            $setor = $empresa['setor'] ?? 'Tecnologia';
+            $setor = $empresa['segmento'] ?? 'Tecnologia';
             $lingua = $empresa['lingua_principal'] ?? 'Português';
 
             // Verificar se alguma API está ativa
@@ -157,7 +157,7 @@ class NoticiasController
     {
         // Buscar configuração da empresa
         $empresa = Database::queryOne(
-            "SELECT nome, setor, lingua_principal FROM empresas WHERE id = :id",
+            "SELECT nome, segmento, lingua_principal FROM empresas WHERE id = :id",
             ['id' => $empresaId]
         );
 
@@ -187,7 +187,7 @@ class NoticiasController
         }
 
         $sitesArray = array_column($sites, 'site_url');
-        $setor = $empresa['setor'] ?? 'Tecnologia';
+        $setor = $empresa['segmento'] ?? 'Tecnologia';
         $lingua = $empresa['lingua_principal'] ?? 'Português';
 
         // Iniciar log de busca

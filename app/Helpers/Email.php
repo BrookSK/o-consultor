@@ -41,7 +41,7 @@ class Email
             return $resultado;
             
         } catch (Exception $e) {
-            Logger::erro('Erro no envio de email: ' . $e->getMessage());
+            Logger::error('Erro no envio de email: ' . $e->getMessage());
             return ['sucesso' => false, 'erro' => $e->getMessage()];
         }
     }
@@ -246,7 +246,7 @@ class Email
                 ]
             );
         } catch (Exception $e) {
-            Logger::erro('Erro ao registrar envio de email: ' . $e->getMessage());
+            Logger::error('Erro ao registrar envio de email: ' . $e->getMessage());
         }
     }
 

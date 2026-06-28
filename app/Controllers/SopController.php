@@ -435,8 +435,8 @@ class SopController
             'nome' => $sopNome,
             'versao' => $ia['versionamento']['versao'] ?? '1.0',
             'empresa' => $empresa['nome'],
-            'setor' => $empresa['setor'],
-            'norma' => ApiHelper::getNormasPorSetor($empresa['setor']) ?? 'ISO 9001',
+            'setor' => $empresa['segmento'] ?? 'Tecnologia',
+            'norma' => ApiHelper::getNormasPorSetor($empresa['segmento'] ?? 'Tecnologia'),
             'objetivo' => $ia['objetivo'] ?? '',
             'escopo_aplica' => $ia['escopo']['aplica_se'] ?? '',
             'escopo_nao_aplica' => $ia['escopo']['nao_aplica'] ?? '',
@@ -587,8 +587,40 @@ class SopController
             exit;
         }
 
-        // TODO: Em produção, coletar dados editados do frontend e salvar
-        // Por enquanto, apenas confirmar que foi salvo
+        // Processar campos editados enviados via POST
+        $camposEditados = [];
+        $camposPermitidos = [
+            'objetivo', 'escopo_aplica', 'escopo_nao_aplica', 'subtopicos', 
+            'responsaveis', 'prerequisitos', 'ferramentas', 'checklist', 
+            'evidencias', 'relatorios', 'kpis', 'contencao_n1', 'contencao_n2', 'contencao_n3'
+        ];
+        
+        foreach ($camposPermitidos as $campo) {
+            if (isset($_POST[$campo])) {
+                $camposEditados[$campo] = is_array($_POST[$campo]) ? $_POST[$campo] : trim($_POST[$campo]);
+            }
+        }
+        
+        // Se há campos editados, atualizar o conteúdo
+        if (!empty($camposEditados)) {
+            $conteudoAtual = json_decode($sop['conteudo_completo'], true) ?: [];
+            $conteudoAtualizado = array_merge($conteudoAtual, $camposEditados);
+            
+            // Salvar conteúdo atualizado
+            $sucesso = Database::execute(
+                "UPDATE sops SET conteudo_completo = :conteudo, atualizado_em = NOW() WHERE id = :id",
+                [
+                    'conteudo' => json_encode($conteudoAtualizado, JSON_UNESCAPED_UNICODE),
+                    'id' => $sopId
+                ]
+            );
+            
+            if (!$sucesso) {
+                header('Content-Type: application/json');
+                echo json_encode(['sucesso' => false, 'erro' => 'Erro ao salvar alterações.']);
+                exit;
+            }
+        }
         
         Logger::acao('SOP salvo como rascunho', ['sop_id' => $sopId, 'sop_codigo' => $sop['sop_codigo']]);
 
@@ -767,6 +799,115 @@ class SopController
         }
         exit;
     }
+    /**
+     * API para retornar função RACI de um cargo específico
+     */
+    public function getRaciFuncao(): void
+    {
+        Auth::proteger();
+        
+        $sopId = htmlspecialchars(trim($_GET['sop_id'] ?? ''));
+        $cargo = htmlspecialchars(trim($_GET['cargo'] ?? ''));
+        
+        if (empty($sopId) || empty($cargo)) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'SOP ID e cargo são obrigatórios.']);
+            exit;
+        }
+        
+        try {
+            // Buscar matriz RACI do banco (se existir)
+            $raciMatriz = Database::queryOne(
+                "SELECT matriz_raci FROM sops WHERE sop_codigo = :sop_codigo",
+                ['sop_codigo' => $sopId]
+            );
+            
+            if ($raciMatriz && $raciMatriz['matriz_raci']) {
+                $matriz = json_decode($raciMatriz['matriz_raci'], true);
+                $funcao = $matriz[$cargo] ?? 'I';
+            } else {
+                // Usar matriz RACI padrão por tipo de SOP
+                $funcao = $this->getFuncaoRaciPadrao($sopId, $cargo);
+            }
+            
+            $descricoes = [
+                'R' => 'Responsável - Executa a atividade',
+                'A' => 'Aprovador - Aprova e é accountable pelo resultado',
+                'C' => 'Consultado - Fornece input/conhecimento',
+                'I' => 'Informado - Recebe informação sobre o resultado',
+                '-' => 'Não envolvido'
+            ];
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => true,
+                'funcao' => $funcao,
+                'descricao' => $descricoes[$funcao] ?? 'Função não definida',
+                'sop_id' => $sopId,
+                'cargo' => $cargo
+            ]);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao buscar função RACI', ['erro' => $e->getMessage(), 'sop_id' => $sopId, 'cargo' => $cargo]);
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno.']);
+        }
+        exit;
+    }
+
+    /**
+     * Retorna função RACI padrão baseada no tipo de SOP e cargo
+     */
+    private function getFuncaoRaciPadrao(string $sopId, string $cargo): string
+    {
+        // Mapear funções RACI baseado no padrão de SOP
+        $raciPadroes = [
+            // SOPs Comerciais
+            'SOP-TI-COM-001' => [
+                'Diretor TI' => 'A', 'Gerente Ops' => 'R', 'Analista N2' => 'C', 
+                'Suporte N1' => 'I', 'Financeiro' => '-', 'Jurídico' => '-', 'RH' => '-'
+            ],
+            // SOPs Onboarding
+            'SOP-TI-ONB-001' => [
+                'Diretor TI' => 'A', 'Gerente Ops' => 'R', 'Analista N2' => 'R', 
+                'Suporte N1' => 'C', 'Financeiro' => 'I', 'Jurídico' => 'C', 'RH' => '-'
+            ],
+            // SOPs Operacionais
+            'SOP-TI-OPS-001' => [
+                'Diretor TI' => 'I', 'Gerente Ops' => 'A', 'Analista N2' => 'R', 
+                'Suporte N1' => 'R', 'Financeiro' => '-', 'Jurídico' => '-', 'RH' => '-'
+            ],
+            'SOP-TI-OPS-002' => [
+                'Diretor TI' => 'I', 'Gerente Ops' => 'A', 'Analista N2' => 'R', 
+                'Suporte N1' => 'C', 'Financeiro' => '-', 'Jurídico' => 'I', 'RH' => '-'
+            ],
+            // SOPs Financeiros
+            'SOP-TI-FIN-001' => [
+                'Diretor TI' => 'I', 'Gerente Ops' => 'C', 'Analista N2' => '-', 
+                'Suporte N1' => '-', 'Financeiro' => 'R', 'Jurídico' => 'I', 'RH' => '-'
+            ],
+            // SOPs Jurídicos
+            'SOP-TI-JUR-001' => [
+                'Diretor TI' => 'A', 'Gerente Ops' => 'C', 'Analista N2' => 'I', 
+                'Suporte N1' => 'I', 'Financeiro' => '-', 'Jurídico' => 'R', 'RH' => 'C'
+            ],
+        ];
+        
+        // Para SOPs de outros setores, usar padrão genérico baseado no departamento
+        if (!isset($raciPadroes[$sopId])) {
+            if (strpos($sopId, '-COM-') !== false) {
+                return in_array($cargo, ['Diretor TI', 'Gerente Comercial']) ? 'A' : 
+                       in_array($cargo, ['Vendedor', 'Analista Comercial']) ? 'R' : 'I';
+            } elseif (strpos($sopId, '-FIN-') !== false) {
+                return in_array($cargo, ['Diretor Financeiro', 'Controller']) ? 'A' :
+                       in_array($cargo, ['Analista Financeiro', 'Contador']) ? 'R' : 'I';
+            }
+            return 'I'; // Padrão para SOPs não mapeados
+        }
+        
+        return $raciPadroes[$sopId][$cargo] ?? 'I';
+    }
+
     public function raci(): void
     {
         Auth::proteger();

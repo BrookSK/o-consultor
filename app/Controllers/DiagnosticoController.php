@@ -728,7 +728,7 @@ class DiagnosticoController
         
         // Se ainda não houver resultado, mostrar empty state
         if (!$resultado) {
-            Flash::erro('Resultado do diagnóstico não encontrado.');
+            Flash::set('erro', 'Resultado do diagnóstico não encontrado.');
             header('Location: ' . APP_URL . '/diagnostico');
             exit;
         }

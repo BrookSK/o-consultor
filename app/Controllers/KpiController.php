@@ -17,7 +17,7 @@ class KpiController
         
         $empresaId = Auth::empresa();
         if (!$empresaId) {
-            Flash::erro('Empresa não identificada.');
+            Flash::set('erro', 'Empresa não identificada.');
             header('Location: ' . APP_URL . '/dashboard');
             exit;
         }
@@ -67,7 +67,7 @@ class KpiController
 
         $kpiId = (int) ($_GET['id'] ?? 0);
         if (!$kpiId) {
-            Flash::erro('KPI não encontrado.');
+            Flash::set('erro', 'KPI não encontrado.');
             header('Location: ' . APP_URL . '/manual-operacional/kpis');
             exit;
         }
@@ -82,7 +82,7 @@ class KpiController
         );
 
         if (!$kpi) {
-            Flash::erro('KPI não encontrado ou sem permissão.');
+            Flash::set('erro', 'KPI não encontrado ou sem permissão.');
             header('Location: ' . APP_URL . '/manual-operacional/kpis');
             exit;
         }
