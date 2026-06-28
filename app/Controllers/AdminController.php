@@ -1497,7 +1497,7 @@ class AdminController
             ['data' => '2026-06-23 15:45:00', 'usuario' => 'admin@oconsultor.com.br', 'acao' => 'Logout', 'modulo' => 'Auth', 'detalhes' => 'Sessão encerrada', 'ip' => '192.168.1.100'],
         ];
     }
-}
+
     /**
      * Permite ao ADMIN_HOLDING selecionar qual empresa gerenciar
      */
