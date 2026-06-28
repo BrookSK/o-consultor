@@ -93,7 +93,7 @@ class Diagnostico
     public static function salvarBlocoRascunho(int $rascunhoId, int $bloco, array $dados): bool
     {
         $campos = [];
-        $params = ['id' => $rascunhoId, 'bloco_atual' => $bloco];
+        $params = ['id' => $rascunhoId];
         
         // Log de entrada para debug
         error_log("DiagnosticoBlocoRascunho: Salvando Bloco $bloco, ID: $rascunhoId");
@@ -126,31 +126,37 @@ class Diagnostico
                 }
                 break;
                 
-            case 3: // Operação Atual
-                $camposBloco3 = ['processo_entrega', 'ferramentas_softwares', 'fornecedores_criticos', 'dependencia_pessoa', 'integracoes', 'processos_documentados'];
+            case 3: // Estrutura Financeira e Comercial
+                $camposBloco3 = ['faturamento_mensal', 'margem_lucro', 'sistema_financeiro', 'controle_fluxo_caixa', 'sistema_crm', 'taxa_conversao', 'ticket_medio', 'observacoes_bloco3'];
                 foreach ($camposBloco3 as $campo) {
                     if (isset($dados[$campo]) && $dados[$campo] !== null && $dados[$campo] !== '') {
                         $campos[] = "$campo = :$campo";
                         $params[$campo] = $dados[$campo];
                     }
                 }
-                if (isset($dados['ferramentas_gestao']) && is_array($dados['ferramentas_gestao'])) {
-                    $campos[] = "ferramentas_gestao = :ferramentas_gestao";
-                    $params['ferramentas_gestao'] = json_encode($dados['ferramentas_gestao']);
+                // Arrays JSON para canais de vendas
+                if (isset($dados['canais_vendas']) && is_array($dados['canais_vendas'])) {
+                    $campos[] = "canais_vendas = :canais_vendas";
+                    $params['canais_vendas'] = implode(',', $dados['canais_vendas']);
                 }
                 break;
                 
-            case 4: // Problemas e Riscos
-                $camposBloco4 = ['problemas_operacionais', 'riscos_identificados', 'incidentes_tipo', 'incidentes_descricao', 'cliente_concentrado', 'fornecedor_insubstituivel', 'processos_sem_backup'];
+            case 4: // Gestão de Pessoas e Riscos
+                $camposBloco4 = ['estrutura_organizacional', 'taxa_turnover', 'programa_capacitacao', 'mapeamento_riscos', 'backup_continuidade', 'conformidade_regulatoria', 'dependencia_pessoas', 'dependencia_fornecedores', 'observacoes_bloco4'];
                 foreach ($camposBloco4 as $campo) {
                     if (isset($dados[$campo]) && $dados[$campo] !== null && $dados[$campo] !== '') {
                         $campos[] = "$campo = :$campo";
                         $params[$campo] = $dados[$campo];
                     }
                 }
-                if (isset($dados['areas_vulneraveis']) && is_array($dados['areas_vulneraveis'])) {
-                    $campos[] = "areas_vulneraveis = :areas_vulneraveis";
-                    $params['areas_vulneraveis'] = json_encode($dados['areas_vulneraveis']);
+                // Arrays para políticas de RH e seguros
+                if (isset($dados['politicas_rh']) && is_array($dados['politicas_rh'])) {
+                    $campos[] = "politicas_rh = :politicas_rh";
+                    $params['politicas_rh'] = implode(',', $dados['politicas_rh']);
+                }
+                if (isset($dados['seguros']) && is_array($dados['seguros'])) {
+                    $campos[] = "seguros = :seguros";
+                    $params['seguros'] = implode(',', $dados['seguros']);
                 }
                 break;
                 
@@ -165,8 +171,7 @@ class Diagnostico
                 break;
         }
         
-        // Sempre atualizar bloco_atual e data de atualização
-        $campos[] = "bloco_atual = :bloco_atual";
+        // Sempre atualizar data de atualização
         $campos[] = "atualizado_em = NOW()";
         
         if (empty($campos)) {

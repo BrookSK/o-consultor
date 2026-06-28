@@ -275,6 +275,12 @@
                             class="px-6 py-3 border border-red-300 rounded-lg text-red-700 hover:bg-red-50 transition">
                         🗑️ Limpar Draft
                     </button>
+                    
+                    <!-- Botão temporário para debug -->
+                    <a href="<?= APP_URL ?>/diagnostico/debug" target="_blank"
+                       class="px-4 py-3 text-xs border border-blue-300 rounded-lg text-blue-700 hover:bg-blue-50 transition">
+                        🔍 Debug
+                    </a>
                 </div>
                 
                 <button type="submit" :disabled="loading"
@@ -286,13 +292,6 @@
                         Salvando...
                     </span>
                 </button>
-                
-                <!-- Debug Info (TEMPORARY) -->
-                <div class="text-xs text-gray-400 mt-2" x-show="true">
-                    <strong>Debug:</strong> EmpresaSelecionada: <span x-text="empresaSelecionada"></span> | 
-                    Nome: "<span x-text="form.empresa_nome"></span>" | 
-                    Setor: "<span x-text="form.setor"></span>"
-                </div>
             </div>
         </form>
     </div>
@@ -398,12 +397,15 @@ function diagnosticoBloco1() {
 
                 if (result.sucesso) {
                     console.log('Bloco salvo com sucesso');
+                    console.log('Dados do resultado:', result);
+                    
                     if (result.redirect) {
-                        console.log('Redirecionando para:', result.redirect);
+                        console.log('Usando redirect fornecido pelo servidor:', result.redirect);
                         window.location.href = result.redirect;
                     } else {
-                        console.log('Redirecionamento padrão para bloco 2');
-                        window.location.href = '<?= APP_URL ?>/diagnostico/bloco/2?rascunho_id=<?= $dados['rascunho']['id'] ?>';
+                        const defaultRedirect = '<?= APP_URL ?>/diagnostico/bloco/2?rascunho_id=<?= $dados['rascunho']['id'] ?>';
+                        console.log('Usando redirecionamento padrão:', defaultRedirect);
+                        window.location.href = defaultRedirect;
                     }
                 } else {
                     console.error('Erro do servidor:', result.mensagem);

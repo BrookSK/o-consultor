@@ -183,7 +183,13 @@ class DiagnosticoController
         }
         
         // Verificar se pode acessar este bloco (deve ter preenchido os anteriores)
-        if ($bloco > $rascunho['bloco_atual']) {
+        // Permitir acesso ao próximo bloco após salvar o atual
+        if ($bloco > ($rascunho['bloco_atual'] + 1)) {
+            Logger::warning('Tentativa de acesso a bloco muito avançado', [
+                'bloco_solicitado' => $bloco,
+                'bloco_atual_permitido' => $rascunho['bloco_atual'],
+                'rascunho_id' => $rascunhoId
+            ]);
             header('Location: ' . APP_URL . '/diagnostico/bloco/' . $rascunho['bloco_atual'] . '?rascunho_id=' . $rascunhoId);
             exit;
         }
@@ -287,26 +293,31 @@ class DiagnosticoController
                 
             case 3:
                 $dadosBloco = [
-                    'processo_entrega' => htmlspecialchars(trim($_POST['processo_entrega'] ?? '')),
-                    'ferramentas_softwares' => htmlspecialchars(trim($_POST['ferramentas_softwares'] ?? '')),
-                    'fornecedores_criticos' => htmlspecialchars(trim($_POST['fornecedores_criticos'] ?? '')),
-                    'dependencia_pessoa' => htmlspecialchars(trim($_POST['dependencia_pessoa'] ?? '')),
-                    'integracoes' => htmlspecialchars(trim($_POST['integracoes'] ?? '')),
-                    'processos_documentados' => (int) ($_POST['processos_documentados'] ?? 0),
-                    'ferramentas_gestao' => $_POST['ferramentas_gestao'] ?? []
+                    'faturamento_mensal' => htmlspecialchars(trim($_POST['faturamento_mensal'] ?? '')),
+                    'margem_lucro' => htmlspecialchars(trim($_POST['margem_lucro'] ?? '')),
+                    'sistema_financeiro' => htmlspecialchars(trim($_POST['sistema_financeiro'] ?? '')),
+                    'controle_fluxo_caixa' => htmlspecialchars(trim($_POST['controle_fluxo_caixa'] ?? '')),
+                    'canais_vendas' => $_POST['canais_vendas'] ?? [],
+                    'sistema_crm' => htmlspecialchars(trim($_POST['sistema_crm'] ?? '')),
+                    'taxa_conversao' => htmlspecialchars(trim($_POST['taxa_conversao'] ?? '')),
+                    'ticket_medio' => htmlspecialchars(trim($_POST['ticket_medio'] ?? '')),
+                    'observacoes_bloco3' => htmlspecialchars(trim($_POST['observacoes_bloco3'] ?? ''))
                 ];
                 break;
                 
             case 4:
                 $dadosBloco = [
-                    'problemas_operacionais' => htmlspecialchars(trim($_POST['problemas_operacionais'] ?? '')),
-                    'riscos_identificados' => htmlspecialchars(trim($_POST['riscos_identificados'] ?? '')),
-                    'incidentes_tipo' => htmlspecialchars(trim($_POST['incidentes_tipo'] ?? '')),
-                    'incidentes_descricao' => htmlspecialchars(trim($_POST['incidentes_descricao'] ?? '')),
-                    'areas_vulneraveis' => $_POST['areas_vulneraveis'] ?? [],
-                    'cliente_concentrado' => htmlspecialchars(trim($_POST['cliente_concentrado'] ?? 'nao')),
-                    'fornecedor_insubstituivel' => htmlspecialchars(trim($_POST['fornecedor_insubstituivel'] ?? 'nao')),
-                    'processos_sem_backup' => htmlspecialchars(trim($_POST['processos_sem_backup'] ?? 'nao'))
+                    'estrutura_organizacional' => htmlspecialchars(trim($_POST['estrutura_organizacional'] ?? '')),
+                    'politicas_rh' => $_POST['politicas_rh'] ?? [],
+                    'taxa_turnover' => htmlspecialchars(trim($_POST['taxa_turnover'] ?? '')),
+                    'programa_capacitacao' => htmlspecialchars(trim($_POST['programa_capacitacao'] ?? '')),
+                    'mapeamento_riscos' => htmlspecialchars(trim($_POST['mapeamento_riscos'] ?? '')),
+                    'seguros' => $_POST['seguros'] ?? [],
+                    'backup_continuidade' => htmlspecialchars(trim($_POST['backup_continuidade'] ?? '')),
+                    'conformidade_regulatoria' => htmlspecialchars(trim($_POST['conformidade_regulatoria'] ?? '')),
+                    'dependencia_pessoas' => htmlspecialchars(trim($_POST['dependencia_pessoas'] ?? '')),
+                    'dependencia_fornecedores' => htmlspecialchars(trim($_POST['dependencia_fornecedores'] ?? '')),
+                    'observacoes_bloco4' => htmlspecialchars(trim($_POST['observacoes_bloco4'] ?? ''))
                 ];
                 break;
                 
@@ -336,24 +347,44 @@ class DiagnosticoController
                 'bloco' => $bloco,
                 'empresa' => $dadosBloco['empresa_nome'] ?? 'N/A',
                 'dados_salvos' => count($dadosBloco) . ' campos',
-                'debug_dados' => $dadosBloco
+                'debug_dados' => $dadosBloco,
+                'bloco_atual_antes' => $rascunho['bloco_atual']
             ]);
             
-            // Determinar próximo bloco
+            // Atualizar bloco_atual para o próximo bloco se necessário
             $proximoBloco = $bloco < 5 ? $bloco + 1 : 5;
+            $novoBlocoAtual = max($rascunho['bloco_atual'], $proximoBloco);
+            
+            if ($novoBlocoAtual != $rascunho['bloco_atual']) {
+                Database::execute(
+                    "UPDATE diagnosticos_rascunho SET bloco_atual = :bloco_atual WHERE id = :id",
+                    ['bloco_atual' => $novoBlocoAtual, 'id' => $rascunhoId]
+                );
+                
+                Logger::acao('Bloco atual atualizado', [
+                    'rascunho_id' => $rascunhoId,
+                    'bloco_anterior' => $rascunho['bloco_atual'],
+                    'novo_bloco_atual' => $novoBlocoAtual
+                ]);
+            }
+            
+            // Determinar próximo bloco
+            $proximoBlocoRedirect = $bloco < 5 ? $bloco + 1 : 5;
             
             header('Content-Type: application/json');
             echo json_encode([
                 'sucesso' => true,
                 'mensagem' => 'Bloco ' . $bloco . ' salvo com sucesso!',
-                'proximo_bloco' => $proximoBloco,
+                'proximo_bloco' => $proximoBlocoRedirect,
                 'redirect' => $bloco < 5 ? 
-                    APP_URL . '/diagnostico/bloco/' . $proximoBloco . '?rascunho_id=' . $rascunhoId :
+                    APP_URL . '/diagnostico/bloco/' . $proximoBlocoRedirect . '?rascunho_id=' . $rascunhoId :
                     null,
                 'dados_processados' => count($dadosBloco),
                 'debug_info' => [
                     'rascunho_id' => $rascunhoId,
-                    'bloco' => $bloco,
+                    'bloco_salvo' => $bloco,
+                    'proximo_bloco_redirect' => $proximoBlocoRedirect,
+                    'bloco_atual_atualizado' => $novoBlocoAtual,
                     'campos_enviados' => array_keys($dadosBloco),
                     'valores_recebidos' => $dadosBloco
                 ]
@@ -753,6 +784,17 @@ class DiagnosticoController
         
         echo "<h2>Rascunho Atual:</h2>";
         echo "<pre>" . print_r($rascunho, true) . "</pre>";
+        
+        if ($rascunho) {
+            echo "<h2>Teste de Acesso aos Blocos:</h2>";
+            for ($i = 1; $i <= 5; $i++) {
+                $podeAcessar = $i <= ($rascunho['bloco_atual'] + 1);
+                echo "Bloco $i: " . ($podeAcessar ? "✅ PODE ACESSAR" : "❌ NÃO PODE ACESSAR") . "<br>";
+                if ($podeAcessar) {
+                    echo "<a href='" . APP_URL . "/diagnostico/bloco/$i?rascunho_id=" . $rascunho['id'] . "'>Testar Acesso ao Bloco $i</a><br>";
+                }
+            }
+        }
         
         if (Auth::perfil() === 'ADMIN_HOLDING') {
             $empresas = Database::query(
