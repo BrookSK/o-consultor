@@ -4,7 +4,8 @@
  * Permite criar, editar e remover SOPs específicos da empresa
  */
 
-require_once VIEW_PATH . '/layouts/header.php';
+$tituloPagina = 'Gerenciar SOPs Personalizados';
+ob_start();
 ?>
 
 <div class="container-fluid">
@@ -317,4 +318,5 @@ function mostrarToast(mensagem, tipo) {
 }
 </script>
 
-<?php require_once VIEW_PATH . '/layouts/footer.php'; ?>
+<?php $conteudo = ob_get_clean(); ?>
+<?php require VIEW_PATH . '/layouts/layout.php'; ?>

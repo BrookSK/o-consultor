@@ -1333,69 +1333,7 @@ class AdminController
     /**
      * Salvar configuração SMTP
      */
-    public function salvarSmtp(): void
-    {
-        $this->protegerAdmin();
-        Csrf::verificar();
-        
-        $config = [
-            'smtp_host' => trim($_POST['smtp_host'] ?? ''),
-            'smtp_port' => (int) ($_POST['smtp_port'] ?? 587),
-            'smtp_email' => filter_input(INPUT_POST, 'smtp_email', FILTER_SANITIZE_EMAIL),
-            'smtp_nome' => htmlspecialchars(trim($_POST['smtp_nome'] ?? '')),
-            'smtp_usuario' => trim($_POST['smtp_usuario'] ?? ''),
-            'smtp_senha' => trim($_POST['smtp_senha'] ?? ''),
-            'smtp_seguranca' => in_array($_POST['smtp_seguranca'] ?? '', ['tls', 'ssl', 'none']) ? $_POST['smtp_seguranca'] : 'tls'
-        ];
-        
-        // Validações
-        if (empty($config['smtp_host']) || empty($config['smtp_email']) || empty($config['smtp_usuario']) || empty($config['smtp_senha'])) {
-            header('Content-Type: application/json');
-            echo json_encode(['sucesso' => false, 'erro' => 'Todos os campos são obrigatórios.']);
-            exit;
-        }
-        
-        if (!filter_var($config['smtp_email'], FILTER_VALIDATE_EMAIL)) {
-            header('Content-Type: application/json');
-            echo json_encode(['sucesso' => false, 'erro' => 'E-mail inválido.']);
-            exit;
-        }
-        
-        try {
-            // Salvar configurações no banco
-            foreach ($config as $chave => $valor) {
-                $criptografado = in_array($chave, ['smtp_senha']) ? 1 : 0;
-                
-                Database::execute(
-                    "INSERT INTO configuracoes (chave, valor, descricao, grupo, criptografado) 
-                     VALUES (:chave, :valor, :descricao, 'smtp', :criptografado)
-                     ON DUPLICATE KEY UPDATE valor = :valor2, criptografado = :criptografado2",
-                    [
-                        'chave' => $chave,
-                        'valor' => $valor,
-                        'valor2' => $valor,
-                        'descricao' => $this->getDescricaoSmtp($chave),
-                        'criptografado' => $criptografado,
-                        'criptografado2' => $criptografado
-                    ]
-                );
-            }
-            
-            Logger::acao('Configuração SMTP salva', ['smtp_host' => $config['smtp_host']]);
-            
-            header('Content-Type: application/json');
-            echo json_encode([
-                'sucesso' => true,
-                'mensagem' => 'Configuração SMTP salva com sucesso!'
-            ]);
-            
-        } catch (Exception $e) {
-            Logger::error('Erro ao salvar SMTP: ' . $e->getMessage());
-            header('Content-Type: application/json');
-            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno ao salvar.']);
-        }
-        exit;
-    }
+
     
     /**
      * Testar configuração SMTP

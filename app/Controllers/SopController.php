@@ -16,36 +16,67 @@ class SopController
     {
         Auth::proteger();
         
-        $empresaId = Auth::garantirEmpresa();
+        $dados = [];
 
-        // Dados da empresa e diagnóstico
+        // Para ADMIN_HOLDING, mostrar lista de empresas
+        if (Auth::perfil() === 'ADMIN_HOLDING') {
+            // Buscar todas as empresas
+            $empresas = Database::query(
+                "SELECT e.*, 
+                        COUNT(s.id) as total_sops,
+                        COUNT(CASE WHEN s.status = 'aprovado' THEN 1 END) as aprovados
+                 FROM empresas e
+                 LEFT JOIN sops s ON e.id = s.empresa_id
+                 GROUP BY e.id
+                 ORDER BY e.nome"
+            );
+            
+            $dados['empresas_disponiveis'] = $empresas;
+            
+            // Se há uma empresa na sessão, carregá-la
+            if (isset($_SESSION['empresa_selecionada'])) {
+                $empresaId = $_SESSION['empresa_selecionada'];
+                $empresa = Empresa::buscarPorId($empresaId);
+                if ($empresa) {
+                    $dados['empresa_atual'] = $this->carregarDadosEmpresa($empresaId);
+                    $dados['departamentos'] = $this->getDepartamentosPorSetor($empresa['segmento'] ?? 'Tecnologia', $empresaId);
+                }
+            }
+        } else {
+            // Para outros perfis, usar empresa do usuário
+            $empresaId = Auth::garantirEmpresa();
+            $dados['empresa_atual'] = $this->carregarDadosEmpresa($empresaId);
+            $empresa = Empresa::buscarPorId($empresaId);
+            if ($empresa) {
+                $dados['departamentos'] = $this->getDepartamentosPorSetor($empresa['segmento'] ?? 'Tecnologia', $empresaId);
+            }
+        }
+
+        require VIEW_PATH . '/sop/index.php';
+    }
+    
+    private function carregarDadosEmpresa(int $empresaId): array
+    {
         $empresa = Empresa::buscarPorId($empresaId);
-        $diagnostico = Diagnostico::buscarUltimoPorEmpresa($empresaId);
-        
         if (!$empresa) {
             Flash::set('erro', 'Empresa não encontrada.');
             header('Location: ' . APP_URL . '/dashboard');
             exit;
         }
 
-        // Estatísticas dos SOPs
         $stats = Sop::estatisticas($empresaId);
+        $diagnostico = Diagnostico::buscarUltimoPorEmpresa($empresaId);
         
-        // Departamentos com SOPs (baseado no diagnóstico ou padrão por setor)
-        $departamentos = $this->getDepartamentosPorSetor($empresa['segmento'] ?? 'Tecnologia', $empresaId);
-
-        $dados = [
-            'empresa' => $empresa['nome'],
-            'setor' => $empresa['segmento'] ?? 'Tecnologia',
+        return [
+            'id' => $empresa['id'],
+            'nome' => $empresa['nome'],
+            'segmento' => $empresa['segmento'] ?? 'Tecnologia',
             'maturidade' => $empresa['score_maturidade'] ?? 2,
             'norma' => ApiHelper::getNormasPorSetor($empresa['segmento'] ?? 'Tecnologia'),
-            'departamentos' => $departamentos,
             'total_sops' => $stats['total'],
             'aprovados' => $stats['aprovados'],
             'diagnostico_id' => $diagnostico['id'] ?? null,
         ];
-
-        require VIEW_PATH . '/sop/index.php';
     }
 
     /**
