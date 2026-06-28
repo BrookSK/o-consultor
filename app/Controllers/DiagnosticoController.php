@@ -72,6 +72,16 @@ class DiagnosticoController
         $usuario = Auth::usuario();
         $empresaId = Auth::empresa();
         
+        // Para ADMIN_HOLDING, buscar empresas disponíveis
+        $empresasDisponiveis = [];
+        if (Auth::perfil() === 'ADMIN_HOLDING') {
+            $empresasDisponiveis = Database::query(
+                "SELECT id, nome, segmento, responsavel_id 
+                 FROM empresas 
+                 ORDER BY nome ASC"
+            );
+        }
+        
         // Buscar ou criar rascunho em andamento
         $rascunho = Diagnostico::buscarOuCriarRascunho($usuario['id']);
         
@@ -116,7 +126,8 @@ class DiagnosticoController
             'bloco_atual' => 1,
             'total_blocos' => 5,
             'opcoes' => $opcoes,
-            'documentos_existentes' => $documentosExistentes
+            'documentos_existentes' => $documentosExistentes,
+            'empresas_disponiveis' => $empresasDisponiveis
         ];
 
         require VIEW_PATH . '/diagnostico/bloco1.php';
@@ -225,6 +236,14 @@ class DiagnosticoController
                     'ticket_medio' => htmlspecialchars(trim($_POST['ticket_medio'] ?? '')),
                     'sites_referencia' => htmlspecialchars(trim($_POST['sites_referencia'] ?? ''))
                 ];
+                
+                // Validação básica para bloco 2
+                if (empty($dadosBloco['produtos_servicos'])) {
+                    header('Content-Type: application/json');
+                    echo json_encode(['sucesso' => false, 'mensagem' => 'Descrição dos produtos/serviços é obrigatória']);
+                    exit;
+                }
+                
                 break;
                 
             case 3:
@@ -270,13 +289,14 @@ class DiagnosticoController
             $sucesso = Diagnostico::salvarBlocoRascunho($rascunhoId, $bloco, $dadosBloco);
             
             if (!$sucesso) {
-                throw new Exception('Erro ao salvar dados no banco');
+                throw new Exception('Erro ao salvar dados no banco de dados. Verifique os dados enviados.');
             }
             
             Logger::acao('Bloco de diagnóstico salvo', [
                 'rascunho_id' => $rascunhoId,
                 'bloco' => $bloco,
-                'empresa' => $dadosBloco['empresa_nome'] ?? 'N/A'
+                'empresa' => $dadosBloco['empresa_nome'] ?? 'N/A',
+                'dados_salvos' => count($dadosBloco) . ' campos'
             ]);
             
             // Determinar próximo bloco
@@ -289,13 +309,27 @@ class DiagnosticoController
                 'proximo_bloco' => $proximoBloco,
                 'redirect' => $bloco < 5 ? 
                     APP_URL . '/diagnostico/bloco/' . $proximoBloco . '?rascunho_id=' . $rascunhoId :
-                    null
+                    null,
+                'dados_processados' => count($dadosBloco)
             ]);
             
         } catch (Exception $e) {
-            Logger::error('Erro ao salvar bloco diagnóstico: ' . $e->getMessage());
+            Logger::error('Erro ao salvar bloco diagnóstico', [
+                'erro' => $e->getMessage(),
+                'rascunho_id' => $rascunhoId,
+                'bloco' => $bloco,
+                'dados_enviados' => $dadosBloco
+            ]);
             header('Content-Type: application/json');
-            echo json_encode(['sucesso' => false, 'mensagem' => 'Erro ao salvar: ' . $e->getMessage()]);
+            echo json_encode([
+                'sucesso' => false, 
+                'mensagem' => 'Erro ao salvar: ' . $e->getMessage(),
+                'debug_info' => [
+                    'rascunho_id' => $rascunhoId,
+                    'bloco' => $bloco,
+                    'campos_enviados' => array_keys($dadosBloco)
+                ]
+            ]);
         }
         
         exit;

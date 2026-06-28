@@ -64,9 +64,13 @@
                         </div>
                     </div>
                     <div class="flex items-center gap-3">
-                        <span id="badge-openai" class="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                            Não configurada
-                        </span>
+                        <!-- Indicador visual de status -->
+                        <div class="flex items-center gap-2">
+                            <div id="status-dot-openai" class="w-2.5 h-2.5 rounded-full bg-gray-400"></div>
+                            <span id="badge-openai" class="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                                Verificando...
+                            </span>
+                        </div>
                         <label class="flex items-center gap-2 cursor-pointer">
                             <span class="text-xs text-gray-500">Ativa</span>
                             <input type="checkbox" id="toggle-openai" onchange="toggleApiF14('openai', this.checked)"
@@ -102,6 +106,72 @@
                     </button>
                 </div>
             </div>
+
+            <!-- ANTHROPIC CARD -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                            <span class="text-purple-600 font-bold text-sm">C</span>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-gray-800">Anthropic (Claude)</h4>
+                            <p class="text-xs text-gray-500">Análise avançada e geração de conteúdo</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <!-- Indicador visual de status -->
+                        <div class="flex items-center gap-2">
+                            <div id="status-dot-anthropic" class="w-2.5 h-2.5 rounded-full bg-gray-400"></div>
+                            <span id="badge-anthropic" class="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                                Verificando...
+                            </span>
+                        </div>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <span class="text-xs text-gray-500">Ativa</span>
+                            <input type="checkbox" id="toggle-anthropic" onchange="toggleApiF14('anthropic', this.checked)"
+                                   class="w-4 h-4 text-primary rounded border-gray-300">
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">Chave de API</label>
+                        <input type="password" id="chave-anthropic" placeholder="sk-ant-xxx... ou sk-ant-test (para desenvolvimento)" 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono outline-none focus:border-primary">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">Modelo</label>
+                        <select id="modelo-anthropic" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                            <option value="claude-3-sonnet-20240229">Claude 3 Sonnet</option>
+                            <option value="claude-3-haiku-20240307">Claude 3 Haiku</option>
+                            <option value="claude-3-opus-20240229">Claude 3 Opus</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">Max Tokens</label>
+                        <select id="max-tokens-anthropic" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                            <option value="1024">1.024</option>
+                            <option value="2048">2.048</option>
+                            <option value="4096" selected>4.096</option>
+                            <option value="8192">8.192</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="flex gap-2">
+                    <button type="button" onclick="salvarChaveF14('anthropic')" 
+                            class="bg-accent text-white px-4 py-2 rounded-lg text-sm hover:bg-orange-700">
+                        💾 Salvar Chave
+                    </button>
+                    <button type="button" onclick="testarApiF14('anthropic')" 
+                            class="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
+                        🧪 Testar API
+                    </button>
+                </div>
+            </div>
+
             <!-- PERPLEXITY CARD -->
             <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                 <div class="flex items-center justify-between mb-4">
@@ -115,9 +185,13 @@
                         </div>
                     </div>
                     <div class="flex items-center gap-3">
-                        <span id="badge-perplexity" class="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                            Não configurada
-                        </span>
+                        <!-- Indicador visual de status -->
+                        <div class="flex items-center gap-2">
+                            <div id="status-dot-perplexity" class="w-2.5 h-2.5 rounded-full bg-gray-400"></div>
+                            <span id="badge-perplexity" class="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                                Verificando...
+                            </span>
+                        </div>
                         <label class="flex items-center gap-2 cursor-pointer">
                             <span class="text-xs text-gray-500">Ativa</span>
                             <input type="checkbox" id="toggle-perplexity" onchange="toggleApiF14('perplexity', this.checked)"
@@ -155,61 +229,6 @@
         </div>
     </div>
 
-    <!-- API Anthropic (Claude) -->
-    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-        <div class="flex items-center justify-between mb-4">
-            <div>
-                <h3 class="font-semibold text-gray-800">API Anthropic (Claude)</h3>
-                <p class="text-sm text-gray-500">Modelo avançado de IA para análise e geração de conteúdo</p>
-            </div>
-            <div class="flex items-center">
-                <span class="text-sm text-gray-500 mr-3">Status:</span>
-                <label class="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" id="toggle-anthropic" onchange="toggleApiF14('anthropic')" class="sr-only peer">
-                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                </label>
-            </div>
-        </div>
-        
-        <div id="form-anthropic" style="display:none;">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                <div>
-                    <label class="block text-xs text-gray-500 mb-1">Chave de API</label>
-                    <input type="password" id="chave-anthropic" placeholder="sk-ant-xxx... ou sk-ant-test (para desenvolvimento)" 
-                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono outline-none focus:border-primary">
-                </div>
-                <div>
-                    <label class="block text-xs text-gray-500 mb-1">Modelo</label>
-                    <select id="modelo-anthropic" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
-                        <option value="claude-3-sonnet-20240229">Claude 3 Sonnet</option>
-                        <option value="claude-3-haiku-20240307">Claude 3 Haiku</option>
-                        <option value="claude-3-opus-20240229">Claude 3 Opus</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs text-gray-500 mb-1">Max Tokens</label>
-                    <select id="max-tokens-anthropic" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
-                        <option value="1024">1.024</option>
-                        <option value="2048">2.048</option>
-                        <option value="4096" selected>4.096</option>
-                        <option value="8192">8.192</option>
-                    </select>
-                </div>
-            </div>
-            
-            <div class="flex gap-2">
-                <button type="button" onclick="salvarChaveF14('anthropic')" 
-                        class="bg-accent text-white px-4 py-2 rounded-lg text-sm hover:bg-orange-700">
-                    💾 Salvar Chave
-                </button>
-                <button type="button" onclick="testarApiF14('anthropic')" 
-                        class="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
-                    🧪 Testar API
-                </button>
-            </div>
-        </div>
-    </div>
-    
     <!-- Outras abas simplificadas -->
     <div x-show="aba==='academy'" style="display:none" class="max-w-2xl">
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -377,6 +396,9 @@ async function salvarChaveF14(provedor) {
     }
     
     try {
+        // Atualizar UI durante salvamento
+        updateApiStatus(provedor, 'saving');
+        
         const formData = new FormData();
         formData.append('csrf_token', '<?= Csrf::token() ?>');
         formData.append('provedor', provedor);
@@ -393,18 +415,17 @@ async function salvarChaveF14(provedor) {
             chaveInput.value = '••••••••••••••••';
             showToast(data.mensagem, 'success');
             
-            const badge = document.getElementById('badge-' + provedor);
-            if (badge) {
-                badge.textContent = 'Configurada';
-                badge.className = 'px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-600';
-            }
+            // Atualizar indicador visual para "configurada"
+            updateApiStatus(provedor, 'configured');
         } else {
             showToast(data.erro || 'Erro ao salvar chave', 'error');
+            updateApiStatus(provedor, 'error');
         }
         
     } catch (error) {
         console.error('Erro:', error);
         showToast('Erro de conexão', 'error');
+        updateApiStatus(provedor, 'error');
     }
 }
 async function testarApiF14(provedor) {
@@ -414,11 +435,8 @@ async function testarApiF14(provedor) {
     button.textContent = '🔄 Testando...';
     button.disabled = true;
     
-    const badge = document.getElementById('badge-' + provedor);
-    if (badge) {
-        badge.textContent = 'Testando...';
-        badge.className = 'px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-600';
-    }
+    // Atualizar status visual para testando
+    updateApiStatus(provedor, 'testing');
     
     try {
         const formData = new FormData();
@@ -432,28 +450,129 @@ async function testarApiF14(provedor) {
         
         const data = await response.json();
         
-        if (badge) {
-            if (data.sucesso) {
-                badge.textContent = 'Funcionando';
-                badge.className = 'px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700';
-            } else {
-                badge.textContent = 'Erro';
-                badge.className = 'px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-600';
-            }
+        if (data.sucesso) {
+            updateApiStatus(provedor, 'working');
+            showToast(data.mensagem, 'success');
+        } else {
+            updateApiStatus(provedor, 'error');
+            showToast(data.erro || 'Erro no teste da API', 'error');
         }
-        
-        showToast(data.mensagem, data.sucesso ? 'success' : 'error');
         
     } catch (error) {
         console.error('Erro:', error);
-        if (badge) {
-            badge.textContent = 'Erro de rede';
-            badge.className = 'px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-600';
-        }
+        updateApiStatus(provedor, 'error');
         showToast('Erro de conexão', 'error');
     } finally {
         button.textContent = originalText;
         button.disabled = false;
+    }
+}
+
+// Função para atualizar indicadores visuais de status da API
+function updateApiStatus(provedor, status) {
+    const dot = document.getElementById('status-dot-' + provedor);
+    const badge = document.getElementById('badge-' + provedor);
+    
+    if (!dot || !badge) return;
+    
+    switch (status) {
+        case 'not_configured':
+            dot.className = 'w-2.5 h-2.5 rounded-full bg-gray-400';
+            badge.textContent = 'Não configurada';
+            badge.className = 'px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600';
+            break;
+            
+        case 'configured':
+            dot.className = 'w-2.5 h-2.5 rounded-full bg-yellow-500';
+            badge.textContent = 'Configurada';
+            badge.className = 'px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700';
+            break;
+            
+        case 'working':
+            dot.className = 'w-2.5 h-2.5 rounded-full bg-green-500';
+            badge.textContent = 'Funcionando';
+            badge.className = 'px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700';
+            break;
+            
+        case 'error':
+            dot.className = 'w-2.5 h-2.5 rounded-full bg-red-500';
+            badge.textContent = 'Erro';
+            badge.className = 'px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-600';
+            break;
+            
+        case 'inactive':
+            dot.className = 'w-2.5 h-2.5 rounded-full bg-gray-300';
+            badge.textContent = 'Inativa';
+            badge.className = 'px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500';
+            break;
+            
+        case 'testing':
+            dot.className = 'w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse';
+            badge.textContent = 'Testando...';
+            badge.className = 'px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-600';
+            break;
+            
+        case 'saving':
+            dot.className = 'w-2.5 h-2.5 rounded-full bg-orange-500 animate-pulse';
+            badge.textContent = 'Salvando...';
+            badge.className = 'px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-600';
+            break;
+            
+        default:
+            dot.className = 'w-2.5 h-2.5 rounded-full bg-gray-400';
+            badge.textContent = 'Verificando...';
+            badge.className = 'px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600';
+    }
+}
+
+// Função para carregar status atual das APIs
+async function loadApiStatuses() {
+    const apis = ['openai', 'anthropic', 'perplexity'];
+    
+    for (const provedor of apis) {
+        try {
+            const formData = new FormData();
+            formData.append('csrf_token', '<?= Csrf::token() ?>');
+            formData.append('provedor', provedor);
+            formData.append('action', 'check_status');
+            
+            const response = await fetch('<?= APP_URL ?>/admin/api/status', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const data = await response.json();
+            
+            if (data.sucesso) {
+                // Atualizar checkbox ativo/inativo
+                const toggle = document.getElementById('toggle-' + provedor);
+                if (toggle) {
+                    toggle.checked = data.ativo === true;
+                }
+                
+                // Atualizar status visual baseado na configuração
+                if (!data.ativo) {
+                    updateApiStatus(provedor, 'inactive');
+                } else if (data.configurada) {
+                    // Se está ativa e configurada, assumir como funcionando (pode ser testada depois)
+                    updateApiStatus(provedor, 'configured');
+                    
+                    // Mostrar chave mascarada se existir
+                    const chaveInput = document.getElementById('chave-' + provedor);
+                    if (chaveInput && data.chave_mascarada) {
+                        chaveInput.value = data.chave_mascarada;
+                    }
+                } else {
+                    updateApiStatus(provedor, 'not_configured');
+                }
+            } else {
+                updateApiStatus(provedor, 'error');
+            }
+            
+        } catch (error) {
+            console.error(`Erro ao verificar status da API ${provedor}:`, error);
+            updateApiStatus(provedor, 'error');
+        }
     }
 }
 
@@ -478,34 +597,21 @@ function showToast(message, type) {
 
 // Função para carregar dados das APIs ao inicializar
 async function loadApiData() {
-    try {
-        const response = await fetch('<?= APP_URL ?>/admin/configuracoes');
-        // Por enquanto vamos assumir que os dados estão disponíveis via PHP
-        // Em versões futuras, podemos criar um endpoint específico para buscar os dados via AJAX
+    // Carregar status das APIs do banco de dados
+    await loadApiStatuses();
+    
+    // Configurar event listeners
+    const apis = ['openai', 'perplexity', 'anthropic'];
+    
+    apis.forEach(provedor => {
+        const toggle = document.getElementById('toggle-' + provedor);
         
-        // Carregar status de cada API
-        const apis = ['openai', 'perplexity', 'anthropic'];
-        
-        apis.forEach(provedor => {
-            const toggle = document.getElementById('toggle-' + provedor);
-            const form = document.getElementById('form-' + provedor);
-            
-            if (toggle && form) {
-                toggle.addEventListener('change', function() {
-                    if (this.checked) {
-                        form.style.display = 'block';
-                        toggleApiF14(provedor, true);
-                    } else {
-                        form.style.display = 'none';
-                        toggleApiF14(provedor, false);
-                    }
-                });
-            }
-        });
-        
-    } catch (error) {
-        console.error('Erro ao carregar dados das APIs:', error);
-    }
+        if (toggle) {
+            toggle.addEventListener('change', function() {
+                toggleApiF14(provedor, this.checked);
+            });
+        }
+    });
 }
 
 // Inicializar quando a página carregar

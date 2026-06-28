@@ -555,6 +555,11 @@ class DashboardController
         $usuario = $dados['usuario'];
         $empresaId = $usuario['empresa_id'];
         
+        // Carregar progresso da jornada integrada
+        require_once APP_PATH . '/Helpers/JornadaCliente.php';
+        $jornadaProgresso = JornadaCliente::calcularProgresso($empresaId);
+        $dados['jornada_integrada'] = $jornadaProgresso;
+        
         // Verificar se onboarding foi concluído
         $usuarioCompleto = User::buscarPorId($usuario['id']);
         $onboardingConcluido = $usuarioCompleto['onboarding_concluido'] ?? false;
@@ -637,7 +642,7 @@ class DashboardController
                 ],
                 [
                     'titulo' => 'Próxima Reunião',
-                    'valor' => $this->buscarProximaReuniao($empresaId)
+                    'valor' => $this->buscarProximaReuniao($empresaId),
                     'variacao' => 'A definir',
                     'direcao' => 'neutral',
                     'icone' => 'calendar',
@@ -648,6 +653,36 @@ class DashboardController
             // Plano de Ação real do cliente
             $tarefasPlano = Database::query(
                 "SELECT t.titulo, t.responsavel, t.prazo_estimado, t.status 
+                 FROM plano_tarefas t
+                 JOIN planos_acao p ON t.plano_id = p.id
+                 WHERE p.empresa_id = :empresa_id AND p.status IN ('ativo', 'em_andamento')
+                 ORDER BY t.prazo_estimado ASC 
+                 LIMIT 6",
+                ['empresa_id' => $empresaId]
+            );
+            
+            // Buscar notícias relevantes para o cliente
+            $noticiasRelevantes = Database::query(
+                "SELECT n.*, 
+                        CASE 
+                            WHEN n.relevancia >= 8 THEN 'Alta'
+                            WHEN n.relevancia >= 6 THEN 'Média'
+                            ELSE 'Baixa'
+                        END as relevancia_label,
+                        DATE_FORMAT(n.criado_em, '%d/%m %H:%i') as data_formatada
+                 FROM noticias n
+                 WHERE n.empresa_id = :empresa_id 
+                   AND n.arquivado = 0
+                   AND n.criado_em >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                 ORDER BY n.relevancia DESC, n.criado_em DESC
+                 LIMIT 5",
+                ['empresa_id' => $empresaId]
+            );
+            
+            $dados['noticias_relevantes'] = $noticiasRelevantes;
+            
+            $tarefasPlano = Database::query(
+                "SELECT t.titulo, t.responsavel, t.prazo_estimado, t.status
                  FROM plano_tarefas t 
                  JOIN plano_prioridades pp ON t.prioridade_id = pp.id
                  JOIN planos_acao p ON pp.plano_id = p.id

@@ -39,6 +39,27 @@
             <input type="hidden" name="rascunho_id" value="<?= $dados['rascunho']['id'] ?>">
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Seleção de Cliente (para ADMIN_HOLDING) -->
+                <?php if (Auth::perfil() === 'ADMIN_HOLDING' && !empty($dados['empresas_disponiveis'])): ?>
+                <div class="md:col-span-2">
+                    <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">Cliente para Diagnóstico *</label>
+                        <select name="cliente_selecionado" onchange="preencherDadosCliente(this.value)"
+                                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                            <option value="">Selecione o cliente ou crie um novo diagnóstico</option>
+                            <?php foreach ($dados['empresas_disponiveis'] as $empresa): ?>
+                                <option value="<?= $empresa['id'] ?>" data-nome="<?= htmlspecialchars($empresa['nome']) ?>" 
+                                        data-segmento="<?= htmlspecialchars($empresa['segmento']) ?>">
+                                    <?= htmlspecialchars($empresa['nome']) ?> - <?= htmlspecialchars($empresa['segmento']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                            <option value="novo">+ Criar diagnóstico para nova empresa</option>
+                        </select>
+                        <p class="text-xs text-amber-700 mt-2">⚠️ Selecione um cliente existente ou escolha "nova empresa" para preencher dados manualmente</p>
+                    </div>
+                </div>
+                <?php endif; ?>
+
                 <!-- Nome da Empresa -->
                 <div class="md:col-span-2">
                     <label class="block text-sm font-semibold text-gray-700 mb-2">Nome da Empresa *</label>
@@ -179,8 +200,14 @@
                                 class="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
                             Selecionar Arquivos
                         </button>
+                        <button type="button" 
+                                @click="clearUpload()"
+                                x-show="selectedFiles.length > 0"
+                                class="mt-2 ml-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition">
+                            Limpar Arquivos
+                        </button>
                         <p class="text-xs text-gray-500 mt-2">
-                            PDF, DOC, DOCX, TXT, RTF • Máximo 5MB por arquivo
+                            PDF, DOC, DOCX, TXT, RTF • Máximo 1GB por arquivo
                         </p>
                     </div>
 
@@ -300,6 +327,47 @@ function diagnosticoBloco1() {
     };
 }
 
+// Função para preencher dados do cliente selecionado
+function preencherDadosCliente(empresaId) {
+    if (!empresaId || empresaId === 'novo') {
+        // Limpar campos se "novo" for selecionado
+        document.querySelector('input[name="empresa_nome"]').value = '';
+        document.querySelector('select[name="setor"]').selectedIndex = 0;
+        return;
+    }
+    
+    // Buscar dados da empresa selecionada
+    const select = event.target;
+    const option = select.querySelector(`option[value="${empresaId}"]`);
+    
+    if (option) {
+        const nome = option.dataset.nome;
+        const segmento = option.dataset.segmento;
+        
+        // Preencher campos automaticamente
+        const nomeInput = document.querySelector('input[name="empresa_nome"]');
+        const setorSelect = document.querySelector('select[name="setor"]');
+        
+        if (nomeInput) nomeInput.value = nome;
+        
+        if (setorSelect) {
+            // Tentar encontrar o setor correspondente
+            for (let i = 0; i < setorSelect.options.length; i++) {
+                if (setorSelect.options[i].value === segmento) {
+                    setorSelect.selectedIndex = i;
+                    break;
+                }
+            }
+        }
+        
+        // Atualizar Alpine.js data se disponível
+        if (window.diagnosticoData && window.diagnosticoData.form) {
+            window.diagnosticoData.form.empresa_nome = nome;
+            window.diagnosticoData.form.setor = segmento;
+        }
+    }
+}
+
 // Componente para upload de documentos
 function documentUpload() {
     return {
@@ -327,9 +395,9 @@ function documentUpload() {
                     continue;
                 }
 
-                // Validar tamanho (5MB)
-                if (file.size > 5 * 1024 * 1024) {
-                    alert(`Arquivo ${file.name} é muito grande. Máximo 5MB por arquivo.`);
+                // Validar tamanho (1GB)
+                if (file.size > 1024 * 1024 * 1024) {
+                    alert(`Arquivo ${file.name} é muito grande. Máximo 1GB por arquivo.`);
                     continue;
                 }
 
@@ -342,6 +410,15 @@ function documentUpload() {
 
         removeFile(index) {
             this.selectedFiles.splice(index, 1);
+        },
+
+        clearUpload() {
+            this.selectedFiles = [];
+            // Limpar input file
+            const fileInput = this.$refs.fileInput;
+            if (fileInput) {
+                fileInput.value = '';
+            }
         },
 
         formatFileSize(bytes) {

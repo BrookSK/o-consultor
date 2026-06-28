@@ -130,6 +130,14 @@ class ConteudoController
     public function admin(): void
     {
         Auth::exigirPerfil([Auth::ADMIN_HOLDING, Auth::CONSULTOR_INTERNO]);
+        
+        $empresaId = Auth::empresa();
+        if (!$empresaId) {
+            Flash::set('erro', 'É necessário selecionar uma empresa para gerenciar conteúdo.');
+            header('Location: ' . APP_URL . '/admin/clientes');
+            exit;
+        }
+        
         $dados = [
             'noticias' => $this->buscarNoticiasReais($empresaId),
             'casos' => $this->getCasosReais($empresaId),

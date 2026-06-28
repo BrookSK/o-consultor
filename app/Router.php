@@ -88,6 +88,23 @@ class Router
         $this->get('kpis/ver', 'KpiController', 'ver');
         $this->post('kpis/registrar', 'KpiController', 'registrar');
         $this->post('kpis/alerta/marcar-lido', 'KpiController', 'marcarAlertaLido');
+        $this->post('kpi/processar-alerta', 'KpiController', 'processarAlerta');
+        $this->post('sop/acionar-contencao', 'SopController', 'acionarContencao');
+
+        // ===== BLOCO GESTÃO: AGENDA E FINANCEIRO =====
+        // Agenda Pessoal
+        $this->get('agenda', 'AgendaController', 'index');
+        $this->post('agenda/adicionar', 'AgendaController', 'adicionarCompromisos');
+        $this->post('agenda/atualizar-status', 'AgendaController', 'atualizarStatus');
+        $this->get('agenda/calendario', 'AgendaController', 'calendario');
+        $this->post('agenda/resolver-emergencia', 'AgendaController', 'resolverEmergencia');
+
+        // Módulo Financeiro
+        $this->get('financeiro', 'FinanceiroController', 'index');
+        $this->post('financeiro/adicionar-transacao', 'FinanceiroController', 'adicionarTransacao');
+        $this->post('financeiro/marcar-pago', 'FinanceiroController', 'marcarPago');
+        $this->get('financeiro/relatorio', 'FinanceiroController', 'relatorio');
+        $this->get('financeiro/projecao', 'FinanceiroController', 'projecao');
 
         // Central de Conteúdo
         $this->get('central-de-conteudo', 'ConteudoController', 'index');
@@ -179,6 +196,7 @@ class Router
         $this->post('admin/api/toggle', 'AdminController', 'toggleApi');
         $this->post('admin/api/salvar-chave', 'AdminController', 'salvarChaveApi');
         $this->post('admin/api/testar', 'AdminController', 'testarApiIndividual');
+        $this->post('admin/api/status', 'AdminController', 'statusApi');
         $this->post('admin/smtp/salvar', 'AdminController', 'salvarSmtp');
         $this->post('admin/smtp/testar', 'AdminController', 'testarSmtp');
         $this->get('admin/logs', 'AdminController', 'logs');

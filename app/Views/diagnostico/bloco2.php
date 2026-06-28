@@ -110,6 +110,25 @@
                 </div>
             </div>
 
+            <!-- Ticket Médio -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Ticket Médio (Valor médio por cliente)</label>
+                    <input type="text" name="ticket_medio" x-model="form.ticket_medio"
+                           class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                           placeholder="Ex: R$ 1.500,00"
+                           value="<?= htmlspecialchars($dados['rascunho']['ticket_medio'] ?? '') ?>">
+                </div>
+
+                <!-- Sites de Referência -->
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Sites de Referência (Opcional)</label>
+                    <textarea name="sites_referencia" x-model="form.sites_referencia" rows="2"
+                              class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+                              placeholder="Sites do seu setor que vocês acompanham..."><?= htmlspecialchars($dados['rascunho']['sites_referencia'] ?? '') ?></textarea>
+                </div>
+            </div>
+
             <!-- Botões de Navegação -->
             <div class="flex justify-between pt-6 border-t border-gray-100">
                 <a href="<?= APP_URL ?>/diagnostico/bloco/1?rascunho_id=<?= $dados['rascunho']['id'] ?>" 
@@ -141,7 +160,9 @@ function diagnosticoBloco2() {
             colaboradores_externos: '<?= $dados['rascunho']['colaboradores_externos'] ?? '' ?>',
             faturamento_mensal: '<?= addslashes($dados['rascunho']['faturamento_mensal'] ?? '') ?>',
             clientes_ativos: '<?= $dados['rascunho']['clientes_ativos'] ?? '' ?>',
-            produtos_servicos: '<?= addslashes($dados['rascunho']['produtos_servicos'] ?? '') ?>'
+            produtos_servicos: <?= json_encode($dados['rascunho']['produtos_servicos'] ?? '') ?>,
+            ticket_medio: '<?= addslashes($dados['rascunho']['ticket_medio'] ?? '') ?>',
+            sites_referencia: <?= json_encode($dados['rascunho']['sites_referencia'] ?? '') ?>
         },
 
         async salvarBloco() {
@@ -162,24 +183,36 @@ function diagnosticoBloco2() {
                     formData.append('departamentos[]', checkbox.value);
                 });
 
+                console.log('Enviando dados do bloco 2:', Object.fromEntries(formData.entries()));
+
                 const response = await fetch('<?= APP_URL ?>/diagnostico/salvar-bloco', {
                     method: 'POST',
                     body: formData
                 });
 
+                console.log('Status da resposta:', response.status);
+                console.log('Headers da resposta:', response.headers);
+                
                 const result = await response.json();
+                console.log('Resultado recebido:', result);
 
                 if (result.sucesso) {
                     if (result.redirect) {
+                        console.log('Redirecionando para:', result.redirect);
                         window.location.href = result.redirect;
                     } else {
-                        // Por enquanto, vamos para o bloco 5 (último) para teste
-                        window.location.href = '<?= APP_URL ?>/diagnostico/bloco/5?rascunho_id=<?= $dados['rascunho']['id'] ?>';
+                        // Ir para o próximo bloco baseado na resposta do servidor
+                        const proximoBloco = result.proximo_bloco || 3;
+                        const url = '<?= APP_URL ?>/diagnostico/bloco/' + proximoBloco + '?rascunho_id=<?= $dados['rascunho']['id'] ?>';
+                        console.log('Redirecionando para próximo bloco:', url);
+                        window.location.href = url;
                     }
                 } else {
+                    console.error('Erro ao salvar:', result.mensagem);
                     alert(result.mensagem || 'Erro ao salvar bloco');
                 }
             } catch (error) {
+                console.error('Erro na requisição:', error);
                 alert('Erro na conexão. Tente novamente.');
             } finally {
                 this.loading = false;

@@ -18,6 +18,12 @@
     <p class="text-gray-500 mt-1"><?= htmlspecialchars(ucfirst($dados['data_atual'])) ?></p>
 </div>
 
+<!-- Widget Jornada Integrada -->
+<?php 
+require_once APP_PATH . '/Helpers/JornadaCliente.php';
+echo JornadaCliente::renderWidgetNavegacao($dados['usuario']['empresa_id']);
+?>
+
 <?php if (!$dados['onboarding_concluido']): ?>
 <!-- Onboarding CTA -->
 <div class="bg-gradient-to-r from-accent to-orange-700 rounded-lg p-6 mb-8 text-white">
@@ -184,6 +190,58 @@
         <?php endforeach; ?>
     </div>
 </div>
+
+<!-- Notícias Relevantes -->
+<?php if (!empty($dados['noticias_relevantes'])): ?>
+<div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-8">
+    <div class="px-6 py-4 border-b border-gray-100">
+        <div class="flex items-center justify-between">
+            <h3 class="font-semibold text-gray-800">📰 Notícias do Seu Setor</h3>
+            <a href="<?= APP_URL ?>/noticias" class="text-sm text-primary hover:underline">Ver todas →</a>
+        </div>
+    </div>
+    <div class="p-4 space-y-3">
+        <?php foreach ($dados['noticias_relevantes'] as $noticia): 
+            $relevanciaColor = match($noticia['relevancia_label']) {
+                'Alta' => 'bg-red-100 text-red-700',
+                'Média' => 'bg-yellow-100 text-yellow-700', 
+                default => 'bg-gray-100 text-gray-700'
+            };
+        ?>
+        <div class="border border-gray-200 rounded-lg p-4 hover:shadow-sm transition">
+            <div class="flex items-start justify-between gap-3">
+                <div class="flex-1">
+                    <h4 class="font-medium text-gray-800 text-sm mb-1">
+                        <a href="<?= APP_URL ?>/noticias/detalhe/<?= $noticia['id'] ?>" class="hover:text-primary transition">
+                            <?= htmlspecialchars($noticia['titulo']) ?>
+                        </a>
+                    </h4>
+                    <p class="text-xs text-gray-600 mb-2 line-clamp-2"><?= htmlspecialchars($noticia['resumo_ia'] ?? substr($noticia['conteudo'], 0, 120) . '...') ?></p>
+                    <div class="flex items-center gap-2">
+                        <span class="px-2 py-0.5 rounded-full text-xs font-medium <?= $relevanciaColor ?>">
+                            <?= $noticia['relevancia_label'] ?>
+                        </span>
+                        <span class="text-xs text-gray-500"><?= $noticia['data_formatada'] ?></span>
+                        <?php if (!empty($noticia['fonte'])): ?>
+                            <span class="text-xs text-gray-400">• <?= htmlspecialchars($noticia['fonte']) ?></span>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <?php if (!empty($noticia['imagem_url'])): ?>
+                <img src="<?= htmlspecialchars($noticia['imagem_url']) ?>" alt="" class="w-16 h-16 rounded-lg object-cover flex-shrink-0">
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php endforeach; ?>
+        
+        <div class="pt-3 border-t border-gray-100">
+            <p class="text-xs text-gray-500 text-center">
+                💡 Notícias personalizadas com base no seu diagnóstico e perfil da empresa
+            </p>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <!-- Conteúdo Recomendado (3 cards por setor) -->
 <div class="mb-8">

@@ -1680,6 +1680,53 @@ class AdminController
     }
 
 
+    /**
+     * Verificar status de uma API específica
+     */
+    public function statusApi(): void
+    {
+        $this->protegerAdmin();
+        Csrf::verificar();
+        
+        $provedor = $_POST['provedor'] ?? '';
+        
+        if (empty($provedor)) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Provedor não especificado.']);
+            exit;
+        }
+        
+        try {
+            // Verificar se a API está ativa
+            $ativo = Configuracao::apiAtiva($provedor);
+            
+            // Verificar se a chave está configurada
+            $chave = Configuracao::get($provedor . '_key');
+            $configurada = !empty($chave);
+            
+            // Gerar chave mascarada para exibição
+            $chaveMascarada = '';
+            if ($configurada) {
+                $chaveMascarada = substr($chave, 0, 8) . '••••••••••••••••';
+            }
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => true,
+                'provedor' => $provedor,
+                'ativo' => $ativo,
+                'configurada' => $configurada,
+                'chave_mascarada' => $chaveMascarada
+            ]);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao verificar status da API: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno.']);
+        }
+        exit;
+    }
+
     public function logs(): void
     {
         $this->protegerAdmin();

@@ -35,12 +35,17 @@
             <?php if (!empty($dados['empresas_disponiveis'])): ?>
                 <?php foreach ($dados['empresas_disponiveis'] as $empresa): ?>
                 <div class="border border-gray-200 rounded-lg p-4 hover:border-primary hover:bg-primary/5 cursor-pointer transition"
-                     onclick="selecionarEmpresa(<?= $empresa['id'] ?>)">
+                     onclick="selecionarEmpresa(<?= $empresa['id'] ?>)"
+                     id="empresa-<?= $empresa['id'] ?>">
                     <h3 class="font-medium text-gray-800"><?= htmlspecialchars($empresa['nome']) ?></h3>
                     <p class="text-sm text-gray-500"><?= htmlspecialchars($empresa['segmento']) ?></p>
                     <div class="flex items-center gap-2 mt-2">
                         <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded"><?= $empresa['total_sops'] ?? 0 ?> SOPs</span>
                         <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded"><?= $empresa['aprovados'] ?? 0 ?> Aprovados</span>
+                    </div>
+                    <!-- Indicador de seleção -->
+                    <div class="mt-2 text-center opacity-0 transition-opacity" id="selected-<?= $empresa['id'] ?>">
+                        <span class="text-xs font-medium text-primary">✓ Selecionada</span>
                     </div>
                 </div>
                 <?php endforeach; ?>
@@ -379,6 +384,88 @@ async function salvarNovoSOP() {
 // Exportar todos os SOPs
 function exportarTodosSops() {
     window.location.href = '<?= APP_URL ?>/sop/exportar-todos-zip';
+}
+</script>
+
+<script>
+// Função para selecionar empresa e navegar para próxima hierarquia
+function selecionarEmpresa(empresaId) {
+    // Limpar seleções anteriores
+    document.querySelectorAll('[id^="empresa-"]').forEach(el => {
+        el.classList.remove('border-primary', 'bg-primary/10');
+        el.classList.add('border-gray-200');
+    });
+    
+    document.querySelectorAll('[id^="selected-"]').forEach(el => {
+        el.style.opacity = '0';
+    });
+    
+    // Marcar empresa selecionada
+    const empresaEl = document.getElementById('empresa-' + empresaId);
+    const selectedEl = document.getElementById('selected-' + empresaId);
+    
+    if (empresaEl && selectedEl) {
+        empresaEl.classList.remove('border-gray-200');
+        empresaEl.classList.add('border-primary', 'bg-primary/10');
+        selectedEl.style.opacity = '1';
+    }
+    
+    // Enviar seleção para o servidor e recarregar página com empresa selecionada
+    fetch('<?= APP_URL ?>/admin/selecionar-empresa', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({
+            empresa_id: empresaId,
+            csrf_token: '<?= Csrf::token() ?>'
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.sucesso) {
+            // Recarregar página para mostrar próxima hierarquia (SOPs)
+            setTimeout(() => {
+                window.location.reload();
+            }, 500);
+        } else {
+            alert('Erro ao selecionar empresa: ' + (data.mensagem || 'Erro desconhecido'));
+        }
+    })
+    .catch(error => {
+        console.error('Erro:', error);
+        alert('Erro ao comunicar com o servidor');
+    });
+}
+
+// Outras funções para navegação hierárquica
+function verSOP(sopId) {
+    window.location.href = '<?= APP_URL ?>/sop/ver/' + sopId;
+}
+
+function exportarSOP(sopId) {
+    window.location.href = '<?= APP_URL ?>/sop/exportar-pdf/' + sopId;
+}
+
+function exportarTodos() {
+    window.location.href = '<?= APP_URL ?>/sop/exportar-todos-zip';
+}
+
+function buscarSOPs() {
+    const termo = document.getElementById('busca-sops').value.toLowerCase();
+    const cards = document.querySelectorAll('.sop-card');
+    
+    cards.forEach(card => {
+        const titulo = card.dataset.titulo?.toLowerCase() || '';
+        const tags = card.dataset.tags?.toLowerCase() || '';
+        
+        if (titulo.includes(termo) || tags.includes(termo)) {
+            card.style.display = 'block';
+        } else {
+            card.style.display = 'none';
+        }
+    });
 }
 </script>
 

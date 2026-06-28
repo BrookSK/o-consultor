@@ -769,6 +769,146 @@ class SopController
             exit;
         }
 
+        Database::beginTransaction();
+
+        try {
+            // 1. Registrar ocorrência de contingência
+            $ocorrenciaId = Database::execute(
+                "INSERT INTO ocorrencias_contencao (empresa_id, sop_id, contencao_id, nivel, situacao_detectada, responsavel_execucao, usuario_responsavel, data_inicio) 
+                 VALUES (:empresa_id, :sop_id, :contencao_id, :nivel, :situacao_detectada, :responsavel_execucao, :usuario_responsavel, NOW())",
+                [
+                    'empresa_id' => $sop['empresa_id'],
+                    'sop_id' => $sopId,
+                    'contencao_id' => $contencao['id'],
+                    'nivel' => $nivel,
+                    'situacao_detectada' => $situacaoDetectada,
+                    'responsavel_execucao' => $contencao['responsavel'],
+                    'usuario_responsavel' => Auth::usuarioId(),
+                ]
+            ) ? Database::lastInsertId() : 0;
+
+            // 2. Se é N2 ou N3, agendar revisão automática do SOP
+            if (in_array($nivel, ['N2', 'N3'])) {
+                $motivo = "Contenção {$nivel} acionada: {$situacaoDetectada}";
+                Database::execute(
+                    "UPDATE sops SET necessita_revisao = 1, motivo_revisao = :motivo, data_agendamento_revisao = NOW() 
+                     WHERE id = :sop_id",
+                    ['motivo' => $motivo, 'sop_id' => $sopId]
+                );
+            }
+
+            // 3. Executar ações automáticas específicas por nível
+            $acaoResultado = $this->executarContencaoAutomatica($nivel, $sop, $contencao, $situacaoDetectada);
+
+            Database::commit();
+
+            Logger::acao('Contingência acionada', [
+                'sop_id' => $sopId,
+                'nivel' => $nivel,
+                'situacao' => $situacaoDetectada,
+                'ocorrencia_id' => $ocorrenciaId,
+                'acao_resultado' => $acaoResultado
+            ]);
+
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => true, 
+                'mensagem' => "Contingência {$nivel} acionada com sucesso.",
+                'ocorrencia_id' => $ocorrenciaId,
+                'proxima_acao' => $acaoResultado,
+                'revisao_agendada' => in_array($nivel, ['N2', 'N3'])
+            ]);
+
+        } catch (Exception $e) {
+            Database::rollback();
+            Logger::error('Erro ao acionar contingência', [
+                'sop_id' => $sopId,
+                'nivel' => $nivel,
+                'erro' => $e->getMessage()
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro ao registrar acionamento: ' . $e->getMessage()]);
+        }
+        exit;
+    }
+
+    /**
+     * Executa ações automáticas específicas por nível de contenção
+     */
+    private function executarContencaoAutomatica(string $nivel, array $sop, array $contencao, string $situacao): string
+    {
+        $empresaId = $sop['empresa_id'];
+        $resultado = '';
+
+        switch ($nivel) {
+            case 'N1':
+                // Ação básica: apenas registrar e alertar
+                $resultado = 'Monitoramento ativo iniciado. Responsável notificado.';
+                break;
+
+            case 'N2':
+                // Ação intermediária: escalar e intensificar monitoramento
+                $resultado = 'Processo escalado. Monitoramento intensivo ativo. SOP agendado para revisão.';
+                
+                // Criar alerta crítico para direção
+                Database::execute(
+                    "INSERT INTO alertas (empresa_id, sop_id, tipo, titulo, descricao, prioridade, status, data_criacao)
+                     VALUES (:empresa_id, :sop_id, 'contencao_n2', 'Contenção N2 Acionada', :descricao, 'critica', 'ativo', NOW())",
+                    [
+                        'empresa_id' => $empresaId,
+                        'sop_id' => $sop['id'],
+                        'descricao' => "SOP {$sop['sop_codigo']}: {$situacao}. Ação imediata necessária."
+                    ]
+                );
+                break;
+
+            case 'N3':
+                // Ação crítica: parar processo e escalar para direção
+                $resultado = 'PROCESSO INTERROMPIDO. Escalado para direção executiva. Análise de causa raiz obrigatória.';
+                
+                // Criar múltiplos alertas críticos
+                Database::execute(
+                    "INSERT INTO alertas (empresa_id, sop_id, tipo, titulo, descricao, prioridade, status, data_criacao)
+                     VALUES (:empresa_id, :sop_id, 'contencao_n3_critica', 'CONTENÇÃO N3 - PROCESSO INTERROMPIDO', :descricao, 'critica', 'ativo', NOW())",
+                    [
+                        'empresa_id' => $empresaId,
+                        'sop_id' => $sop['id'],
+                        'descricao' => "URGENTE - SOP {$sop['sop_codigo']}: {$situacao}. Processo interrompido. Direção deve intervir IMEDIATAMENTE."
+                    ]
+                );
+
+                // Agendar reunião de emergência (se sistema de agenda existir)
+                try {
+                    Database::execute(
+                        "INSERT INTO agenda_emergencia (empresa_id, sop_id, titulo, descricao, data_agendamento, prioridade)
+                         VALUES (:empresa_id, :sop_id, :titulo, :descricao, DATE_ADD(NOW(), INTERVAL 2 HOUR), 'critica')",
+                        [
+                            'empresa_id' => $empresaId,
+                            'sop_id' => $sop['id'],
+                            'titulo' => "REUNIÃO DE EMERGÊNCIA - Contenção N3",
+                            'descricao' => "Análise de causa raiz obrigatória para: {$situacao}"
+                        ]
+                    );
+                } catch (Exception $e) {
+                    // Tabela de agenda pode não existir ainda
+                    Logger::info('Agenda de emergência não criada - tabela inexistente', ['sop_id' => $sop['id']]);
+                }
+                break;
+        }
+
+        return $resultado;
+    }ueryOne(
+            "SELECT * FROM sop_contencoes WHERE sop_id = :sop_id AND nivel = :nivel LIMIT 1",
+            ['sop_id' => $sopId, 'nivel' => $nivel]
+        );
+
+        if (!$contencao) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Plano de contingência não encontrado.']);
+            exit;
+        }
+
         // Registrar ocorrência
         $sucesso = Database::execute(
             "INSERT INTO ocorrencias_contencao (empresa_id, sop_id, contencao_id, nivel, situacao_detectada, responsavel_execucao, usuario_responsavel) 

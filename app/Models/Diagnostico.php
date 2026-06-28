@@ -162,6 +162,7 @@ class Diagnostico
         }
         
         if (empty($campos)) {
+            error_log("DiagnosticoBlocoRascunho: Nenhum campo para salvar - Bloco: $bloco, Dados: " . json_encode($dados));
             return false;
         }
         
@@ -170,7 +171,13 @@ class Diagnostico
         
         $sql = "UPDATE diagnosticos_rascunho SET " . implode(', ', $campos) . " WHERE id = :id";
         
-        return Database::execute($sql, $params);
+        $resultado = Database::execute($sql, $params);
+        
+        if (!$resultado) {
+            error_log("DiagnosticoBlocoRascunho: Erro ao executar SQL - Bloco: $bloco, SQL: $sql, Params: " . json_encode($params));
+        }
+        
+        return $resultado;
     }
 
     /**

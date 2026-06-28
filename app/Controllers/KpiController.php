@@ -217,9 +217,196 @@ class KpiController
     }
 
     /**
-     * Marcar alerta como lido
+     * Processar alerta de KPI fora da meta e acionar contenção
      */
-    public function marcarAlertaLido(): void
+    public function processarAlerta(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        
+        $kpiId = (int) ($_POST['kpi_id'] ?? 0);
+        $empresaId = Auth::empresa();
+        
+        if (!$kpiId || !$empresaId) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Dados inválidos']);
+            exit;
+        }
+
+        try {
+            // Buscar KPI e verificar se está fora da meta
+            $kpi = Database::queryOne(
+                "SELECT k.*, s.titulo as sop_titulo, s.id as sop_id
+                 FROM sop_kpis k 
+                 LEFT JOIN sops s ON k.sop_id = s.id
+                 WHERE k.id = :kpi_id AND k.empresa_id = :empresa_id",
+                ['kpi_id' => $kpiId, 'empresa_id' => $empresaId]
+            );
+
+            if (!$kpi) {
+                throw new Exception('KPI não encontrado');
+            }
+
+            // Verificar se KPI está fora da meta
+            $foradameta = $this->verificarKpiForiDaMeta($kpi);
+            
+            if ($foradameta['fora_da_meta']) {
+                // 1. Criar alerta automático
+                $alertaId = $this->criarAlertaAutomatico($kpi, $foradameta, $empresaId);
+                
+                // 2. Acionar contenção automática baseada na criticidade
+                $nivelContencao = $this->determinarNivelContencao($foradameta['desvio_percentual']);
+                $contencaoId = $this->acionarContencaoAutomatica($kpi['sop_id'], $nivelContencao, $alertaId, $empresaId);
+                
+                // 3. Agendar revisão do SOP se necessário
+                if ($nivelContencao >= 2) { // N2 ou N3
+                    $this->agendarRevisaoSop($kpi['sop_id'], $empresaId, "KPI {$kpi['nome']} fora da meta por {$foradameta['desvio_percentual']}%");
+                }
+
+                Logger::acao('Loop melhoria contínua acionado', [
+                    'kpi_id' => $kpiId,
+                    'alerta_id' => $alertaId,
+                    'contencao_id' => $contencaoId,
+                    'nivel_contencao' => $nivelContencao,
+                    'desvio' => $foradameta['desvio_percentual']
+                ]);
+
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'sucesso' => true,
+                    'alerta_criado' => $alertaId,
+                    'contencao_acionada' => $contencaoId,
+                    'nivel_contencao' => "N{$nivelContencao}",
+                    'proxima_acao' => $nivelContencao >= 2 ? 'Revisão do SOP agendada' : 'Monitoramento ativo'
+                ]);
+            } else {
+                header('Content-Type: application/json');
+                echo json_encode(['sucesso' => true, 'status' => 'KPI dentro da meta']);
+            }
+
+        } catch (Exception $e) {
+            Logger::error('Erro no loop de melhoria contínua', [
+                'kpi_id' => $kpiId,
+                'erro' => $e->getMessage()
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => $e->getMessage()]);
+        }
+        
+        exit;
+    }
+
+    /**
+     * Determina nível de contenção baseado no desvio
+     */
+    private function determinarNivelContencao(float $desvioPercentual): int
+    {
+        if ($desvioPercentual >= 50) return 3; // N3 - Crítico
+        if ($desvioPercentual >= 25) return 2; // N2 - Alto
+        return 1; // N1 - Baixo
+    }
+
+    /**
+     * Cria alerta automático para KPI fora da meta
+     */
+    private function criarAlertaAutomatico(array $kpi, array $foradameta, int $empresaId): int
+    {
+        $prioridade = match(true) {
+            $foradameta['desvio_percentual'] >= 50 => 'critica',
+            $foradameta['desvio_percentual'] >= 25 => 'alta',
+            default => 'media'
+        };
+
+        return Database::execute(
+            "INSERT INTO alertas (empresa_id, tipo, titulo, descricao, prioridade, kpi_id, dados_contexto, status, criado_em)
+             VALUES (:empresa_id, 'kpi_fora_meta', :titulo, :descricao, :prioridade, :kpi_id, :contexto, 'ativo', NOW())",
+            [
+                'empresa_id' => $empresaId,
+                'titulo' => "KPI {$kpi['nome']} fora da meta",
+                'descricao' => "Meta: {$kpi['meta']} | Atual: {$foradameta['valor_atual']} | Desvio: {$foradameta['desvio_percentual']}%",
+                'prioridade' => $prioridade,
+                'kpi_id' => $kpi['id'],
+                'contexto' => json_encode($foradameta)
+            ]
+        ) ? Database::lastInsertId() : 0;
+    }
+
+    /**
+     * Aciona contenção automática
+     */
+    private function acionarContencaoAutomatica(int $sopId, int $nivel, int $alertaId, int $empresaId): int
+    {
+        $acoes = match($nivel) {
+            3 => ['Parar processo imediatamente', 'Escalar para direção', 'Análise de causa raiz urgente'],
+            2 => ['Revisar procedimento', 'Retreinar equipe', 'Monitoramento intensivo'],
+            1 => ['Atenção redobrada', 'Verificar execução', 'Acompanhar próximas medições']
+        };
+
+        return Database::execute(
+            "INSERT INTO contencoes (empresa_id, sop_id, alerta_id, nivel, acoes, status, acionado_automaticamente, criado_em)
+             VALUES (:empresa_id, :sop_id, :alerta_id, :nivel, :acoes, 'ativo', 1, NOW())",
+            [
+                'empresa_id' => $empresaId,
+                'sop_id' => $sopId,
+                'alerta_id' => $alertaId,
+                'nivel' => $nivel,
+                'acoes' => json_encode($acoes)
+            ]
+        ) ? Database::lastInsertId() : 0;
+    }
+
+    /**
+     * Agenda revisão automática do SOP
+     */
+    private function agendarRevisaoSop(int $sopId, int $empresaId, string $motivo): void
+    {
+        Database::execute(
+            "UPDATE sops SET necessita_revisao = 1, motivo_revisao = :motivo, data_agendamento_revisao = NOW() 
+             WHERE id = :sop_id AND empresa_id = :empresa_id",
+            [
+                'sop_id' => $sopId,
+                'empresa_id' => $empresaId,
+                'motivo' => $motivo
+            ]
+        );
+    }
+    /**
+     * Verifica se KPI está fora da meta e calcula desvio
+     */
+    private function verificarKpiForiDaMeta(array $kpi): array
+    {
+        $valorAtual = $this->extrairNumero($kpi['valor_atual'] ?? '0');
+        $metaVerde = $this->extrairNumero($kpi['meta_verde'] ?? '100');
+        
+        // Determinar se "maior é melhor" ou "menor é melhor"
+        $maiorEMelhor = $this->determinarDirecaoKPI($kpi);
+        
+        $foradameta = false;
+        $desvioPercentual = 0;
+        
+        if ($maiorEMelhor) {
+            // Para KPIs onde maior é melhor (ex: SLA, eficiência)
+            if ($valorAtual < $metaVerde) {
+                $foradameta = true;
+                $desvioPercentual = round((($metaVerde - $valorAtual) / $metaVerde) * 100, 2);
+            }
+        } else {
+            // Para KPIs onde menor é melhor (ex: tempo de resposta, erros)
+            if ($valorAtual > $metaVerde) {
+                $foradameta = true;
+                $desvioPercentual = round((($valorAtual - $metaVerde) / $metaVerde) * 100, 2);
+            }
+        }
+        
+        return [
+            'fora_da_meta' => $foradameta,
+            'valor_atual' => $kpi['valor_atual'],
+            'meta_verde' => $kpi['meta_verde'],
+            'desvio_percentual' => $desvioPercentual,
+            'direcao_kpi' => $maiorEMelhor ? 'maior_melhor' : 'menor_melhor'
+        ];
+    }
     {
         Auth::proteger();
         Csrf::verificar();

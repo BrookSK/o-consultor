@@ -38,7 +38,26 @@ class MaquinaController
     {
         Auth::proteger();
         Auth::exigirPerfil([Auth::ADMIN_HOLDING, Auth::CONSULTOR_INTERNO]);
-        $dados = [];
+        
+        // Para ADMIN_HOLDING, buscar empresas disponíveis
+        $empresasDisponiveis = [];
+        if (Auth::perfil() === 'ADMIN_HOLDING') {
+            try {
+                $empresasDisponiveis = Database::query(
+                    "SELECT id, nome, segmento, responsavel_id 
+                     FROM empresas 
+                     WHERE ativo = 1
+                     ORDER BY nome ASC"
+                );
+            } catch (Exception $e) {
+                Logger::warning('Erro ao carregar empresas para nova marca', ['erro' => $e->getMessage()]);
+                $empresasDisponiveis = [];
+            }
+        }
+        
+        $dados = [
+            'empresas_disponiveis' => $empresasDisponiveis
+        ];
         require VIEW_PATH . '/maquina/nova-marca.php';
     }
 
@@ -46,10 +65,80 @@ class MaquinaController
     {
         Auth::proteger();
         Csrf::verificar();
-        // Em produção: salvar marca + uploads
-        Logger::acao('Nova marca cadastrada', ['nome' => $_POST['nome'] ?? '']);
-        header('Content-Type: application/json');
-        echo json_encode(['sucesso' => true, 'mensagem' => 'Marca cadastrada!', 'redirect' => APP_URL . '/maquina-de-conteudo/marca?id=1']);
+        
+        $empresaId = Auth::empresa();
+        if (!$empresaId) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Empresa não identificada']);
+            exit;
+        }
+
+        // Coletar dados do formulário
+        $dadosMarca = [
+            'empresa_id' => $empresaId,
+            'nome' => htmlspecialchars(trim($_POST['nome'] ?? '')),
+            'nicho' => htmlspecialchars(trim($_POST['nicho'] ?? '')),
+            'publico_alvo' => htmlspecialchars(trim($_POST['publico'] ?? '')),
+            'produtos_servicos' => htmlspecialchars(trim($_POST['produtos'] ?? '')),
+            'diferenciais_competitivos' => htmlspecialchars(trim($_POST['diferenciais'] ?? '')),
+            'concorrentes' => htmlspecialchars(trim($_POST['concorrentes'] ?? '')),
+            'objetivos_conteudo' => json_encode($_POST['objetivos'] ?? []),
+            'tom' => htmlspecialchars(trim($_POST['tom'] ?? '')),
+            'arquetipo' => htmlspecialchars(trim($_POST['arquetipo'] ?? '')),
+            'palavras_usa' => htmlspecialchars(trim($_POST['palavras_usa'] ?? '')),
+            'palavras_nunca' => htmlspecialchars(trim($_POST['palavras_nunca'] ?? '')),
+            'formatos_preferenciais' => json_encode($_POST['formatos'] ?? []),
+            'paleta_cores' => json_encode($_POST['paleta'] ?? []),
+            'fonte_principal' => htmlspecialchars(trim($_POST['fonte_principal'] ?? '')),
+            'fonte_secundaria' => htmlspecialchars(trim($_POST['fonte_secundaria'] ?? '')),
+            'estilo_visual' => htmlspecialchars(trim($_POST['estilo_visual'] ?? '')),
+            'direcao_foto' => htmlspecialchars(trim($_POST['direcao_foto'] ?? '')),
+            'prompt_master' => htmlspecialchars(trim($_POST['prompt_master'] ?? '')),
+            'prompt_dalle' => htmlspecialchars(trim($_POST['prompt_dalle'] ?? ''))
+        ];
+
+        if (empty($dadosMarca['nome'])) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Nome da marca é obrigatório']);
+            exit;
+        }
+
+        try {
+            // Salvar no banco
+            $marcaId = Database::execute(
+                "INSERT INTO marcas (empresa_id, nome, nicho, publico_alvo, produtos_servicos, diferenciais_competitivos, 
+                                   concorrentes, objetivos_conteudo, tom, arquetipo, palavras_usa, palavras_nunca, 
+                                   formatos_preferenciais, paleta_cores, fonte_principal, fonte_secundaria, 
+                                   estilo_visual, direcao_foto, prompt_master, prompt_dalle, brand_book_criado, criado_em)
+                 VALUES (:empresa_id, :nome, :nicho, :publico_alvo, :produtos_servicos, :diferenciais_competitivos, 
+                        :concorrentes, :objetivos_conteudo, :tom, :arquetipo, :palavras_usa, :palavras_nunca, 
+                        :formatos_preferenciais, :paleta_cores, :fonte_principal, :fonte_secundaria, 
+                        :estilo_visual, :direcao_foto, :prompt_master, :prompt_dalle, 1, NOW())",
+                $dadosMarca
+            );
+            
+            $marcaId = Database::lastInsertId();
+
+            Logger::acao('Nova marca cadastrada com integração', [
+                'nome' => $dadosMarca['nome'],
+                'empresa_id' => $empresaId,
+                'marca_id' => $marcaId
+            ]);
+
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => true, 
+                'mensagem' => 'Marca cadastrada com sucesso!', 
+                'marca_id' => $marcaId,
+                'redirect' => APP_URL . '/maquina-de-conteudo/marca?id=' . $marcaId
+            ]);
+
+        } catch (Exception $e) {
+            Logger::error('Erro ao salvar marca: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro ao salvar marca: ' . $e->getMessage()]);
+        }
+
         exit;
     }
 
@@ -129,6 +218,14 @@ class MaquinaController
             exit;
         }
 
+        // 1.5. Carregar dados contextuais da jornada do cliente
+        $contextoJornada = [];
+        $empresaId = Auth::empresa();
+        if ($empresaId) {
+            require_once APP_PATH . '/Helpers/JornadaCliente.php';
+            $contextoJornada = JornadaCliente::extrairDadosContextuais($empresaId);
+        }
+
         // 2. Preparar base de notícia se selecionada
         $noticiaBase = null;
         if ($noticiaId > 0) {
@@ -142,8 +239,8 @@ class MaquinaController
             }
         }
 
-        // 3. PASSO 1 — Geração de texto via IA
-        $prompt = ApiHelper::buildPromptConteudo($marca, $tipo, $tema, $objetivo, $noticiaBase);
+        // 3. PASSO 1 — Geração de texto via IA com contexto da jornada
+        $prompt = ApiHelper::buildPromptConteudoContextualizado($marca, $tipo, $tema, $objetivo, $noticiaBase, $contextoJornada);
         $resIA = ApiHelper::chamarAnalise($prompt, true);
 
         if (!$resIA['sucesso'] || !is_array($resIA['conteudo'])) {

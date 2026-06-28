@@ -63,7 +63,7 @@
                     <div class="md:col-span-2">
                         <label class="block text-sm font-medium text-gray-700 mb-2">Palavras-chave adicionais</label>
                         <div class="flex flex-wrap gap-2">
-                            <?php foreach ($dados['perfil_busca']['palavras_chave'] as $kw): ?>
+                            <?php foreach (($dados['perfil_busca']['palavras_chave'] ?? []) as $kw): ?>
                             <span class="px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-medium flex items-center gap-1"><?= htmlspecialchars($kw) ?> <button onclick="this.parentElement.remove()" class="text-primary/50 hover:text-primary">&times;</button></span>
                             <?php endforeach; ?>
                         </div>
@@ -71,13 +71,13 @@
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Frequência</label>
                         <select class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
-                            <option value="diaria" <?= $dados['perfil_busca']['frequencia'] === 'diaria' ? 'selected' : '' ?>>Diária</option>
-                            <option value="semanal" <?= $dados['perfil_busca']['frequencia'] === 'semanal' ? 'selected' : '' ?>>Semanal</option>
+                            <option value="diaria" <?= ($dados['perfil_busca']['frequencia'] ?? '') === 'diaria' ? 'selected' : '' ?>>Diária</option>
+                            <option value="semanal" <?= ($dados['perfil_busca']['frequencia'] ?? '') === 'semanal' ? 'selected' : '' ?>>Semanal</option>
                         </select>
                     </div>
                     <div class="flex items-end gap-3">
                         <button onclick="buscarAgora()" class="px-4 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-orange-700">🔍 Buscar agora</button>
-                        <span class="text-xs text-gray-400">Último: <?= date('d/m/Y H:i', strtotime($dados['perfil_busca']['ultimo_update'])) ?></span>
+                        <span class="text-xs text-gray-400">Último: <?= !empty($dados['perfil_busca']['ultimo_update']) ? date('d/m/Y H:i', strtotime($dados['perfil_busca']['ultimo_update'])) : 'Nunca' ?></span>
                     </div>
                 </div>
             </div>

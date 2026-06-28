@@ -32,6 +32,23 @@
     <!-- ETAPA 1: BRIEFING -->
     <div x-show="etapa === 1" x-transition class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
         <h2 class="text-lg font-semibold text-gray-800 mb-4">1. Briefing da Marca</h2>
+        
+        <!-- Seleção de Empresa (para ADMIN_HOLDING) -->
+        <?php if (Auth::perfil() === 'ADMIN_HOLDING'): ?>
+        <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <label class="block text-sm font-medium text-gray-700 mb-2">Empresa/Cliente *</label>
+            <select x-model="form.empresa_id" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary" required>
+                <option value="">Selecione a empresa/cliente</option>
+                <?php if (!empty($dados['empresas_disponiveis'])): ?>
+                    <?php foreach ($dados['empresas_disponiveis'] as $empresa): ?>
+                        <option value="<?= $empresa['id'] ?>"><?= htmlspecialchars($empresa['nome']) ?> - <?= htmlspecialchars($empresa['segmento']) ?></option>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </select>
+            <p class="text-xs text-gray-500 mt-1">Esta marca será associada à empresa selecionada</p>
+        </div>
+        <?php endif; ?>
+        
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div><label class="block text-sm font-medium text-gray-700 mb-1">Nome da marca *</label><input type="text" x-model="form.nome" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary" placeholder="Nome da marca"></div>
             <div><label class="block text-sm font-medium text-gray-700 mb-1">Nicho/Setor *</label><input type="text" x-model="form.nicho" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary" placeholder="Ex: Tecnologia/MSP"></div>
@@ -180,6 +197,7 @@ function marcaWizard() {
     return {
         etapa: 1, enviando: false, gerandoBrandBook: false,
         form: {
+            empresa_id: '', // Novo campo para associar à empresa
             nome: '', nicho: '', publico: '', produtos: '', diferenciais: '', concorrentes: '', objetivos: [],
             tom: '', arquetipo: '', palavras_usa: '', palavras_nunca: '', formatos: [],
             paleta: ['#1E3A5F', '#E07B00', '#FFFFFF', '#F5F7FA', '#1a7a1a'],

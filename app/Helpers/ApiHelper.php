@@ -488,6 +488,84 @@ Responda APENAS em JSON válido, sem explicações.";
     }
 
     /**
+     * Gera prompt contextualizado com dados da jornada do cliente
+     */
+    public static function buildPromptConteudoContextualizado(array $marca, string $tipo, string $tema, string $objetivo, ?string $noticiaBase = null, array $contextoJornada = []): string
+    {
+        $contextoNoticia = $noticiaBase ? "\n\nBASEADO NA NOTÍCIA:\n{$noticiaBase}" : '';
+
+        // Construir contexto da jornada
+        $contextoPersonalizado = '';
+        if (!empty($contextoJornada)) {
+            $contextoPersonalizado = "\n\n📊 CONTEXTO DA JORNADA DIGITAL (Use para personalizar o conteúdo):\n";
+            
+            if (!empty($contextoJornada['diagnostico'])) {
+                $diag = $contextoJornada['diagnostico'];
+                $contextoPersonalizado .= "• Nível de maturidade: {$diag['nivel_maturidade']}/4\n";
+                if (!empty($diag['respostas']['principais_desafios'])) {
+                    $contextoPersonalizado .= "• Principais desafios: {$diag['respostas']['principais_desafios']}\n";
+                }
+                if (!empty($diag['respostas']['objetivo_12_meses'])) {
+                    $contextoPersonalizado .= "• Objetivo 12 meses: {$diag['respostas']['objetivo_12_meses']}\n";
+                }
+            }
+
+            if (!empty($contextoJornada['sops'])) {
+                $totalSops = count($contextoJornada['sops']);
+                $contextoPersonalizado .= "• SOPs criados: {$totalSops} (evidencia organização)\n";
+            }
+
+            if (!empty($contextoJornada['plano_acao']['objetivos'])) {
+                $objetivos = implode(', ', array_slice($contextoJornada['plano_acao']['objetivos'], 0, 3));
+                $contextoPersonalizado .= "• Objetivos no plano: {$objetivos}\n";
+            }
+
+            if (!empty($contextoJornada['perfil_conteudo']['palavras_chave'])) {
+                $palavrasChave = implode(', ', array_slice($contextoJornada['perfil_conteudo']['palavras_chave'], 0, 5));
+                $contextoPersonalizado .= "• Palavras-chave de interesse: {$palavrasChave}\n";
+            }
+
+            $contextoPersonalizado .= "\n⚡ INSTRUÇÃO: Use essas informações para tornar o conteúdo mais relevante e específico para a realidade da empresa.";
+        }
+
+        $instrucoesTipo = match($tipo) {
+            'carrossel' => 'Para CARROSSEL gere JSON com estrutura: {"slides": [{"numero": 1, "tipo": "capa", "texto": "título principal", "texto_secundario": "subtítulo opcional", "prompt_imagem": "descrição detalhada da imagem"}, {"numero": 2, "tipo": "conteudo", "texto": "conteúdo do slide", "prompt_imagem": "descrição da imagem"}], "legenda": "texto da legenda com call-to-action", "hashtags": "#tag1 #tag2 #tag3"}',
+            'post' => 'Para POST gere JSON com estrutura: {"slides": [{"numero": 1, "tipo": "unico", "texto": "conteúdo principal", "prompt_imagem": "descrição da imagem"}], "legenda": "texto da legenda", "hashtags": "#tag1 #tag2"}',
+            'story' => 'Para STORY gere JSON com estrutura: {"slides": [{"numero": 1, "tipo": "story", "texto": "texto curto e impactante", "prompt_imagem": "descrição da imagem vertical"}], "legenda": "", "hashtags": ""}',
+            default => 'Para CARROSSEL gere JSON com múltiplos slides educativos.'
+        ];
+
+        return "Você é especialista em marketing digital B2B. Crie conteúdo seguindo exatamente o Brand Book da marca.
+
+DADOS DA MARCA:
+Nome: {$marca['nome']}
+Nicho: {$marca['nicho']}
+Público-alvo: {$marca['publico_alvo']}
+Tom de voz: {$marca['tom']}
+Arquétipo: {$marca['arquetipo']}
+
+PROMPT MASTER DA MARCA:
+{$marca['prompt_master']}{$contextoPersonalizado}
+
+TAREFA:
+Crie um {$tipo} sobre o tema: {$tema}{$contextoNoticia}
+Objetivo: {$objetivo}
+
+{$instrucoesTipo}
+
+REGRAS IMPORTANTES:
+1. Cada slide deve ter um 'prompt_imagem' detalhado que combine o estilo visual da marca
+2. Para prompt_imagem, use o estilo: {$marca['prompt_dalle']}
+3. NÃO incluir texto, palavras ou números nas descrições de imagem
+4. Manter consistência com o tom de voz e arquétipo da marca
+5. Slides de carrossel: máximo 50 caracteres por linha de texto
+6. Legenda: incluir call-to-action relevante ao objetivo
+7. PERSONALIZAÇÃO: Use o contexto da jornada para tornar o conteúdo mais específico e relevante
+
+Responda APENAS em JSON válido, sem explicações.";
+    }
+
+    /**
      * Gera prompt para análise de KPI em zona vermelha — F-07 Implementation
      */
     public static function buildPromptKpiCritico(array $empresa, array $kpi): string
@@ -743,4 +821,121 @@ Responda APENAS com um array JSON de URLs válidas. Sem explicações.";
             'erro'   => $resultado['erro'] ?? null,
         ];
     }
+
+    // =========================================================================
+    // SISTEMA TRÊS BLOCOS - ENHANCED PROMPTS
+    // =========================================================================
+
+    /**
+     * Prompt para análise integrada dos três blocos operacionais
+     */
+    public static function buildPromptAnaliseIntegrada(array $dadosEmpresa, string $contexto, string $tipo = 'geral'): string
+    {
+        $empresa = $dadosEmpresa['nome'] ?? 'Empresa';
+        $setor = $dadosEmpresa['setor'] ?? 'Tecnologia';
+        $maturidade = $dadosEmpresa['maturidade'] ?? 2;
+
+        return "ANÁLISE INTEGRADA - SISTEMA OPERACIONAL TRÊS BLOCOS
+
+EMPRESA: {$empresa}
+SETOR: {$setor}
+MATURIDADE: {$maturidade}/5
+CONTEXTO: {$contexto}
+TIPO DE ANÁLISE: {$tipo}
+
+O sistema operacional é composto por TRÊS BLOCOS integrados:
+
+🔵 BLOCO OPERACIONAL (Topo)
+- Cadastro → Diagnóstico → IA gera resultado
+- Plano de Ação e SOPs em paralelo
+- KPIs monitorados → Alerta automático
+- Contenção (N1/N2/N3) → Revisão do SOP
+- Loop de melhoria contínua
+
+🟡 BLOCO CONTEÚDO (Meio)  
+- Notícias do setor via IA
+- Geração de post/carrossel com base no branding book
+- Referências e templates com DALL-E
+- Revisão e publicação
+- Publicação via API externa
+- Conexão via SSO com My Academy
+
+🟢 BLOCO GESTÃO (Base)
+- Agenda pessoal e Financeiro em paralelo
+- Tudo converge para empresa escalável e previsível
+- Reinicia novo ciclo de diagnóstico
+
+SOLICITAÇÃO:
+Analise o contexto fornecido e gere recomendações específicas para cada bloco, considerando como eles se integram e se impactam mutuamente.
+
+Responda APENAS em JSON:
+{
+    \"analise_operacional\": {
+        \"situacao_atual\": \"Descrição da situação atual no bloco operacional\",
+        \"oportunidades\": [\"oportunidade 1\", \"oportunidade 2\"],
+        \"acoes_recomendadas\": [\"ação 1\", \"ação 2\", \"ação 3\"]
+    },
+    \"analise_conteudo\": {
+        \"situacao_atual\": \"Descrição da situação atual no bloco conteúdo\",
+        \"oportunidades\": [\"oportunidade 1\", \"oportunidade 2\"],
+        \"acoes_recomendadas\": [\"ação 1\", \"ação 2\", \"ação 3\"]
+    },
+    \"analise_gestao\": {
+        \"situacao_atual\": \"Descrição da situação atual no bloco gestão\",
+        \"oportunidades\": [\"oportunidade 1\", \"oportunidade 2\"],
+        \"acoes_recomendadas\": [\"ação 1\", \"ação 2\", \"ação 3\"]
+    },
+    \"integracao_blocos\": \"Como os três blocos devem trabalhar juntos para maximizar resultados\",
+    \"proximos_passos\": [\"passo 1\", \"passo 2\", \"passo 3\"],
+    \"kpis_sugeridos\": [\"KPI para monitorar integração dos blocos\"]
+}";
+    }
+
+    /**
+     * Prompt para geração de conteúdo integrado com SSO Academy
+     */
+    public static function buildPromptConteudoAcademy(array $dadosUsuario, string $topico, array $contextoCursos): string
+    {
+        $nome = $dadosUsuario['nome'] ?? 'Usuário';
+        $empresa = $dadosUsuario['empresa'] ?? 'Empresa';
+        $nivel = $dadosUsuario['nivel'] ?? 'Iniciante';
+        $cursos = implode(', ', array_slice($contextoCursos, 0, 5));
+
+        return "GERAÇÃO DE CONTEÚDO INTEGRADO - MY ACADEMY SSO
+
+PERFIL DO USUÁRIO:
+- Nome: {$nome}
+- Empresa: {$empresa}
+- Nível: {$nivel}
+- Cursos relacionados: {$cursos}
+
+TÓPICO SOLICITADO: {$topico}
+
+CONTEXTO INTEGRAÇÃO SSO:
+Este conteúdo será integrado com My Academy via SSO, permitindo:
+- Acesso direto aos cursos relacionados
+- Tracking de progresso do usuário
+- Recomendações personalizadas
+- Certificações integradas
+
+SOLICITAÇÃO:
+Crie conteúdo educacional sobre '{$topico}' que:
+1. Se conecte com o nível de conhecimento do usuário
+2. Referencie cursos específicos da Academy quando relevante
+3. Sugira próximos passos de aprendizado
+4. Mantenha foco prático para aplicação na empresa
+
+Responda APENAS em JSON:
+{
+    \"titulo\": \"Título do conteúdo educacional\",
+    \"introducao\": \"Introdução contextualizada para o usuário\",
+    \"conteudo_principal\": \"Conteúdo principal dividido em seções\",
+    \"pontos_chave\": [\"ponto 1\", \"ponto 2\", \"ponto 3\"],
+    \"cursos_relacionados\": [\"Nome do curso 1\", \"Nome do curso 2\"],
+    \"proximos_passos\": [\"passo 1\", \"passo 2\"],
+    \"aplicacao_pratica\": \"Como aplicar este conhecimento na empresa {$empresa}\",
+    \"recursos_adicionais\": [\"recurso 1\", \"recurso 2\"]
+}";
+    }
 }
+
