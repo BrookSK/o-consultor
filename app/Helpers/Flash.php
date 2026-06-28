@@ -66,7 +66,7 @@ class Flash
 
         return $html;
     }
-}
+
     /**
      * Atalhos para métodos comuns
      */
@@ -89,3 +89,4 @@ class Flash
     {
         self::set('info', $mensagem);
     }
+}
