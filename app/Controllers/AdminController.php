@@ -713,6 +713,8 @@ class AdminController
                     }
                 }
                 
+                $statusLabel = $status ? 'ativada' : 'desativada';
+                
                 AuditLog::registrar(
                     'api_toggle',
                     'admin',
@@ -724,7 +726,6 @@ class AdminController
                     ]
                 );
                 
-                $statusLabel = $status ? 'ativada' : 'desativada';
                 header('Content-Type: application/json');
                 echo json_encode([
                     'sucesso' => true,
@@ -1525,6 +1526,321 @@ class AdminController
         Logger::acao('Modo acesso global ativado pelo admin');
         header('Content-Type: application/json');
         echo json_encode(['sucesso' => true, 'mensagem' => 'Modo acesso global ativado.']);
+        exit;
+    }
+
+    /**
+     * Listar empresas para select
+     */
+    public function listarEmpresas(): void
+    {
+        $this->protegerAdmin();
+        
+        $empresas = Database::query("SELECT id, nome FROM empresas ORDER BY nome ASC");
+        
+        header('Content-Type: application/json');
+        echo json_encode(['sucesso' => true, 'empresas' => $empresas]);
+        exit;
+    }
+
+    /**
+     * Visualizar usuário específico
+     */
+    public function visualizarUsuario(): void
+    {
+        $this->protegerAdmin();
+        
+        $usuarioId = (int) ($_GET['id'] ?? 0);
+        
+        if ($usuarioId === 0) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'ID do usuário não informado.']);
+            exit;
+        }
+        
+        $usuario = Database::queryOne(
+            "SELECT u.*, e.nome as empresa_nome 
+             FROM usuarios u 
+             LEFT JOIN empresas e ON u.empresa_id = e.id 
+             WHERE u.id = :id",
+            ['id' => $usuarioId]
+        );
+        
+        if (!$usuario) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Usuário não encontrado.']);
+            exit;
+        }
+        
+        header('Content-Type: application/json');
+        echo json_encode(['sucesso' => true, 'usuario' => $usuario]);
+        exit;
+    }
+
+    /**
+     * Criar novo usuário
+     */
+    public function criarUsuario(): void
+    {
+        $this->protegerAdmin();
+        Csrf::verificar();
+        
+        $nome = trim($_POST['nome'] ?? '');
+        $email = trim($_POST['email'] ?? '');
+        $perfil = trim($_POST['perfil'] ?? 'CLIENTE');
+        $empresaId = !empty($_POST['empresa_id']) ? (int)$_POST['empresa_id'] : null;
+        $senha = trim($_POST['senha'] ?? '');
+        $telefone = trim($_POST['telefone'] ?? '');
+        $ativo = isset($_POST['ativo']) ? 1 : 0;
+        
+        // Validações
+        if (empty($nome) || empty($email) || empty($senha)) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Nome, email e senha são obrigatórios.']);
+            exit;
+        }
+        
+        if (strlen($senha) < 6) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'A senha deve ter pelo menos 6 caracteres.']);
+            exit;
+        }
+        
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Email inválido.']);
+            exit;
+        }
+        
+        // Verificar se email já existe
+        $emailExistente = Database::queryOne(
+            "SELECT id FROM usuarios WHERE email = :email",
+            ['email' => $email]
+        );
+        
+        if ($emailExistente) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Este email já está cadastrado.']);
+            exit;
+        }
+        
+        // Para clientes, empresa é obrigatória
+        if ($perfil !== 'ADMIN_HOLDING' && !$empresaId) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Empresa é obrigatória para este perfil.']);
+            exit;
+        }
+        
+        try {
+            $usuarioId = Database::execute(
+                "INSERT INTO usuarios (nome, email, telefone, senha, perfil, empresa_id, ativo, criado_em) 
+                 VALUES (:nome, :email, :telefone, :senha, :perfil, :empresa_id, :ativo, NOW())",
+                [
+                    'nome' => $nome,
+                    'email' => $email,
+                    'telefone' => $telefone,
+                    'senha' => password_hash($senha, PASSWORD_DEFAULT),
+                    'perfil' => $perfil,
+                    'empresa_id' => $empresaId,
+                    'ativo' => $ativo
+                ]
+            );
+            
+            AuditLog::registrar(
+                'admin_criar_usuario',
+                'admin',
+                "Novo usuário criado: {$nome} ({$email})",
+                [
+                    'usuario_id' => Database::lastInsertId(),
+                    'perfil' => $perfil,
+                    'empresa_id' => $empresaId
+                ]
+            );
+            
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => true, 'mensagem' => 'Usuário criado com sucesso!']);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao criar usuário: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno ao criar usuário.']);
+        }
+        exit;
+    }
+
+    /**
+     * Atualizar usuário existente
+     */
+    public function atualizarUsuario(): void
+    {
+        $this->protegerAdmin();
+        Csrf::verificar();
+        
+        $usuarioId = (int) ($_POST['id'] ?? 0);
+        $nome = trim($_POST['nome'] ?? '');
+        $email = trim($_POST['email'] ?? '');
+        $perfil = trim($_POST['perfil'] ?? 'CLIENTE');
+        $empresaId = !empty($_POST['empresa_id']) ? (int)$_POST['empresa_id'] : null;
+        $senha = trim($_POST['senha'] ?? '');
+        $telefone = trim($_POST['telefone'] ?? '');
+        $ativo = isset($_POST['ativo']) ? 1 : 0;
+        
+        if ($usuarioId === 0) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'ID do usuário não informado.']);
+            exit;
+        }
+        
+        // Validações
+        if (empty($nome) || empty($email)) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Nome e email são obrigatórios.']);
+            exit;
+        }
+        
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Email inválido.']);
+            exit;
+        }
+        
+        // Verificar se email já existe (exceto o próprio usuário)
+        $emailExistente = Database::queryOne(
+            "SELECT id FROM usuarios WHERE email = :email AND id != :usuario_id",
+            ['email' => $email, 'usuario_id' => $usuarioId]
+        );
+        
+        if ($emailExistente) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Este email já está sendo usado por outro usuário.']);
+            exit;
+        }
+        
+        // Para clientes, empresa é obrigatória
+        if ($perfil !== 'ADMIN_HOLDING' && !$empresaId) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Empresa é obrigatória para este perfil.']);
+            exit;
+        }
+        
+        try {
+            // Query base
+            $campos = [
+                'nome' => $nome,
+                'email' => $email,
+                'telefone' => $telefone,
+                'perfil' => $perfil,
+                'empresa_id' => $empresaId,
+                'ativo' => $ativo,
+                'usuario_id' => $usuarioId
+            ];
+            
+            $sql = "UPDATE usuarios SET 
+                    nome = :nome, 
+                    email = :email, 
+                    telefone = :telefone, 
+                    perfil = :perfil, 
+                    empresa_id = :empresa_id, 
+                    ativo = :ativo";
+            
+            // Atualizar senha se fornecida
+            if (!empty($senha)) {
+                if (strlen($senha) < 6) {
+                    header('Content-Type: application/json');
+                    echo json_encode(['sucesso' => false, 'erro' => 'A senha deve ter pelo menos 6 caracteres.']);
+                    exit;
+                }
+                $sql .= ", senha = :senha";
+                $campos['senha'] = password_hash($senha, PASSWORD_DEFAULT);
+            }
+            
+            $sql .= " WHERE id = :usuario_id";
+            
+            Database::execute($sql, $campos);
+            
+            AuditLog::registrar(
+                'admin_atualizar_usuario',
+                'admin',
+                "Usuário atualizado: {$nome} ({$email})",
+                [
+                    'usuario_id' => $usuarioId,
+                    'perfil' => $perfil,
+                    'empresa_id' => $empresaId
+                ]
+            );
+            
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => true, 'mensagem' => 'Usuário atualizado com sucesso!']);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao atualizar usuário: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno ao atualizar usuário.']);
+        }
+        exit;
+    }
+
+    /**
+     * Alterar status do usuário (ativar/desativar)
+     */
+    public function alterarStatusUsuario(): void
+    {
+        $this->protegerAdmin();
+        Csrf::verificar();
+        
+        $usuarioId = (int) ($_POST['usuario_id'] ?? 0);
+        $ativo = (int) ($_POST['ativo'] ?? 0);
+        
+        if ($usuarioId === 0) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'ID do usuário não informado.']);
+            exit;
+        }
+        
+        // Não permitir desativar o próprio usuário
+        if ($usuarioId === Auth::id()) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Você não pode alterar o status da sua própria conta.']);
+            exit;
+        }
+        
+        try {
+            $usuario = Database::queryOne(
+                "SELECT nome, email FROM usuarios WHERE id = :id",
+                ['id' => $usuarioId]
+            );
+            
+            if (!$usuario) {
+                header('Content-Type: application/json');
+                echo json_encode(['sucesso' => false, 'erro' => 'Usuário não encontrado.']);
+                exit;
+            }
+            
+            Database::execute(
+                "UPDATE usuarios SET ativo = :ativo WHERE id = :usuario_id",
+                ['ativo' => $ativo, 'usuario_id' => $usuarioId]
+            );
+            
+            $acao = $ativo ? 'ativado' : 'desativado';
+            
+            AuditLog::registrar(
+                'admin_alterar_status_usuario',
+                'admin',
+                "Usuário {$acao}: {$usuario['nome']} ({$usuario['email']})",
+                [
+                    'usuario_id' => $usuarioId,
+                    'novo_status' => $ativo
+                ]
+            );
+            
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => true, 'mensagem' => "Usuário {$acao} com sucesso!"]);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao alterar status do usuário: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno.']);
+        }
         exit;
     }
 }

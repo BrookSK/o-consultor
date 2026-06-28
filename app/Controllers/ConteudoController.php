@@ -137,6 +137,69 @@ class ConteudoController
         require VIEW_PATH . '/conteudo/admin.php';
     }
 
+    /**
+     * Criar conteúdo para Máquina de Conteúdo a partir de notícia
+     */
+    public function criarConteudoDeNoticia(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        
+        $noticiaId = (int) ($_POST['noticia_id'] ?? 0);
+        $marcaId = (int) ($_POST['marca_id'] ?? 0);
+        $tipoConteudo = trim($_POST['tipo_conteudo'] ?? 'carrossel');
+        
+        if ($noticiaId === 0) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'ID da notícia é obrigatório.']);
+            exit;
+        }
+        
+        try {
+            // Verificar se a notícia existe e pertence à empresa do usuário
+            $noticia = Database::queryOne(
+                "SELECT * FROM noticias WHERE id = :id AND empresa_id = :empresa_id",
+                ['id' => $noticiaId, 'empresa_id' => Auth::empresa()]
+            );
+            
+            if (!$noticia) {
+                header('Content-Type: application/json');
+                echo json_encode(['sucesso' => false, 'erro' => 'Notícia não encontrada.']);
+                exit;
+            }
+            
+            // Se marca não fornecida, tentar buscar marca padrão
+            if ($marcaId === 0) {
+                $marca = Database::queryOne(
+                    "SELECT id FROM marcas WHERE ativo = 1 ORDER BY id LIMIT 1"
+                );
+                $marcaId = $marca['id'] ?? 1;
+            }
+            
+            Logger::acao('Conteúdo criado a partir de notícia', [
+                'noticia_id' => $noticiaId,
+                'marca_id' => $marcaId,
+                'tipo' => $tipoConteudo
+            ]);
+            
+            // Redirecionar para máquina de conteúdo com parâmetros pré-preenchidos
+            $redirectUrl = APP_URL . "/maquina-de-conteudo/marca?id={$marcaId}&noticia_id={$noticiaId}&tipo={$tipoConteudo}&tema=" . urlencode($noticia['titulo']);
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => true,
+                'mensagem' => 'Redirecionando para Máquina de Conteúdo...',
+                'redirect' => $redirectUrl
+            ]);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao criar conteúdo de notícia: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno.']);
+        }
+        exit;
+    }
+
     // ===== REAL DATA METHODS =====
 
     /**

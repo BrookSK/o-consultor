@@ -867,18 +867,19 @@ IMPORTANTE: Use as informações dos documentos internos para personalizar compl
     private function calcularScore(array $dados): int
     {
         $pontos = 0;
-        $maxPontos = 20;
+        $maxPontos = 35; // Aumentado para incluir novos critérios
 
-        // Processos documentados (0-100%)
+        // 1. Processos documentados (0-100%)
         $pontos += match(true) {
-            $dados['processos_documentados'] >= 75 => 4,
-            $dados['processos_documentados'] >= 50 => 3,
-            $dados['processos_documentados'] >= 25 => 2,
+            ($dados['processos_documentados'] ?? 0) >= 75 => 5,
+            ($dados['processos_documentados'] ?? 0) >= 50 => 4,
+            ($dados['processos_documentados'] ?? 0) >= 25 => 3,
+            ($dados['processos_documentados'] ?? 0) >= 10 => 2,
             default => 1,
         };
 
-        // Departamentos estruturados
-        $numDepts = is_array($dados['departamentos']) ? count($dados['departamentos']) : 0;
+        // 2. Departamentos estruturados
+        $numDepts = is_array($dados['departamentos'] ?? null) ? count($dados['departamentos']) : 0;
         $pontos += match(true) {
             $numDepts >= 6 => 4,
             $numDepts >= 4 => 3,
@@ -886,28 +887,85 @@ IMPORTANTE: Use as informações dos documentos internos para personalizar compl
             default => 1,
         };
 
-        // Planejamento
-        $pontos += $dados['planejamento_documentado'] === 'sim' ? 4 : 1;
+        // 3. Planejamento estratégico
+        $pontos += ($dados['planejamento_documentado'] ?? 'nao') === 'sim' ? 4 : 1;
 
-        // Maturidade percebida
+        // 4. Maturidade percebida
         $pontos += match(true) {
-            $dados['maturidade_percebida'] >= 4 => 4,
-            $dados['maturidade_percebida'] >= 3 => 3,
-            $dados['maturidade_percebida'] >= 2 => 2,
+            ($dados['maturidade_percebida'] ?? 1) >= 4 => 4,
+            ($dados['maturidade_percebida'] ?? 1) >= 3 => 3,
+            ($dados['maturidade_percebida'] ?? 1) >= 2 => 2,
             default => 1,
         };
 
-        // Riscos
-        $temRiscos = ($dados['processos_sem_backup'] === 'sim' || $dados['fornecedor_insubstituivel'] === 'sim');
-        $pontos += $temRiscos ? 1 : 4;
+        // 5. Estrutura financeira (novo - bloco 3)
+        $pontoFinanceiro = 0;
+        if (($dados['sistema_financeiro'] ?? '') === 'erp-completo') $pontoFinanceiro += 2;
+        elseif (($dados['sistema_financeiro'] ?? '') === 'sistema-basico') $pontoFinanceiro += 1;
+        
+        if (($dados['controle_fluxo_caixa'] ?? '') === 'diario') $pontoFinanceiro += 2;
+        elseif (($dados['controle_fluxo_caixa'] ?? '') === 'semanal') $pontoFinanceiro += 1;
+        
+        if (in_array($dados['margem_lucro'] ?? '', ['11-20', 'acima-20'])) $pontoFinanceiro += 1;
+        
+        $pontos += min($pontoFinanceiro, 4); // Max 4 pontos para financeiro
+
+        // 6. Estrutura comercial (novo - bloco 3)
+        $pontoComercial = 0;
+        if (($dados['sistema_crm'] ?? '') === 'crm-profissional') $pontoComercial += 2;
+        elseif (($dados['sistema_crm'] ?? '') === 'planilhas') $pontoComercial += 1;
+        
+        if (in_array($dados['taxa_conversao'] ?? '', ['16-30', 'acima-30'])) $pontoComercial += 2;
+        elseif (($dados['taxa_conversao'] ?? '') === '5-15') $pontoComercial += 1;
+        
+        $pontos += min($pontoComercial, 4); // Max 4 pontos para comercial
+
+        // 7. Gestão de pessoas (novo - bloco 4)
+        $pontoPessoas = 0;
+        if (in_array($dados['estrutura_organizacional'] ?? '', ['organograma-formal', 'organograma-basico'])) $pontoPessoas += 2;
+        
+        if (($dados['programa_capacitacao'] ?? '') === 'programa-formal') $pontoPessoas += 2;
+        elseif (($dados['programa_capacitacao'] ?? '') === 'treinamentos-esporadicos') $pontoPessoas += 1;
+        
+        if (in_array($dados['taxa_turnover'] ?? '', ['muito-baixa', 'baixa'])) $pontoPessoas += 1;
+        
+        $pontos += min($pontoPessoas, 4); // Max 4 pontos para pessoas
+
+        // 8. Gestão de riscos (novo - bloco 4)
+        $pontoRiscos = 0;
+        if (in_array($dados['mapeamento_riscos'] ?? '', ['matriz-formal', 'listagem-basica'])) $pontoRiscos += 2;
+        
+        if (($dados['backup_continuidade'] ?? '') === 'plano-formal') $pontoRiscos += 2;
+        elseif (($dados['backup_continuidade'] ?? '') === 'backup-automatico') $pontoRiscos += 1;
+        
+        if (in_array($dados['conformidade_regulatoria'] ?? '', ['totalmente-conforme', 'conforme-basico'])) $pontoRiscos += 1;
+        
+        $pontos += min($pontoRiscos, 4); // Max 4 pontos para riscos
+
+        // 9. Dependências críticas (penalização - bloco 4)
+        $penalizacao = 0;
+        if (($dados['dependencia_pessoas'] ?? '') === 'totalmente-dependente') $penalizacao += 2;
+        elseif (($dados['dependencia_pessoas'] ?? '') === 'algumas-pessoas') $penalizacao += 1;
+        
+        if (in_array($dados['dependencia_fornecedores'] ?? '', ['um-fornecedor-critico', 'cliente-concentrado'])) $penalizacao += 1;
+        
+        $pontos = max(1, $pontos - $penalizacao); // Não permitir pontuação menor que 1
+
+        // 10. Riscos operacionais tradicionais (revisado)
+        $temRiscosOperacionais = (
+            ($dados['processos_sem_backup'] ?? 'nao') === 'sim' ||
+            ($dados['fornecedor_insubstituivel'] ?? 'nao') === 'sim' ||
+            ($dados['cliente_concentrado'] ?? 'nao') === 'sim'
+        );
+        $pontos += $temRiscosOperacionais ? 1 : 3;
 
         // Calcular nível final (1-4)
         $percentual = ($pontos / $maxPontos) * 100;
         return match(true) {
-            $percentual >= 80 => 4,
-            $percentual >= 60 => 3,
-            $percentual >= 40 => 2,
-            default => 1,
+            $percentual >= 85 => 4, // Excelência
+            $percentual >= 65 => 3, // Crescimento
+            $percentual >= 40 => 2, // Desenvolvimento 
+            default => 1,          // Inicial
         };
     }
 
@@ -923,31 +981,163 @@ IMPORTANTE: Use as informações dos documentos internos para personalizar compl
             4 => ['label' => 'Excelência', 'cor' => '#1E3A5F', 'descricao' => 'A empresa opera com excelência. Processos são otimizados e mensurados continuamente.'],
         ];
 
-        // Resumo por área
+        // Analisar todas as 5 áreas com dados dos novos blocos
         $areas = [
-            ['area' => 'Estratégia', 'status' => $score >= 3 ? 'adequado' : 'atenção', 'comentario' => $dados['planejamento_documentado'] === 'sim' ? 'Planejamento documentado e objetivos claros.' : 'Necessita formalizar planejamento estratégico.'],
-            ['area' => 'Operações', 'status' => $dados['processos_documentados'] >= 50 ? 'adequado' : 'crítico', 'comentario' => $dados['processos_documentados'] . '% dos processos documentados. ' . ($dados['processos_documentados'] < 50 ? 'Urgente: mapear processos críticos.' : 'Manter evolução na documentação.')],
-            ['area' => 'Financeiro', 'status' => $dados['meta_faturamento'] === 'sim' ? 'adequado' : 'atenção', 'comentario' => $dados['meta_faturamento'] === 'sim' ? 'Metas financeiras definidas.' : 'Definir metas financeiras claras e acompanháveis.'],
-            ['area' => 'Pessoas', 'status' => $dados['processos_sem_backup'] === 'nao' ? 'adequado' : 'crítico', 'comentario' => $dados['processos_sem_backup'] === 'sim' ? 'RISCO: processos sem backup de conhecimento.' : 'Conhecimento distribuído adequadamente.'],
-            ['area' => 'Riscos', 'status' => ($dados['fornecedor_insubstituivel'] === 'sim' || $dados['cliente_concentrado'] === 'sim') ? 'crítico' : 'adequado', 'comentario' => $dados['fornecedor_insubstituivel'] === 'sim' ? 'Dependência de fornecedor insubstituível identificada.' : 'Riscos de dependência controlados.'],
+            // Estratégia (Bloco 1)
+            [
+                'area' => 'Estratégia', 
+                'status' => ($dados['planejamento_documentado'] ?? 'nao') === 'sim' ? 'adequado' : 'atenção', 
+                'comentario' => ($dados['planejamento_documentado'] ?? 'nao') === 'sim' 
+                    ? 'Planejamento documentado e objetivos claros.' 
+                    : 'Necessita formalizar planejamento estratégico com metas mensuráveis.'
+            ],
+            
+            // Operações (Bloco 2)
+            [
+                'area' => 'Operações', 
+                'status' => ($dados['processos_documentados'] ?? 0) >= 50 ? 'adequado' : 'crítico', 
+                'comentario' => ($dados['processos_documentados'] ?? 0) . '% dos processos documentados. ' . 
+                    (($dados['processos_documentados'] ?? 0) < 50 
+                        ? 'Urgente: mapear e documentar processos críticos.' 
+                        : 'Manter evolução na documentação e padronização.')
+            ],
+            
+            // Financeiro (Bloco 3 - novo)
+            [
+                'area' => 'Financeiro', 
+                'status' => $this->analisarStatusFinanceiro($dados),
+                'comentario' => $this->gerarComentarioFinanceiro($dados)
+            ],
+            
+            // Comercial (Bloco 3 - novo)
+            [
+                'area' => 'Comercial', 
+                'status' => $this->analisarStatusComercial($dados),
+                'comentario' => $this->gerarComentarioComercial($dados)
+            ],
+            
+            // Pessoas (Bloco 4 - novo)
+            [
+                'area' => 'Pessoas', 
+                'status' => $this->analisarStatusPessoas($dados),
+                'comentario' => $this->gerarComentarioPessoas($dados)
+            ],
+            
+            // Riscos (Bloco 4 - expandido)
+            [
+                'area' => 'Riscos', 
+                'status' => $this->analisarStatusRiscos($dados),
+                'comentario' => $this->gerarComentarioRiscos($dados)
+            ]
         ];
 
-        // Mapa de riscos
+        // Mapa de riscos expandido com dados dos novos blocos
         $riscos = [];
-        if ($dados['processos_sem_backup'] === 'sim') {
-            $riscos[] = ['tipo' => 'Operacional', 'descricao' => 'Processos sem backup de conhecimento', 'criticidade' => 'alta', 'acao' => 'Documentar SOPs e treinar equipe backup'];
+        
+        // Riscos operacionais
+        if (($dados['processos_sem_backup'] ?? 'nao') === 'sim') {
+            $riscos[] = [
+                'tipo' => 'Operacional', 
+                'descricao' => 'Processos críticos sem backup de conhecimento', 
+                'criticidade' => 'alta', 
+                'acao' => 'Documentar SOPs e treinar equipe de backup para processos críticos'
+            ];
         }
-        if ($dados['fornecedor_insubstituivel'] === 'sim') {
-            $riscos[] = ['tipo' => 'Fornecimento', 'descricao' => 'Fornecedor crítico insubstituível', 'criticidade' => 'alta', 'acao' => 'Mapear fornecedores alternativos'];
+        
+        // Riscos financeiros (bloco 3)
+        if (($dados['margem_lucro'] ?? '') === 'negativa') {
+            $riscos[] = [
+                'tipo' => 'Financeiro', 
+                'descricao' => 'Empresa operando com prejuízo', 
+                'criticidade' => 'crítica', 
+                'acao' => 'Análise urgente de custos e revisão do modelo de negócio'
+            ];
         }
-        if ($dados['cliente_concentrado'] === 'sim') {
-            $riscos[] = ['tipo' => 'Comercial', 'descricao' => 'Cliente com mais de 30% do faturamento', 'criticidade' => 'media', 'acao' => 'Diversificar carteira de clientes'];
+        
+        if (($dados['controle_fluxo_caixa'] ?? '') === 'nao-tem') {
+            $riscos[] = [
+                'tipo' => 'Financeiro', 
+                'descricao' => 'Ausência de controle de fluxo de caixa', 
+                'criticidade' => 'alta', 
+                'acao' => 'Implementar controle diário de fluxo de caixa'
+            ];
         }
-        if ($dados['processos_documentados'] < 30) {
-            $riscos[] = ['tipo' => 'Operacional', 'descricao' => 'Baixo nível de documentação de processos', 'criticidade' => 'media', 'acao' => 'Criar programa de documentação com priorização'];
+        
+        // Riscos comerciais (bloco 3)
+        if (($dados['sistema_crm'] ?? '') === 'nao-tem') {
+            $riscos[] = [
+                'tipo' => 'Comercial', 
+                'descricao' => 'Falta de controle de leads e oportunidades', 
+                'criticidade' => 'média', 
+                'acao' => 'Implementar sistema básico de CRM para controlar pipeline de vendas'
+            ];
         }
-        if (!empty($dados['incidentes_tipo'])) {
-            $riscos[] = ['tipo' => htmlspecialchars($dados['incidentes_tipo']), 'descricao' => htmlspecialchars($dados['incidentes_descricao'] ?: 'Incidente reportado'), 'criticidade' => 'alta', 'acao' => 'Investigar causa raiz e criar plano de prevenção'];
+        
+        if (($dados['taxa_conversao'] ?? '') === 'nao-sei') {
+            $riscos[] = [
+                'tipo' => 'Comercial', 
+                'descricao' => 'Taxa de conversão desconhecida', 
+                'criticidade' => 'média', 
+                'acao' => 'Implementar medição de conversão para otimizar vendas'
+            ];
+        }
+        
+        // Riscos de pessoas (bloco 4)
+        if (($dados['dependencia_pessoas'] ?? '') === 'totalmente-dependente') {
+            $riscos[] = [
+                'tipo' => 'Pessoas', 
+                'descricao' => 'Dependência total do proprietário/sócio', 
+                'criticidade' => 'crítica', 
+                'acao' => 'Distribuir conhecimento, documentar processos e desenvolver lideranças'
+            ];
+        }
+        
+        if (in_array($dados['taxa_turnover'] ?? '', ['alta', 'muito-alta'])) {
+            $riscos[] = [
+                'tipo' => 'Pessoas', 
+                'descricao' => 'Alta rotatividade de colaboradores', 
+                'criticidade' => 'alta', 
+                'acao' => 'Investigar causas do turnover e implementar programa de retenção'
+            ];
+        }
+        
+        // Riscos de continuidade (bloco 4)
+        if (($dados['backup_continuidade'] ?? '') === 'nao-tem') {
+            $riscos[] = [
+                'tipo' => 'Continuidade', 
+                'descricao' => 'Ausência de backup e plano de continuidade', 
+                'criticidade' => 'alta', 
+                'acao' => 'Implementar backup automático e plano básico de continuidade'
+            ];
+        }
+        
+        // Riscos de fornecedores/clientes
+        if (($dados['dependencia_fornecedores'] ?? '') === 'um-fornecedor-critico') {
+            $riscos[] = [
+                'tipo' => 'Fornecimento', 
+                'descricao' => 'Dependência crítica de um fornecedor (>80%)', 
+                'criticidade' => 'alta', 
+                'acao' => 'Identificar e homologar fornecedores alternativos'
+            ];
+        }
+        
+        if (($dados['dependencia_fornecedores'] ?? '') === 'cliente-concentrado') {
+            $riscos[] = [
+                'tipo' => 'Comercial', 
+                'descricao' => 'Concentração de receita em poucos clientes', 
+                'criticidade' => 'média', 
+                'acao' => 'Diversificar carteira de clientes e reduzir dependência'
+            ];
+        }
+        
+        // Riscos de conformidade (bloco 4)
+        if (in_array($dados['conformidade_regulatoria'] ?? '', ['muitas-pendencias', 'nao-sei'])) {
+            $riscos[] = [
+                'tipo' => 'Regulatório', 
+                'descricao' => 'Pendências ou desconhecimento de exigências regulatórias', 
+                'criticidade' => 'alta', 
+                'acao' => 'Auditoria regulatória e regularização das pendências'
+            ];
         }
 
         return [
@@ -956,8 +1146,188 @@ IMPORTANTE: Use as informações dos documentos internos para personalizar compl
             'pontuacao_percentual' => round(($score / 4) * 100),
             'areas' => $areas,
             'riscos' => $riscos,
-            'empresa' => $dados['empresa_nome'],
+            'empresa' => $dados['empresa_nome'] ?? 'Empresa',
+            'total_riscos_criticos' => count(array_filter($riscos, fn($r) => $r['criticidade'] === 'crítica')),
+            'total_riscos_altos' => count(array_filter($riscos, fn($r) => $r['criticidade'] === 'alta')),
+            'recomendacoes_prioritarias' => $this->gerarRecomendacoesPrioritarias($dados, $riscos)
         ];
+    }
+    
+    private function analisarStatusFinanceiro(array $dados): string
+    {
+        if (($dados['margem_lucro'] ?? '') === 'negativa') return 'crítico';
+        if (($dados['controle_fluxo_caixa'] ?? '') === 'nao-tem') return 'crítico';
+        if (($dados['sistema_financeiro'] ?? '') === 'nao-tem') return 'atenção';
+        if (($dados['controle_fluxo_caixa'] ?? '') === 'diario' && ($dados['sistema_financeiro'] ?? '') !== 'planilhas') return 'adequado';
+        return 'atenção';
+    }
+    
+    private function gerarComentarioFinanceiro(array $dados): string
+    {
+        $comentarios = [];
+        
+        if (($dados['margem_lucro'] ?? '') === 'negativa') {
+            $comentarios[] = "CRÍTICO: Empresa operando com prejuízo";
+        } elseif (in_array($dados['margem_lucro'] ?? '', ['11-20', 'acima-20'])) {
+            $comentarios[] = "Margem de lucro saudável";
+        }
+        
+        if (($dados['controle_fluxo_caixa'] ?? '') === 'diario') {
+            $comentarios[] = "Controle de fluxo de caixa em dia";
+        } elseif (($dados['controle_fluxo_caixa'] ?? '') === 'nao-tem') {
+            $comentarios[] = "URGENTE: Implementar controle de fluxo de caixa";
+        }
+        
+        if (($dados['sistema_financeiro'] ?? '') === 'erp-completo') {
+            $comentarios[] = "ERP robusto para gestão financeira";
+        }
+        
+        return !empty($comentarios) ? implode('. ', $comentarios) . '.' : 'Estrutura financeira básica implementada.';
+    }
+    
+    private function analisarStatusComercial(array $dados): string
+    {
+        if (($dados['sistema_crm'] ?? '') === 'nao-tem' && ($dados['taxa_conversao'] ?? '') === 'nao-sei') return 'crítico';
+        if (($dados['sistema_crm'] ?? '') === 'crm-profissional' && in_array($dados['taxa_conversao'] ?? '', ['16-30', 'acima-30'])) return 'adequado';
+        return 'atenção';
+    }
+    
+    private function gerarComentarioComercial(array $dados): string
+    {
+        $comentarios = [];
+        
+        if (($dados['sistema_crm'] ?? '') === 'crm-profissional') {
+            $comentarios[] = "CRM profissional implementado";
+        } elseif (($dados['sistema_crm'] ?? '') === 'nao-tem') {
+            $comentarios[] = "URGENTE: Implementar sistema de controle de leads";
+        }
+        
+        if (($dados['taxa_conversao'] ?? '') === 'nao-sei') {
+            $comentarios[] = "Implementar medição de conversão";
+        } elseif (in_array($dados['taxa_conversao'] ?? '', ['16-30', 'acima-30'])) {
+            $comentarios[] = "Taxa de conversão adequada";
+        }
+        
+        $canais = explode(',', $dados['canais_vendas'] ?? '');
+        if (count($canais) >= 3) {
+            $comentarios[] = "Boa diversificação de canais de venda";
+        }
+        
+        return !empty($comentarios) ? implode('. ', $comentarios) . '.' : 'Estrutura comercial em desenvolvimento.';
+    }
+    
+    private function analisarStatusPessoas(array $dados): string
+    {
+        if (($dados['dependencia_pessoas'] ?? '') === 'totalmente-dependente') return 'crítico';
+        if (in_array($dados['taxa_turnover'] ?? '', ['alta', 'muito-alta'])) return 'crítico';
+        if (($dados['programa_capacitacao'] ?? '') === 'programa-formal' && ($dados['estrutura_organizacional'] ?? '') === 'organograma-formal') return 'adequado';
+        return 'atenção';
+    }
+    
+    private function gerarComentarioPessoas(array $dados): string
+    {
+        $comentarios = [];
+        
+        if (($dados['dependencia_pessoas'] ?? '') === 'totalmente-dependente') {
+            $comentarios[] = "CRÍTICO: Dependência total do proprietário";
+        } elseif (($dados['dependencia_pessoas'] ?? '') === 'processos-documentados') {
+            $comentarios[] = "Conhecimento bem distribuído na equipe";
+        }
+        
+        if (($dados['estrutura_organizacional'] ?? '') === 'organograma-formal') {
+            $comentarios[] = "Organograma formal implementado";
+        }
+        
+        if (($dados['programa_capacitacao'] ?? '') === 'programa-formal') {
+            $comentarios[] = "Programa estruturado de capacitação";
+        }
+        
+        if (in_array($dados['taxa_turnover'] ?? '', ['muito-baixa', 'baixa'])) {
+            $comentarios[] = "Baixa rotatividade - boa retenção";
+        } elseif (in_array($dados['taxa_turnover'] ?? '', ['alta', 'muito-alta'])) {
+            $comentarios[] = "ATENÇÃO: Alta rotatividade de pessoal";
+        }
+        
+        return !empty($comentarios) ? implode('. ', $comentários) . '.' : 'Gestão de pessoas em estruturação.';
+    }
+    
+    private function analisarStatusRiscos(array $dados): string
+    {
+        $riscosAltos = 0;
+        
+        if (($dados['mapeamento_riscos'] ?? '') === 'nao-tem') $riscosAltos++;
+        if (($dados['backup_continuidade'] ?? '') === 'nao-tem') $riscosAltos++;
+        if (in_array($dados['conformidade_regulatoria'] ?? '', ['muitas-pendencias', 'nao-sei'])) $riscosAltos++;
+        if (($dados['dependencia_fornecedores'] ?? '') === 'um-fornecedor-critico') $riscosAltos++;
+        
+        if ($riscosAltos >= 3) return 'crítico';
+        if ($riscosAltos >= 1) return 'atenção';
+        return 'adequado';
+    }
+    
+    private function gerarComentarioRiscos(array $dados): string
+    {
+        $comentarios = [];
+        
+        if (($dados['mapeamento_riscos'] ?? '') === 'matriz-formal') {
+            $comentarios[] = "Matriz de riscos formalizada";
+        } elseif (($dados['mapeamento_riscos'] ?? '') === 'nao-tem') {
+            $comentarios[] = "URGENTE: Mapear riscos do negócio";
+        }
+        
+        if (($dados['backup_continuidade'] ?? '') === 'plano-formal') {
+            $comentarios[] = "Plano de continuidade testado";
+        } elseif (($dados['backup_continuidade'] ?? '') === 'nao-tem') {
+            $comentarios[] = "Implementar backup e continuidade";
+        }
+        
+        $seguros = explode(',', $dados['seguros'] ?? '');
+        if (in_array('nenhum', $seguros)) {
+            $comentarios[] = "Considerar seguros básicos";
+        } elseif (count($seguros) >= 2) {
+            $comentarios[] = "Boa cobertura de seguros";
+        }
+        
+        return !empty($comentarios) ? implode('. ', $comentarios) . '.' : 'Gestão de riscos em desenvolvimento.';
+    }
+    
+    private function gerarRecomendacoesPrioritarias(array $dados, array $riscos): array
+    {
+        $recomendacoes = [];
+        
+        // Prioridade 1: Riscos críticos
+        foreach ($riscos as $risco) {
+            if ($risco['criticidade'] === 'crítica') {
+                $recomendacoes[] = [
+                    'prioridade' => 1,
+                    'area' => $risco['tipo'],
+                    'acao' => $risco['acao'],
+                    'prazo' => 'Imediato (0-30 dias)'
+                ];
+            }
+        }
+        
+        // Prioridade 2: Documentação de processos
+        if (($dados['processos_documentados'] ?? 0) < 50) {
+            $recomendacoes[] = [
+                'prioridade' => 2,
+                'area' => 'Operacional',
+                'acao' => 'Documentar os 5 processos mais críticos da empresa',
+                'prazo' => 'Curto prazo (30-90 dias)'
+            ];
+        }
+        
+        // Prioridade 3: Estrutura básica
+        if (($dados['planejamento_documentado'] ?? 'nao') === 'nao') {
+            $recomendacoes[] = [
+                'prioridade' => 3,
+                'area' => 'Estratégica',
+                'acao' => 'Criar planejamento estratégico com metas claras',
+                'prazo' => 'Médio prazo (90-180 dias)'
+            ];
+        }
+        
+        return $recomendacoes;
     }
 
     /**

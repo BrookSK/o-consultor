@@ -510,3 +510,475 @@ class NoticiasController
         );
     }
 }
+    /**
+     * Buscar notícias agora (manual)
+     */
+    public function buscarAgora(): void
+    {
+        Auth::proteger();
+        
+        $input = json_decode(file_get_contents('php://input'), true);
+        $empresaId = Auth::empresa();
+        
+        if (!$empresaId) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Empresa não identificada.']);
+            exit;
+        }
+        
+        try {
+            // Contar notícias antes da busca
+            $noticiasAntes = Database::queryOne(
+                "SELECT COUNT(*) as total FROM noticias WHERE empresa_id = :empresa_id",
+                ['empresa_id' => $empresaId]
+            )['total'] ?? 0;
+            
+            // Executar busca
+            $resultado = $this->processarEmpresa($empresaId, true);
+            
+            // Contar notícias depois da busca
+            $noticiasDepois = Database::queryOne(
+                "SELECT COUNT(*) as total FROM noticias WHERE empresa_id = :empresa_id",
+                ['empresa_id' => $empresaId]
+            )['total'] ?? 0;
+            
+            $novasNoticias = $noticiasDepois - $noticiasAntes;
+            
+            Logger::acao('Busca manual de notícias executada', [
+                'empresa_id' => $empresaId,
+                'noticias_encontradas' => $novasNoticias,
+                'resultado' => $resultado
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => true,
+                'novas_noticias' => $novasNoticias,
+                'mensagem' => $novasNoticias > 0 
+                    ? "Encontradas {$novasNoticias} novas notícias!" 
+                    : 'Nenhuma nova notícia encontrada.'
+            ]);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro na busca manual de notícias: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro ao executar busca: ' . $e->getMessage()]);
+        }
+        exit;
+    }
+
+    /**
+     * Gerar análise de 5 blocos para uma notícia
+     */
+    public function gerarAnalise(): void
+    {
+        Auth::proteger();
+        
+        $input = json_decode(file_get_contents('php://input'), true);
+        $noticiaId = (int) ($input['noticia_id'] ?? 0);
+        
+        if ($noticiaId === 0) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'ID da notícia não informado.']);
+            exit;
+        }
+        
+        try {
+            // Buscar a notícia
+            $noticia = Database::queryOne(
+                "SELECT * FROM noticias WHERE id = :id AND empresa_id = :empresa_id",
+                ['id' => $noticiaId, 'empresa_id' => Auth::empresa()]
+            );
+            
+            if (!$noticia) {
+                header('Content-Type: application/json');
+                echo json_encode(['sucesso' => false, 'erro' => 'Notícia não encontrada.']);
+                exit;
+            }
+            
+            // Verificar se já tem análise
+            if (!empty($noticia['analise_blocos'])) {
+                header('Content-Type: application/json');
+                echo json_encode(['sucesso' => false, 'erro' => 'Esta notícia já possui análise.']);
+                exit;
+            }
+            
+            // Buscar dados da empresa para contexto
+            $empresa = Database::queryOne(
+                "SELECT nome, segmento FROM empresas WHERE id = :id",
+                ['id' => Auth::empresa()]
+            );
+            
+            $setor = $empresa['segmento'] ?? 'Geral';
+            
+            // Gerar análise via IA
+            $analise = $this->gerarAnaliseBlocos($noticia, $setor);
+            
+            if ($analise) {
+                // Salvar análise no banco
+                Database::execute(
+                    "UPDATE noticias SET 
+                     analise_blocos = :analise,
+                     analisado = 1,
+                     data_analise = NOW()
+                     WHERE id = :id",
+                    [
+                        'analise' => json_encode($analise),
+                        'id' => $noticiaId
+                    ]
+                );
+                
+                Logger::acao('Análise de notícia gerada', [
+                    'noticia_id' => $noticiaId,
+                    'empresa_id' => Auth::empresa(),
+                    'blocos_gerados' => count($analise)
+                ]);
+                
+                header('Content-Type: application/json');
+                echo json_encode(['sucesso' => true, 'mensagem' => 'Análise gerada com sucesso!']);
+            } else {
+                header('Content-Type: application/json');
+                echo json_encode(['sucesso' => false, 'erro' => 'Falha ao gerar análise. Verifique a configuração das APIs.']);
+            }
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao gerar análise: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno ao gerar análise.']);
+        }
+        exit;
+    }
+
+    /**
+     * Favoritar/desfavoritar notícia
+     */
+    public function favoritar(): void
+    {
+        Auth::proteger();
+        
+        $input = json_decode(file_get_contents('php://input'), true);
+        $noticiaId = (int) ($input['noticia_id'] ?? 0);
+        
+        if ($noticiaId === 0) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'ID da notícia não informado.']);
+            exit;
+        }
+        
+        try {
+            // Verificar se a notícia pertence à empresa do usuário
+            $noticia = Database::queryOne(
+                "SELECT id, favorita FROM noticias WHERE id = :id AND empresa_id = :empresa_id",
+                ['id' => $noticiaId, 'empresa_id' => Auth::empresa()]
+            );
+            
+            if (!$noticia) {
+                header('Content-Type: application/json');
+                echo json_encode(['sucesso' => false, 'erro' => 'Notícia não encontrada.']);
+                exit;
+            }
+            
+            $novoStatus = !$noticia['favorita'];
+            
+            Database::execute(
+                "UPDATE noticias SET favorita = :favorita WHERE id = :id",
+                ['favorita' => $novoStatus, 'id' => $noticiaId]
+            );
+            
+            Logger::acao('Notícia favoritada/desfavoritada', [
+                'noticia_id' => $noticiaId,
+                'novo_status' => $novoStatus
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => true,
+                'favorita' => $novoStatus,
+                'mensagem' => $novoStatus ? 'Adicionada aos favoritos!' : 'Removida dos favoritos!'
+            ]);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao favoritar notícia: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno.']);
+        }
+        exit;
+    }
+
+    /**
+     * Obter perfil de busca da empresa
+     */
+    public function perfil(): void
+    {
+        Auth::proteger();
+        
+        $empresaId = Auth::empresa();
+        
+        try {
+            $sites = Database::query(
+                "SELECT site_url FROM empresa_perfil_busca WHERE empresa_id = :empresa_id ORDER BY criado_em ASC",
+                ['empresa_id' => $empresaId]
+            );
+            
+            $sitesArray = array_column($sites, 'site_url');
+            
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => true, 'sites' => $sitesArray]);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao buscar perfil: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno.']);
+        }
+        exit;
+    }
+
+    /**
+     * Salvar perfil de busca
+     */
+    public function salvarPerfil(): void
+    {
+        Auth::proteger();
+        
+        $input = json_decode(file_get_contents('php://input'), true);
+        $sites = $input['sites'] ?? [];
+        $empresaId = Auth::empresa();
+        
+        if (!is_array($sites)) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Dados inválidos.']);
+            exit;
+        }
+        
+        try {
+            // Remover todos os sites atuais
+            Database::execute(
+                "DELETE FROM empresa_perfil_busca WHERE empresa_id = :empresa_id",
+                ['empresa_id' => $empresaId]
+            );
+            
+            // Adicionar novos sites
+            foreach ($sites as $site) {
+                if (!empty($site) && filter_var($site, FILTER_VALIDATE_URL)) {
+                    Database::execute(
+                        "INSERT INTO empresa_perfil_busca (empresa_id, site_url, criado_em) VALUES (:empresa_id, :site, NOW())",
+                        ['empresa_id' => $empresaId, 'site' => $site]
+                    );
+                }
+            }
+            
+            Logger::acao('Perfil de busca de notícias atualizado', [
+                'empresa_id' => $empresaId,
+                'total_sites' => count($sites)
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => true, 'mensagem' => 'Perfil salvo com sucesso!']);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao salvar perfil: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno.']);
+        }
+        exit;
+    }
+
+    /**
+     * Exibir detalhes de uma notícia
+     */
+    public function detalhe(): void
+    {
+        Auth::proteger();
+        
+        $noticiaId = (int) ($_GET['id'] ?? 0);
+        
+        if ($noticiaId === 0) {
+            Flash::set('erro', 'Notícia não encontrada.');
+            header('Location: ' . APP_URL . '/noticias');
+            exit;
+        }
+        
+        try {
+            // Buscar a notícia
+            $noticia = Database::queryOne(
+                "SELECT * FROM noticias WHERE id = :id AND empresa_id = :empresa_id",
+                ['id' => $noticiaId, 'empresa_id' => Auth::empresa()]
+            );
+            
+            if (!$noticia) {
+                Flash::set('erro', 'Notícia não encontrada.');
+                header('Location: ' . APP_URL . '/noticias');
+                exit;
+            }
+            
+            // Buscar notícias relacionadas (mesma categoria)
+            $relacionadas = Database::query(
+                "SELECT id, titulo, data_publicacao FROM noticias 
+                 WHERE empresa_id = :empresa_id 
+                 AND categoria = :categoria 
+                 AND id != :noticia_id 
+                 ORDER BY data_publicacao DESC 
+                 LIMIT 5",
+                [
+                    'empresa_id' => Auth::empresa(),
+                    'categoria' => $noticia['categoria'] ?? '',
+                    'noticia_id' => $noticiaId
+                ]
+            );
+            
+            $dados = [
+                'noticia' => $noticia,
+                'relacionadas' => $relacionadas
+            ];
+            
+            require VIEW_PATH . '/noticias/detalhe.php';
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao carregar detalhes da notícia: ' . $e->getMessage());
+            Flash::set('erro', 'Erro ao carregar notícia.');
+            header('Location: ' . APP_URL . '/noticias');
+            exit;
+        }
+    }
+
+    /**
+     * Exibir lista de notícias
+     */
+    public function index(): void
+    {
+        Auth::proteger();
+        require VIEW_PATH . '/noticias/index.php';
+    }
+
+    /**
+     * Painel administrativo de notícias
+     */
+    public function admin(): void
+    {
+        Auth::exigirPerfil([Auth::ADMIN_HOLDING, Auth::CONSULTOR_INTERNO]);
+        
+        try {
+            // Estatísticas gerais de notícias
+            $stats = Database::query(
+                "SELECT 
+                    empresa_id,
+                    e.nome as empresa_nome,
+                    COUNT(*) as total_noticias,
+                    COUNT(CASE WHEN visualizada = 0 THEN 1 END) as nao_visualizadas,
+                    COUNT(CASE WHEN favorita = 1 THEN 1 END) as favoritas,
+                    COUNT(CASE WHEN relevancia = 'alta' THEN 1 END) as alta_relevancia,
+                    MAX(criado_em) as ultima_noticia
+                FROM noticias n
+                JOIN empresas e ON n.empresa_id = e.id
+                GROUP BY empresa_id, e.nome
+                ORDER BY e.nome"
+            );
+            
+            // Notícias recentes de todas as empresas
+            $noticiasRecentes = Database::query(
+                "SELECT n.*, e.nome as empresa_nome
+                FROM noticias n
+                JOIN empresas e ON n.empresa_id = e.id
+                ORDER BY n.criado_em DESC
+                LIMIT 20"
+            );
+            
+            // Logs de busca
+            $logsBusca = Database::query(
+                "SELECT bl.*, e.nome as empresa_nome
+                FROM busca_logs bl
+                JOIN empresas e ON bl.empresa_id = e.id
+                ORDER BY bl.criado_em DESC
+                LIMIT 10"
+            );
+            
+            $dados = [
+                'stats' => $stats,
+                'noticias_recentes' => $noticiasRecentes,
+                'logs_busca' => $logsBusca
+            ];
+            
+            require VIEW_PATH . '/noticias/admin.php';
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao carregar admin de notícias: ' . $e->getMessage());
+            Flash::set('erro', 'Erro ao carregar dados administrativos.');
+            header('Location: ' . APP_URL . '/dashboard');
+        }
+    }
+
+    /**
+     * Arquivar/desarquivar notícia
+     */
+    public function arquivar(): void
+    {
+        Auth::proteger();
+        
+        $noticiaId = (int) ($_POST['noticia_id'] ?? 0);
+        $arquivar = (bool) ($_POST['arquivar'] ?? false);
+        
+        if ($noticiaId === 0) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'ID inválido.']);
+            exit;
+        }
+        
+        try {
+            // Verificar permissão
+            $where = Auth::perfil() === 'ADMIN_HOLDING' ? "id = :id" : "id = :id AND empresa_id = :empresa_id";
+            $params = ['id' => $noticiaId];
+            if (Auth::perfil() !== 'ADMIN_HOLDING') {
+                $params['empresa_id'] = Auth::empresa();
+            }
+            
+            $sucesso = Database::execute(
+                "UPDATE noticias SET arquivada = :arquivada WHERE {$where}",
+                array_merge($params, ['arquivada' => $arquivar ? 1 : 0])
+            );
+            
+            if ($sucesso) {
+                Logger::acao($arquivar ? 'Notícia arquivada' : 'Notícia desarquivada', ['noticia_id' => $noticiaId]);
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'sucesso' => true,
+                    'mensagem' => $arquivar ? 'Notícia arquivada!' : 'Notícia desarquivada!'
+                ]);
+            } else {
+                header('Content-Type: application/json');
+                echo json_encode(['sucesso' => false, 'erro' => 'Notícia não encontrada.']);
+            }
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao arquivar notícia: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno.']);
+        }
+        exit;
+    }
+
+    /**
+     * Executar busca para todas as empresas (cron/admin)
+     */
+    public function executarBuscaGlobal(): void
+    {
+        Auth::exigirPerfil([Auth::ADMIN_HOLDING]);
+        
+        try {
+            $resultado = $this->processarTodasEmpresas();
+            
+            Logger::acao('Busca global de notícias executada', $resultado);
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => true,
+                'resultado' => $resultado
+            ]);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro na busca global: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => $e->getMessage()]);
+        }
+        exit;
+    }
+}

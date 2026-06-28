@@ -253,10 +253,200 @@ class AuthController
             exit;
         }
 
-        Logger::acao('Recuperação de senha solicitada', ['email' => $email]);
-        Flash::set('sucesso', 'Se o email estiver cadastrado, você receberá as instruções de recuperação.');
+        try {
+            // Buscar usuário pelo email
+            $usuario = User::buscarPorEmail($email);
+            
+            if ($usuario) {
+                // Gerar token de recuperação seguro
+                $token = bin2hex(random_bytes(32));
+                $expiracao = date('Y-m-d H:i:s', strtotime('+2 hours')); // Token válido por 2 horas
+                
+                // Salvar token no banco
+                Database::execute(
+                    "UPDATE usuarios SET 
+                     resetar_senha_token = :token, 
+                     resetar_senha_expira = :expiracao 
+                     WHERE id = :usuario_id",
+                    [
+                        'token' => password_hash($token, PASSWORD_DEFAULT),
+                        'expiracao' => $expiracao,
+                        'usuario_id' => $usuario['id']
+                    ]
+                );
+                
+                // Enviar email de recuperação
+                $linkRecuperacao = APP_URL . "/redefinir-senha?token=" . urlencode($token) . "&email=" . urlencode($email);
+                
+                $assunto = "Recuperação de Senha - O Consultor";
+                $corpo = "
+                    <h2>Recuperação de Senha</h2>
+                    <p>Olá <strong>{$usuario['nome']}</strong>,</p>
+                    <p>Você solicitou a recuperação da sua senha no O Consultor.</p>
+                    
+                    <div style='background: #f8f9fa; padding: 20px; margin: 20px 0; border-radius: 5px;'>
+                        <p><strong>Clique no link abaixo para redefinir sua senha:</strong></p>
+                        <p><a href='{$linkRecuperacao}' style='background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;'>Redefinir Senha</a></p>
+                        <p style='margin-top: 10px; font-size: 12px; color: #666;'>Ou copie e cole este link no seu navegador:<br>
+                        <code style='word-break: break-all;'>{$linkRecuperacao}</code></p>
+                    </div>
+                    
+                    <p><strong>Importante:</strong></p>
+                    <ul>
+                        <li>Este link é válido por apenas 2 horas.</li>
+                        <li>Se você não solicitou esta recuperação, ignore este email.</li>
+                        <li>Por segurança, não compartilhe este link com ninguém.</li>
+                    </ul>
+                    
+                    <p>Atenciosamente,<br>
+                    <strong>Equipe O Consultor</strong></p>
+                ";
+                
+                $emailEnviado = Email::enviar($email, $assunto, $corpo);
+                
+                // Log da tentativa
+                Logger::acao('Recuperação de senha solicitada', [
+                    'email' => $email,
+                    'usuario_id' => $usuario['id'],
+                    'token_gerado' => true,
+                    'email_enviado' => $emailEnviado
+                ]);
+                
+                if (!$emailEnviado) {
+                    Logger::erro('Falha ao enviar email de recuperação', ['email' => $email]);
+                }
+            } else {
+                // Log de tentativa com email inexistente (sem revelar que não existe)
+                Logger::acao('Recuperação de senha - email não encontrado', ['email' => $email]);
+            }
+            
+        } catch (Exception $e) {
+            Logger::erro('Erro na recuperação de senha: ' . $e->getMessage());
+        }
+
+        // Mensagem genérica sempre (não revela se email existe ou não)
+        Flash::set('sucesso', 'Se o email estiver cadastrado, você receberá as instruções de recuperação em alguns minutos.');
         header('Location: ' . APP_URL . '/login');
         exit;
+    }
+
+    /**
+     * Exibe formulário de redefinição de senha
+     */
+    public function showRedefinirSenha(): void
+    {
+        $token = $_GET['token'] ?? '';
+        $email = $_GET['email'] ?? '';
+        
+        if (empty($token) || empty($email)) {
+            Flash::set('erro', 'Link inválido ou expirado.');
+            header('Location: ' . APP_URL . '/recuperar-senha');
+            exit;
+        }
+        
+        // Verificar se token é válido
+        $usuario = Database::queryOne(
+            "SELECT id, nome, email, resetar_senha_token, resetar_senha_expira 
+             FROM usuarios 
+             WHERE email = :email 
+             AND resetar_senha_expira > NOW()
+             LIMIT 1",
+            ['email' => $email]
+        );
+        
+        if (!$usuario || !password_verify($token, $usuario['resetar_senha_token'])) {
+            Flash::set('erro', 'Link inválido ou expirado. Solicite uma nova recuperação.');
+            header('Location: ' . APP_URL . '/recuperar-senha');
+            exit;
+        }
+        
+        // Token válido - mostrar formulário
+        $dados = [
+            'token' => $token,
+            'email' => $email,
+            'nome' => $usuario['nome']
+        ];
+        
+        require VIEW_PATH . '/auth/redefinir-senha.php';
+    }
+
+    /**
+     * Processa redefinição de senha
+     */
+    public function redefinirSenha(): void
+    {
+        Csrf::verificar();
+        
+        $token = $_POST['token'] ?? '';
+        $email = $_POST['email'] ?? '';
+        $senha = $_POST['senha'] ?? '';
+        $confirmarSenha = $_POST['confirmar_senha'] ?? '';
+        
+        // Validações
+        if (empty($token) || empty($email)) {
+            Flash::set('erro', 'Dados inválidos.');
+            header('Location: ' . APP_URL . '/recuperar-senha');
+            exit;
+        }
+        
+        if (strlen($senha) < 6) {
+            Flash::set('erro', 'A nova senha deve ter no mínimo 6 caracteres.');
+            header('Location: ' . APP_URL . "/redefinir-senha?token=" . urlencode($token) . "&email=" . urlencode($email));
+            exit;
+        }
+        
+        if ($senha !== $confirmarSenha) {
+            Flash::set('erro', 'As senhas não coincidem.');
+            header('Location: ' . APP_URL . "/redefinir-senha?token=" . urlencode($token) . "&email=" . urlencode($email));
+            exit;
+        }
+        
+        try {
+            // Verificar token novamente
+            $usuario = Database::queryOne(
+                "SELECT id, nome, email, resetar_senha_token, resetar_senha_expira 
+                 FROM usuarios 
+                 WHERE email = :email 
+                 AND resetar_senha_expira > NOW()
+                 LIMIT 1",
+                ['email' => $email]
+            );
+            
+            if (!$usuario || !password_verify($token, $usuario['resetar_senha_token'])) {
+                Flash::set('erro', 'Link inválido ou expirado. Solicite uma nova recuperação.');
+                header('Location: ' . APP_URL . '/recuperar-senha');
+                exit;
+            }
+            
+            // Atualizar senha e limpar token
+            Database::execute(
+                "UPDATE usuarios SET 
+                 senha = :nova_senha,
+                 resetar_senha_token = NULL,
+                 resetar_senha_expira = NULL,
+                 senha_temporaria = 0
+                 WHERE id = :usuario_id",
+                [
+                    'nova_senha' => password_hash($senha, PASSWORD_DEFAULT),
+                    'usuario_id' => $usuario['id']
+                ]
+            );
+            
+            Logger::acao('Senha redefinida com sucesso', [
+                'usuario_id' => $usuario['id'],
+                'email' => $email
+            ]);
+            
+            Flash::set('sucesso', 'Senha redefinida com sucesso! Faça login com sua nova senha.');
+            header('Location: ' . APP_URL . '/login');
+            exit;
+            
+        } catch (Exception $e) {
+            Logger::erro('Erro ao redefinir senha: ' . $e->getMessage());
+            Flash::set('erro', 'Erro interno. Tente novamente.');
+            header('Location: ' . APP_URL . '/recuperar-senha');
+            exit;
+        }
     }
 
     /**

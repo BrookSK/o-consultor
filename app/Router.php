@@ -26,6 +26,8 @@ class Router
         $this->post('cadastro', 'AuthController', 'cadastro');
         $this->get('recuperar-senha', 'AuthController', 'showRecuperarSenha');
         $this->post('recuperar-senha', 'AuthController', 'recuperarSenha');
+        $this->get('redefinir-senha', 'AuthController', 'showRedefinirSenha');
+        $this->post('redefinir-senha', 'AuthController', 'redefinirSenha');
         $this->get('logout', 'AuthController', 'logout');
 
         // Dashboard
@@ -79,7 +81,6 @@ class Router
         $this->get('manual-operacional/kpis', 'KpiController', 'index');
 
         // KPI Management (F-07)
-        $this->get('manual-operacional/kpis', 'KpiController', 'index');
         $this->get('kpis/ver', 'KpiController', 'ver');
         $this->post('kpis/registrar', 'KpiController', 'registrar');
         $this->post('kpis/alerta/marcar-lido', 'KpiController', 'marcarAlertaLido');
@@ -90,9 +91,20 @@ class Router
         $this->get('central-de-conteudo/caso', 'ConteudoController', 'casoDetalhe');
         $this->post('central-de-conteudo/perfil-busca', 'ConteudoController', 'salvarPerfilBusca');
         $this->post('central-de-conteudo/buscar-agora', 'ConteudoController', 'buscarAgora');
+        $this->post('central-de-conteudo/criar-conteudo', 'ConteudoController', 'criarConteudoDeNoticia');
         $this->get('central-de-conteudo/admin', 'ConteudoController', 'admin');
 
         // Sistema de Notícias por IA (F-09)
+        $this->get('noticias', 'NoticiasController', 'index');
+        $this->get('noticias/admin', 'NoticiasController', 'admin');
+        $this->get('noticias/detalhe', 'NoticiasController', 'detalhe');
+        $this->post('noticias/buscar-agora', 'NoticiasController', 'buscarAgora');
+        $this->post('noticias/gerar-analise', 'NoticiasController', 'gerarAnalise');
+        $this->post('noticias/favoritar', 'NoticiasController', 'favoritar');
+        $this->post('noticias/arquivar', 'NoticiasController', 'arquivar');
+        $this->post('noticias/busca-global', 'NoticiasController', 'executarBuscaGlobal');
+        $this->get('noticias/perfil', 'NoticiasController', 'perfil');
+        $this->post('noticias/salvar-perfil', 'NoticiasController', 'salvarPerfil');
         $this->get('noticias/buscar', 'NoticiasController', 'buscar');
         $this->post('noticias/inicializar-perfil', 'NoticiasController', 'inicializarPerfil');
         $this->post('noticias/adicionar-site', 'NoticiasController', 'adicionarSite');
@@ -166,6 +178,13 @@ class Router
         $this->get('admin/logs', 'AdminController', 'logs');
         $this->get('admin/relatorios', 'AdminController', 'relatorios');
         $this->post('admin/selecionar-empresa', 'AdminController', 'selecionarEmpresa');
+        
+        // CRUD Usuários
+        $this->get('admin/empresas/listar', 'AdminController', 'listarEmpresas');
+        $this->get('admin/usuarios/{id}', 'AdminController', 'visualizarUsuario');
+        $this->post('admin/usuarios/criar', 'AdminController', 'criarUsuario');
+        $this->post('admin/usuarios/atualizar', 'AdminController', 'atualizarUsuario');
+        $this->post('admin/usuarios/alterar-status', 'AdminController', 'alterarStatusUsuario');
 
         // Perfil
         $this->get('perfil', 'PerfilController', 'index');
@@ -244,6 +263,13 @@ class Router
             return;
         }
 
+        // F-09: Detalhes de notícia dinâmico
+        if (preg_match('/^noticias\/detalhe\/(\d+)$/', $url, $matches)) {
+            $_GET['id'] = (int) $matches[1];
+            $this->executarAction('NoticiasController', 'detalhe');
+            return;
+        }
+
         // F-13: Cliente perfil dinâmico
         if (preg_match('/^admin\/clientes\/perfil\/(\d+)$/', $url, $matches)) {
             $_GET['id'] = (int) $matches[1];
@@ -251,19 +277,27 @@ class Router
             return;
         }
 
-        if (preg_match('/^maquina-de-conteudo\/editar\/(\d+)$/', $url)) {
+        // CRUD Usuários - visualizar usuário
+        if (preg_match('/^admin\/usuarios\/(\d+)$/', $url, $matches)) {
+            $_GET['id'] = (int) $matches[1];
+            $this->executarAction('AdminController', 'visualizarUsuario');
+            return;
+        }
+
+        if (preg_match('/^maquina-de-conteudo\/editar\/(\d+)$/', $url, $matches)) {
+            $_GET['id'] = (int) $matches[1];
             $this->executarAction('MaquinaController', 'editar');
             return;
         }
 
-        if (preg_match('/^maquina\/download\/(\d+)$/', $url)) {
-            $_GET['id'] = (int) preg_replace('/.*\/(\d+)$/', '$1', $url);
+        if (preg_match('/^maquina\/download\/(\d+)$/', $url, $matches)) {
+            $_GET['id'] = (int) $matches[1];
             $this->executarAction('MaquinaController', 'download');
             return;
         }
 
-        if (preg_match('/^maquina\/marcar-publicado\/(\d+)$/', $url)) {
-            $_POST['conteudo_id'] = (int) preg_replace('/.*\/(\d+)$/', '$1', $url);
+        if (preg_match('/^maquina\/marcar-publicado\/(\d+)$/', $url, $matches)) {
+            $_POST['conteudo_id'] = (int) $matches[1];
             $this->executarAction('MaquinaController', 'marcarPublicado');
             return;
         }

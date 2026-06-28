@@ -353,6 +353,40 @@ class PlanoController
     }
 
     /**
+     * Visualização do plano (Kanban) - route /plano-de-acao/ver?id=X
+     */
+    public function ver(): void
+    {
+        Auth::proteger();
+
+        $planoId = (int) ($_GET['id'] ?? 0);
+        
+        if (!$planoId) {
+            Flash::set('erro', 'Plano não encontrado.');
+            header('Location: ' . APP_URL . '/plano-de-acao');
+            exit;
+        }
+
+        $plano = Plano::buscarPorId($planoId);
+        if (!$plano) {
+            Flash::set('erro', 'Plano não encontrado.');
+            header('Location: ' . APP_URL . '/plano-de-acao');
+            exit;
+        }
+
+        $kanban = Plano::buscarTarefasKanban($planoId);
+        $reunioes = Plano::buscarReunioes($planoId);
+
+        $dados = [
+            'plano' => $plano,
+            'kanban' => $kanban,
+            'reunioes' => $reunioes
+        ];
+
+        require VIEW_PATH . '/plano/ver.php';
+    }
+
+    /**
      * Visualização do plano (Kanban)
      */
     public function show(): void
