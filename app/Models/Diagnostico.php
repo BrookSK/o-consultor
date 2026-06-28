@@ -95,12 +95,16 @@ class Diagnostico
         $campos = [];
         $params = ['id' => $rascunhoId, 'bloco_atual' => $bloco];
         
+        // Log de entrada para debug
+        error_log("DiagnosticoBlocoRascunho: Salvando Bloco $bloco, ID: $rascunhoId");
+        error_log("DiagnosticoBlocoRascunho: Dados recebidos: " . json_encode($dados));
+        
         // Campos por bloco
         switch ($bloco) {
             case 1: // Identificação
                 $camposBloco1 = ['empresa_nome', 'setor', 'descricao', 'tempo_existencia', 'estrutura_societaria', 'unidades_filiais', 'lingua_principal'];
                 foreach ($camposBloco1 as $campo) {
-                    if (isset($dados[$campo])) {
+                    if (isset($dados[$campo]) && $dados[$campo] !== null && $dados[$campo] !== '') {
                         $campos[] = "$campo = :$campo";
                         $params[$campo] = $dados[$campo];
                     }
@@ -110,13 +114,13 @@ class Diagnostico
             case 2: // Estrutura Operacional
                 $camposBloco2 = ['colaboradores_internos', 'colaboradores_externos', 'clientes_ativos', 'produtos_servicos', 'faturamento_mensal', 'ticket_medio', 'sites_referencia'];
                 foreach ($camposBloco2 as $campo) {
-                    if (isset($dados[$campo])) {
+                    if (isset($dados[$campo]) && $dados[$campo] !== null && $dados[$campo] !== '') {
                         $campos[] = "$campo = :$campo";
                         $params[$campo] = $dados[$campo];
                     }
                 }
                 // Arrays JSON
-                if (isset($dados['departamentos'])) {
+                if (isset($dados['departamentos']) && is_array($dados['departamentos'])) {
                     $campos[] = "departamentos = :departamentos";
                     $params['departamentos'] = json_encode($dados['departamentos']);
                 }
@@ -125,12 +129,12 @@ class Diagnostico
             case 3: // Operação Atual
                 $camposBloco3 = ['processo_entrega', 'ferramentas_softwares', 'fornecedores_criticos', 'dependencia_pessoa', 'integracoes', 'processos_documentados'];
                 foreach ($camposBloco3 as $campo) {
-                    if (isset($dados[$campo])) {
+                    if (isset($dados[$campo]) && $dados[$campo] !== null && $dados[$campo] !== '') {
                         $campos[] = "$campo = :$campo";
                         $params[$campo] = $dados[$campo];
                     }
                 }
-                if (isset($dados['ferramentas_gestao'])) {
+                if (isset($dados['ferramentas_gestao']) && is_array($dados['ferramentas_gestao'])) {
                     $campos[] = "ferramentas_gestao = :ferramentas_gestao";
                     $params['ferramentas_gestao'] = json_encode($dados['ferramentas_gestao']);
                 }
@@ -139,12 +143,12 @@ class Diagnostico
             case 4: // Problemas e Riscos
                 $camposBloco4 = ['problemas_operacionais', 'riscos_identificados', 'incidentes_tipo', 'incidentes_descricao', 'cliente_concentrado', 'fornecedor_insubstituivel', 'processos_sem_backup'];
                 foreach ($camposBloco4 as $campo) {
-                    if (isset($dados[$campo])) {
+                    if (isset($dados[$campo]) && $dados[$campo] !== null && $dados[$campo] !== '') {
                         $campos[] = "$campo = :$campo";
                         $params[$campo] = $dados[$campo];
                     }
                 }
-                if (isset($dados['areas_vulneraveis'])) {
+                if (isset($dados['areas_vulneraveis']) && is_array($dados['areas_vulneraveis'])) {
                     $campos[] = "areas_vulneraveis = :areas_vulneraveis";
                     $params['areas_vulneraveis'] = json_encode($dados['areas_vulneraveis']);
                 }
@@ -153,7 +157,7 @@ class Diagnostico
             case 5: // Contexto Estratégico
                 $camposBloco5 = ['pontos_fortes', 'pontos_melhoria', 'objetivo_12_meses', 'maturidade_percebida', 'planejamento_documentado', 'frequencia_reunioes', 'meta_faturamento'];
                 foreach ($camposBloco5 as $campo) {
-                    if (isset($dados[$campo])) {
+                    if (isset($dados[$campo]) && $dados[$campo] !== null && $dados[$campo] !== '') {
                         $campos[] = "$campo = :$campo";
                         $params[$campo] = $dados[$campo];
                     }
@@ -161,20 +165,36 @@ class Diagnostico
                 break;
         }
         
-        if (empty($campos)) {
-            error_log("DiagnosticoBlocoRascunho: Nenhum campo para salvar - Bloco: $bloco, Dados: " . json_encode($dados));
-            return false;
-        }
-        
+        // Sempre atualizar bloco_atual e data de atualização
         $campos[] = "bloco_atual = :bloco_atual";
         $campos[] = "atualizado_em = NOW()";
         
+        if (empty($campos)) {
+            error_log("DiagnosticoBlocoRascunho: Nenhum campo para salvar - Bloco: $bloco");
+            error_log("DiagnosticoBlocoRascunho: Dados originais: " . json_encode($dados));
+            // Mesmo assim, salvamos bloco_atual
+            $campos = ["bloco_atual = :bloco_atual", "atualizado_em = NOW()"];
+        }
+        
         $sql = "UPDATE diagnosticos_rascunho SET " . implode(', ', $campos) . " WHERE id = :id";
+        
+        error_log("DiagnosticoBlocoRascunho: SQL: $sql");
+        error_log("DiagnosticoBlocoRascunho: Params: " . json_encode($params));
         
         $resultado = Database::execute($sql, $params);
         
         if (!$resultado) {
-            error_log("DiagnosticoBlocoRascunho: Erro ao executar SQL - Bloco: $bloco, SQL: $sql, Params: " . json_encode($params));
+            error_log("DiagnosticoBlocoRascunho: ERRO ao executar SQL");
+            error_log("DiagnosticoBlocoRascunho: SQL: $sql");
+            error_log("DiagnosticoBlocoRascunho: Params: " . json_encode($params));
+            
+            // Verificar se o rascunho existe
+            $rascunhoExiste = Database::queryOne("SELECT id FROM diagnosticos_rascunho WHERE id = :id", ['id' => $rascunhoId]);
+            if (!$rascunhoExiste) {
+                error_log("DiagnosticoBlocoRascunho: ERRO - Rascunho ID $rascunhoId não existe");
+            }
+        } else {
+            error_log("DiagnosticoBlocoRascunho: Sucesso - Bloco $bloco salvo");
         }
         
         return $resultado;

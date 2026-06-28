@@ -39,7 +39,10 @@ class Router
         $this->get('diagnostico/novo', 'DiagnosticoController', 'novo');
         $this->get('diagnostico/bloco', 'DiagnosticoController', 'bloco');
         $this->post('diagnostico/salvar-bloco', 'DiagnosticoController', 'salvarBloco');
+        $this->post('diagnostico/selecionar-empresa', 'DiagnosticoController', 'selecionarEmpresa');
+        $this->post('diagnostico/limpar-rascunho', 'DiagnosticoController', 'limparRascunho');
         $this->post('diagnostico/upload-documentos', 'DiagnosticoController', 'uploadDocumentos');
+        $this->get('diagnostico/debug', 'DiagnosticoController', 'debug');
         $this->post('diagnostico/gerar', 'DiagnosticoController', 'gerar');
         $this->post('diagnostico/salvar', 'DiagnosticoController', 'salvar');
         $this->get('diagnostico/resultado', 'DiagnosticoController', 'resultado');

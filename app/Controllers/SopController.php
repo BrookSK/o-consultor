@@ -898,7 +898,14 @@ class SopController
         }
 
         return $resultado;
-    }ueryOne(
+    }
+
+    /**
+     * Buscar contenção por SOP e nível
+     */
+    private function buscarContencaoPorNivel(int $sopId, int $nivel): ?array
+    {
+        return Database::queryOne(
             "SELECT * FROM sop_contencoes WHERE sop_id = :sop_id AND nivel = :nivel LIMIT 1",
             ['sop_id' => $sopId, 'nivel' => $nivel]
         );

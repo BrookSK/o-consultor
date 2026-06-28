@@ -44,18 +44,28 @@
                 <div class="md:col-span-2">
                     <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
                         <label class="block text-sm font-semibold text-gray-700 mb-2">Cliente para Diagnóstico *</label>
-                        <select name="cliente_selecionado" onchange="preencherDadosCliente(this.value)"
+                        <select name="cliente_selecionado" @change="selecionarEmpresa($event.target.value)"
                                 class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary">
                             <option value="">Selecione o cliente ou crie um novo diagnóstico</option>
                             <?php foreach ($dados['empresas_disponiveis'] as $empresa): ?>
-                                <option value="<?= $empresa['id'] ?>" data-nome="<?= htmlspecialchars($empresa['nome']) ?>" 
-                                        data-segmento="<?= htmlspecialchars($empresa['segmento']) ?>">
+                                <option value="<?= $empresa['id'] ?>" 
+                                        data-nome="<?= htmlspecialchars($empresa['nome']) ?>" 
+                                        data-segmento="<?= htmlspecialchars($empresa['segmento']) ?>"
+                                        <?= ($dados['rascunho']['empresa_id'] ?? 0) == $empresa['id'] ? 'selected' : '' ?>>
                                     <?= htmlspecialchars($empresa['nome']) ?> - <?= htmlspecialchars($empresa['segmento']) ?>
+                                    <?php if (!empty($empresa['responsavel_nome'])): ?>
+                                        (<?= htmlspecialchars($empresa['responsavel_nome']) ?>)
+                                    <?php endif; ?>
                                 </option>
                             <?php endforeach; ?>
                             <option value="novo">+ Criar diagnóstico para nova empresa</option>
                         </select>
-                        <p class="text-xs text-amber-700 mt-2">⚠️ Selecione um cliente existente ou escolha "nova empresa" para preencher dados manualmente</p>
+                        <p class="text-xs text-amber-700 mt-2">
+                            ⚠️ Selecione um cliente existente ou escolha "nova empresa" para preencher dados manualmente
+                        </p>
+                        <div x-show="empresaSelecionada" class="text-xs mt-1 text-green-600">
+                            ✓ Dados do cliente carregados automaticamente
+                        </div>
                     </div>
                 </div>
                 <?php endif; ?>
@@ -64,16 +74,23 @@
                 <div class="md:col-span-2">
                     <label class="block text-sm font-semibold text-gray-700 mb-2">Nome da Empresa *</label>
                     <input type="text" name="empresa_nome" x-model="form.empresa_nome" required
+                           :readonly="empresaSelecionada"
                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                           :class="{ 'bg-gray-100': empresaSelecionada }"
                            placeholder="Digite o nome completo da empresa"
                            value="<?= htmlspecialchars($dados['rascunho']['empresa_nome'] ?? '') ?>">
+                    <p x-show="empresaSelecionada" class="text-xs text-gray-500 mt-1">
+                        Campo preenchido automaticamente com dados do cliente selecionado
+                    </p>
                 </div>
 
                 <!-- Setor -->
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-2">Setor de Atuação *</label>
                     <select name="setor" x-model="form.setor" required
-                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                            :disabled="empresaSelecionada"
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                            :class="{ 'bg-gray-100': empresaSelecionada }">
                         <option value="">Selecione o setor</option>
                         <?php foreach ($dados['opcoes']['setores'] as $setor): ?>
                             <option value="<?= $setor ?>" <?= ($dados['rascunho']['setor'] ?? '') === $setor ? 'selected' : '' ?>>
@@ -81,6 +98,9 @@
                             </option>
                         <?php endforeach; ?>
                     </select>
+                    <p x-show="empresaSelecionada" class="text-xs text-gray-500 mt-1">
+                        Campo preenchido automaticamente com dados do cliente selecionado
+                    </p>
                 </div>
 
                 <!-- Tempo de Existência -->
@@ -245,10 +265,17 @@
 
             <!-- Botões de Navegação -->
             <div class="flex justify-between pt-6 border-t border-gray-100">
-                <a href="<?= APP_URL ?>/diagnostico" 
-                   class="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
-                    ← Cancelar
-                </a>
+                <div class="flex gap-3">
+                    <a href="<?= APP_URL ?>/diagnostico" 
+                       class="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+                        ← Cancelar
+                    </a>
+                    
+                    <button type="button" @click="limparRascunho()"
+                            class="px-6 py-3 border border-red-300 rounded-lg text-red-700 hover:bg-red-50 transition">
+                        🗑️ Limpar Draft
+                    </button>
+                </div>
                 
                 <button type="submit" :disabled="loading"
                         class="px-8 py-3 bg-primary text-white rounded-lg hover:bg-primary-700 transition font-semibold flex items-center gap-2"
@@ -259,6 +286,13 @@
                         Salvando...
                     </span>
                 </button>
+                
+                <!-- Debug Info (TEMPORARY) -->
+                <div class="text-xs text-gray-400 mt-2" x-show="true">
+                    <strong>Debug:</strong> EmpresaSelecionada: <span x-text="empresaSelecionada"></span> | 
+                    Nome: "<span x-text="form.empresa_nome"></span>" | 
+                    Setor: "<span x-text="form.setor"></span>"
+                </div>
             </div>
         </form>
     </div>
@@ -269,6 +303,7 @@
 function diagnosticoBloco1() {
     return {
         loading: false,
+        empresaSelecionada: <?= !empty($dados['rascunho']['empresa_id']) ? 'true' : 'false' ?>,
         form: {
             empresa_nome: '<?= addslashes($dados['rascunho']['empresa_nome'] ?? '') ?>',
             setor: '<?= addslashes($dados['rascunho']['setor'] ?? '') ?>',
@@ -279,7 +314,48 @@ function diagnosticoBloco1() {
             lingua_principal: '<?= addslashes($dados['rascunho']['lingua_principal'] ?? 'Português') ?>'
         },
 
+        async selecionarEmpresa(empresaId) {
+            console.log('selecionarEmpresa chamado com ID:', empresaId);
+            
+            if (!empresaId || empresaId === 'novo') {
+                console.log('Limpando dados para nova empresa');
+                this.empresaSelecionada = false;
+                this.form.empresa_nome = '';
+                this.form.setor = '';
+                return;
+            }
+            
+            try {
+                const formData = new FormData();
+                formData.append('csrf_token', '<?= Csrf::token() ?>');
+                formData.append('empresa_id', empresaId);
+                formData.append('rascunho_id', '<?= $dados['rascunho']['id'] ?>');
+
+                const response = await fetch('<?= APP_URL ?>/diagnostico/selecionar-empresa', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                console.log('Resultado selecionar empresa:', result);
+
+                if (result.sucesso) {
+                    this.empresaSelecionada = true;
+                    this.form.empresa_nome = result.dados.empresa_nome;
+                    this.form.setor = result.dados.setor;
+                    console.log('Empresa selecionada com sucesso:', result.dados);
+                } else {
+                    alert(result.mensagem || 'Erro ao selecionar empresa');
+                }
+            } catch (error) {
+                console.error('Erro ao selecionar empresa:', error);
+                alert('Erro na conexão ao selecionar empresa');
+            }
+        },
+
         async salvarBloco() {
+            console.log('salvarBloco iniciado');
+            
             if (!this.form.empresa_nome.trim()) {
                 alert('Nome da empresa é obrigatório');
                 return;
@@ -290,6 +366,7 @@ function diagnosticoBloco1() {
                 return;
             }
 
+            console.log('Validação passou, dados do form:', this.form);
             this.loading = true;
 
             try {
@@ -302,7 +379,55 @@ function diagnosticoBloco1() {
                     formData.append(key, this.form[key]);
                 });
 
+                console.log('FormData preparado:', Object.fromEntries(formData));
+
                 const response = await fetch('<?= APP_URL ?>/diagnostico/salvar-bloco', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                console.log('Response status:', response.status);
+                console.log('Response ok:', response.ok);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                console.log('Resultado recebido:', result);
+
+                if (result.sucesso) {
+                    console.log('Bloco salvo com sucesso');
+                    if (result.redirect) {
+                        console.log('Redirecionando para:', result.redirect);
+                        window.location.href = result.redirect;
+                    } else {
+                        console.log('Redirecionamento padrão para bloco 2');
+                        window.location.href = '<?= APP_URL ?>/diagnostico/bloco/2?rascunho_id=<?= $dados['rascunho']['id'] ?>';
+                    }
+                } else {
+                    console.error('Erro do servidor:', result.mensagem);
+                    console.error('Debug info:', result.debug_info);
+                    alert(result.mensagem || 'Erro ao salvar bloco');
+                }
+            } catch (error) {
+                console.error('Erro na requisição:', error);
+                alert('Erro na conexão: ' + error.message);
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        async limparRascunho() {
+            if (!confirm('Tem certeza que deseja limpar todo o rascunho? Todos os dados preenchidos serão perdidos.')) {
+                return;
+            }
+
+            try {
+                const formData = new FormData();
+                formData.append('csrf_token', '<?= Csrf::token() ?>');
+
+                const response = await fetch('<?= APP_URL ?>/diagnostico/limpar-rascunho', {
                     method: 'POST',
                     body: formData
                 });
@@ -310,62 +435,16 @@ function diagnosticoBloco1() {
                 const result = await response.json();
 
                 if (result.sucesso) {
-                    if (result.redirect) {
-                        window.location.href = result.redirect;
-                    } else {
-                        window.location.href = '<?= APP_URL ?>/diagnostico/bloco/2?rascunho_id=<?= $dados['rascunho']['id'] ?>';
-                    }
+                    alert(result.mensagem);
+                    window.location.href = '<?= APP_URL ?>/diagnostico/novo';
                 } else {
-                    alert(result.mensagem || 'Erro ao salvar bloco');
+                    alert(result.mensagem || 'Erro ao limpar rascunho');
                 }
             } catch (error) {
                 alert('Erro na conexão. Tente novamente.');
-            } finally {
-                this.loading = false;
             }
         }
     };
-}
-
-// Função para preencher dados do cliente selecionado
-function preencherDadosCliente(empresaId) {
-    if (!empresaId || empresaId === 'novo') {
-        // Limpar campos se "novo" for selecionado
-        document.querySelector('input[name="empresa_nome"]').value = '';
-        document.querySelector('select[name="setor"]').selectedIndex = 0;
-        return;
-    }
-    
-    // Buscar dados da empresa selecionada
-    const select = event.target;
-    const option = select.querySelector(`option[value="${empresaId}"]`);
-    
-    if (option) {
-        const nome = option.dataset.nome;
-        const segmento = option.dataset.segmento;
-        
-        // Preencher campos automaticamente
-        const nomeInput = document.querySelector('input[name="empresa_nome"]');
-        const setorSelect = document.querySelector('select[name="setor"]');
-        
-        if (nomeInput) nomeInput.value = nome;
-        
-        if (setorSelect) {
-            // Tentar encontrar o setor correspondente
-            for (let i = 0; i < setorSelect.options.length; i++) {
-                if (setorSelect.options[i].value === segmento) {
-                    setorSelect.selectedIndex = i;
-                    break;
-                }
-            }
-        }
-        
-        // Atualizar Alpine.js data se disponível
-        if (window.diagnosticoData && window.diagnosticoData.form) {
-            window.diagnosticoData.form.empresa_nome = nome;
-            window.diagnosticoData.form.setor = segmento;
-        }
-    }
 }
 
 // Componente para upload de documentos

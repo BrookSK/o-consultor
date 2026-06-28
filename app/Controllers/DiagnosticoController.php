@@ -76,9 +76,10 @@ class DiagnosticoController
         $empresasDisponiveis = [];
         if (Auth::perfil() === 'ADMIN_HOLDING') {
             $empresasDisponiveis = Database::query(
-                "SELECT id, nome, segmento, responsavel_id 
-                 FROM empresas 
-                 ORDER BY nome ASC"
+                "SELECT e.id, e.nome, e.segmento, e.responsavel_id, u.nome as responsavel_nome
+                 FROM empresas e 
+                 LEFT JOIN usuarios u ON e.responsavel_id = u.id
+                 ORDER BY e.nome ASC"
             );
         }
         
@@ -89,6 +90,29 @@ class DiagnosticoController
             Flash::set('erro', 'Erro ao iniciar diagnóstico. Tente novamente.');
             header('Location: ' . APP_URL . '/diagnostico');
             exit;
+        }
+        
+        // Se o rascunho já tem empresa_id, preencher automaticamente com dados da empresa
+        if (!empty($rascunho['empresa_id'])) {
+            $empresaRascunho = Database::queryOne(
+                "SELECT nome, segmento, responsavel_id FROM empresas WHERE id = :id",
+                ['id' => $rascunho['empresa_id']]
+            );
+            
+            if ($empresaRascunho && empty($rascunho['empresa_nome'])) {
+                // Auto-preencher com dados da empresa
+                Database::execute(
+                    "UPDATE diagnosticos_rascunho SET empresa_nome = :nome, setor = :setor WHERE id = :id",
+                    [
+                        'nome' => $empresaRascunho['nome'],
+                        'setor' => $empresaRascunho['segmento'],
+                        'id' => $rascunho['id']
+                    ]
+                );
+                
+                $rascunho['empresa_nome'] = $empresaRascunho['nome'];
+                $rascunho['setor'] = $empresaRascunho['segmento'];
+            }
         }
         
         // Buscar documentos já enviados pela empresa
@@ -218,10 +242,25 @@ class DiagnosticoController
                     'lingua_principal' => htmlspecialchars(trim($_POST['lingua_principal'] ?? 'Português'))
                 ];
                 
-                if (empty($dadosBloco['empresa_nome'])) {
+                // Validação mais flexível: se empresa já está no rascunho, não exigir campos vazios
+                $empresaJaSelecionada = !empty($rascunho['empresa_id']) || !empty($rascunho['empresa_nome']);
+                
+                if (empty($dadosBloco['empresa_nome']) && !$empresaJaSelecionada) {
                     header('Content-Type: application/json');
                     echo json_encode(['sucesso' => false, 'mensagem' => 'Nome da empresa é obrigatório']);
                     exit;
+                }
+                
+                if (empty($dadosBloco['setor']) && !$empresaJaSelecionada) {
+                    header('Content-Type: application/json');
+                    echo json_encode(['sucesso' => false, 'mensagem' => 'Setor de atuação é obrigatório']);
+                    exit;
+                }
+                
+                // Se empresa já selecionada e campos vieram vazios, manter dados existentes
+                if ($empresaJaSelecionada) {
+                    if (empty($dadosBloco['empresa_nome'])) $dadosBloco['empresa_nome'] = $rascunho['empresa_nome'];
+                    if (empty($dadosBloco['setor'])) $dadosBloco['setor'] = $rascunho['setor'];
                 }
                 break;
                 
@@ -289,14 +328,15 @@ class DiagnosticoController
             $sucesso = Diagnostico::salvarBlocoRascunho($rascunhoId, $bloco, $dadosBloco);
             
             if (!$sucesso) {
-                throw new Exception('Erro ao salvar dados no banco de dados. Verifique os dados enviados.');
+                throw new Exception('Erro ao salvar dados no banco de dados. Verifique se todos os campos obrigatórios foram preenchidos.');
             }
             
             Logger::acao('Bloco de diagnóstico salvo', [
                 'rascunho_id' => $rascunhoId,
                 'bloco' => $bloco,
                 'empresa' => $dadosBloco['empresa_nome'] ?? 'N/A',
-                'dados_salvos' => count($dadosBloco) . ' campos'
+                'dados_salvos' => count($dadosBloco) . ' campos',
+                'debug_dados' => $dadosBloco
             ]);
             
             // Determinar próximo bloco
@@ -310,7 +350,13 @@ class DiagnosticoController
                 'redirect' => $bloco < 5 ? 
                     APP_URL . '/diagnostico/bloco/' . $proximoBloco . '?rascunho_id=' . $rascunhoId :
                     null,
-                'dados_processados' => count($dadosBloco)
+                'dados_processados' => count($dadosBloco),
+                'debug_info' => [
+                    'rascunho_id' => $rascunhoId,
+                    'bloco' => $bloco,
+                    'campos_enviados' => array_keys($dadosBloco),
+                    'valores_recebidos' => $dadosBloco
+                ]
             ]);
             
         } catch (Exception $e) {
@@ -318,7 +364,8 @@ class DiagnosticoController
                 'erro' => $e->getMessage(),
                 'rascunho_id' => $rascunhoId,
                 'bloco' => $bloco,
-                'dados_enviados' => $dadosBloco
+                'dados_enviados' => $dadosBloco,
+                'trace' => $e->getTraceAsString()
             ]);
             header('Content-Type: application/json');
             echo json_encode([
@@ -327,7 +374,9 @@ class DiagnosticoController
                 'debug_info' => [
                     'rascunho_id' => $rascunhoId,
                     'bloco' => $bloco,
-                    'campos_enviados' => array_keys($dadosBloco)
+                    'campos_enviados' => array_keys($dadosBloco),
+                    'dados_recebidos' => $dadosBloco,
+                    'erro_detalhado' => $e->getMessage()
                 ]
             ]);
         }
@@ -557,6 +606,164 @@ class DiagnosticoController
             Logger::error('Erro no upload de documentos: ' . $e->getMessage());
             header('Content-Type: application/json');
             echo json_encode(['sucesso' => false, 'erro' => 'Erro interno no processamento dos documentos.']);
+        }
+        
+        exit;
+    }
+
+    /**
+     * Selecionar empresa para diagnóstico (ADMIN_HOLDING apenas)
+     */
+    public function selecionarEmpresa(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        
+        if (Auth::perfil() !== 'ADMIN_HOLDING') {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'mensagem' => 'Acesso não autorizado']);
+            exit;
+        }
+        
+        $empresaId = (int) ($_POST['empresa_id'] ?? 0);
+        $rascunhoId = (int) ($_POST['rascunho_id'] ?? 0);
+        
+        if (!$empresaId || !$rascunhoId) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'mensagem' => 'Empresa e rascunho são obrigatórios']);
+            exit;
+        }
+        
+        try {
+            // Buscar dados da empresa
+            $empresa = Database::queryOne(
+                "SELECT nome, segmento FROM empresas WHERE id = :id",
+                ['id' => $empresaId]
+            );
+            
+            if (!$empresa) {
+                throw new Exception('Empresa não encontrada');
+            }
+            
+            // Atualizar rascunho com dados da empresa
+            $sucesso = Database::execute(
+                "UPDATE diagnosticos_rascunho SET empresa_id = :empresa_id, empresa_nome = :empresa_nome, setor = :setor WHERE id = :rascunho_id AND usuario_id = :usuario_id",
+                [
+                    'empresa_id' => $empresaId,
+                    'empresa_nome' => $empresa['nome'],
+                    'setor' => $empresa['segmento'],
+                    'rascunho_id' => $rascunhoId,
+                    'usuario_id' => Auth::id()
+                ]
+            );
+            
+            if ($sucesso) {
+                Logger::acao('Empresa selecionada para diagnóstico', [
+                    'empresa_id' => $empresaId,
+                    'empresa_nome' => $empresa['nome'],
+                    'rascunho_id' => $rascunhoId
+                ]);
+                
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'sucesso' => true,
+                    'mensagem' => 'Empresa selecionada com sucesso',
+                    'dados' => [
+                        'empresa_nome' => $empresa['nome'],
+                        'setor' => $empresa['segmento']
+                    ]
+                ]);
+            } else {
+                throw new Exception('Erro ao atualizar rascunho com dados da empresa');
+            }
+        } catch (Exception $e) {
+            Logger::error('Erro ao selecionar empresa para diagnóstico: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'mensagem' => 'Erro: ' . $e->getMessage()]);
+        }
+        
+        exit;
+    }
+
+    /**
+     * Limpar rascunho de diagnóstico
+     */
+    public function limparRascunho(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        
+        $usuarioId = Auth::id();
+        
+        try {
+            // Buscar rascunho em andamento
+            $rascunho = Database::queryOne(
+                "SELECT id FROM diagnosticos_rascunho WHERE usuario_id = :usuario_id AND status = 'em_andamento'", 
+                ['usuario_id' => $usuarioId]
+            );
+            
+            if ($rascunho) {
+                // Excluir rascunho
+                $sucesso = Database::execute(
+                    "DELETE FROM diagnosticos_rascunho WHERE id = :id AND usuario_id = :usuario_id",
+                    ['id' => $rascunho['id'], 'usuario_id' => $usuarioId]
+                );
+                
+                if ($sucesso) {
+                    Logger::acao('Rascunho de diagnóstico limpo', [
+                        'rascunho_id' => $rascunho['id'],
+                        'usuario_id' => $usuarioId
+                    ]);
+                    
+                    header('Content-Type: application/json');
+                    echo json_encode(['sucesso' => true, 'mensagem' => 'Rascunho limpo com sucesso!']);
+                } else {
+                    throw new Exception('Erro ao excluir rascunho do banco de dados');
+                }
+            } else {
+                header('Content-Type: application/json');
+                echo json_encode(['sucesso' => false, 'mensagem' => 'Nenhum rascunho encontrado para limpar']);
+            }
+        } catch (Exception $e) {
+            Logger::error('Erro ao limpar rascunho: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'mensagem' => 'Erro ao limpar rascunho: ' . $e->getMessage()]);
+        }
+        
+        exit;
+    }
+
+    /**
+     * Debug do fluxo de diagnóstico (TEMPORARY)
+     */
+    public function debug(): void
+    {
+        Auth::proteger();
+        
+        $usuario = Auth::usuario();
+        
+        echo "<h1>Debug Diagnóstico</h1>";
+        echo "<h2>Usuário Atual:</h2>";
+        echo "<pre>" . print_r($usuario, true) . "</pre>";
+        
+        $rascunho = Database::queryOne(
+            "SELECT * FROM diagnosticos_rascunho WHERE usuario_id = :usuario_id AND status = 'em_andamento' ORDER BY criado_em DESC LIMIT 1",
+            ['usuario_id' => $usuario['id']]
+        );
+        
+        echo "<h2>Rascunho Atual:</h2>";
+        echo "<pre>" . print_r($rascunho, true) . "</pre>";
+        
+        if (Auth::perfil() === 'ADMIN_HOLDING') {
+            $empresas = Database::query(
+                "SELECT e.id, e.nome, e.segmento, e.responsavel_id, u.nome as responsavel_nome
+                 FROM empresas e 
+                 LEFT JOIN usuarios u ON e.responsavel_id = u.id
+                 ORDER BY e.nome ASC"
+            );
+            
+            echo "<h2>Empresas Disponíveis:</h2>";
+            echo "<pre>" . print_r($empresas, true) . "</pre>";
         }
         
         exit;
