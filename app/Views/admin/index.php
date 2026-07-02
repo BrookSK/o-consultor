@@ -25,9 +25,13 @@
         <h3 class="font-semibold text-gray-800 mb-1">👥 Usuários</h3>
         <p class="text-xs text-gray-500"><?= $dados['totalUsuarios'] ?> cadastrados</p>
     </a>
+    <a href="<?= APP_URL ?>/admin/empresas" class="bg-white rounded-lg shadow-sm border border-gray-200 p-5 hover:shadow-md transition">
+        <h3 class="font-semibold text-gray-800 mb-1">🏢 Empresas</h3>
+        <p class="text-xs text-gray-500"><?= $dados['totalEmpresas'] ?> cadastradas</p>
+    </a>
     <a href="<?= APP_URL ?>/admin/clientes" class="bg-white rounded-lg shadow-sm border border-gray-200 p-5 hover:shadow-md transition">
-        <h3 class="font-semibold text-gray-800 mb-1">🏢 Clientes</h3>
-        <p class="text-xs text-gray-500"><?= $dados['totalEmpresas'] ?> empresas</p>
+        <h3 class="font-semibold text-gray-800 mb-1">🤝 Clientes</h3>
+        <p class="text-xs text-gray-500">Gestão completa</p>
     </a>
     <a href="<?= APP_URL ?>/admin/logs" class="bg-white rounded-lg shadow-sm border border-gray-200 p-5 hover:shadow-md transition">
         <h3 class="font-semibold text-gray-800 mb-1">📋 Logs</h3>

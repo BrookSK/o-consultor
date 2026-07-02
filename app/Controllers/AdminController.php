@@ -1829,13 +1829,28 @@ class AdminController
     }
 
     /**
-     * Visualizar usuário específico
+     * Buscar empresas para AJAX (usado no cadastro de usuários)
      */
-    public function visualizarUsuario(): void
+    public function buscarEmpresas(): void
     {
         $this->protegerAdmin();
         
-        $usuarioId = (int) ($_GET['id'] ?? 0);
+        $empresas = Database::query("SELECT id, nome FROM empresas WHERE status = 'ativo' ORDER BY nome ASC");
+        
+        header('Content-Type: application/json');
+        echo json_encode(['empresas' => $empresas]);
+        exit;
+    }
+
+    /**
+     * Visualizar usuário específico
+     */
+    public function visualizarUsuario($matches = null): void
+    {
+        $this->protegerAdmin();
+        
+        // Se chamado via rota com ID no path
+        $usuarioId = $matches ? (int)$matches[1] : (int)($_GET['id'] ?? 0);
         
         if ($usuarioId === 0) {
             header('Content-Type: application/json');
@@ -2123,6 +2138,357 @@ class AdminController
             
         } catch (Exception $e) {
             Logger::error('Erro ao alterar status do usuário: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno.']);
+        }
+        exit;
+    }
+
+    // ===== GESTÃO DE EMPRESAS =====
+
+    /**
+     * Listar todas as empresas
+     */
+    public function empresas(): void
+    {
+        $this->protegerAdmin();
+        
+        // Buscar empresas com informações completas
+        $sql = "SELECT e.*, 
+                       c.nome as consultor_nome,
+                       r.nome as responsavel_nome,
+                       r.email as responsavel_email,
+                       COUNT(DISTINCT u.id) as total_usuarios
+                FROM empresas e 
+                LEFT JOIN usuarios c ON e.consultor_id = c.id
+                LEFT JOIN usuarios r ON e.responsavel_id = r.id
+                LEFT JOIN usuarios u ON u.empresa_id = e.id AND u.ativo = 1
+                GROUP BY e.id
+                ORDER BY e.criado_em DESC";
+        
+        $empresas = Database::query($sql);
+        
+        $dados = ['empresas' => $empresas];
+        require VIEW_PATH . '/admin/empresas.php';
+    }
+
+    /**
+     * Formulário de nova empresa
+     */
+    public function novaEmpresa(): void
+    {
+        $this->protegerAdmin();
+        require VIEW_PATH . '/admin/empresa-nova.php';
+    }
+
+    /**
+     * Criar nova empresa
+     */
+    public function criarEmpresa(): void
+    {
+        $this->protegerAdmin();
+        Csrf::verificar();
+        
+        $nome = trim($_POST['nome'] ?? '');
+        $cnpj = preg_replace('/[^0-9]/', '', $_POST['cnpj'] ?? '');
+        $segmento = trim($_POST['segmento'] ?? '');
+        $telefone = trim($_POST['telefone'] ?? '');
+        $endereco = trim($_POST['endereco'] ?? '');
+        $cidade = trim($_POST['cidade'] ?? '');
+        $estado = trim($_POST['estado'] ?? '');
+        $cep = preg_replace('/[^0-9]/', '', $_POST['cep'] ?? '');
+        $website = trim($_POST['website'] ?? '');
+        
+        // Validações
+        $erros = [];
+        
+        if (empty($nome)) {
+            $erros[] = 'Nome da empresa é obrigatório';
+        }
+        
+        // Verificar se CNPJ já existe (se informado)
+        if (!empty($cnpj)) {
+            if (strlen($cnpj) !== 14) {
+                $erros[] = 'CNPJ deve ter 14 dígitos';
+            }
+            
+            $cnpjExistente = Database::queryOne(
+                "SELECT id FROM empresas WHERE cnpj = :cnpj",
+                ['cnpj' => $cnpj]
+            );
+            if ($cnpjExistente) {
+                $erros[] = 'Este CNPJ já está cadastrado';
+            }
+        }
+        
+        // Validar CEP se informado
+        if (!empty($cep) && strlen($cep) !== 8) {
+            $erros[] = 'CEP deve ter 8 dígitos';
+        }
+        
+        if (!empty($erros)) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => implode('<br>', $erros)]);
+            exit;
+        }
+        
+        try {
+            // Criar empresa
+            $empresaId = Database::execute(
+                "INSERT INTO empresas (nome, cnpj, segmento, telefone, endereco, cidade, estado, cep, website, 
+                                      status, criado_em) 
+                 VALUES (:nome, :cnpj, :segmento, :telefone, :endereco, :cidade, :estado, :cep, :website, 
+                         'ativo', NOW())",
+                [
+                    'nome' => $nome,
+                    'cnpj' => $cnpj ?: null,
+                    'segmento' => $segmento ?: null,
+                    'telefone' => $telefone ?: null,
+                    'endereco' => $endereco ?: null,
+                    'cidade' => $cidade ?: null,
+                    'estado' => $estado ?: null,
+                    'cep' => $cep ?: null,
+                    'website' => $website ?: null
+                ]
+            );
+            
+            $empresaId = Database::lastInsertId();
+            
+            AuditLog::registrar(
+                'admin_criar_empresa',
+                'admin',
+                "Nova empresa criada: {$nome}",
+                [
+                    'empresa_id' => $empresaId,
+                    'empresa_nome' => $nome,
+                    'cnpj' => $cnpj ?: null
+                ]
+            );
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => true, 
+                'mensagem' => "Empresa '{$nome}' criada com sucesso!",
+                'empresa_id' => $empresaId
+            ]);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao criar empresa: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno ao criar empresa.']);
+        }
+        exit;
+    }
+
+    /**
+     * Visualizar empresa específica
+     */
+    public function visualizarEmpresa(): void
+    {
+        $this->protegerAdmin();
+        
+        $empresaId = (int) ($_GET['id'] ?? 0);
+        
+        if ($empresaId === 0) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'ID da empresa não informado.']);
+            exit;
+        }
+        
+        $empresa = Database::queryOne(
+            "SELECT e.*, 
+                    c.nome as consultor_nome,
+                    r.nome as responsavel_nome
+             FROM empresas e 
+             LEFT JOIN usuarios c ON e.consultor_id = c.id
+             LEFT JOIN usuarios r ON e.responsavel_id = r.id
+             WHERE e.id = :id",
+            ['id' => $empresaId]
+        );
+        
+        if (!$empresa) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Empresa não encontrada.']);
+            exit;
+        }
+        
+        header('Content-Type: application/json');
+        echo json_encode(['sucesso' => true, 'empresa' => $empresa]);
+        exit;
+    }
+
+    /**
+     * Atualizar empresa existente
+     */
+    public function atualizarEmpresa(): void
+    {
+        $this->protegerAdmin();
+        Csrf::verificar();
+        
+        $empresaId = (int) ($_POST['id'] ?? 0);
+        $nome = trim($_POST['nome'] ?? '');
+        $cnpj = preg_replace('/[^0-9]/', '', $_POST['cnpj'] ?? '');
+        $segmento = trim($_POST['segmento'] ?? '');
+        $telefone = trim($_POST['telefone'] ?? '');
+        $endereco = trim($_POST['endereco'] ?? '');
+        $cidade = trim($_POST['cidade'] ?? '');
+        $estado = trim($_POST['estado'] ?? '');
+        $cep = preg_replace('/[^0-9]/', '', $_POST['cep'] ?? '');
+        $website = trim($_POST['website'] ?? '');
+        
+        if ($empresaId === 0) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'ID da empresa não informado.']);
+            exit;
+        }
+        
+        // Validações
+        $erros = [];
+        
+        if (empty($nome)) {
+            $erros[] = 'Nome da empresa é obrigatório';
+        }
+        
+        // Verificar se CNPJ já existe (exceto a própria empresa)
+        if (!empty($cnpj)) {
+            if (strlen($cnpj) !== 14) {
+                $erros[] = 'CNPJ deve ter 14 dígitos';
+            }
+            
+            $cnpjExistente = Database::queryOne(
+                "SELECT id FROM empresas WHERE cnpj = :cnpj AND id != :empresa_id",
+                ['cnpj' => $cnpj, 'empresa_id' => $empresaId]
+            );
+            if ($cnpjExistente) {
+                $erros[] = 'Este CNPJ já está sendo usado por outra empresa';
+            }
+        }
+        
+        // Validar CEP se informado
+        if (!empty($cep) && strlen($cep) !== 8) {
+            $erros[] = 'CEP deve ter 8 dígitos';
+        }
+        
+        if (!empty($erros)) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => implode('<br>', $erros)]);
+            exit;
+        }
+        
+        try {
+            Database::execute(
+                "UPDATE empresas SET 
+                 nome = :nome, 
+                 cnpj = :cnpj, 
+                 segmento = :segmento, 
+                 telefone = :telefone, 
+                 endereco = :endereco, 
+                 cidade = :cidade, 
+                 estado = :estado, 
+                 cep = :cep, 
+                 website = :website,
+                 atualizado_em = NOW()
+                 WHERE id = :empresa_id",
+                [
+                    'nome' => $nome,
+                    'cnpj' => $cnpj ?: null,
+                    'segmento' => $segmento ?: null,
+                    'telefone' => $telefone ?: null,
+                    'endereco' => $endereco ?: null,
+                    'cidade' => $cidade ?: null,
+                    'estado' => $estado ?: null,
+                    'cep' => $cep ?: null,
+                    'website' => $website ?: null,
+                    'empresa_id' => $empresaId
+                ]
+            );
+            
+            AuditLog::registrar(
+                'admin_atualizar_empresa',
+                'admin',
+                "Empresa atualizada: {$nome}",
+                [
+                    'empresa_id' => $empresaId,
+                    'empresa_nome' => $nome
+                ]
+            );
+            
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => true, 'mensagem' => 'Empresa atualizada com sucesso!']);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao atualizar empresa: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno ao atualizar empresa.']);
+        }
+        exit;
+    }
+
+    /**
+     * Excluir empresa (apenas se não tiver usuários ativos)
+     */
+    public function excluirEmpresa(): void
+    {
+        $this->protegerAdmin();
+        Csrf::verificar();
+        
+        $empresaId = (int) ($_POST['empresa_id'] ?? 0);
+        
+        if ($empresaId === 0) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'ID da empresa não informado.']);
+            exit;
+        }
+        
+        try {
+            // Verificar se existe
+            $empresa = Database::queryOne(
+                "SELECT nome FROM empresas WHERE id = :id",
+                ['id' => $empresaId]
+            );
+            
+            if (!$empresa) {
+                header('Content-Type: application/json');
+                echo json_encode(['sucesso' => false, 'erro' => 'Empresa não encontrada.']);
+                exit;
+            }
+            
+            // Verificar se tem usuários ativos vinculados
+            $usuariosAtivos = Database::queryOne(
+                "SELECT COUNT(*) as count FROM usuarios WHERE empresa_id = :empresa_id AND ativo = 1",
+                ['empresa_id' => $empresaId]
+            )['count'] ?? 0;
+            
+            if ($usuariosAtivos > 0) {
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'sucesso' => false, 
+                    'erro' => "Não é possível excluir a empresa '{$empresa['nome']}' pois ela possui {$usuariosAtivos} usuário(s) ativo(s). Desative os usuários primeiro."
+                ]);
+                exit;
+            }
+            
+            // Excluir empresa
+            Database::execute(
+                "DELETE FROM empresas WHERE id = :empresa_id",
+                ['empresa_id' => $empresaId]
+            );
+            
+            AuditLog::registrar(
+                'admin_excluir_empresa',
+                'admin',
+                "Empresa excluída: {$empresa['nome']}",
+                [
+                    'empresa_id' => $empresaId,
+                    'empresa_nome' => $empresa['nome']
+                ]
+            );
+            
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => true, 'mensagem' => "Empresa '{$empresa['nome']}' excluída com sucesso!"]);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao excluir empresa: ' . $e->getMessage());
             header('Content-Type: application/json');
             echo json_encode(['sucesso' => false, 'erro' => 'Erro interno.']);
         }

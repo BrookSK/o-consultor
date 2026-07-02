@@ -179,8 +179,21 @@ class Router
         // Admin
         $this->get('admin', 'AdminController', 'index');
         $this->get('admin/usuarios', 'AdminController', 'usuarios');
+        $this->get('admin/usuarios/(\d+)', 'AdminController', 'visualizarUsuario');
         $this->post('admin/usuarios/salvar', 'AdminController', 'salvarUsuario');
+        $this->post('admin/usuarios/criar', 'AdminController', 'criarUsuario');
+        $this->post('admin/usuarios/atualizar', 'AdminController', 'atualizarUsuario');
+        $this->post('admin/usuarios/alterar-status', 'AdminController', 'alterarStatusUsuario');
         $this->get('admin/clientes', 'AdminController', 'clientes');
+        
+        // Gestão de Empresas
+        $this->get('admin/empresas', 'AdminController', 'empresas');
+        $this->get('admin/empresas/nova', 'AdminController', 'novaEmpresa');
+        $this->post('admin/empresas/criar', 'AdminController', 'criarEmpresa');
+        $this->get('admin/empresas/visualizar', 'AdminController', 'visualizarEmpresa');
+        $this->post('admin/empresas/atualizar', 'AdminController', 'atualizarEmpresa');
+        $this->post('admin/empresas/excluir', 'AdminController', 'excluirEmpresa');
+        $this->get('admin/empresas/listar', 'AdminController', 'buscarEmpresas');
         
         // F-13: Gestão de Clientes
         $this->get('admin/clientes/novo', 'AdminController', 'novoCliente');
