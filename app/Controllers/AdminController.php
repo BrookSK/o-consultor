@@ -7,7 +7,41 @@ class AdminController
 {
     private function protegerAdmin(): void
     {
-        Auth::exigirPerfil([Auth::ADMIN_HOLDING]);
+        // Verificar se usuário está autenticado
+        if (!Auth::check()) {
+            if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WITH'])) {
+                // Requisição AJAX
+                header('Content-Type: application/json');
+                echo json_encode(['erro' => 'Usuário não autenticado. Faça login novamente.']);
+                exit;
+            } else {
+                header('Location: ' . APP_URL . '/auth/login');
+                exit;
+            }
+        }
+
+        // Verificar perfil
+        $usuario = Auth::usuario();
+        if (!$usuario || $usuario['perfil'] !== Auth::ADMIN_HOLDING) {
+            // Log do erro
+            error_log("ACESSO NEGADO ADMIN: Usuário " . ($usuario['email'] ?? 'desconhecido') . " com perfil " . ($usuario['perfil'] ?? 'desconhecido') . " tentou acessar funcionalidade admin");
+            
+            if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WITH'])) {
+                // Requisição AJAX
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'erro' => 'Acesso negado. Apenas administradores (ADMIN_HOLDING) podem acessar esta funcionalidade.',
+                    'perfil_atual' => $usuario['perfil'] ?? 'desconhecido',
+                    'perfil_necessario' => Auth::ADMIN_HOLDING
+                ]);
+                exit;
+            } else {
+                // Retornar 403 Forbidden para requisições normais
+                http_response_code(403);
+                require VIEW_PATH . '/errors/403.php';
+                exit;
+            }
+        }
     }
 
     public function index(): void
@@ -2186,8 +2220,28 @@ class AdminController
      */
     public function criarEmpresa(): void
     {
+        // Log de debug
+        error_log("CRIANDO EMPRESA - Método chamado");
+        error_log("REQUEST_METHOD: " . ($_SERVER['REQUEST_METHOD'] ?? 'indefinido'));
+        error_log("POST data: " . json_encode($_POST));
+        error_log("Headers: " . json_encode(getallheaders()));
+        
         $this->protegerAdmin();
-        Csrf::verificar();
+        
+        // Verificar se é uma requisição POST
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Método não permitido.']);
+            exit;
+        }
+        
+        // Verificar CSRF manualmente para ter controle da resposta
+        if (!Csrf::validar()) {
+            error_log("CSRF FALHOU: token enviado = " . ($_POST['csrf_token'] ?? 'nenhum') . ", token sessão = " . (Session::get('csrf_token') ?? 'nenhum'));
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Token CSRF inválido. Recarregue a página e tente novamente.']);
+            exit;
+        }
         
         $nome = trim($_POST['nome'] ?? '');
         $cnpj = preg_replace('/[^0-9]/', '', $_POST['cnpj'] ?? '');

@@ -469,8 +469,18 @@ document.getElementById('formEmpresa').addEventListener('submit', function(e) {
     e.preventDefault();
     
     const formData = new FormData(this);
+    
+    // Garantir que o CSRF token está sendo enviado
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-    formData.append('csrf_token', csrfToken);
+    if (csrfToken) {
+        formData.append('csrf_token', csrfToken);
+    } else {
+        // Fallback - buscar token de um input hidden se existir
+        const csrfInput = document.querySelector('input[name="csrf_token"]');
+        if (csrfInput) {
+            formData.append('csrf_token', csrfInput.value);
+        }
+    }
     
     const empresaId = document.getElementById('empresaId').value;
     const url = empresaId ? '<?= APP_URL ?>/admin/empresas/atualizar' : '<?= APP_URL ?>/admin/empresas/criar';

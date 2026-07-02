@@ -178,13 +178,14 @@ class Router
 
         // Admin
         $this->get('admin', 'AdminController', 'index');
+        
+        // Gestão de Usuários
         $this->get('admin/usuarios', 'AdminController', 'usuarios');
         $this->get('admin/usuarios/(\d+)', 'AdminController', 'visualizarUsuario');
         $this->post('admin/usuarios/salvar', 'AdminController', 'salvarUsuario');
         $this->post('admin/usuarios/criar', 'AdminController', 'criarUsuario');
         $this->post('admin/usuarios/atualizar', 'AdminController', 'atualizarUsuario');
         $this->post('admin/usuarios/alterar-status', 'AdminController', 'alterarStatusUsuario');
-        $this->get('admin/clientes', 'AdminController', 'clientes');
         
         // Gestão de Empresas
         $this->get('admin/empresas', 'AdminController', 'empresas');
@@ -196,12 +197,14 @@ class Router
         $this->get('admin/empresas/listar', 'AdminController', 'buscarEmpresas');
         
         // F-13: Gestão de Clientes
+        $this->get('admin/clientes', 'AdminController', 'clientes');
         $this->get('admin/clientes/novo', 'AdminController', 'novoCliente');
         $this->post('admin/clientes/criar', 'AdminController', 'criarCliente');
         $this->get('admin/clientes/perfil', 'AdminController', 'perfilCliente');
         $this->post('admin/clientes/trocar-consultor', 'AdminController', 'trocarConsultor');
         $this->post('admin/clientes/alterar-status', 'AdminController', 'alterarStatusCliente');
         
+        // Configurações Admin
         $this->get('admin/configuracoes', 'AdminController', 'configuracoes');
         $this->post('admin/testar-apis', 'AdminController', 'testarApis');
         $this->post('admin/testar-academy', 'AdminController', 'testarAcademy');
@@ -215,16 +218,13 @@ class Router
         $this->post('admin/api/status', 'AdminController', 'statusApi');
         $this->post('admin/smtp/salvar', 'AdminController', 'salvarSmtp');
         $this->post('admin/smtp/testar', 'AdminController', 'testarSmtp');
+        
+        // Logs e Relatórios
         $this->get('admin/logs', 'AdminController', 'logs');
         $this->get('admin/relatorios', 'AdminController', 'relatorios');
-        $this->post('admin/selecionar-empresa', 'AdminController', 'selecionarEmpresa');
         
-        // CRUD Usuários
-        $this->get('admin/empresas/listar', 'AdminController', 'listarEmpresas');
-        $this->get('admin/usuarios/{id}', 'AdminController', 'visualizarUsuario');
-        $this->post('admin/usuarios/criar', 'AdminController', 'criarUsuario');
-        $this->post('admin/usuarios/atualizar', 'AdminController', 'atualizarUsuario');
-        $this->post('admin/usuarios/alterar-status', 'AdminController', 'alterarStatusUsuario');
+        // Utilitários Admin
+        $this->post('admin/selecionar-empresa', 'AdminController', 'selecionarEmpresa');
 
         // Perfil
         $this->get('perfil', 'PerfilController', 'index');
