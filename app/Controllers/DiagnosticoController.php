@@ -183,14 +183,18 @@ class DiagnosticoController
         }
         
         // Verificar se pode acessar este bloco (deve ter preenchido os anteriores)
-        // Permitir acesso ao próximo bloco após salvar o atual
-        if ($bloco > ($rascunho['bloco_atual'] + 1)) {
+        // Permitir acesso ao bloco atual ou próximo após salvar
+        $blocoMaximoPermitido = $rascunho['bloco_atual'];
+        
+        if ($bloco > $blocoMaximoPermitido) {
             Logger::warning('Tentativa de acesso a bloco muito avançado', [
                 'bloco_solicitado' => $bloco,
                 'bloco_atual_permitido' => $rascunho['bloco_atual'],
                 'rascunho_id' => $rascunhoId
             ]);
-            header('Location: ' . APP_URL . '/diagnostico/bloco/' . $rascunho['bloco_atual'] . '?rascunho_id=' . $rascunhoId);
+            
+            // Redirecionar para o bloco máximo permitido
+            header('Location: ' . APP_URL . '/diagnostico/bloco/' . $blocoMaximoPermitido . '?rascunho_id=' . $rascunhoId);
             exit;
         }
         
@@ -355,17 +359,27 @@ class DiagnosticoController
             $proximoBloco = $bloco < 5 ? $bloco + 1 : 5;
             $novoBlocoAtual = max($rascunho['bloco_atual'], $proximoBloco);
             
+            // Debug da lógica de atualização do bloco_atual
+            error_log("DEBUG BLOCO_ATUAL: bloco_atual_antes=" . $rascunho['bloco_atual'] . ", bloco_salvo=" . $bloco . ", proximo_bloco=" . $proximoBloco . ", novo_bloco_atual=" . $novoBlocoAtual);
+            
             if ($novoBlocoAtual != $rascunho['bloco_atual']) {
-                Database::execute(
+                error_log("DEBUG BLOCO_ATUAL: Atualizando de " . $rascunho['bloco_atual'] . " para " . $novoBlocoAtual);
+                
+                $sucessoUpdate = Database::execute(
                     "UPDATE diagnosticos_rascunho SET bloco_atual = :bloco_atual WHERE id = :id",
                     ['bloco_atual' => $novoBlocoAtual, 'id' => $rascunhoId]
                 );
                 
+                error_log("DEBUG BLOCO_ATUAL: Resultado do update = " . ($sucessoUpdate ? 'SUCESSO' : 'FALHOU'));
+                
                 Logger::acao('Bloco atual atualizado', [
                     'rascunho_id' => $rascunhoId,
                     'bloco_anterior' => $rascunho['bloco_atual'],
-                    'novo_bloco_atual' => $novoBlocoAtual
+                    'novo_bloco_atual' => $novoBlocoAtual,
+                    'resultado_update' => $sucessoUpdate
                 ]);
+            } else {
+                error_log("DEBUG BLOCO_ATUAL: Não precisa atualizar. bloco_atual já é " . $rascunho['bloco_atual']);
             }
             
             // Determinar próximo bloco
