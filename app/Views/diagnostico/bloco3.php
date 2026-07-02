@@ -14,22 +14,10 @@
 <body class="bg-gray-50 min-h-screen" x-data="diagnosticoBloco3()">
 
 <div class="max-w-4xl mx-auto p-6">
-    <!-- Header com Progresso -->
-    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-        <div class="flex items-center justify-between mb-4">
-            <div>
-                <h1 class="text-2xl font-bold text-gray-800">Diagnóstico Empresarial</h1>
-                <p class="text-gray-500">Bloco 3 de 5 — Estrutura Financeira e Comercial</p>
-            </div>
-            <div class="text-right">
-                <div class="text-sm text-gray-500 mb-1">Progresso</div>
-                <div class="w-32 bg-gray-200 rounded-full h-2">
-                    <div class="bg-primary h-2 rounded-full" style="width: 60%"></div>
-                </div>
-                <div class="text-xs text-gray-400 mt-1">60% concluído</div>
-            </div>
-        </div>
-    </div>
+    <?php 
+    $blocoAtual = 3;
+    include VIEW_PATH . '/diagnostico/components/navegacao-blocos.php'; 
+    ?>
 
     <!-- Formulário Bloco 3 -->
     <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
@@ -193,31 +181,24 @@
                           placeholder="Descreva desafios específicos, metas comerciais, dificuldades financeiras, etc."><?= $dados['rascunho']['observacoes_bloco3'] ?? '' ?></textarea>
             </div>
 
-            <!-- Botões de Navegação -->
-            <div class="flex justify-between items-center pt-6 border-t">
-                <a href="<?= APP_URL ?>/diagnostico/bloco?bloco=2&id=<?= $dados['rascunho']['id'] ?>" 
-                   class="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center">
-                    ← Bloco Anterior
-                </a>
-
-                <div class="text-center">
-                    <p class="text-sm text-gray-600">Salvamento automático ativado</p>
-                    <p x-show="salvando" class="text-xs text-primary">💾 Salvando...</p>
-                    <p x-show="!salvando && ultimoSalvo" class="text-xs text-green-600">✓ Salvo às <span x-text="ultimoSalvo"></span></p>
-                </div>
-
-                <button type="submit" 
-                        class="px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary-700 flex items-center">
-                    Próximo Bloco →
-                </button>
-            </div>
+            <?php 
+            $blocoAtual = 3;
+            $rascunho = $dados['rascunho'];
+            $loading = 'loading';
+            include VIEW_PATH . '/diagnostico/components/botoes-navegacao.php'; 
+            ?>
         </form>
     </div>
 </div>
 
+<script src="<?= APP_URL ?>/public/assets/js/diagnostico-comum.js"></script>
 <script>
+// Definir APP_URL para o JavaScript comum
+const APP_URL = '<?= APP_URL ?>';
+
 function diagnosticoBloco3() {
     return {
+        loading: false,
         form: {
             faturamento_mensal: '<?= $dados['rascunho']['faturamento_mensal'] ?? '' ?>',
             margem_lucro: '<?= $dados['rascunho']['margem_lucro'] ?? '' ?>',
@@ -228,104 +209,39 @@ function diagnosticoBloco3() {
             ticket_medio: '<?= $dados['rascunho']['ticket_medio'] ?? '' ?>',
             observacoes_bloco3: '<?= $dados['rascunho']['observacoes_bloco3'] ?? '' ?>'
         },
-        salvando: false,
-        ultimoSalvo: null,
-
-        init() {
-            // Salvamento automático a cada 30 segundos
-            setInterval(() => this.salvarAutomatico(), 30000);
-            
-            // Salvar ao alterar campos importantes
-            this.$watch('form', () => {
-                clearTimeout(this.timeoutSalvar);
-                this.timeoutSalvar = setTimeout(() => this.salvarAutomatico(), 2000);
-            });
-        },
 
         async salvarBloco() {
-            this.salvando = true;
-            
+            this.loading = true;
+
             try {
-                const formData = new FormData();
-                formData.append('csrf_token', document.querySelector('input[name="csrf_token"]').value);
-                formData.append('bloco', '3');
-                formData.append('rascunho_id', document.querySelector('input[name="rascunho_id"]').value);
-                
-                // Adicionar todos os campos
-                Object.keys(this.form).forEach(key => {
-                    formData.append(key, this.form[key]);
-                });
-                
-                // Adicionar checkboxes dos canais de vendas
+                // Coletar dados dos checkboxes
                 const canais = [];
                 document.querySelectorAll('input[name="canais_vendas[]"]:checked').forEach(cb => {
                     canais.push(cb.value);
                 });
-                formData.append('canais_vendas', canais.join(','));
                 
-                const response = await fetch('<?= APP_URL ?>/diagnostico/salvar-bloco', {
-                    method: 'POST',
-                    body: formData
-                });
+                // Preparar dados para envio
+                const dados = { ...this.form };
+                dados.canais_vendas = canais.join(',');
                 
-                const data = await response.json();
+                const result = await salvarBlocoComum(3, '<?= $dados['rascunho']['id'] ?>', dados);
                 
-                if (data.sucesso) {
+                if (result.sucesso) {
                     // Redirecionar para próximo bloco
-                    window.location.href = '<?= APP_URL ?>/diagnostico/bloco?bloco=4&id=<?= $dados['rascunho']['id'] ?>';
-                } else {
-                    alert('Erro ao salvar: ' + data.erro);
+                    window.location.href = '<?= APP_URL ?>/diagnostico/bloco/4?rascunho_id=<?= $dados['rascunho']['id'] ?>';
                 }
-                
             } catch (error) {
-                console.error('Erro:', error);
-                alert('Erro de conexão ao salvar');
+                // Erro já tratado na função comum
             } finally {
-                this.salvando = false;
+                this.loading = false;
             }
         },
 
-        async salvarAutomatico() {
-            if (this.salvando) return;
-            
-            this.salvando = true;
-            
-            try {
-                const formData = new FormData();
-                formData.append('csrf_token', document.querySelector('input[name="csrf_token"]').value);
-                formData.append('bloco', '3');
-                formData.append('rascunho_id', document.querySelector('input[name="rascunho_id"]').value);
-                formData.append('auto_save', '1');
-                
-                Object.keys(this.form).forEach(key => {
-                    formData.append(key, this.form[key]);
-                });
-                
-                const canais = [];
-                document.querySelectorAll('input[name="canais_vendas[]"]:checked').forEach(cb => {
-                    canais.push(cb.value);
-                });
-                formData.append('canais_vendas', canais.join(','));
-                
-                const response = await fetch('<?= APP_URL ?>/diagnostico/salvar-bloco', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                if (response.ok) {
-                    this.ultimoSalvo = new Date().toLocaleTimeString('pt-BR', { 
-                        hour: '2-digit', 
-                        minute: '2-digit' 
-                    });
-                }
-                
-            } catch (error) {
-                console.error('Erro no salvamento automático:', error);
-            } finally {
-                this.salvando = false;
-            }
+        // Função para limpar rascunho (referenciada nos botões)
+        limparRascunho() {
+            return limparRascunho();
         }
-    }
+    };
 }
 </script>
 

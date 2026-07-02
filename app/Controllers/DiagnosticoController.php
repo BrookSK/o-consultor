@@ -136,10 +136,10 @@ class DiagnosticoController
         // Determinar em qual bloco deve começar
         $blocoAtual = (int) ($rascunho['bloco_atual'] ?? 1);
         
-        // Redirecionar para o bloco correto se não for o primeiro
-        if ($blocoAtual > 1) {
-            header('Location: ' . APP_URL . '/diagnostico/bloco/' . $blocoAtual . '?rascunho_id=' . $rascunho['id']);
-            exit;
+        // Não redirecionar automaticamente - deixar o usuário escolher
+        // Apenas garantir que não seja maior que 5
+        if ($blocoAtual > 5) {
+            $blocoAtual = 5;
         }
         
         // Opções para selects
@@ -182,19 +182,22 @@ class DiagnosticoController
             exit;
         }
         
-        // Verificar se pode acessar este bloco (deve ter preenchido os anteriores)
-        // Permitir acesso ao bloco atual ou próximo após salvar
-        $blocoMaximoPermitido = $rascunho['bloco_atual'];
+        // Verificar se pode acessar este bloco
+        // Permitir acesso a qualquer bloco até o bloco_atual (blocos já preenchidos)
+        // E permitir acesso ao próximo bloco (bloco_atual + 1) para continuar preenchendo
+        $blocoMaximoPermitido = $rascunho['bloco_atual'] + 1;
         
-        if ($bloco > $blocoMaximoPermitido) {
-            Logger::warning('Tentativa de acesso a bloco muito avançado', [
+        if ($bloco > $blocoMaximoPermitido || $bloco < 1) {
+            // Só bloquear se tentar acessar blocos muito à frente ou inválidos
+            Logger::warning('Tentativa de acesso a bloco inválido', [
                 'bloco_solicitado' => $bloco,
-                'bloco_atual_permitido' => $rascunho['bloco_atual'],
+                'bloco_atual' => $rascunho['bloco_atual'],
+                'maximo_permitido' => $blocoMaximoPermitido,
                 'rascunho_id' => $rascunhoId
             ]);
             
-            // Redirecionar para o bloco máximo permitido
-            header('Location: ' . APP_URL . '/diagnostico/bloco/' . $blocoMaximoPermitido . '?rascunho_id=' . $rascunhoId);
+            // Redirecionar para o bloco atual
+            header('Location: ' . APP_URL . '/diagnostico/bloco/' . $rascunho['bloco_atual'] . '?rascunho_id=' . $rascunhoId);
             exit;
         }
         
@@ -359,30 +362,25 @@ class DiagnosticoController
             $proximoBloco = $bloco < 5 ? $bloco + 1 : 5;
             $novoBlocoAtual = max($rascunho['bloco_atual'], $proximoBloco);
             
-            // Debug da lógica de atualização do bloco_atual
-            error_log("DEBUG BLOCO_ATUAL: bloco_atual_antes=" . $rascunho['bloco_atual'] . ", bloco_salvo=" . $bloco . ", proximo_bloco=" . $proximoBloco . ", novo_bloco_atual=" . $novoBlocoAtual);
+            // Atualizar bloco_atual para o próximo bloco apenas se necessário
+            $proximoBloco = $bloco + 1;
+            $novoBlocoAtual = max($rascunho['bloco_atual'], $proximoBloco);
             
-            if ($novoBlocoAtual != $rascunho['bloco_atual']) {
-                error_log("DEBUG BLOCO_ATUAL: Atualizando de " . $rascunho['bloco_atual'] . " para " . $novoBlocoAtual);
-                
-                $sucessoUpdate = Database::execute(
+            // Só atualizar se realmente avançou
+            if ($novoBlocoAtual > $rascunho['bloco_atual'] && $novoBlocoAtual <= 5) {
+                Database::execute(
                     "UPDATE diagnosticos_rascunho SET bloco_atual = :bloco_atual WHERE id = :id",
                     ['bloco_atual' => $novoBlocoAtual, 'id' => $rascunhoId]
                 );
                 
-                error_log("DEBUG BLOCO_ATUAL: Resultado do update = " . ($sucessoUpdate ? 'SUCESSO' : 'FALHOU'));
-                
                 Logger::acao('Bloco atual atualizado', [
                     'rascunho_id' => $rascunhoId,
                     'bloco_anterior' => $rascunho['bloco_atual'],
-                    'novo_bloco_atual' => $novoBlocoAtual,
-                    'resultado_update' => $sucessoUpdate
+                    'novo_bloco_atual' => $novoBlocoAtual
                 ]);
-            } else {
-                error_log("DEBUG BLOCO_ATUAL: Não precisa atualizar. bloco_atual já é " . $rascunho['bloco_atual']);
             }
             
-            // Determinar próximo bloco
+            // Determinar próximo bloco para redirecionamento
             $proximoBlocoRedirect = $bloco < 5 ? $bloco + 1 : 5;
             
             header('Content-Type: application/json');
@@ -392,16 +390,8 @@ class DiagnosticoController
                 'proximo_bloco' => $proximoBlocoRedirect,
                 'redirect' => $bloco < 5 ? 
                     APP_URL . '/diagnostico/bloco/' . $proximoBlocoRedirect . '?rascunho_id=' . $rascunhoId :
-                    null,
-                'dados_processados' => count($dadosBloco),
-                'debug_info' => [
-                    'rascunho_id' => $rascunhoId,
-                    'bloco_salvo' => $bloco,
-                    'proximo_bloco_redirect' => $proximoBlocoRedirect,
-                    'bloco_atual_atualizado' => $novoBlocoAtual,
-                    'campos_enviados' => array_keys($dadosBloco),
-                    'valores_recebidos' => $dadosBloco
-                ]
+                    APP_URL . '/diagnostico/bloco/' . $bloco . '?rascunho_id=' . $rascunhoId, // Manter no mesmo bloco se for o último
+                'bloco_atual' => $novoBlocoAtual
             ]);
             
         } catch (Exception $e) {

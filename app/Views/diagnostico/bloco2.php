@@ -14,22 +14,10 @@
 <body class="bg-gray-50 min-h-screen" x-data="diagnosticoBloco2()">
 
 <div class="max-w-4xl mx-auto p-6">
-    <!-- Header com Progresso -->
-    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-        <div class="flex items-center justify-between mb-4">
-            <div>
-                <h1 class="text-2xl font-bold text-gray-800">Diagnóstico Empresarial</h1>
-                <p class="text-gray-500">Bloco 2 de 5 — Estrutura Operacional</p>
-            </div>
-            <div class="text-right">
-                <div class="text-sm text-gray-500 mb-1">Progresso</div>
-                <div class="w-32 bg-gray-200 rounded-full h-2">
-                    <div class="bg-primary h-2 rounded-full" style="width: 40%"></div>
-                </div>
-                <div class="text-xs text-gray-400 mt-1">40% concluído</div>
-            </div>
-        </div>
-    </div>
+    <?php 
+    $blocoAtual = 2;
+    include VIEW_PATH . '/diagnostico/components/navegacao-blocos.php'; 
+    ?>
 
     <!-- Formulário Bloco 2 -->
     <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
@@ -129,29 +117,22 @@
                 </div>
             </div>
 
-            <!-- Botões de Navegação -->
-            <div class="flex justify-between pt-6 border-t border-gray-100">
-                <a href="<?= APP_URL ?>/diagnostico/bloco/1?rascunho_id=<?= $dados['rascunho']['id'] ?>" 
-                   class="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
-                    ← Bloco Anterior
-                </a>
-                
-                <button type="submit" :disabled="loading"
-                        class="px-8 py-3 bg-primary text-white rounded-lg hover:bg-primary-700 transition font-semibold flex items-center gap-2"
-                        :class="{ 'opacity-50 cursor-not-allowed': loading }">
-                    <span x-show="!loading">Próximo Bloco →</span>
-                    <span x-show="loading" class="flex items-center gap-2">
-                        <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                        Salvando...
-                    </span>
-                </button>
-            </div>
+            <?php 
+            $blocoAtual = 2;
+            $rascunho = $dados['rascunho'];
+            $loading = 'loading';
+            include VIEW_PATH . '/diagnostico/components/botoes-navegacao.php'; 
+            ?>
         </form>
     </div>
 </div>
 
 <script src="<?= APP_URL ?>/public/assets/js/microfone-transcricao.js"></script>
+<script src="<?= APP_URL ?>/public/assets/js/diagnostico-comum.js"></script>
 <script>
+// Definir APP_URL para o JavaScript comum
+const APP_URL = '<?= APP_URL ?>';
+
 function diagnosticoBloco2() {
     return {
         loading: false,
@@ -169,54 +150,32 @@ function diagnosticoBloco2() {
             this.loading = true;
 
             try {
-                const formData = new FormData();
-                formData.append('csrf_token', '<?= Csrf::token() ?>');
-                formData.append('bloco', '2');
-                formData.append('rascunho_id', '<?= $dados['rascunho']['id'] ?>');
-                
-                Object.keys(this.form).forEach(key => {
-                    formData.append(key, this.form[key]);
-                });
-
-                // Adicionar departamentos selecionados
+                // Coletar dados dos checkboxes
+                const departamentos = [];
                 document.querySelectorAll('input[name="departamentos[]"]:checked').forEach(checkbox => {
-                    formData.append('departamentos[]', checkbox.value);
+                    departamentos.push(checkbox.value);
                 });
 
-                console.log('Enviando dados do bloco 2:', Object.fromEntries(formData.entries()));
+                // Preparar dados para envio
+                const dados = { ...this.form };
+                dados.departamentos = departamentos;
 
-                const response = await fetch('<?= APP_URL ?>/diagnostico/salvar-bloco', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                console.log('Status da resposta:', response.status);
-                console.log('Headers da resposta:', response.headers);
-                
-                const result = await response.json();
-                console.log('Resultado recebido:', result);
+                const result = await salvarBlocoComum(2, '<?= $dados['rascunho']['id'] ?>', dados);
 
                 if (result.sucesso) {
-                    if (result.redirect) {
-                        console.log('Redirecionando para:', result.redirect);
-                        window.location.href = result.redirect;
-                    } else {
-                        // Ir para o próximo bloco baseado na resposta do servidor
-                        const proximoBloco = result.proximo_bloco || 3;
-                        const url = '<?= APP_URL ?>/diagnostico/bloco/' + proximoBloco + '?rascunho_id=<?= $dados['rascunho']['id'] ?>';
-                        console.log('Redirecionando para próximo bloco:', url);
-                        window.location.href = url;
-                    }
-                } else {
-                    console.error('Erro ao salvar:', result.mensagem);
-                    alert(result.mensagem || 'Erro ao salvar bloco');
+                    // Redirecionar para próximo bloco
+                    window.location.href = '<?= APP_URL ?>/diagnostico/bloco/3?rascunho_id=<?= $dados['rascunho']['id'] ?>';
                 }
             } catch (error) {
-                console.error('Erro na requisição:', error);
-                alert('Erro na conexão. Tente novamente.');
+                // Erro já tratado na função comum
             } finally {
                 this.loading = false;
             }
+        },
+
+        // Função para limpar rascunho (referenciada nos botões)
+        limparRascunho() {
+            return limparRascunho();
         }
     };
 }

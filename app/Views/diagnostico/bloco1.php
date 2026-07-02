@@ -14,22 +14,10 @@
 <body class="bg-gray-50 min-h-screen" x-data="diagnosticoBloco1()">
 
 <div class="max-w-4xl mx-auto p-6">
-    <!-- Header com Progresso -->
-    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-        <div class="flex items-center justify-between mb-4">
-            <div>
-                <h1 class="text-2xl font-bold text-gray-800">Diagnóstico Empresarial</h1>
-                <p class="text-gray-500">Bloco 1 de 5 — Identificação da Empresa</p>
-            </div>
-            <div class="text-right">
-                <div class="text-sm text-gray-500 mb-1">Progresso</div>
-                <div class="w-32 bg-gray-200 rounded-full h-2">
-                    <div class="bg-primary h-2 rounded-full" style="width: 20%"></div>
-                </div>
-                <div class="text-xs text-gray-400 mt-1">20% concluído</div>
-            </div>
-        </div>
-    </div>
+    <?php 
+    $blocoAtual = 1;
+    include VIEW_PATH . '/diagnostico/components/navegacao-blocos.php'; 
+    ?>
 
     <!-- Formulário Bloco 1 -->
     <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
@@ -263,42 +251,22 @@
                 </div>
             </div>
 
-            <!-- Botões de Navegação -->
-            <div class="flex justify-between pt-6 border-t border-gray-100">
-                <div class="flex gap-3">
-                    <a href="<?= APP_URL ?>/diagnostico" 
-                       class="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
-                        ← Cancelar
-                    </a>
-                    
-                    <button type="button" @click="limparRascunho()"
-                            class="px-6 py-3 border border-red-300 rounded-lg text-red-700 hover:bg-red-50 transition">
-                        🗑️ Limpar Draft
-                    </button>
-                    
-                    <!-- Botão temporário para debug -->
-                    <a href="<?= APP_URL ?>/diagnostico/debug" target="_blank"
-                       class="px-4 py-3 text-xs border border-blue-300 rounded-lg text-blue-700 hover:bg-blue-50 transition">
-                        🔍 Debug
-                    </a>
-                </div>
-                
-                <button type="submit" :disabled="loading"
-                        class="px-8 py-3 bg-primary text-white rounded-lg hover:bg-primary-700 transition font-semibold flex items-center gap-2"
-                        :class="{ 'opacity-50 cursor-not-allowed': loading }">
-                    <span x-show="!loading">Próximo Bloco →</span>
-                    <span x-show="loading" class="flex items-center gap-2">
-                        <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                        Salvando...
-                    </span>
-                </button>
-            </div>
+            <?php 
+            $blocoAtual = 1;
+            $rascunho = $dados['rascunho'];
+            $loading = 'loading';
+            include VIEW_PATH . '/diagnostico/components/botoes-navegacao.php'; 
+            ?>
         </form>
     </div>
 </div>
 
 <script src="<?= APP_URL ?>/public/assets/js/microfone-transcricao.js"></script>
+<script src="<?= APP_URL ?>/public/assets/js/diagnostico-comum.js"></script>
 <script>
+// Definir APP_URL para o JavaScript comum
+const APP_URL = '<?= APP_URL ?>';
+
 function diagnosticoBloco1() {
     return {
         loading: false,
@@ -314,10 +282,7 @@ function diagnosticoBloco1() {
         },
 
         async selecionarEmpresa(empresaId) {
-            console.log('selecionarEmpresa chamado com ID:', empresaId);
-            
             if (!empresaId || empresaId === 'novo') {
-                console.log('Limpando dados para nova empresa');
                 this.empresaSelecionada = false;
                 this.form.empresa_nome = '';
                 this.form.setor = '';
@@ -336,13 +301,12 @@ function diagnosticoBloco1() {
                 });
 
                 const result = await response.json();
-                console.log('Resultado selecionar empresa:', result);
 
                 if (result.sucesso) {
                     this.empresaSelecionada = true;
                     this.form.empresa_nome = result.dados.empresa_nome;
                     this.form.setor = result.dados.setor;
-                    console.log('Empresa selecionada com sucesso:', result.dados);
+                    showToast('Empresa selecionada com sucesso', 'success');
                 } else {
                     alert(result.mensagem || 'Erro ao selecionar empresa');
                 }
@@ -353,8 +317,6 @@ function diagnosticoBloco1() {
         },
 
         async salvarBloco() {
-            console.log('salvarBloco iniciado');
-            
             if (!this.form.empresa_nome.trim()) {
                 alert('Nome da empresa é obrigatório');
                 return;
@@ -365,87 +327,24 @@ function diagnosticoBloco1() {
                 return;
             }
 
-            console.log('Validação passou, dados do form:', this.form);
             this.loading = true;
 
             try {
-                const formData = new FormData();
-                formData.append('csrf_token', '<?= Csrf::token() ?>');
-                formData.append('bloco', '1');
-                formData.append('rascunho_id', '<?= $dados['rascunho']['id'] ?>');
-                
-                Object.keys(this.form).forEach(key => {
-                    formData.append(key, this.form[key]);
-                });
-
-                console.log('FormData preparado:', Object.fromEntries(formData));
-
-                const response = await fetch('<?= APP_URL ?>/diagnostico/salvar-bloco', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                console.log('Response status:', response.status);
-                console.log('Response ok:', response.ok);
-
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-
-                const result = await response.json();
-                console.log('Resultado recebido:', result);
-
-                if (result.sucesso) {
-                    console.log('Bloco salvo com sucesso');
-                    console.log('Dados do resultado:', result);
-                    
+                const result = await salvarBlocoComum(1, <?= $dados['rascunho']['id'] ?>, this.form, (result) => {
+                    // Redirecionamento personalizado para o bloco 1
                     if (result.redirect) {
-                        console.log('Usando redirect fornecido pelo servidor:', result.redirect);
                         window.location.href = result.redirect;
-                    } else {
-                        const defaultRedirect = '<?= APP_URL ?>/diagnostico/bloco/2?rascunho_id=<?= $dados['rascunho']['id'] ?>';
-                        console.log('Usando redirecionamento padrão:', defaultRedirect);
-                        window.location.href = defaultRedirect;
                     }
-                } else {
-                    console.error('Erro do servidor:', result.mensagem);
-                    console.error('Debug info:', result.debug_info);
-                    alert(result.mensagem || 'Erro ao salvar bloco');
-                }
+                });
             } catch (error) {
-                console.error('Erro na requisição:', error);
-                alert('Erro na conexão: ' + error.message);
+                // Erro já tratado na função comum
             } finally {
                 this.loading = false;
             }
         },
 
-        async limparRascunho() {
-            if (!confirm('Tem certeza que deseja limpar todo o rascunho? Todos os dados preenchidos serão perdidos.')) {
-                return;
-            }
-
-            try {
-                const formData = new FormData();
-                formData.append('csrf_token', '<?= Csrf::token() ?>');
-
-                const response = await fetch('<?= APP_URL ?>/diagnostico/limpar-rascunho', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const result = await response.json();
-
-                if (result.sucesso) {
-                    alert(result.mensagem);
-                    window.location.href = '<?= APP_URL ?>/diagnostico/novo';
-                } else {
-                    alert(result.mensagem || 'Erro ao limpar rascunho');
-                }
-            } catch (error) {
-                alert('Erro na conexão. Tente novamente.');
-            }
-        }
+        // Usar função comum
+        limparRascunho: limparRascunho
     };
 }
 

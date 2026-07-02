@@ -14,22 +14,10 @@
 <body class="bg-gray-50 min-h-screen" x-data="diagnosticoBloco5()">
 
 <div class="max-w-4xl mx-auto p-6">
-    <!-- Header com Progresso -->
-    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-        <div class="flex items-center justify-between mb-4">
-            <div>
-                <h1 class="text-2xl font-bold text-gray-800">Diagnóstico Empresarial</h1>
-                <p class="text-gray-500">Bloco 5 de 5 — Contexto Estratégico</p>
-            </div>
-            <div class="text-right">
-                <div class="text-sm text-gray-500 mb-1">Progresso</div>
-                <div class="w-32 bg-gray-200 rounded-full h-2">
-                    <div class="bg-green-500 h-2 rounded-full" style="width: 100%"></div>
-                </div>
-                <div class="text-xs text-gray-400 mt-1">100% concluído</div>
-            </div>
-        </div>
-    </div>
+    <?php 
+    $blocoAtual = 5;
+    include VIEW_PATH . '/diagnostico/components/navegacao-blocos.php'; 
+    ?>
 
     <!-- Formulário Bloco 5 -->
     <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
@@ -123,13 +111,26 @@
 
             <!-- Botões de Navegação -->
             <div class="flex justify-between pt-6 border-t border-gray-100">
-                <a href="<?= APP_URL ?>/diagnostico/bloco/2?rascunho_id=<?= $dados['rascunho']['id'] ?>" 
-                   class="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
-                    ← Bloco Anterior
-                </a>
-                
                 <div class="flex gap-3">
-                    <!-- Salvar Bloco -->
+                    <a href="<?= APP_URL ?>/diagnostico" 
+                       class="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+                        ← Voltar ao Início
+                    </a>
+                    
+                    <button type="button" @click="limparRascunho()"
+                            class="px-6 py-3 border border-red-300 rounded-lg text-red-700 hover:bg-red-50 transition">
+                        🗑️ Limpar Rascunho
+                    </button>
+                </div>
+                
+                <div class="flex gap-3 items-center">
+                    <!-- Botão Anterior -->
+                    <a href="<?= APP_URL ?>/diagnostico/bloco/4?rascunho_id=<?= $dados['rascunho']['id'] ?>"
+                       class="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+                        ← Bloco 4
+                    </a>
+                    
+                    <!-- Botão Salvar -->
                     <button type="submit" :disabled="loading"
                             class="px-6 py-3 border border-primary text-primary rounded-lg hover:bg-primary/5 transition font-medium"
                             :class="{ 'opacity-50 cursor-not-allowed': loading }">
@@ -154,7 +155,11 @@
 </div>
 
 <script src="<?= APP_URL ?>/public/assets/js/microfone-transcricao.js"></script>
+<script src="<?= APP_URL ?>/public/assets/js/diagnostico-comum.js"></script>
 <script>
+// Definir APP_URL para o JavaScript comum
+const APP_URL = '<?= APP_URL ?>';
+
 function diagnosticoBloco5() {
     return {
         loading: false,
@@ -173,36 +178,20 @@ function diagnosticoBloco5() {
             this.loading = true;
 
             try {
-                const formData = new FormData();
-                formData.append('csrf_token', '<?= Csrf::token() ?>');
-                formData.append('bloco', '5');
-                formData.append('rascunho_id', '<?= $dados['rascunho']['id'] ?>');
+                const result = await salvarBlocoComum(5, '<?= $dados['rascunho']['id'] ?>', this.form);
                 
-                Object.keys(this.form).forEach(key => {
-                    formData.append(key, this.form[key]);
-                });
-
-                const response = await fetch('<?= APP_URL ?>/diagnostico/salvar-bloco', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const result = await response.json();
-
                 if (result.sucesso) {
-                    alert('Bloco 5 salvo com sucesso! Agora clique em "Gerar Diagnóstico" para finalizar.');
-                } else {
-                    alert(result.mensagem || 'Erro ao salvar bloco');
+                    showToast('Bloco 5 salvo com sucesso! Agora clique em "Gerar Diagnóstico" para finalizar.', 'success');
                 }
             } catch (error) {
-                alert('Erro na conexão. Tente novamente.');
+                // Erro já tratado na função comum
             } finally {
                 this.loading = false;
             }
         },
 
         async gerarDiagnostico() {
-            // Primeiro salvar o bloco atual
+            // Primeiro salvar o bloco atual silenciosamente
             if (!this.loading) {
                 await this.salvarBlocoSilencioso();
             }
@@ -224,33 +213,26 @@ function diagnosticoBloco5() {
                 if (result.sucesso) {
                     window.location.href = result.redirect || '<?= APP_URL ?>/diagnostico/resultado';
                 } else {
-                    alert(result.mensagem || 'Erro ao gerar diagnóstico');
+                    showToast(result.mensagem || 'Erro ao gerar diagnóstico', 'error');
                 }
             } catch (error) {
-                alert('Erro na conexão. Tente novamente.');
+                showToast('Erro na conexão. Tente novamente.', 'error');
             } finally {
                 this.generating = false;
             }
         },
 
         async salvarBlocoSilencioso() {
-            const formData = new FormData();
-            formData.append('csrf_token', '<?= Csrf::token() ?>');
-            formData.append('bloco', '5');
-            formData.append('rascunho_id', '<?= $dados['rascunho']['id'] ?>');
-            
-            Object.keys(this.form).forEach(key => {
-                formData.append(key, this.form[key]);
-            });
-
             try {
-                await fetch('<?= APP_URL ?>/diagnostico/salvar-bloco', {
-                    method: 'POST',
-                    body: formData
-                });
+                await salvarBlocoComum(5, '<?= $dados['rascunho']['id'] ?>', this.form);
             } catch (error) {
                 // Silencioso - não precisa avisar se deu erro
             }
+        },
+
+        // Função para limpar rascunho (referenciada nos botões)
+        limparRascunho() {
+            return limparRascunho();
         }
     };
 }
