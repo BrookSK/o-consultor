@@ -8422,17 +8422,17 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         // Chamar IA para detalhamento
         $respostaIA = ApiHelper::chamarAnalise($prompt);
         
-        if (!$respostaIA) {
-            return ['sucesso' => false, 'erro' => 'Erro na IA: não foi possível detalhar o serviço'];
+        if (!$respostaIA['sucesso'] || !$respostaIA['conteudo']) {
+            return ['sucesso' => false, 'erro' => 'Erro na IA: ' . ($respostaIA['erro'] ?? 'não foi possível detalhar o serviço')];
         }
         
         // Processar resposta da IA e extrair detalhamento estruturado
-        $detalhamento = $this->processarRespostaDetalhamentoIA($respostaIA, $servico);
+        $detalhamento = $this->processarRespostaDetalhamentoIA($respostaIA['conteudo'], $servico);
         
         return [
             'sucesso' => true,
             'detalhamento' => $detalhamento,
-            'resposta_ia' => $respostaIA
+            'resposta_ia' => $respostaIA['conteudo']
         ];
     }
     
@@ -8446,12 +8446,12 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         // Chamar IA para gerar SOP
         $respostaIA = ApiHelper::chamarAnalise($prompt);
         
-        if (!$respostaIA) {
-            return ['sucesso' => false, 'erro' => 'Erro na IA: não foi possível gerar o SOP'];
+        if (!$respostaIA['sucesso'] || !$respostaIA['conteudo']) {
+            return ['sucesso' => false, 'erro' => 'Erro na IA: ' . ($respostaIA['erro'] ?? 'não foi possível gerar o SOP')];
         }
         
         // Salvar SOP na nova arquitetura
-        $sopId = $this->salvarSopNaNovaArquitetura($servico, $detalhamento, $respostaIA, $diagnostico);
+        $sopId = $this->salvarSopNaNovaArquitetura($servico, $detalhamento, $respostaIA['conteudo'], $diagnostico);
         
         if (!$sopId) {
             return ['sucesso' => false, 'erro' => 'Erro ao salvar SOP no banco de dados'];
