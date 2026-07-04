@@ -4071,21 +4071,24 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             default:
                 return []; // Sem setores específicos para nichos não mapeados
         }
-    }$sop['sop_codigo']} - {$sop['titulo']}
-            </h1>
-            
-            <p><strong>Empresa:</strong> {$sop['empresa']}</p>
-            <p><strong>Setor:</strong> {$sop['setor']}</p>
-            <p><strong>Versão:</strong> {$sop['versao']}</p>
-            <p><strong>Norma:</strong> {$sop['norma']}</p>
-            
-            <h2>Objetivo</h2>
-            <p>{$sop['objetivo']}</p>
-            
-            <h2>Escopo</h2>
-            <p><strong>Aplica-se a:</strong> {$sop['escopo_aplica']}</p>
-            <p><strong>Não se aplica a:</strong> {$sop['escopo_nao_aplica']}</p>
-        ";
+    }
+
+    /**
+     * Gerar HTML completo de um SOP
+     */
+    private function gerarHtmlSOP(array $sop): string
+    {
+        $html = "<html><head><title>SOP - {$sop['sop_codigo']}</title></head><body>";
+        $html .= "<h1>{$sop['sop_codigo']} - {$sop['titulo']}</h1>";
+        $html .= "<p><strong>Empresa:</strong> {$sop['empresa']}</p>";
+        $html .= "<p><strong>Setor:</strong> {$sop['setor']}</p>";
+        $html .= "<p><strong>Versão:</strong> {$sop['versao']}</p>";
+        $html .= "<p><strong>Norma:</strong> {$sop['norma']}</p>";
+        $html .= "<h2>Objetivo</h2>";
+        $html .= "<p>{$sop['objetivo']}</p>";
+        $html .= "<h2>Escopo</h2>";
+        $html .= "<p><strong>Aplica-se a:</strong> {$sop['escopo_aplica']}</p>";
+        $html .= "<p><strong>Não se aplica a:</strong> {$sop['escopo_nao_aplica']}</p>";
 
         // Subtópicos
         foreach ($sop['subtopicos_completos'] as $subtopico) {
