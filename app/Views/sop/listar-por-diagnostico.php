@@ -301,6 +301,9 @@
                                 <?php endif; ?>">
                                 <?= $sop['status_formatado'] ?>
                             </span>
+                                <?php endif; ?>">
+                                <?= $sop['status_formatado'] ?>
+                            </span>
                         </div>
                         <div class="text-sm text-gray-500">
                             <strong>Código:</strong> <?= htmlspecialchars($sop['sop_codigo'] ?? 'N/A') ?> • 
@@ -398,6 +401,85 @@ async function verDetalhamentoCompleto(servicoId, servicoNome) {
                             <div class="text-sm text-gray-700">
                                 <strong>Serviço ID:</strong> ${servicoId}<br>
                                 <strong>Status:</strong> Detalhamento completo disponível<br>
+                                <strong>Sistema:</strong> ${<?= json_encode($dados['sistema'] ?? 'indefinido') ?>}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+                        <h4 class="font-semibold text-yellow-800 mb-3">⚠️ Problemas N2 (Supervisão)</h4>
+                        <p class="text-sm text-yellow-700">Situações que requerem intervenção de supervisão/coordenação</p>
+                    </div>
+                    
+                    <div class="bg-red-50 border border-red-200 rounded-lg p-6">
+                        <h4 class="font-semibold text-red-800 mb-3">🚨 Problemas N3 (Direção)</h4>
+                        <p class="text-sm text-red-700">Escalações para direção ou gerência estratégica</p>
+                    </div>
+                    
+                    <div class="text-center">
+                        <p class="text-gray-500 text-sm">
+                            💡 <strong>Implementação em Desenvolvimento:</strong><br>
+                            O detalhamento completo N1-N2-N3 será integrado em breve com dados reais do banco.
+                        </p>
+                    </div>
+                </div>
+            `;
+        }, 1000);
+    } catch (error) {
+        console.error('Erro ao carregar detalhamento:', error);
+        conteudo.innerHTML = `
+            <div class="text-center py-8">
+                <div class="text-red-500 mb-4">❌</div>
+                <div class="text-gray-700">Erro ao carregar detalhamento</div>
+                <button onclick="fecharModalDetalhamento()" class="mt-4 px-4 py-2 bg-gray-600 text-white rounded-lg">
+                    Fechar
+                </button>
+            </div>
+        `;
+    }
+}
+
+// Fechar modal de detalhamento
+function fecharModalDetalhamento() {
+    document.getElementById('modal-detalhamento').classList.add('hidden');
+}
+
+// Exportar todos os SOPs
+function exportarTodosSops() {
+    const diagnosticoId = <?= $dados['diagnostico']['id'] ?>;
+    const url = `<?= APP_URL ?>/sop/exportar-todos-zip?diagnostico_id=${diagnosticoId}`;
+    window.location.href = url;
+}
+
+// Redirecionar para gestão hierárquica se disponível
+<?php if ($dados['usar_nova_arquitetura'] && ($dados['sistema'] ?? '') === 'hierarquico'): ?>
+function gerenciarHierarquicamente() {
+    window.location.href = `<?= APP_URL ?>/sop/gerenciar-hierarquia?diagnostico_id=<?= $dados['diagnostico']['id'] ?>`;
+}
+
+// Adicionar botão se for sistema hierárquico
+document.addEventListener('DOMContentLoaded', function() {
+    const botoesAcao = document.querySelector('.flex.gap-3');
+    if (botoesAcao) {
+        const botaoHierarquico = document.createElement('button');
+        botaoHierarquico.onclick = gerenciarHierarquicamente;
+        botaoHierarquico.className = 'px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition flex items-center gap-2';
+        botaoHierarquico.innerHTML = '🏢 Gestão Hierárquica';
+        botoesAcao.appendChild(botaoHierarquico);
+    }
+});
+<?php endif; ?>
+
+// Fechar modal com ESC
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        fecharModalDetalhamento();
+    }
+});
+</script>
+
+<?php $conteudo = ob_get_clean(); ?>
+<?php require VIEW_PATH . '/layouts/layout.php'; ?>
                                 <strong>Última atualização:</strong> ${new Date().toLocaleString()}
                             </div>
                         </div>

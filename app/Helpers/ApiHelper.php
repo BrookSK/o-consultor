@@ -2190,3 +2190,83 @@ Transformar a descrição falada em um SOP completo, estruturado e profissional,
 Retorne APENAS o JSON válido, sem explicações adicionais.";
     }
 }
+    /**
+     * Transcrever áudio usando OpenAI Whisper
+     */
+    public static function transcreverAudioWhisper(string $audioPath, string $fileName): ?string
+    {
+        $configuracao = Configuracao::buscarPorChave('openai_api_key');
+        
+        if (!$configuracao || !$configuracao['valor']) {
+            Logger::error('Chave da API OpenAI não configurada para Whisper');
+            return null;
+        }
+        
+        $apiKey = $configuracao['valor'];
+        
+        try {
+            // Preparar arquivo para upload
+            $curl = curl_init();
+            
+            curl_setopt_array($curl, [
+                CURLOPT_URL => 'https://api.openai.com/v1/audio/transcriptions',
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_ENCODING => '',
+                CURLOPT_MAXREDIRS => 10,
+                CURLOPT_TIMEOUT => 120, // 2 minutos para arquivos grandes
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+                CURLOPT_CUSTOMREQUEST => 'POST',
+                CURLOPT_POSTFIELDS => [
+                    'file' => new CURLFile($audioPath, mime_content_type($audioPath), $fileName),
+                    'model' => 'whisper-1',
+                    'language' => 'pt',
+                    'response_format' => 'text'
+                ],
+                CURLOPT_HTTPHEADER => [
+                    'Authorization: Bearer ' . $apiKey
+                ],
+            ]);
+            
+            $response = curl_exec($curl);
+            $httpCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+            $error = curl_error($curl);
+            
+            curl_close($curl);
+            
+            if ($error) {
+                Logger::error('Erro CURL na transcrição Whisper', ['erro' => $error]);
+                return null;
+            }
+            
+            if ($httpCode !== 200) {
+                Logger::error('Erro HTTP na transcrição Whisper', [
+                    'http_code' => $httpCode,
+                    'response' => $response
+                ]);
+                return null;
+            }
+            
+            // Whisper retorna texto direto quando response_format é 'text'
+            $transcricao = trim($response);
+            
+            if (empty($transcricao)) {
+                Logger::warning('Transcrição vazia retornada pelo Whisper');
+                return null;
+            }
+            
+            Logger::info('Transcrição Whisper concluída', [
+                'arquivo' => $fileName,
+                'tamanho_transcricao' => strlen($transcricao)
+            ]);
+            
+            return $transcricao;
+            
+        } catch (Exception $e) {
+            Logger::error('Erro na transcrição Whisper', [
+                'erro' => $e->getMessage(),
+                'arquivo' => $fileName
+            ]);
+            return null;
+        }
+    }

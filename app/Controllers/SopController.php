@@ -142,28 +142,38 @@ class SopController
             }
         }
         
-        // 2. BUSCAR SOPs EXISTENTES NO BANCO
-        $sopsExistentes = Sop::buscarPorEmpresa($empresaId);
+        // 2. BUSCAR SOPs EXISTENTES NO BANCO (AMBAS ARQUITETURAS)
+        $sopsExistentes = $this->buscarSopsCompletos($empresaId);
         $sopsMap = [];
+        
         foreach ($sopsExistentes as $sop) {
-            switch($sop['status']) {
-                case 'ativo':
-                    $status = 'aprovado';
-                    break;
-                case 'rascunho':
-                    $status = 'gerado';
-                    break;
-                default:
-                    $status = 'nao_gerado';
-                    break;
+            // Para SOPs da nova arquitetura, usar o nome do serviço como chave
+            if ($sop['origem'] === 'nova_arquitetura') {
+                $chave = $sop['nome']; // Nome do serviço
+                $sopsMap[$chave] = [
+                    'id' => $sop['id'],
+                    'nome' => $sop['nome'],
+                    'status' => 'aprovado', // SOPs novos são considerados aprovados
+                    'sop_codigo' => $sop['sop_codigo'],
+                    'origem' => 'nova_arquitetura'
+                ];
+            } else {
+                // Para SOPs da arquitetura antiga, usar sop_codigo
+                $chave = $sop['sop_codigo'];
+                $status = match($sop['status']) {
+                    'ativo' => 'aprovado',
+                    'rascunho' => 'gerado',
+                    default => 'nao_gerado'
+                };
+                
+                $sopsMap[$chave] = [
+                    'id' => $sop['id'],
+                    'nome' => $sop['nome'],
+                    'status' => $status,
+                    'sop_codigo' => $sop['sop_codigo'],
+                    'origem' => 'arquitetura_antiga'
+                ];
             }
-            
-            $sopsMap[$sop['sop_codigo']] = [
-                'id' => $sop['id'], // CORREÇÃO: usar ID numérico do banco
-                'nome' => $sop['titulo'],
-                'status' => $status,
-                'sop_codigo' => $sop['sop_codigo']  // Manter código também
-            ];
         }
         
         // 3. CRIAR SOPs ESPECÍFICOS PARA CADA DEPARTAMENTO REAL DA EMPRESA
@@ -173,16 +183,29 @@ class SopController
             $iconeDept = $this->getIconePorDepartamento($nomeDepartamento);
             $sopsEspecificos = $this->criarSOPsEspecificosPorDepartamento($nomeDepartamento, $detalhes, $empresa, $diagnostico);
             
-            // CORREÇÃO: Aplicar status dos SOPs existentes usando ID numérico
+            // CORREÇÃO: Aplicar status dos SOPs existentes - verificar por código e por nome
             foreach ($sopsEspecificos as &$sop) {
                 $codigoSOP = $sop['id']; // Este é o código SOP
+                $nomeSOP = $sop['nome']; // Nome do SOP
+                
+                // Primeiro tentar mapear por código (arquitetura antiga)
                 if (isset($sopsMap[$codigoSOP])) {
                     $sop['status'] = $sopsMap[$codigoSOP]['status'];
-                    $sop['id'] = $sopsMap[$codigoSOP]['id']; // USAR ID NUMÉRICO DO BANCO
-                    $sop['sop_codigo'] = $codigoSOP; // Manter código também
-                } else {
+                    $sop['id'] = $sopsMap[$codigoSOP]['id'];
+                    $sop['sop_codigo'] = $codigoSOP;
+                    $sop['origem'] = $sopsMap[$codigoSOP]['origem'];
+                }
+                // Depois tentar mapear por nome (nova arquitetura)
+                elseif (isset($sopsMap[$nomeSOP])) {
+                    $sop['status'] = $sopsMap[$nomeSOP]['status'];
+                    $sop['id'] = $sopsMap[$nomeSOP]['id'];
+                    $sop['sop_codigo'] = $sopsMap[$nomeSOP]['sop_codigo'];
+                    $sop['origem'] = $sopsMap[$nomeSOP]['origem'];
+                }
+                else {
                     $sop['status'] = 'nao_gerado';
                     $sop['sop_codigo'] = $codigoSOP;
+                    $sop['origem'] = 'arquitetura_antiga'; // Default
                 }
             }
             
@@ -198,6 +221,9 @@ class SopController
         Logger::info('Departamentos criados com base no diagnóstico', [
             'total_departamentos' => count($departamentosEstruturados),
             'departamentos' => array_column($departamentosEstruturados, 'nome'),
+            'total_sops_mapeados' => count($sopsMap),
+            'exemplo_mapeamento' => array_slice($sopsMap, 0, 3) // Alguns exemplos para debug
+        ]);
             'total_sops' => array_sum(array_column($departamentosEstruturados, 'total_sops'))
         ]);
         
@@ -1327,10 +1353,33 @@ class SopController
     /**
      * Salva estrutura temporariamente para processamento em etapas
      */
+    /**
+     * Atualizar timestamp da estrutura temporária para manter viva durante processo longo
+     */
+    private function manterEstruturaViva(int $estruturaId): void
+    {
+        try {
+            Database::execute(
+                "UPDATE estruturas_temporarias SET atualizado_em = NOW() WHERE id = ?",
+                [$estruturaId]
+            );
+            
+            Logger::info('Estrutura temporária mantida viva', [
+                'estrutura_id' => $estruturaId,
+                'timestamp_atualizado' => date('Y-m-d H:i:s')
+            ]);
+        } catch (Exception $e) {
+            Logger::error('Erro ao manter estrutura viva', [
+                'estrutura_id' => $estruturaId,
+                'erro' => $e->getMessage()
+            ]);
+        }
+    }
+
     private function salvarEstruturaTemporaria(int $diagnosticoId, array $estrutura): int
     {
         $sucesso = Database::execute(
-            "INSERT INTO estruturas_temporarias (diagnostico_id, estrutura_json, criado_em) VALUES (?, ?, NOW())",
+            "INSERT INTO estruturas_temporarias (diagnostico_id, estrutura_json, criado_em, atualizado_em) VALUES (?, ?, NOW(), NOW())",
             [$diagnosticoId, json_encode($estrutura, JSON_UNESCAPED_UNICODE)]
         );
         
@@ -1338,7 +1387,113 @@ class SopController
             throw new Exception('Erro ao salvar estrutura temporária');
         }
         
-        return (int) Database::lastInsertId();
+        $estruturaId = (int) Database::lastInsertId();
+        
+        Logger::info('Estrutura temporária salva', [
+            'estrutura_id' => $estruturaId,
+            'diagnostico_id' => $diagnosticoId,
+            'estrutura_size' => strlen(json_encode($estrutura, JSON_UNESCAPED_UNICODE))
+        ]);
+        
+        return $estruturaId;
+    }
+    
+    /**
+     * Função de recuperação: buscar dados mesmo se estrutura temporária expirou
+     */
+    private function recuperarEstruturaSeNecessario(int $estruturaId): ?array
+    {
+        // Primeiro tentar busca normal
+        $estrutura = $this->buscarEstruturaTemporaria($estruturaId);
+        
+        if ($estrutura) {
+            return $estrutura;
+        }
+        
+        // Se não encontrou, tentar recuperação por diagnóstico
+        Logger::warning('Tentando recuperação de estrutura perdida', ['estrutura_id' => $estruturaId]);
+        
+        // Buscar se existe algum serviço mapeado para esta estrutura
+        $servicoExistente = Database::queryOne(
+            "SELECT * FROM servicos_mapeados WHERE estrutura_id = ? LIMIT 1",
+            [$estruturaId]
+        );
+        
+        if ($servicoExistente) {
+            // Buscar a estrutura original mesmo que expirada
+            $estruturaOriginal = Database::queryOne(
+                "SELECT * FROM estruturas_temporarias WHERE id = ?",
+                [$estruturaId]
+            );
+            
+            if ($estruturaOriginal) {
+                Logger::info('Estrutura recuperada com sucesso', [
+                    'estrutura_id' => $estruturaId,
+                    'diagnostico_id' => $estruturaOriginal['diagnostico_id']
+                ]);
+                
+                return [
+                    'diagnostico_id' => $estruturaOriginal['diagnostico_id'],
+                    'estrutura' => json_decode($estruturaOriginal['estrutura_json'], true)
+                ];
+            }
+        }
+        
+        Logger::error('Não foi possível recuperar a estrutura perdida', ['estrutura_id' => $estruturaId]);
+        return null;
+    }
+    
+    /**
+     * Validar integridade dos dados antes do processamento
+     */
+    private function validarIntegridadeDados(int $estruturaId, array $dadosEmpresa, string $setorNome): void
+    {
+        $erros = [];
+        
+        // Validar dados essenciais
+        if (empty($dadosEmpresa['nome'])) {
+            $erros[] = 'Nome da empresa não encontrado';
+        }
+        
+        if (empty($dadosEmpresa['nicho'])) {
+            $erros[] = 'Nicho da empresa não definido';
+        }
+        
+        if (empty($setorNome)) {
+            $erros[] = 'Nome do setor não informado';
+        }
+        
+        // Validar se não há processamento duplicado
+        $jaProcessado = Database::queryOne(
+            "SELECT id FROM servicos_mapeados WHERE estrutura_id = ? AND setor_nome = ?",
+            [$estruturaId, $setorNome]
+        );
+        
+        if ($jaProcessado) {
+            Logger::info('Setor já foi processado anteriormente', [
+                'estrutura_id' => $estruturaId,
+                'setor_nome' => $setorNome,
+                'servico_mapeado_id' => $jaProcessado['id']
+            ]);
+        }
+        
+        // Se há erros críticos, interromper
+        if (!empty($erros)) {
+            Logger::error('Validação de integridade falhou', [
+                'estrutura_id' => $estruturaId,
+                'setor_nome' => $setorNome,
+                'erros' => $erros,
+                'dados_empresa' => $dadosEmpresa
+            ]);
+            
+            throw new Exception('Validação falhou: ' . implode(', ', $erros));
+        }
+        
+        Logger::info('Validação de integridade passou', [
+            'estrutura_id' => $estruturaId,
+            'setor_nome' => $setorNome,
+            'dados_validos' => true
+        ]);
     }
 
     /**
@@ -1346,17 +1501,47 @@ class SopController
      */
     private function buscarEstruturaTemporaria(int $estruturaId): ?array
     {
+        // CORREÇÃO: Remover limite de tempo de 2 horas para evitar perda de dados durante processo longo
         $resultado = Database::queryOne(
-            "SELECT * FROM estruturas_temporarias WHERE id = ? AND criado_em > DATE_SUB(NOW(), INTERVAL 2 HOUR)",
+            "SELECT * FROM estruturas_temporarias WHERE id = ?",
             [$estruturaId]
         );
         
-        if (!$resultado) return null;
+        if (!$resultado) {
+            Logger::warning('Estrutura temporária não encontrada', [
+                'estrutura_id' => $estruturaId,
+                'consulta_executada' => true
+            ]);
+            return null;
+        }
+        
+        Logger::info('Estrutura temporária encontrada', [
+            'estrutura_id' => $estruturaId,
+            'diagnostico_id' => $resultado['diagnostico_id'],
+            'criado_em' => $resultado['criado_em'],
+            'tempo_desde_criacao' => $this->calcularTempoDecorrido($resultado['criado_em'])
+        ]);
         
         return [
             'diagnostico_id' => $resultado['diagnostico_id'],
             'estrutura' => json_decode($resultado['estrutura_json'], true)
         ];
+    }
+    
+    /**
+     * Calcular tempo decorrido desde a criação (para debug)
+     */
+    private function calcularTempoDecorrido(string $criadoEm): string
+    {
+        $agora = new DateTime();
+        $criacao = new DateTime($criadoEm);
+        $intervalo = $agora->diff($criacao);
+        
+        return sprintf('%d dias, %d horas, %d minutos', 
+            $intervalo->days, 
+            $intervalo->h, 
+            $intervalo->i
+        );
     }
 
     /**
@@ -1800,6 +1985,107 @@ class SopController
         
         return array_unique($resultado);
     }
+    
+    /**
+     * Buscar SOPs de ambas as arquiteturas (antiga + nova)
+     */
+    private function buscarSopsCompletos(int $empresaId): array
+    {
+        // 1. Buscar SOPs da arquitetura antiga
+        $sopsAntigos = Sop::buscarPorEmpresa($empresaId);
+        
+        // 2. Buscar SOPs da nova arquitetura
+        $sopsNovos = Database::query(
+            "SELECT 
+                id,
+                estrutura_id,
+                setor_nome as departamento,
+                servico_nome as titulo,
+                sop_json as conteudo_completo,
+                tipo,
+                criado_em,
+                atualizado_em,
+                'nova_arquitetura' as origem,
+                'ativo' as status
+             FROM sops_gerados_nova_arquitetura 
+             WHERE empresa_id = :empresa_id 
+             ORDER BY criado_em DESC",
+            ['empresa_id' => $empresaId]
+        );
+        
+        // 3. Combinar e normalizar os dados
+        $sopsCompletos = [];
+        
+        // Adicionar SOPs antigos
+        foreach ($sopsAntigos as $sop) {
+            $sopsCompletos[] = [
+                'id' => $sop['id'],
+                'sop_codigo' => $sop['sop_codigo'] ?? 'SOP-' . $sop['id'],
+                'nome' => $sop['titulo'],
+                'departamento' => $sop['departamento'],
+                'status' => $sop['status'],
+                'origem' => 'arquitetura_antiga',
+                'criado_em' => $sop['criado_em'],
+                'customizado' => false
+            ];
+        }
+        
+        // Adicionar SOPs novos
+        foreach ($sopsNovos as $sop) {
+            $sopsCompletos[] = [
+                'id' => 'nova_' . $sop['id'], // Prefixo para distinguir
+                'sop_codigo' => 'SOP-NOVA-' . $sop['id'],
+                'nome' => $sop['titulo'],
+                'departamento' => $sop['departamento'],
+                'status' => 'aprovado', // SOPs da nova arquitetura são considerados aprovados
+                'origem' => 'nova_arquitetura',
+                'criado_em' => $sop['criado_em'],
+                'customizado' => false,
+                'estrutura_id' => $sop['estrutura_id'] ?? null
+            ];
+        }
+        
+        // Ordenar por data de criação (mais recentes primeiro)
+        usort($sopsCompletos, function($a, $b) {
+            return strtotime($b['criado_em']) - strtotime($a['criado_em']);
+        });
+        
+        Logger::info('SOPs completos carregados', [
+            'empresa_id' => $empresaId,
+            'sops_antigos' => count($sopsAntigos),
+            'sops_novos' => count($sopsNovos),
+            'total_combinado' => count($sopsCompletos),
+            'exemplo_sops' => array_slice($sopsCompletos, 0, 3) // Primeiros 3 para debug
+        ]);
+        
+        return $sopsCompletos;
+    }
+
+    /**
+     * Calcular estatísticas de SOPs de ambas as arquiteturas
+     */
+    private function calcularEstatisticasCompletas(int $empresaId): array
+    {
+        // 1. Estatísticas da arquitetura antiga
+        $statsAntiga = Sop::estatisticas($empresaId);
+        
+        // 2. Estatísticas da nova arquitetura
+        $statsNova = Database::queryOne(
+            "SELECT 
+                COUNT(*) as total,
+                COUNT(*) as aprovados
+             FROM sops_gerados_nova_arquitetura 
+             WHERE empresa_id = :empresa_id",
+            ['empresa_id' => $empresaId]
+        );
+        
+        return [
+            'total' => (int)($statsAntiga['total'] ?? 0) + (int)($statsNova['total'] ?? 0),
+            'aprovados' => (int)($statsAntiga['aprovados'] ?? 0) + (int)($statsNova['aprovados'] ?? 0),
+            'rascunhos' => (int)($statsAntiga['rascunhos'] ?? 0), // SOPs novos não têm rascunhos
+            'gerados_ia' => (int)($statsAntiga['gerados_ia'] ?? 0) + (int)($statsNova['total'] ?? 0), // Todos os novos são IA
+        ];
+    }
 
     private function carregarDadosEmpresa(int $empresaId, ?int $diagnosticoEspecifico = null): array
     {
@@ -1810,7 +2096,7 @@ class SopController
             exit;
         }
 
-        $stats = Sop::estatisticas($empresaId);
+        $stats = $this->calcularEstatisticasCompletas($empresaId);
         
         // Se foi passado um diagnóstico específico, usar ele; senão buscar o último
         if ($diagnosticoEspecifico) {
@@ -2075,46 +2361,58 @@ class SopController
             exit;
         }
 
-        // ETAPA 1: Extrair dados da empresa do diagnóstico
-        $respostas = json_decode($diagnostico['respostas'], true) ?? [];
-        $dadosEmpresa = $this->extrairDadosEmpresaCompletos($empresa, $diagnostico, $respostas);
-        
-        Logger::info('Iniciando geração de manual completo - NOVA ARQUITETURA', [
-            'empresa_id' => $empresa['id'],
-            'diagnostico_id' => $diagnosticoIdPost,
-            'empresa_nome' => $empresa['nome'],
-            'nicho_detectado' => $dadosEmpresa['nicho']
-        ]);
+        try {
+            // ETAPA 1: Extrair dados da empresa do diagnóstico
+            $respostas = json_decode($diagnostico['respostas'], true) ?? [];
+            $dadosEmpresa = $this->extrairDadosEmpresaCompletos($empresa, $diagnostico, $respostas);
+            
+            Logger::info('Iniciando geração de estrutura hierárquica - SISTEMA UNIFICADO', [
+                'empresa_id' => $empresa['id'],
+                'diagnostico_id' => $diagnosticoIdPost,
+                'empresa_nome' => $empresa['nome'],
+                'nicho_detectado' => $dadosEmpresa['nicho']
+            ]);
 
-        // CHAMADA 1: Diagnóstico e Estrutura Organizacional
-        $prompt1 = ApiHelper::buildPromptDiagnosticoEstrutura($dadosEmpresa);
-        $resultado1 = ApiHelper::chamarAnalise($prompt1, true);
-
-        if (!$resultado1['sucesso'] || !is_array($resultado1['conteudo'])) {
+            // CHAMADA 1: Diagnóstico e Estrutura Organizacional usando a nova estrutura profissional
+            $estruturaCompleta = $this->criarEstruturaCompletaPorNicho($dadosEmpresa['nicho'], $respostas);
+            
+            // SALVAR NA ESTRUTURA HIERÁRQUICA PERMANENTE
+            $estruturaId = $this->salvarEstruturaOrganizacional($diagnosticoIdPost, $empresa, $estruturaCompleta);
+            
+            if (!$estruturaId) {
+                throw new Exception('Erro ao salvar estrutura organizacional');
+            }
+            
+            Logger::info('Estrutura hierárquica criada com sucesso', [
+                'estrutura_id' => $estruturaId,
+                'total_setores' => count($estruturaCompleta['setores'] ?? []),
+                'sistema' => 'hierarquico_permanente'
+            ]);
+            
+            // RESPOSTA DE SUCESSO - Redirecionar para gerenciamento hierárquico
             header('Content-Type: application/json');
-            echo json_encode(['sucesso' => false, 'erro' => 'Erro na análise organizacional: ' . ($resultado1['erro'] ?? 'Resposta inválida')]);
-            exit;
+            echo json_encode([
+                'sucesso' => true,
+                'estrutura_id' => $estruturaId,
+                'total_setores' => count($estruturaCompleta['setores'] ?? []),
+                'total_sops' => $this->contarTotalSOPs($estruturaCompleta['setores'] ?? []),
+                'sistema' => 'hierarquico',
+                'redirect' => APP_URL . '/sop/gerenciar-hierarquia?estrutura_id=' . $estruturaId . '&diagnostico_id=' . $diagnosticoIdPost
+            ]);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro na geração da estrutura hierárquica', [
+                'diagnostico_id' => $diagnosticoIdPost,
+                'erro' => $e->getMessage()
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => false, 
+                'erro' => 'Erro interno: ' . $e->getMessage()
+            ]);
         }
-
-        $diagnosticoEstrutura = $resultado1['conteudo'];
         
-        Logger::info('Chamada 1 completa - Estrutura organizacional definida', [
-            'macro_categoria' => $diagnosticoEstrutura['macro_categoria'] ?? 'não definida',
-            'total_setores' => count($diagnosticoEstrutura['setores'] ?? []),
-            'total_sops' => $this->contarTotalSOPs($diagnosticoEstrutura['setores'] ?? [])
-        ]);
-
-        // Salvar estrutura temporariamente
-        $estruturaId = $this->salvarEstruturaTemporaria($diagnosticoIdPost, $diagnosticoEstrutura);
-        
-        header('Content-Type: application/json');
-        echo json_encode([
-            'sucesso' => true,
-            'etapa' => 1,
-            'estrutura_id' => $estruturaId,
-            'total_setores' => count($diagnosticoEstrutura['setores'] ?? []),
-            'redirect' => APP_URL . '/sop/mapear-servicos?estrutura_id=' . $estruturaId
-        ]);
         exit;
     }
 
@@ -2136,8 +2434,8 @@ class SopController
         }
 
         try {
-            // Buscar estrutura salva
-            $estruturaData = $this->buscarEstruturaTemporaria($estruturaId);
+            // Buscar estrutura salva com função de recuperação
+            $estruturaData = $this->recuperarEstruturaSeNecessario($estruturaId);
             if (!$estruturaData) {
                 Flash::set('erro', 'Dados da estrutura não encontrados.');
                 header('Location: ' . APP_URL . '/sop');
@@ -2274,9 +2572,9 @@ class SopController
             exit;
         }
 
-        // Buscar dados necessários
+        // Buscar dados necessários com função de recuperação
         Logger::info('Buscando estrutura temporária', ['estrutura_id' => $estruturaId]);
-        $estruturaData = $this->buscarEstruturaTemporaria($estruturaId);
+        $estruturaData = $this->recuperarEstruturaSeNecessario($estruturaId);
         if (!$estruturaData) {
             Logger::error('Estrutura temporária não encontrada', [
                 'estrutura_id' => $estruturaId,
@@ -2286,6 +2584,9 @@ class SopController
             echo json_encode(['sucesso' => false, 'erro' => 'Estrutura não encontrada.']);
             exit;
         }
+
+        // GARANTIR PERSISTÊNCIA: Manter estrutura viva durante processamento
+        $this->manterEstruturaViva($estruturaId);
 
         Logger::info('Estrutura temporária encontrada', [
             'estrutura_id' => $estruturaId,
@@ -2360,6 +2661,9 @@ class SopController
             'macro_categoria' => $dadosEmpresa['macro_categoria'] ?? 'não definido',
             'porte' => $dadosEmpresa['porte'] ?? 'não definido'
         ]);
+
+        // GARANTIR INTEGRIDADE: Validar dados completos antes de prosseguir
+        $this->validarIntegridadeDados($estruturaId, $dadosEmpresa, $setorNome);
 
         // Validar se todos os dados necessários estão presentes
         $camposObrigatorios = ['nome', 'nicho', 'macro_categoria', 'porte', 'modelo_negocio'];
@@ -2478,6 +2782,10 @@ class SopController
                 'estrutura_id' => $estruturaId,
                 'setor' => $setorNome
             ]);
+            
+            // GARANTIR PERSISTÊNCIA: Manter estrutura viva após salvamento
+            $this->manterEstruturaViva($estruturaId);
+            
         } catch (Exception $e) {
             Logger::error('Erro ao salvar serviços mapeados', [
                 'estrutura_id' => $estruturaId,
@@ -3374,10 +3682,36 @@ class SopController
     private function buscarEstruturaPorDiagnostico(int $diagnosticoId): ?array
     {
         try {
-            return Database::queryOne(
+            // Primeiro tentar a nova tabela hierárquica
+            $estrutura = Database::queryOne(
+                "SELECT * FROM estruturas_organizacionais WHERE diagnostico_id = ? ORDER BY criado_em DESC LIMIT 1",
+                [$diagnosticoId]
+            );
+            
+            if ($estrutura) {
+                Logger::info('Encontrada estrutura hierárquica', [
+                    'diagnostico_id' => $diagnosticoId,
+                    'estrutura_id' => $estrutura['id']
+                ]);
+                return $estrutura;
+            }
+            
+            // Fallback para estrutura temporária se existir
+            $estruturaTemporaria = Database::queryOne(
                 "SELECT * FROM estruturas_temporarias WHERE diagnostico_id = ? ORDER BY criado_em DESC LIMIT 1",
                 [$diagnosticoId]
             );
+            
+            if ($estruturaTemporaria) {
+                Logger::info('Encontrada estrutura temporária (fallback)', [
+                    'diagnostico_id' => $diagnosticoId,
+                    'estrutura_id' => $estruturaTemporaria['id']
+                ]);
+                return $estruturaTemporaria;
+            }
+            
+            return null;
+            
         } catch (Exception $e) {
             Logger::info('Tabelas da nova arquitetura não encontradas', ['erro' => $e->getMessage()]);
             return null;
@@ -3391,13 +3725,146 @@ class SopController
     {
         $estruturaId = $estrutura['id'];
         
-        // Buscar setores mapeados
+        try {
+            // Verificar se é estrutura hierárquica ou temporária
+            $isHierarquica = isset($estrutura['nicho']); // Estrutura hierárquica tem o campo nicho
+            
+            if ($isHierarquica) {
+                // NOVA ESTRUTURA HIERÁRQUICA
+                return $this->carregarDadosHierarquicos($diagnostico, $empresa, $estrutura);
+            } else {
+                // ESTRUTURA TEMPORÁRIA (fallback)
+                return $this->carregarDadosTemporarios($diagnostico, $empresa, $estrutura);
+            }
+        } catch (Exception $e) {
+            Logger::error('Erro ao carregar dados da nova arquitetura', [
+                'diagnostico_id' => $diagnostico['id'],
+                'estrutura_id' => $estruturaId,
+                'erro' => $e->getMessage()
+            ]);
+            
+            // Fallback para dados mínimos
+            return [
+                'diagnostico' => $diagnostico,
+                'empresa' => $empresa,
+                'usar_nova_arquitetura' => false,
+                'estrutura' => $estrutura,
+                'setores' => [],
+                'progresso' => null,
+                'total_setores_mapeados' => 0,
+                'total_servicos_detalhados' => 0,
+                'estatisticas' => ['servicos_criticos' => 0],
+                'erro_carregamento' => $e->getMessage()
+            ];
+        }
+    }
+    
+    /**
+     * Carregar dados do sistema hierárquico
+     */
+    private function carregarDadosHierarquicos(array $diagnostico, array $empresa, array $estrutura): array
+    {
+        $estruturaId = $estrutura['id'];
+        
+        // Buscar setores da estrutura hierárquica
+        $setores = Database::query(
+            "SELECT se.*, COUNT(ss.id) as total_servicos_reais
+             FROM setores_empresa se
+             LEFT JOIN servicos_setor ss ON se.id = ss.setor_id
+             WHERE se.estrutura_id = ?
+             GROUP BY se.id
+             ORDER BY se.nome_setor",
+            [$estruturaId]
+        );
+        
+        // Buscar progresso hierárquico
+        $progresso = Database::queryOne(
+            "SELECT * FROM progresso_hierarquico WHERE estrutura_id = ?",
+            [$estruturaId]
+        );
+        
+        // Organizar dados por setores
+        $setoresPorNome = [];
+        $totalServicosDetalhados = 0;
+        $totalServicosCriticos = 0;
+        
+        foreach ($setores as $setor) {
+            // Buscar serviços do setor
+            $servicos = Database::query(
+                "SELECT * FROM servicos_setor 
+                 WHERE setor_id = ? 
+                 ORDER BY nome_servico",
+                [$setor['id']]
+            );
+            
+            // Contar serviços detalhados e críticos
+            $servicosDetalhados = array_filter($servicos, fn($s) => $s['status'] !== 'mapeado');
+            $servicosCriticos = array_filter($servicos, fn($s) => $s['criticidade'] === 'alta');
+            
+            $totalServicosDetalhados += count($servicosDetalhados);
+            $totalServicosCriticos += count($servicosCriticos);
+            
+            $setoresPorNome[$setor['nome_setor']] = [
+                'info' => [
+                    'id' => $setor['id'],
+                    'setor_tipo' => $setor['tipo_setor'],
+                    'status' => $setor['status'],
+                    'total_servicos' => $setor['total_servicos_reais']
+                ],
+                'servicos_mapeados' => array_map(function($s) {
+                    return ['nome' => $s['nome_servico']];
+                }, $servicos),
+                'servicos_detalhados' => array_map(function($s) {
+                    return [
+                        'id' => $s['id'],
+                        'servico_nome' => $s['nome_servico'],
+                        'servico_codigo' => $s['codigo_servico'],
+                        'criticidade' => $s['criticidade'] === 'alta' ? 1 : ($s['criticidade'] === 'media' ? 2 : 3),
+                        'problemas_mapeados' => 0, // TODO: implementar contagem real
+                        'data_criacao_formatada' => date('d/m/Y às H:i', strtotime($s['criado_em'])),
+                        'status' => $s['status']
+                    ];
+                }, $servicosDetalhados)
+            ];
+        }
+        
+        Logger::info('Dados hierárquicos carregados com sucesso', [
+            'diagnostico_id' => $diagnostico['id'],
+            'estrutura_id' => $estruturaId,
+            'total_setores' => count($setores),
+            'total_servicos_detalhados' => $totalServicosDetalhados
+        ]);
+        
+        return [
+            'diagnostico' => $diagnostico,
+            'empresa' => $empresa,
+            'usar_nova_arquitetura' => true,
+            'estrutura' => $estrutura,
+            'setores' => $setoresPorNome,
+            'progresso' => $progresso ?: ['progresso_percentual' => 0],
+            'total_setores_mapeados' => count($setores),
+            'total_servicos_detalhados' => $totalServicosDetalhados,
+            'estatisticas' => [
+                'servicos_criticos' => $totalServicosCriticos
+            ],
+            'sistema' => 'hierarquico'
+        ];
+    }
+    
+    /**
+     * Carregar dados temporários (fallback)
+     */
+    private function carregarDadosTemporarios(array $diagnostico, array $empresa, array $estrutura): array
+    {
+        $estruturaId = $estrutura['id'];
+        
+        // Buscar setores mapeados da estrutura temporária
         $setoresMapeados = Database::query(
             "SELECT * FROM servicos_mapeados WHERE estrutura_id = ? ORDER BY setor_nome",
             [$estruturaId]
         );
 
-        // Buscar serviços detalhados
+        // Buscar serviços detalhados da estrutura temporária
         $servicosDetalhados = Database::query(
             "SELECT sd.*, sm.setor_nome, sm.setor_tipo,
                     DATE_FORMAT(sd.criado_em, '%d/%m/%Y às %H:%i') as data_criacao_formatada
@@ -3408,7 +3875,7 @@ class SopController
             [$estruturaId]
         );
 
-        // Buscar progresso
+        // Buscar progresso temporário
         $progresso = Database::queryOne(
             "SELECT * FROM progresso_manual WHERE estrutura_id = ?",
             [$estruturaId]
@@ -3431,7 +3898,7 @@ class SopController
             }
         }
 
-        Logger::info('Dados da nova arquitetura carregados', [
+        Logger::info('Dados temporários carregados (fallback)', [
             'diagnostico_id' => $diagnostico['id'],
             'total_setores' => count($setoresPorNome),
             'total_servicos_detalhados' => count($servicosDetalhados),
@@ -3447,7 +3914,8 @@ class SopController
             'progresso' => $progresso,
             'total_setores_mapeados' => count($setoresMapeados),
             'total_servicos_detalhados' => count($servicosDetalhados),
-            'estatisticas' => $this->calcularEstatisticasNovaArquitetura($setoresPorNome)
+            'estatisticas' => $this->calcularEstatisticasNovaArquitetura($setoresPorNome),
+            'sistema' => 'temporario'
         ];
     }
 
@@ -3490,6 +3958,17 @@ class SopController
             'total_sops' => count($sopsGerados),
             'departamentos' => array_keys($sopsPorDepartamento)
         ]);
+
+        return [
+            'diagnostico' => $diagnostico,
+            'empresa' => $empresa,
+            'usar_nova_arquitetura' => false,
+            'sops_por_departamento' => $sopsPorDepartamento,
+            'total_sops_tradicional' => count($sopsGerados),
+            'total_geral' => count($sopsGerados),
+            'sistema' => 'tradicional'
+        ];
+    }
 
         return [
             'diagnostico' => $diagnostico,
@@ -5503,8 +5982,8 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
     {
         Logger::info('Carregando departamentos por setor', ['setor' => $setor, 'empresa_id' => $empresaId]);
         
-        // Buscar SOPs existentes no banco (padrão do sistema)
-        $sopsExistentes = Sop::buscarPorEmpresa($empresaId);
+        // Buscar SOPs existentes no banco (ambas arquiteturas)
+        $sopsExistentes = $this->buscarSopsCompletos($empresaId);
         $sopsMap = [];
         foreach ($sopsExistentes as $sop) {
                 $status = 'nao_gerado';
@@ -6430,14 +6909,34 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
     private function verificarTabelasNovaArquitetura(): void
     {
         try {
-            // Tentar uma consulta simples em cada tabela para ver se existem
+            // Verificar se as tabelas existem
             Database::queryOne("SELECT 1 FROM servicos_mapeados LIMIT 1");
             Database::queryOne("SELECT 1 FROM servicos_detalhados LIMIT 1");
             Database::queryOne("SELECT 1 FROM progresso_manual LIMIT 1");
+            
+            // Verificar se estruturas_temporarias tem coluna atualizado_em
+            $this->garantirColunaAtualizadoEm();
+            
         } catch (Exception $e) {
             // Se as tabelas não existem, criá-las
             Logger::info('Criando tabelas da nova arquitetura automaticamente');
             $this->criarTabelasNovaArquitetura();
+        }
+    }
+    
+    /**
+     * Garantir que a tabela estruturas_temporarias tenha a coluna atualizado_em
+     */
+    private function garantirColunaAtualizadoEm(): void
+    {
+        try {
+            // Tentar buscar a coluna
+            Database::queryOne("SELECT atualizado_em FROM estruturas_temporarias LIMIT 1");
+        } catch (Exception $e) {
+            // Se a coluna não existe, adicionar
+            Logger::info('Adicionando coluna atualizado_em à tabela estruturas_temporarias');
+            Database::execute("ALTER TABLE estruturas_temporarias ADD COLUMN atualizado_em DATETIME DEFAULT NULL");
+            Database::execute("UPDATE estruturas_temporarias SET atualizado_em = criado_em WHERE atualizado_em IS NULL");
         }
     }
 
@@ -6683,15 +7182,20 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             $respostas = json_decode($diagnostico['respostas'], true) ?? [];
             $dadosEmpresa = $this->extrairDadosEmpresaCompletos($empresa, $diagnostico, $respostas);
             
-            // Gerar detalhamento usando IA
+            // Gerar detalhamento usando IA (com fallback automático GPT -> Claude)
             $prompt = ApiHelper::buildPromptDetalhamentoServicoIndividual($dadosEmpresa, $servicoNome);
-            $resultadoIA = ApiHelper::chamarClaude($prompt);
+            $resultadoIA = ApiHelper::chamarAnalise($prompt, true);
             
-            if (!$resultadoIA) {
-                throw new Exception('Erro na comunicação com a IA.');
+            if (!$resultadoIA || !$resultadoIA['sucesso']) {
+                $erro = $resultadoIA['erro'] ?? 'Erro na comunicação com a IA.';
+                throw new Exception($erro);
             }
             
-            $detalhamento = json_decode($resultadoIA, true);
+            $detalhamento = $resultadoIA['conteudo'];
+            if (is_string($detalhamento)) {
+                $detalhamento = json_decode($detalhamento, true);
+            }
+            
             if (!$detalhamento) {
                 throw new Exception('Resposta inválida da IA.');
             }
@@ -6790,15 +7294,20 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                 $detalhamentoData = json_decode($detalhamento['detalhamento_json'], true);
             }
             
-            // Gerar SOP usando IA
+            // Gerar SOP usando IA (com fallback automático GPT -> Claude)
             $prompt = ApiHelper::buildPromptSOPIndividual($dadosEmpresa, $servicoNome, $detalhamentoData);
-            $resultadoIA = ApiHelper::chamarClaude($prompt);
+            $resultadoIA = ApiHelper::chamarAnalise($prompt, true);
             
-            if (!$resultadoIA) {
-                throw new Exception('Erro na comunicação com a IA.');
+            if (!$resultadoIA || !$resultadoIA['sucesso']) {
+                $erro = $resultadoIA['erro'] ?? 'Erro na comunicação com a IA.';
+                throw new Exception($erro);
             }
             
-            $sop = json_decode($resultadoIA, true);
+            $sop = $resultadoIA['conteudo'];
+            if (is_string($sop)) {
+                $sop = json_decode($sop, true);
+            }
+            
             if (!$sop) {
                 throw new Exception('Resposta inválida da IA.');
             }
@@ -7250,15 +7759,20 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                 throw new Exception('SOP não encontrado.');
             }
             
-            // Gerar novo SOP baseado na transcrição
+            // Gerar novo SOP baseado na transcrição (com fallback automático GPT -> Claude)
             $prompt = ApiHelper::buildPromptSOPPorTranscricao($transcricao, $contextoAtual, $sopAtual);
-            $resultadoIA = ApiHelper::chamarClaude($prompt);
+            $resultadoIA = ApiHelper::chamarAnalise($prompt, true);
             
-            if (!$resultadoIA) {
-                throw new Exception('Erro na comunicação com a IA.');
+            if (!$resultadoIA || !$resultadoIA['sucesso']) {
+                $erro = $resultadoIA['erro'] ?? 'Erro na comunicação com a IA.';
+                throw new Exception($erro);
             }
             
-            $novoSop = json_decode($resultadoIA, true);
+            $novoSop = $resultadoIA['conteudo'];
+            if (is_string($novoSop)) {
+                $novoSop = json_decode($novoSop, true);
+            }
+            
             if (!$novoSop) {
                 throw new Exception('Resposta inválida da IA.');
             }
@@ -7397,4 +7911,1416 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         
         $current = $value;
     }
+    
+    // ===== SISTEMA HIERÁRQUICO DE GESTÃO: SETOR > SERVIÇOS > SOPS =====
+    
+    /**
+     * Salvar estrutura organizacional de forma permanente
+     */
+    private function salvarEstruturaOrganizacional(int $diagnosticoId, array $empresa, array $estruturaCompleta): int
+    {
+        // Criar tabelas se não existem
+        $this->criarTabelasHierarquicas();
+        
+        // Verificar se já existe estrutura para este diagnóstico
+        $estruturaExistente = Database::queryOne(
+            "SELECT id FROM estruturas_organizacionais WHERE diagnostico_id = ?",
+            [$diagnosticoId]
+        );
+        
+        if ($estruturaExistente) {
+            // Atualizar existente
+            Database::execute(
+                "UPDATE estruturas_organizacionais 
+                 SET estrutura_completa_json = ?, total_setores = ?, atualizado_em = NOW() 
+                 WHERE id = ?",
+                [
+                    json_encode($estruturaCompleta, JSON_UNESCAPED_UNICODE),
+                    count($estruturaCompleta['setores'] ?? []),
+                    $estruturaExistente['id']
+                ]
+            );
+            
+            $estruturaId = $estruturaExistente['id'];
+        } else {
+            // Criar nova
+            Database::execute(
+                "INSERT INTO estruturas_organizacionais 
+                 (diagnostico_id, empresa_id, nome_empresa, nicho, macro_categoria, estrutura_completa_json, total_setores, criado_em) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, NOW())",
+                [
+                    $diagnosticoId,
+                    $empresa['id'],
+                    $empresa['nome'],
+                    $estruturaCompleta['macro_categoria'] ?? 'Tecnologia',
+                    $estruturaCompleta['macro_categoria'] ?? 'Tecnologia',
+                    json_encode($estruturaCompleta, JSON_UNESCAPED_UNICODE),
+                    count($estruturaCompleta['setores'] ?? [])
+                ]
+            );
+            
+            $estruturaId = (int) Database::lastInsertId();
+        }
+        
+        // Salvar/atualizar setores
+        $this->salvarSetoresEmpresa($estruturaId, $empresa['id'], $estruturaCompleta['setores'] ?? []);
+        
+        // Inicializar progresso hierárquico
+        $this->inicializarProgressoHierarquico($estruturaId, $empresa['id'], $estruturaCompleta);
+        
+        Logger::info('Estrutura organizacional salva permanentemente', [
+            'estrutura_id' => $estruturaId,
+            'diagnostico_id' => $diagnosticoId,
+            'empresa_id' => $empresa['id'],
+            'total_setores' => count($estruturaCompleta['setores'] ?? [])
+        ]);
+        
+        return $estruturaId;
+    }
+    
+    /**
+     * Criar tabelas hierárquicas se não existirem
+     */
+    private function criarTabelasHierarquicas(): void
+    {
+        try {
+            Database::queryOne("SELECT 1 FROM estruturas_organizacionais LIMIT 1");
+        } catch (Exception $e) {
+            // Executar migration
+            $migrationContent = file_get_contents(ROOT_PATH . '/database/migrations/028_criar_sistema_gestao_hierarquica.sql');
+            $statements = explode(';', $migrationContent);
+            
+            foreach ($statements as $statement) {
+                $statement = trim($statement);
+                if (!empty($statement) && !str_starts_with($statement, '--')) {
+                    try {
+                        Database::execute($statement);
+                    } catch (Exception $e) {
+                        Logger::warning('Erro ao executar statement da migration', [
+                            'statement' => substr($statement, 0, 100),
+                            'erro' => $e->getMessage()
+                        ]);
+                    }
+                }
+            }
+        }
+    }
+    
+    /**
+     * Determinar tipo do setor baseado no nome
+     */
+    private function determinarTipoSetor(string $nomeSetor): string
+    {
+        $nomeSetor = strtolower($nomeSetor);
+        
+        if (str_contains($nomeSetor, 'operac') || str_contains($nomeSetor, 'produc') || str_contains($nomeSetor, 'tecnolog')) {
+            return 'core';
+        }
+        
+        if (str_contains($nomeSetor, 'rh') || str_contains($nomeSetor, 'financ') || str_contains($nomeSetor, 'admin')) {
+            return 'apoio';
+        }
+        
+        if (str_contains($nomeSetor, 'diretoria') || str_contains($nomeSetor, 'estrateg') || str_contains($nomeSetor, 'planej')) {
+            return 'estrategico';
+        }
+        
+        return 'core';
+    }
+    
+    /**
+     * Inicializar progresso hierárquico
+     */
+    private function inicializarProgressoHierarquico(int $estruturaId, int $empresaId, array $estruturaCompleta): void
+    {
+        $totalSetores = count($estruturaCompleta['setores'] ?? []);
+        
+        // Verificar se já existe
+        $progressoExistente = Database::queryOne(
+            "SELECT id FROM progresso_hierarquico WHERE estrutura_id = ?",
+            [$estruturaId]
+        );
+        
+        if ($progressoExistente) {
+            Database::execute(
+                "UPDATE progresso_hierarquico 
+                 SET setores_total = ?, ultima_atividade = NOW(), atualizado_em = NOW() 
+                 WHERE estrutura_id = ?",
+                [$totalSetores, $estruturaId]
+            );
+        } else {
+            Database::execute(
+                "INSERT INTO progresso_hierarquico 
+                 (estrutura_id, empresa_id, setores_total, criado_em, ultima_atividade) 
+                 VALUES (?, ?, ?, NOW(), NOW())",
+                [$estruturaId, $empresaId, $totalSetores]
+            );
+        }
+    }
+    
+    /**
+     * Gerar código único para serviço
+     */
+    private function gerarCodigoServicoUnico(int $setorId, string $nomeServico): string
+    {
+        // Buscar nome do setor
+        $setor = Database::queryOne("SELECT nome_setor FROM setores_empresa WHERE id = ?", [$setorId]);
+        $nomeSetor = $setor['nome_setor'] ?? 'SETOR';
+        
+        // Criar código base
+        $prefixoSetor = strtoupper(substr(str_replace(' ', '', $nomeSetor), 0, 3));
+        $prefixoServico = strtoupper(substr(str_replace(' ', '', $nomeServico), 0, 3));
+        
+        // Verificar se já existe e incrementar se necessário
+        $contador = 1;
+        do {
+            $codigo = sprintf('%s-%s-%03d', $prefixoSetor, $prefixoServico, $contador);
+            $existe = Database::queryOne(
+                "SELECT id FROM servicos_setor WHERE codigo_servico = ?",
+                [$codigo]
+            );
+            $contador++;
+        } while ($existe && $contador < 999);
+        
+        return $codigo;
+    }
+    
+    /**
+     * Salvar setores da empresa na nova estrutura hierárquica
+     */
+    private function salvarSetoresEmpresa(int $estruturaId, int $empresaId, array $setores): void
+    {
+        foreach ($setores as $nomeSetor => $dadosSetor) {
+            // Verificar se setor já existe
+            $setorExistente = Database::queryOne(
+                "SELECT id FROM setores_empresa WHERE estrutura_id = ? AND nome_setor = ?",
+                [$estruturaId, $nomeSetor]
+            );
+            
+            $tipoSetor = $this->determinarTipoSetor($nomeSetor);
+            $totalServicos = count($dadosSetor['sops_padrao'] ?? []);
+            
+            if ($setorExistente) {
+                // Atualizar existente
+                Database::execute(
+                    "UPDATE setores_empresa 
+                     SET tipo_setor = ?, descricao = ?, contexto_especifico = ?, 
+                         total_servicos = ?, atualizado_em = NOW() 
+                     WHERE id = ?",
+                    [
+                        $tipoSetor,
+                        $dadosSetor['descricao'] ?? '',
+                        json_encode($dadosSetor, JSON_UNESCAPED_UNICODE),
+                        $totalServicos,
+                        $setorExistente['id']
+                    ]
+                );
+                
+                $setorId = $setorExistente['id'];
+            } else {
+                // Criar novo
+                Database::execute(
+                    "INSERT INTO setores_empresa 
+                     (estrutura_id, empresa_id, nome_setor, tipo_setor, descricao, 
+                      contexto_especifico, total_servicos, criado_em) 
+                     VALUES (?, ?, ?, ?, ?, ?, ?, NOW())",
+                    [
+                        $estruturaId,
+                        $empresaId,
+                        $nomeSetor,
+                        $tipoSetor,
+                        $dadosSetor['descricao'] ?? '',
+                        json_encode($dadosSetor, JSON_UNESCAPED_UNICODE),
+                        $totalServicos
+                    ]
+                );
+                
+                $setorId = (int) Database::lastInsertId();
+            }
+            
+            // Salvar serviços do setor
+            $this->salvarServicosSetor($setorId, $empresaId, $dadosSetor['sops_padrao'] ?? []);
+        }
+    }
+    
+    /**
+     * Salvar serviços de um setor na estrutura hierárquica
+     */
+    private function salvarServicosSetor(int $setorId, int $empresaId, array $servicos): void
+    {
+        foreach ($servicos as $nomeServico) {
+            $codigoServico = $this->gerarCodigoServicoUnico($setorId, $nomeServico);
+            
+            // Verificar se serviço já existe
+            $servicoExistente = Database::queryOne(
+                "SELECT id FROM servicos_setor WHERE setor_id = ? AND nome_servico = ?",
+                [$setorId, $nomeServico]
+            );
+            
+            if (!$servicoExistente) {
+                // Criar novo serviço
+                Database::execute(
+                    "INSERT INTO servicos_setor 
+                     (setor_id, empresa_id, nome_servico, codigo_servico, categoria, 
+                      criticidade, frequencia, complexidade, descricao_resumida, 
+                      status, criado_em) 
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())",
+                    [
+                        $setorId,
+                        $empresaId,
+                        $nomeServico,
+                        $codigoServico,
+                        'operacional',
+                        'media',
+                        'mensal',
+                        'media',
+                        "Serviço identificado automaticamente para {$nomeServico}",
+                        'mapeado'
+                    ]
+                );
+                
+                Logger::info('Serviço criado no sistema hierárquico', [
+                    'servico' => $nomeServico,
+                    'codigo' => $codigoServico,
+                    'setor_id' => $setorId
+                ]);
+            }
+        }
+    }
+    
+    /**
+     * UNIFICADO: Processar serviço completo (detalhar + gerar SOP)
+     * Esta é a função principal que combina detalhamento e geração de SOP em um fluxo único
+     */
+    public function processarServicoCompleto(): void
+    {
+        Auth::proteger(['ADMIN_HOLDING', 'CONSULTOR_INTERNO']);
+        
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['erro' => 'Método não permitido']);
+            exit;
+        }
+        
+        $servicoId = (int) ($_POST['servico_id'] ?? 0);
+        $etapa = $_POST['etapa'] ?? 'detalhar'; // 'detalhar' ou 'gerar_sop'
+        
+        if (!$servicoId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'ID do serviço não informado']);
+            exit;
+        }
+        
+        try {
+            // Buscar serviço
+            $servico = Database::queryOne(
+                "SELECT ss.*, se.nome_setor, se.contexto_especifico, eo.diagnostico_id, eo.empresa_id, eo.estrutura_completa_json
+                 FROM servicos_setor ss 
+                 JOIN setores_empresa se ON ss.setor_id = se.id 
+                 JOIN estruturas_organizacionais eo ON se.estrutura_id = eo.id 
+                 WHERE ss.id = ?",
+                [$servicoId]
+            );
+            
+            if (!$servico) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Serviço não encontrado']);
+                exit;
+            }
+            
+            // Buscar diagnóstico
+            $diagnostico = Diagnostico::buscarPorId($servico['diagnostico_id']);
+            if (!$diagnostico) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Diagnóstico não encontrado']);
+                exit;
+            }
+            
+            $resultado = [];
+            
+            if ($etapa === 'detalhar' && $servico['status'] === 'mapeado') {
+                // ETAPA 1: Detalhar serviço
+                $resultado = $this->executarDetalhamentoServicoCompleto($servico, $diagnostico);
+                
+                if ($resultado['sucesso']) {
+                    // Atualizar status para 'detalhado'
+                    Database::execute(
+                        "UPDATE servicos_setor 
+                         SET detalhamento_completo = ?, status = 'detalhado', detalhado_em = NOW(), atualizado_em = NOW() 
+                         WHERE id = ?",
+                        [
+                            json_encode($resultado['detalhamento'], JSON_UNESCAPED_UNICODE),
+                            $servicoId
+                        ]
+                    );
+                    
+                    $resultado['proximo_passo'] = 'gerar_sop';
+                    $resultado['mensagem'] = 'Serviço detalhado com sucesso! Pronto para gerar SOP.';
+                }
+                
+            } elseif ($etapa === 'gerar_sop' && $servico['status'] === 'detalhado') {
+                // ETAPA 2: Gerar SOP baseado no detalhamento
+                $detalhamento = json_decode($servico['detalhamento_completo'], true);
+                if (!$detalhamento) {
+                    echo json_encode(['sucesso' => false, 'erro' => 'Detalhamento não encontrado. Execute o detalhamento primeiro.']);
+                    exit;
+                }
+                
+                $resultado = $this->gerarSopAPartirDoDetalhamento($servico, $detalhamento, $diagnostico);
+                
+                if ($resultado['sucesso']) {
+                    // Atualizar status e vincular SOP
+                    Database::execute(
+                        "UPDATE servicos_setor 
+                         SET sop_id = ?, tem_sop = TRUE, status = 'sop_gerado', sop_gerado_em = NOW(), atualizado_em = NOW() 
+                         WHERE id = ?",
+                        [
+                            $resultado['sop_id'],
+                            $servicoId
+                        ]
+                    );
+                    
+                    $resultado['proximo_passo'] = 'aprovar';
+                    $resultado['mensagem'] = 'SOP gerado com sucesso! Pronto para aprovação.';
+                    $resultado['sop_url'] = APP_URL . '/sop/ver-sop-individual?id=' . $resultado['sop_id'];
+                }
+                
+            } elseif ($etapa === 'processo_completo' && $servico['status'] === 'mapeado') {
+                // FLUXO COMPLETO: Detalhar + Gerar SOP em uma operação
+                
+                // Primeiro, detalhar
+                $detalhamentoResultado = $this->executarDetalhamentoServicoCompleto($servico, $diagnostico);
+                
+                if (!$detalhamentoResultado['sucesso']) {
+                    echo json_encode($detalhamentoResultado);
+                    exit;
+                }
+                
+                // Salvar detalhamento
+                Database::execute(
+                    "UPDATE servicos_setor 
+                     SET detalhamento_completo = ?, status = 'detalhado', detalhado_em = NOW() 
+                     WHERE id = ?",
+                    [
+                        json_encode($detalhamentoResultado['detalhamento'], JSON_UNESCAPED_UNICODE),
+                        $servicoId
+                    ]
+                );
+                
+                // Depois, gerar SOP
+                $sopResultado = $this->gerarSopAPartirDoDetalhamento($servico, $detalhamentoResultado['detalhamento'], $diagnostico);
+                
+                if ($sopResultado['sucesso']) {
+                    Database::execute(
+                        "UPDATE servicos_setor 
+                         SET sop_id = ?, tem_sop = TRUE, status = 'sop_gerado', sop_gerado_em = NOW(), atualizado_em = NOW() 
+                         WHERE id = ?",
+                        [
+                            $sopResultado['sop_id'],
+                            $servicoId
+                        ]
+                    );
+                    
+                    $resultado = [
+                        'sucesso' => true,
+                        'mensagem' => 'Processo completo executado! Serviço detalhado e SOP gerado.',
+                        'detalhamento' => $detalhamentoResultado['detalhamento'],
+                        'sop_id' => $sopResultado['sop_id'],
+                        'sop_url' => APP_URL . '/sop/ver-sop-individual?id=' . $sopResultado['sop_id'],
+                        'proximo_passo' => 'aprovar'
+                    ];
+                }
+                
+            } else {
+                echo json_encode([
+                    'sucesso' => false, 
+                    'erro' => "Operação '{$etapa}' não permitida para serviço com status '{$servico['status']}'"
+                ]);
+                exit;
+            }
+            
+            // Atualizar progresso hierárquico
+            $this->atualizarProgressoHierarquico($servico['estrutura_id'] ?? 0);
+            
+            echo json_encode($resultado);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao processar serviço completo', [
+                'servico_id' => $servicoId,
+                'etapa' => $etapa,
+                'erro' => $e->getMessage()
+            ]);
+            
+            echo json_encode([
+                'sucesso' => false,
+                'erro' => 'Erro interno: ' . $e->getMessage()
+            ]);
+        }
+        
+        exit;
+    }
+    
+    /**
+     * Executar detalhamento completo de um serviço usando IA
+     */
+    private function executarDetalhamentoServicoCompleto(array $servico, array $diagnostico): array
+    {
+        $contextoSetor = json_decode($servico['contexto_especifico'], true);
+        $respostasDiagnostico = json_decode($diagnostico['respostas'], true);
+        
+        $prompt = $this->criarPromptDetalhamentoServico($servico, $contextoSetor, $respostasDiagnostico);
+        
+        // Chamar IA para detalhamento
+        $respostaIA = ApiHelper::chamarAnalise($prompt);
+        
+        if (!$respostaIA) {
+            return ['sucesso' => false, 'erro' => 'Erro na IA: não foi possível detalhar o serviço'];
+        }
+        
+        // Processar resposta da IA e extrair detalhamento estruturado
+        $detalhamento = $this->processarRespostaDetalhamentoIA($respostaIA, $servico);
+        
+        return [
+            'sucesso' => true,
+            'detalhamento' => $detalhamento,
+            'resposta_ia' => $respostaIA
+        ];
+    }
+    
+    /**
+     * Gerar SOP a partir do detalhamento de um serviço
+     */
+    private function gerarSopAPartirDoDetalhamento(array $servico, array $detalhamento, array $diagnostico): array
+    {
+        $prompt = $this->criarPromptGeracaoSopDetalhado($servico, $detalhamento, $diagnostico);
+        
+        // Chamar IA para gerar SOP
+        $respostaIA = ApiHelper::chamarAnalise($prompt);
+        
+        if (!$respostaIA) {
+            return ['sucesso' => false, 'erro' => 'Erro na IA: não foi possível gerar o SOP'];
+        }
+        
+        // Salvar SOP na nova arquitetura
+        $sopId = $this->salvarSopNaNovaArquitetura($servico, $detalhamento, $respostaIA, $diagnostico);
+        
+        if (!$sopId) {
+            return ['sucesso' => false, 'erro' => 'Erro ao salvar SOP no banco de dados'];
+        }
+        
+        return [
+            'sucesso' => true,
+            'sop_id' => $sopId,
+            'conteudo_sop' => $respostaIA
+        ];
+    }
+    
+    /**
+     * Atualizar progresso hierárquico de uma estrutura
+     */
+    private function atualizarProgressoHierarquico(int $estruturaId): void
+    {
+        if (!$estruturaId) return;
+        
+        // Contar progresso atual
+        $estatisticas = Database::queryOne(
+            "SELECT 
+                COUNT(*) as total_servicos,
+                COUNT(CASE WHEN status = 'detalhado' OR status = 'sop_gerado' OR status = 'aprovado' THEN 1 END) as servicos_detalhados,
+                COUNT(CASE WHEN status = 'sop_gerado' OR status = 'aprovado' THEN 1 END) as servicos_com_sop,
+                COUNT(CASE WHEN status = 'aprovado' THEN 1 END) as servicos_aprovados
+             FROM servicos_setor ss 
+             JOIN setores_empresa se ON ss.setor_id = se.id 
+             WHERE se.estrutura_id = ?",
+            [$estruturaId]
+        );
+        
+        $totalServicos = $estatisticas['total_servicos'];
+        $servicosDetalhados = $estatisticas['servicos_detalhados'];
+        $servicosComSop = $estatisticas['servicos_com_sop'];
+        
+        // Calcular percentual
+        $percentualConclusao = $totalServicos > 0 ? round(($servicosComSop / $totalServicos) * 100, 2) : 0;
+        
+        // Determinar etapa atual
+        $etapaAtual = 'mapeamento_servicos';
+        if ($servicosComSop == $totalServicos && $totalServicos > 0) {
+            $etapaAtual = 'concluido';
+        } elseif ($servicosComSop > 0) {
+            $etapaAtual = 'geracao_sops';
+        } elseif ($servicosDetalhados > 0) {
+            $etapaAtual = 'detalhamento_servicos';
+        }
+        
+        // Atualizar progresso
+        Database::execute(
+            "UPDATE progresso_hierarquico 
+             SET servicos_total = ?, servicos_detalhados = ?, servicos_com_sop = ?, 
+                 percentual_conclusao = ?, etapa_atual = ?, ultima_atividade = NOW(), atualizado_em = NOW() 
+             WHERE estrutura_id = ?",
+            [
+                $totalServicos, $servicosDetalhados, $servicosComSop,
+                $percentualConclusao, $etapaAtual, $estruturaId
+            ]
+        );
+        
+        Logger::info('Progresso hierárquico atualizado', [
+            'estrutura_id' => $estruturaId,
+            'total_servicos' => $totalServicos,
+            'servicos_detalhados' => $servicosDetalhados,
+            'servicos_com_sop' => $servicosComSop,
+            'percentual_conclusao' => $percentualConclusao,
+            'etapa_atual' => $etapaAtual
+        ]);
+    }
+    
+    /**
+     * VIEW: Gerenciar hierarquia completa - Interface unificada Setor > Serviços > SOPs
+     */
+    public function gerenciarHierarquia(): void
+    {
+        Auth::proteger(['ADMIN_HOLDING', 'CONSULTOR_INTERNO']);
+        
+        $diagnosticoId = (int) ($_GET['diagnostico_id'] ?? 0);
+        $estruturaId = (int) ($_GET['estrutura_id'] ?? 0);
+        
+        if (!$diagnosticoId) {
+            Flash::set('erro', 'Diagnóstico não especificado');
+            header('Location: ' . APP_URL . '/diagnostico');
+            exit;
+        }
+        
+        // Buscar ou criar estrutura organizacional
+        if (!$estruturaId) {
+            $estruturaExistente = Database::queryOne(
+                "SELECT id FROM estruturas_organizacionais WHERE diagnostico_id = ?",
+                [$diagnosticoId]
+            );
+            $estruturaId = $estruturaExistente['id'] ?? 0;
+        }
+        
+        $dados = [
+            'diagnostico_id' => $diagnosticoId,
+            'estrutura_id' => $estruturaId,
+            'estrutura_existe' => $estruturaId > 0
+        ];
+        
+        if ($estruturaId > 0) {
+            // Carregar hierarquia completa
+            $dados['hierarquia'] = $this->carregarHierarquiaCompleta($estruturaId);
+            $dados['progresso'] = $this->carregarProgressoHierarquico($estruturaId);
+        }
+        
+        require VIEW_PATH . '/sop/gerenciar-hierarquia.php';
+    }
+    
+    /**
+     * Carregar hierarquia completa de uma estrutura
+     */
+    private function carregarHierarquiaCompleta(int $estruturaId): array
+    {
+        // Buscar estrutura
+        $estrutura = Database::queryOne(
+            "SELECT * FROM estruturas_organizacionais WHERE id = ?",
+            [$estruturaId]
+        );
+        
+        if (!$estrutura) {
+            return [];
+        }
+        
+        // Buscar setores
+        $setores = Database::query(
+            "SELECT * FROM setores_empresa WHERE estrutura_id = ? ORDER BY nome_setor",
+            [$estruturaId]
+        );
+        
+        // Para cada setor, buscar serviços
+        foreach ($setores as &$setor) {
+            $setor['servicos'] = Database::query(
+                "SELECT * FROM servicos_setor WHERE setor_id = ? ORDER BY nome_servico",
+                [$setor['id']]
+            );
+            
+            // Calcular estatísticas do setor
+            $setor['stats'] = [
+                'total_servicos' => count($setor['servicos']),
+                'mapeados' => count(array_filter($setor['servicos'], fn($s) => $s['status'] === 'mapeado')),
+                'detalhados' => count(array_filter($setor['servicos'], fn($s) => $s['status'] === 'detalhado')),
+                'com_sop' => count(array_filter($setor['servicos'], fn($s) => $s['status'] === 'sop_gerado' || $s['status'] === 'aprovado')),
+                'aprovados' => count(array_filter($setor['servicos'], fn($s) => $s['status'] === 'aprovado'))
+            ];
+        }
+        
+        return [
+            'estrutura' => $estrutura,
+            'setores' => $setores
+        ];
+    }
+    
+    /**
+     * Carregar progresso hierárquico
+     */
+    private function carregarProgressoHierarquico(int $estruturaId): ?array
+    {
+        return Database::queryOne(
+            "SELECT * FROM progresso_hierarquico WHERE estrutura_id = ?",
+            [$estruturaId]
+        );
+    }
 }
+    
+    /**
+     * Criar prompt para detalhamento de serviço
+     */
+    private function criarPromptDetalhamentoServico(array $servico, array $contextoSetor, array $respostasDiagnostico): string
+    {
+        $nomeEmpresa = $respostasDiagnostico['nome_empresa'] ?? 'Empresa';
+        $segmento = $respostasDiagnostico['segmento'] ?? 'Geral';
+        $nomeSetor = $servico['nome_setor'];
+        $nomeServico = $servico['nome_servico'];
+        
+        return "DETALHAMENTO PROFISSIONAL DE SERVIÇO EMPRESARIAL
+
+# CONTEXTO DA EMPRESA
+- **Nome**: {$nomeEmpresa}
+- **Segmento**: {$segmento}
+- **Setor em análise**: {$nomeSetor}
+- **Serviço para detalhar**: {$nomeServico}
+
+# INFORMAÇÕES DO DIAGNÓSTICO
+" . $this->extrairInformacoesRelevantes($respostasDiagnostico) . "
+
+# CONTEXTO DO SETOR
+" . json_encode($contextoSetor, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . "
+
+# TAREFA
+Você precisa detalhar PROFUNDAMENTE o serviço '{$nomeServico}' no setor '{$nomeSetor}' desta empresa específica.
+
+## ESTRUTURA OBRIGATÓRIA DA RESPOSTA (JSON):
+```json
+{
+  \"servico\": \"{$nomeServico}\",
+  \"setor\": \"{$nomeSetor}\",
+  \"objetivo_principal\": \"[Qual o objetivo principal deste serviço?]\",
+  \"responsabilidades\": [
+    \"[Lista das principais responsabilidades]\",
+    \"[Cada responsabilidade em um item]\"
+  ],
+  \"processos_detalhados\": [
+    {
+      \"nome_processo\": \"[Nome do processo]\",
+      \"descricao\": \"[Descrição detalhada]\",
+      \"etapas\": [
+        \"[Etapa 1: descrição]\",
+        \"[Etapa 2: descrição]\",
+        \"[Etapa N: descrição]\"
+      ],
+      \"recursos_necessarios\": [\"[Lista de recursos]\"],
+      \"tempo_estimado\": \"[Tempo estimado]\",
+      \"frequencia\": \"[diária/semanal/mensal/sob_demanda]\"
+    }
+  ],
+  \"integracao_setores\": [
+    {
+      \"setor\": \"[Nome do setor]\",
+      \"tipo_integracao\": \"[entrada/saída/bidirecional]\",
+      \"descricao\": \"[Como interagem]\"
+    }
+  ],
+  \"recursos_principais\": [
+    {
+      \"tipo\": \"[sistema/ferramenta/pessoa/documento]\",
+      \"nome\": \"[Nome do recurso]\",
+      \"funcao\": \"[Para que é usado]\"
+    }
+  ],
+  \"problemas_comuns\": [
+    {
+      \"problema\": \"[Descrição do problema]\",
+      \"impacto\": \"[Alto/Médio/Baixo]\",
+      \"solucao_nivel1\": \"[Solução imediata/operacional]\",
+      \"solucao_nivel2\": \"[Solução tática/supervisão]\",
+      \"solucao_nivel3\": \"[Solução estratégica/direção]\"
+    }
+  ],
+  \"indicadores_desempenho\": [
+    {
+      \"kpi\": \"[Nome do KPI]\",
+      \"unidade_medida\": \"[%/unidades/tempo/valor]\",
+      \"meta_sugerida\": \"[Valor meta]\",
+      \"frequencia_medicao\": \"[Frequência]\"
+    }
+  ],
+  \"nivel_criticidade\": \"[Alta/Média/Baixa]\",
+  \"complexidade\": \"[Simples/Média/Alta]\",
+  \"observacoes_especiais\": \"[Observações específicas desta empresa]\"
+}
+```
+
+**IMPORTANTE**:
+- Baseie-se nas informações REAIS da empresa
+- Seja ESPECÍFICO para o segmento {$segmento}
+- Considere o porte e características desta empresa
+- Forneça soluções PRÁTICAS e aplicáveis
+- Use linguagem profissional mas acessível
+- RESPONDA APENAS COM O JSON VÁLIDO, SEM EXPLICAÇÕES ADICIONAIS";
+    }
+    
+    /**
+     * Criar prompt para geração de SOP baseado no detalhamento
+     */
+    private function criarPromptGeracaoSopDetalhado(array $servico, array $detalhamento, array $diagnostico): string
+    {
+        $nomeEmpresa = json_decode($diagnostico['respostas'], true)['nome_empresa'] ?? 'Empresa';
+        $nomeServico = $servico['nome_servico'];
+        $nomeSetor = $servico['nome_setor'];
+        $codigoServico = $servico['codigo_servico'];
+        
+        return "GERAÇÃO DE SOP (PROCEDIMENTO OPERACIONAL PADRÃO)
+
+# INFORMAÇÕES DO SERVIÇO
+- **Código**: {$codigoServico}
+- **Serviço**: {$nomeServico}
+- **Setor**: {$nomeSetor}
+- **Empresa**: {$nomeEmpresa}
+
+# DETALHAMENTO COMPLETO DO SERVIÇO
+" . json_encode($detalhamento, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . "
+
+# TAREFA
+Crie um SOP (Standard Operating Procedure) COMPLETO e PROFISSIONAL para este serviço.
+
+## ESTRUTURA OBRIGATÓRIA DO SOP:
+
+### CABEÇALHO
+- Título: SOP {$codigoServico} - {$nomeServico}
+- Empresa: {$nomeEmpresa}
+- Setor: {$nomeSetor}
+- Data de criação: " . date('d/m/Y') . "
+- Versão: 1.0
+
+### 1. OBJETIVO
+[Descreva claramente o objetivo do procedimento]
+
+### 2. ESCOPO
+[Defina onde e quando este procedimento se aplica]
+
+### 3. RESPONSABILIDADES
+[Liste quem faz o que - use matriz RACI se necessário]
+
+### 4. MATERIAIS E RECURSOS NECESSÁRIOS
+[Liste tudo que é necessário para executar o procedimento]
+
+### 5. PROCEDIMENTO DETALHADO
+[Passo a passo numerado, claro e objetivo]
+5.1. [Primeiro passo]
+5.2. [Segundo passo]
+[...]
+
+### 6. CONTROLES E VERIFICAÇÕES
+[Pontos de controle e verificação de qualidade]
+
+### 7. REGISTROS E DOCUMENTAÇÃO
+[O que deve ser registrado e onde]
+
+### 8. TRATAMENTO DE EXCEÇÕES
+[Como lidar com situações não padrão]
+
+### 9. INDICADORES DE DESEMPENHO
+[KPIs para acompanhar a eficácia]
+
+### 10. ANEXOS
+[Formulários, templates, checklists necessários]
+
+**REQUISITOS**:
+- Linguagem clara e objetiva
+- Passos numerados e detalhados
+- Considere o contexto REAL da empresa
+- Incluir pontos de controle de qualidade
+- Definir responsabilidades claras
+- Prever situações de exceção
+- FORMATO MARKDOWN PROFISSIONAL
+- Foco na aplicabilidade prática
+
+Gere o SOP COMPLETO seguindo esta estrutura:";
+    }
+    
+    /**
+     * Processar resposta de detalhamento da IA
+     */
+    private function processarRespostaDetalhamentoIA(string $respostaIA, array $servico): array
+    {
+        // Tentar extrair JSON da resposta
+        $json = $this->extrairJsonDaResposta($respostaIA);
+        
+        if ($json) {
+            return $json;
+        }
+        
+        // Se não conseguir extrair JSON, criar estrutura básica
+        Logger::warning('Não foi possível extrair JSON do detalhamento', [
+            'servico_id' => $servico['id'],
+            'resposta_ia' => substr($respostaIA, 0, 500)
+        ]);
+        
+        return [
+            'servico' => $servico['nome_servico'],
+            'setor' => $servico['nome_setor'],
+            'objetivo_principal' => 'Objetivo definido pela IA',
+            'responsabilidades' => ['Responsabilidade identificada pela IA'],
+            'processos_detalhados' => [
+                [
+                    'nome_processo' => $servico['nome_servico'],
+                    'descricao' => 'Processo detalhado pela IA',
+                    'etapas' => ['Etapa identificada pela IA'],
+                    'recursos_necessarios' => ['Recursos identificados'],
+                    'tempo_estimado' => 'A definir',
+                    'frequencia' => 'mensal'
+                ]
+            ],
+            'nivel_criticidade' => 'Média',
+            'complexidade' => 'Média',
+            'resposta_ia_original' => $respostaIA
+        ];
+    }
+    
+    /**
+     * Salvar SOP na nova arquitetura
+     */
+    private function salvarSopNaNovaArquitetura(array $servico, array $detalhamento, string $conteudoSop, array $diagnostico): ?int
+    {
+        try {
+            Database::execute(
+                "INSERT INTO sops_gerados_nova_arquitetura 
+                 (diagnostico_id, empresa_id, servico_id, codigo_sop, nome, setor, 
+                  objetivo, conteudo_markdown, contexto_json, status, 
+                  criado_em, atualizado_em) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'gerado', NOW(), NOW())",
+                [
+                    $servico['diagnostico_id'],
+                    $servico['empresa_id'],
+                    $servico['id'],
+                    $servico['codigo_servico'],
+                    $servico['nome_servico'],
+                    $servico['nome_setor'],
+                    $detalhamento['objetivo_principal'] ?? 'Objetivo definido',
+                    $conteudoSop,
+                    json_encode($detalhamento, JSON_UNESCAPED_UNICODE),
+                ]
+            );
+            
+            $sopId = (int) Database::lastInsertId();
+            
+            Logger::info('SOP salvo na nova arquitetura', [
+                'sop_id' => $sopId,
+                'servico_id' => $servico['id'],
+                'codigo_sop' => $servico['codigo_servico']
+            ]);
+            
+            return $sopId;
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao salvar SOP na nova arquitetura', [
+                'servico_id' => $servico['id'],
+                'erro' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+    
+    /**
+     * Extrair informações relevantes do diagnóstico
+     */
+    private function extrairInformacoesRelevantes(array $respostas): string
+    {
+        $info = "";
+        
+        // Campos principais
+        $camposRelevantes = [
+            'nome_empresa' => 'Nome da Empresa',
+            'segmento' => 'Segmento',
+            'porte_empresa' => 'Porte',
+            'numero_colaboradores' => 'Número de Colaboradores',
+            'principais_produtos_servicos' => 'Principais Produtos/Serviços',
+            'principais_desafios' => 'Principais Desafios',
+            'objetivos_principais' => 'Objetivos Principais',
+            'ferramentas_utilizadas' => 'Ferramentas Utilizadas'
+        ];
+        
+        foreach ($camposRelevantes as $campo => $label) {
+            if (!empty($respostas[$campo])) {
+                $info .= "- **{$label}**: " . $respostas[$campo] . "\n";
+            }
+        }
+        
+        return $info;
+    }
+    
+    /**
+     * Extrair JSON válido de uma resposta de IA
+     */
+    private function extrairJsonDaResposta(string $resposta): ?array
+    {
+        // Tentar extrair JSON entre ```json e ```
+        if (preg_match('/```json\s*(\{.*?\})\s*```/s', $resposta, $matches)) {
+            $json = json_decode($matches[1], true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                return $json;
+            }
+        }
+        
+        // Tentar extrair JSON simples
+        if (preg_match('/(\{.*\})/s', $resposta, $matches)) {
+            $json = json_decode($matches[1], true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                return $json;
+            }
+        }
+        
+        return null;
+    }
+
+}
+    /**
+     * ADICIONAR SERVIÇO MANUAL ao sistema hierárquico
+     */
+    public function adicionarServicoManual(): void
+    {
+        Auth::proteger(['ADMIN_HOLDING', 'CONSULTOR_INTERNO']);
+        
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['erro' => 'Método não permitido']);
+            exit;
+        }
+        
+        Csrf::verificar();
+        
+        $setorId = (int) ($_POST['setor_id'] ?? 0);
+        $empresaId = (int) ($_POST['empresa_id'] ?? 0);
+        $nomeServico = trim($_POST['nome_servico'] ?? '');
+        $categoria = $_POST['categoria'] ?? 'operacional';
+        $criticidade = $_POST['criticidade'] ?? 'media';
+        $frequencia = $_POST['frequencia'] ?? 'mensal';
+        $descricao = trim($_POST['descricao'] ?? '');
+        
+        if (!$setorId || !$empresaId || !$nomeServico) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Dados obrigatórios não informados']);
+            exit;
+        }
+        
+        try {
+            // Verificar se setor existe
+            $setor = Database::queryOne(
+                "SELECT * FROM setores_empresa WHERE id = ? AND empresa_id = ?",
+                [$setorId, $empresaId]
+            );
+            
+            if (!$setor) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Setor não encontrado']);
+                exit;
+            }
+            
+            // Gerar código único para o serviço
+            $codigoServico = $this->gerarCodigoServicoUnico($setorId, $nomeServico);
+            
+            // Inserir serviço
+            Database::execute(
+                "INSERT INTO servicos_setor 
+                 (setor_id, empresa_id, nome_servico, codigo_servico, categoria, criticidade, 
+                  frequencia, descricao_resumida, origem, status, criado_em) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'manual', 'mapeado', NOW())",
+                [
+                    $setorId, $empresaId, $nomeServico, $codigoServico, 
+                    $categoria, $criticidade, $frequencia, $descricao
+                ]
+            );
+            
+            $servicoId = (int) Database::lastInsertId();
+            
+            // Atualizar contador do setor
+            Database::execute(
+                "UPDATE setores_empresa SET total_servicos = total_servicos + 1, atualizado_em = NOW() WHERE id = ?",
+                [$setorId]
+            );
+            
+            // Atualizar progresso hierárquico
+            $this->atualizarProgressoHierarquico($setor['estrutura_id']);
+            
+            Logger::info('Serviço manual adicionado', [
+                'servico_id' => $servicoId,
+                'codigo' => $codigoServico,
+                'nome' => $nomeServico,
+                'setor_id' => $setorId
+            ]);
+            
+            echo json_encode([
+                'sucesso' => true,
+                'servico_id' => $servicoId,
+                'codigo_servico' => $codigoServico,
+                'mensagem' => 'Serviço adicionado com sucesso!'
+            ]);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao adicionar serviço manual', [
+                'erro' => $e->getMessage(),
+                'setor_id' => $setorId,
+                'nome_servico' => $nomeServico
+            ]);
+            
+            echo json_encode([
+                'sucesso' => false,
+                'erro' => 'Erro interno: ' . $e->getMessage()
+            ]);
+        }
+        
+        exit;
+    }
+    
+    /**
+     * TRANSCREVER ÁUDIO usando Whisper e adicionar como serviço
+     */
+    public function adicionarServicoAudio(): void
+    {
+        Auth::proteger(['ADMIN_HOLDING', 'CONSULTOR_INTERNO']);
+        
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['erro' => 'Método não permitido']);
+            exit;
+        }
+        
+        Csrf::verificar();
+        
+        $setorId = (int) ($_POST['setor_id'] ?? 0);
+        $empresaId = (int) ($_POST['empresa_id'] ?? 0);
+        
+        if (!$setorId || !$empresaId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Setor não informado']);
+            exit;
+        }
+        
+        // Verificar se foi enviado arquivo de áudio
+        if (!isset($_FILES['audio']) || $_FILES['audio']['error'] !== UPLOAD_ERR_OK) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Arquivo de áudio não enviado ou com erro']);
+            exit;
+        }
+        
+        $audioFile = $_FILES['audio'];
+        
+        // Validar tipo de arquivo
+        $allowedTypes = ['audio/mpeg', 'audio/wav', 'audio/mp3', 'audio/m4a', 'audio/ogg'];
+        if (!in_array($audioFile['type'], $allowedTypes)) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Tipo de arquivo não suportado. Use MP3, WAV, M4A ou OGG.']);
+            exit;
+        }
+        
+        // Validar tamanho (máximo 25MB - limite Whisper)
+        if ($audioFile['size'] > 25 * 1024 * 1024) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Arquivo muito grande. Máximo 25MB.']);
+            exit;
+        }
+        
+        try {
+            // Transcrever áudio usando Whisper
+            $transcricao = ApiHelper::transcreverAudioWhisper($audioFile['tmp_name'], $audioFile['name']);
+            
+            if (!$transcricao) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Erro na transcrição do áudio']);
+                exit;
+            }
+            
+            // Extrair nome do serviço da transcrição (primeiras palavras)
+            $linhas = explode("\n", $transcricao);
+            $primeiraLinha = trim($linhas[0]);
+            $nomeServico = substr($primeiraLinha, 0, 100); // Máximo 100 chars
+            
+            if (empty($nomeServico)) {
+                $nomeServico = "Serviço por Áudio - " . date('d/m/Y H:i');
+            }
+            
+            // Buscar informações do setor
+            $setor = Database::queryOne(
+                "SELECT * FROM setores_empresa WHERE id = ? AND empresa_id = ?",
+                [$setorId, $empresaId]
+            );
+            
+            if (!$setor) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Setor não encontrado']);
+                exit;
+            }
+            
+            // Gerar código único
+            $codigoServico = $this->gerarCodigoServicoUnico($setorId, $nomeServico);
+            
+            // Inserir serviço com transcrição
+            Database::execute(
+                "INSERT INTO servicos_setor 
+                 (setor_id, empresa_id, nome_servico, codigo_servico, categoria, criticidade, 
+                  frequencia, descricao_resumida, audio_transcricao, origem, status, criado_em) 
+                 VALUES (?, ?, ?, ?, 'operacional', 'media', 'sob_demanda', ?, ?, 'audio_transcricao', 'mapeado', NOW())",
+                [
+                    $setorId, $empresaId, $nomeServico, $codigoServico,
+                    "Serviço criado a partir de transcrição de áudio",
+                    $transcricao
+                ]
+            );
+            
+            $servicoId = (int) Database::lastInsertId();
+            
+            // Atualizar contador do setor
+            Database::execute(
+                "UPDATE setores_empresa SET total_servicos = total_servicos + 1, atualizado_em = NOW() WHERE id = ?",
+                [$setorId]
+            );
+            
+            // Atualizar progresso
+            $this->atualizarProgressoHierarquico($setor['estrutura_id']);
+            
+            Logger::info('Serviço criado por áudio transcrição', [
+                'servico_id' => $servicoId,
+                'codigo' => $codigoServico,
+                'tamanho_transcricao' => strlen($transcricao)
+            ]);
+            
+            echo json_encode([
+                'sucesso' => true,
+                'servico_id' => $servicoId,
+                'codigo_servico' => $codigoServico,
+                'nome_servico' => $nomeServico,
+                'transcricao' => $transcricao,
+                'mensagem' => 'Serviço criado com sucesso a partir da transcrição!'
+            ]);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao processar áudio', [
+                'erro' => $e->getMessage(),
+                'setor_id' => $setorId
+            ]);
+            
+            echo json_encode([
+                'sucesso' => false,
+                'erro' => 'Erro ao processar áudio: ' . $e->getMessage()
+            ]);
+        }
+        
+        exit;
+    }
+    
+    /**
+     * VER DETALHES DE UM SERVIÇO ESPECÍFICO
+     */
+    public function verDetalhesServico(): void
+    {
+        Auth::proteger();
+        
+        $servicoId = (int) ($_GET['servico_id'] ?? 0);
+        
+        if (!$servicoId) {
+            Flash::set('erro', 'Serviço não especificado');
+            header('Location: ' . APP_URL . '/sop');
+            exit;
+        }
+        
+        // Buscar serviço completo
+        $servico = Database::queryOne(
+            "SELECT ss.*, se.nome_setor, se.tipo_setor, se.contexto_especifico,
+                    eo.diagnostico_id, eo.empresa_id, eo.nome_empresa, eo.nicho
+             FROM servicos_setor ss 
+             JOIN setores_empresa se ON ss.setor_id = se.id 
+             JOIN estruturas_organizacionais eo ON se.estrutura_id = eo.id 
+             WHERE ss.id = ?",
+            [$servicoId]
+        );
+        
+        if (!$servico) {
+            Flash::set('erro', 'Serviço não encontrado');
+            header('Location: ' . APP_URL . '/sop');
+            exit;
+        }
+        
+        // Decodificar JSON se existir
+        $servico['detalhamento_json'] = null;
+        if ($servico['detalhamento_completo']) {
+            $servico['detalhamento_json'] = json_decode($servico['detalhamento_completo'], true);
+        }
+        
+        $servico['contexto_setor'] = null;
+        if ($servico['contexto_especifico']) {
+            $servico['contexto_setor'] = json_decode($servico['contexto_especifico'], true);
+        }
+        
+        $dados = [
+            'servico' => $servico
+        ];
+        
+        require VIEW_PATH . '/sop/ver-detalhes-servico.php';
+    }
+    
+    /**
+     * EDITAR SERVIÇO MANUALMENTE
+     */
+    public function editarServicoManual(): void
+    {
+        Auth::proteger(['ADMIN_HOLDING', 'CONSULTOR_INTERNO']);
+        
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['erro' => 'Método não permitido']);
+            exit;
+        }
+        
+        Csrf::verificar();
+        
+        $servicoId = (int) ($_POST['servico_id'] ?? 0);
+        $nomeServico = trim($_POST['nome_servico'] ?? '');
+        $categoria = $_POST['categoria'] ?? 'operacional';
+        $criticidade = $_POST['criticidade'] ?? 'media';
+        $frequencia = $_POST['frequencia'] ?? 'mensal';
+        $descricao = trim($_POST['descricao'] ?? '');
+        
+        if (!$servicoId || !$nomeServico) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Dados obrigatórios não informados']);
+            exit;
+        }
+        
+        try {
+            // Verificar se serviço existe
+            $servico = Database::queryOne(
+                "SELECT * FROM servicos_setor WHERE id = ?",
+                [$servicoId]
+            );
+            
+            if (!$servico) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Serviço não encontrado']);
+                exit;
+            }
+            
+            // Atualizar serviço
+            Database::execute(
+                "UPDATE servicos_setor 
+                 SET nome_servico = ?, categoria = ?, criticidade = ?, 
+                     frequencia = ?, descricao_resumida = ?, atualizado_em = NOW() 
+                 WHERE id = ?",
+                [$nomeServico, $categoria, $criticidade, $frequencia, $descricao, $servicoId]
+            );
+            
+            Logger::info('Serviço editado manualmente', [
+                'servico_id' => $servicoId,
+                'nome_novo' => $nomeServico
+            ]);
+            
+            echo json_encode([
+                'sucesso' => true,
+                'mensagem' => 'Serviço atualizado com sucesso!'
+            ]);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao editar serviço', [
+                'erro' => $e->getMessage(),
+                'servico_id' => $servicoId
+            ]);
+            
+            echo json_encode([
+                'sucesso' => false,
+                'erro' => 'Erro interno: ' . $e->getMessage()
+            ]);
+        }
+        
+        exit;
+    }
+    
+    /**
+     * EXCLUIR SERVIÇO
+     */
+    public function excluirServico(): void
+    {
+        Auth::proteger(['ADMIN_HOLDING', 'CONSULTOR_INTERNO']);
+        
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['erro' => 'Método não permitido']);
+            exit;
+        }
+        
+        Csrf::verificar();
+        
+        $servicoId = (int) ($_POST['servico_id'] ?? 0);
+        
+        if (!$servicoId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Serviço não especificado']);
+            exit;
+        }
+        
+        try {
+            // Buscar informações do serviço antes de excluir
+            $servico = Database::queryOne(
+                "SELECT ss.*, se.estrutura_id FROM servicos_setor ss 
+                 JOIN setores_empresa se ON ss.setor_id = se.id 
+                 WHERE ss.id = ?",
+                [$servicoId]
+            );
+            
+            if (!$servico) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Serviço não encontrado']);
+                exit;
+            }
+            
+            // Excluir serviço
+            Database::execute("DELETE FROM servicos_setor WHERE id = ?", [$servicoId]);
+            
+            // Atualizar contador do setor
+            Database::execute(
+                "UPDATE setores_empresa SET total_servicos = total_servicos - 1, atualizado_em = NOW() WHERE id = ?",
+                [$servico['setor_id']]
+            );
+            
+            // Atualizar progresso
+            $this->atualizarProgressoHierarquico($servico['estrutura_id']);
+            
+            Logger::info('Serviço excluído', [
+                'servico_id' => $servicoId,
+                'nome' => $servico['nome_servico']
+            ]);
+            
+            echo json_encode([
+                'sucesso' => true,
+                'mensagem' => 'Serviço excluído com sucesso!'
+            ]);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao excluir serviço', [
+                'erro' => $e->getMessage(),
+                'servico_id' => $servicoId
+            ]);
+            
+            echo json_encode([
+                'sucesso' => false,
+                'erro' => 'Erro interno: ' . $e->getMessage()
+            ]);
+        }
+        
+        exit;
+    }
+    /**
+     * Calcular estatísticas para nova arquitetura (compatibilidade)
+     */
+    private function calcularEstatisticasNovaArquitetura(array $setoresPorNome): array
+    {
+        $totalCriticos = 0;
+        $totalServicos = 0;
+        
+        foreach ($setoresPorNome as $setor) {
+            if (!empty($setor['servicos_detalhados'])) {
+                foreach ($setor['servicos_detalhados'] as $servico) {
+                    $totalServicos++;
+                    if (isset($servico['criticidade']) && $servico['criticidade'] == 1) {
+                        $totalCriticos++;
+                    }
+                }
+            }
+        }
+        
+        return [
+            'servicos_criticos' => $totalCriticos,
+            'total_servicos' => $totalServicos
+        ];
+    }

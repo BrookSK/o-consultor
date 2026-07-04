@@ -100,6 +100,15 @@ class Router
         $this->post('sop/montar-manual-final', 'SopController', 'montarManualFinal');             // Etapa 4: Montagem final
         $this->get('sop/manual-completo', 'SopController', 'exibirManualCompleto');               // Exibir manual final
         
+        // SISTEMA HIERÁRQUICO UNIFICADO: Setor > Serviços > SOPs
+        $this->get('sop/gerenciar-hierarquia', 'SopController', 'gerenciarHierarquia');          // Interface principal de gerenciamento
+        $this->post('sop/processar-servico-completo', 'SopController', 'processarServicoCompleto'); // Processar serviço: detalhar + gerar SOP
+        $this->post('sop/adicionar-servico-manual', 'SopController', 'adicionarServicoManual');  // Adicionar serviço manualmente
+        $this->post('sop/adicionar-servico-audio', 'SopController', 'adicionarServicoAudio');    // Adicionar serviço por áudio
+        $this->get('sop/ver-detalhes-servico', 'SopController', 'verDetalhesServico');           // Ver detalhes completos do serviço
+        $this->post('sop/editar-servico-manual', 'SopController', 'editarServicoManual');        // Editar serviço
+        $this->post('sop/excluir-servico', 'SopController', 'excluirServico');                   // Excluir serviço
+        
         $this->get('sop/ver', 'SopController', 'ver');
         $this->get('sop/listar-por-diagnostico', 'SopController', 'listarSopsPorDiagnostico'); // Lista SOPs de um diagnóstico
         $this->get('sop/revisar', 'SopController', 'revisar');

@@ -104,6 +104,10 @@ $diagnosticoId = isset($_GET['diagnostico_id']) ? (int) $_GET['diagnostico_id'] 
                 <button onclick="gerarManualCompleto()" class="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700 font-medium">
                     🧠 Gerar Manual Completo (Nova Arquitetura)
                 </button>
+                <a href="<?= APP_URL ?>/sop/gerenciar-hierarquia?diagnostico_id=<?= $diagnosticoId ?>" 
+                   class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 font-medium">
+                    🏢 Gestão Hierárquica
+                </a>
                 <?php endif; ?>
                 
                 <button onclick="abrirModalNovoSOP()" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">
@@ -176,10 +180,13 @@ $diagnosticoId = isset($_GET['diagnostico_id']) ? (int) $_GET['diagnostico_id'] 
                                 ?>
                                 <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
                                     <div class="flex items-center gap-3">
-                                        <code class="px-2 py-1 bg-white text-xs text-gray-600 rounded"><?= htmlspecialchars($sop['id']) ?></code>
+                                        <code class="px-2 py-1 bg-white text-xs text-gray-600 rounded"><?= htmlspecialchars($sop['sop_codigo'] ?? $sop['id']) ?></code>
                                         <span class="text-sm text-gray-800"><?= htmlspecialchars($sop['nome']) ?></span>
                                         <?php if (!empty($sop['customizado'])): ?>
                                         <span class="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded font-medium">PERSONALIZADO</span>
+                                        <?php endif; ?>
+                                        <?php if (isset($sop['origem']) && $sop['origem'] === 'nova_arquitetura'): ?>
+                                        <span class="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded font-medium">NOVA ARQUITETURA</span>
                                         <?php endif; ?>
                                     </div>
                                     <div class="flex items-center gap-2">
@@ -195,10 +202,17 @@ $diagnosticoId = isset($_GET['diagnostico_id']) ? (int) $_GET['diagnostico_id'] 
                                             📝 Revisar
                                         </a>
                                         <?php else: ?>
+                                        <?php if (isset($sop['origem']) && $sop['origem'] === 'nova_arquitetura'): ?>
+                                        <a href="<?= APP_URL ?>/sop/ver-sop-individual?id=<?= str_replace('nova_', '', $sop['id']) ?>" 
+                                           class="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700">
+                                            👁️ Ver SOP (Nova)
+                                        </a>
+                                        <?php else: ?>
                                         <a href="<?= APP_URL ?>/sop/ver?id=<?= $sop['id'] ?>" 
                                            class="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700">
                                             👁️ Ver SOP
                                         </a>
+                                        <?php endif; ?>
                                         <?php endif; ?>
                                     </div>
                                 </div>

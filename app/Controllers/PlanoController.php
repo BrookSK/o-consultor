@@ -533,10 +533,13 @@ class PlanoController
 
         try {
             $prompt = $this->construirPromptPrioridades($respostas, $plano);
-            $response = ApiHelper::chamarOpenAI($prompt, 'gpt-4', true); // true para JSON
+            $response = ApiHelper::chamarAnalise($prompt, true); // Com fallback automático
 
-            if ($response && isset($response['content'])) {
-                $prioridadesIA = json_decode($response['content'], true);
+            if ($response && $response['sucesso'] && $response['conteudo']) {
+                $prioridadesIA = $response['conteudo'];
+                if (is_string($prioridadesIA)) {
+                    $prioridadesIA = json_decode($prioridadesIA, true);
+                }
                 return $this->formatarPrioridadesIA($prioridadesIA);
             }
 
