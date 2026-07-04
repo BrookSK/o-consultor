@@ -38,15 +38,27 @@ class SopController
                 exit;
             }
             
-            // Usar empresa do diagnóstico - FORÇAR SELEÇÃO AUTOMÁTICA
+            // CORREÇÃO: Usar empresa do diagnóstico - FORÇAR SELEÇÃO AUTOMÁTICA
             $empresaId = $diagnostico['empresa_id'];
             $dados['empresa_atual'] = $this->carregarDadosEmpresa($empresaId, $diagnosticoId);
             $dados['diagnostico_especifico'] = $diagnostico;  // Adicionar diagnóstico completo
+            $dados['diagnostico_id'] = $diagnosticoId;        // ID disponível na view
             
             $empresa = Empresa::buscarPorId($empresaId);
             if ($empresa) {
                 // Carregar departamentos baseados NO DIAGNÓSTICO REAL, não template genérico
                 $dados['departamentos'] = $this->getDepartamentosComBaseNoDiagnostico($empresa, $diagnostico, $empresaId);
+                
+                Logger::info('Empresa PRE-SELECIONADA via diagnóstico', [
+                    'diagnostico_id' => $diagnosticoId,
+                    'empresa_id' => $empresaId,
+                    'empresa_nome' => $empresa['nome'],
+                    'total_departamentos' => count($dados['departamentos'])
+                ]);
+            } else {
+                Flash::set('erro', 'Empresa do diagnóstico não encontrada.');
+                header('Location: ' . APP_URL . '/diagnostico');
+                exit;
             }
             
             Logger::info('Acessando SOPs via diagnóstico - MODO ESPECÍFICO', [
@@ -108,8 +120,27 @@ class SopController
             'empresa_nome' => $empresa['nome']
         ]);
         
-        // 1. EXTRAIR DEPARTAMENTOS REAIS DO DIAGNÓSTICO
+        // 1. EXTRAIR DEPARTAMENTOS REAIS DO DIAGNÓSTICO COM MÉTODO APRIMORADO
         $departamentosReais = $this->extrairDepartamentosDetalhados($diagnostico);
+        
+        // Se não encontrou departamentos específicos, usar extração básica melhorada
+        if (empty($departamentosReais)) {
+            $departamentosTexto = $this->extrairDepartamentos($diagnostico);
+            $departamentosArray = $this->parsearDepartamentos($departamentosTexto);
+            
+            foreach ($departamentosArray as $dept) {
+                $departamentosReais[$dept] = [
+                    'nome' => $dept,
+                    'colaboradores' => ['Quantidade não especificada'],
+                    'funcoes_principais' => $this->extrairFuncoesPorDepartamento(json_decode($diagnostico['respostas'], true) ?? [], $dept),
+                    'ferramentas_usadas' => $this->extrairFerramentasPorDepartamento(json_decode($diagnostico['respostas'], true) ?? [], $dept),
+                    'problemas_identificados' => $this->extrairProblemasPorDepartamento(json_decode($diagnostico['respostas'], true) ?? [], $dept),
+                    'objetivos_especificos' => $this->extrairObjetivosPorDepartamento(json_decode($diagnostico['respostas'], true) ?? [], $dept),
+                    'processos_principais' => $this->identificarProcessosPrincipais($dept, json_decode($diagnostico['respostas'], true) ?? []),
+                    'nivel_maturidade' => $this->calcularMaturidadePorDepartamento(json_decode($diagnostico['respostas'], true) ?? [], $dept)
+                ];
+            }
+        }
         
         // 2. BUSCAR SOPs EXISTENTES NO BANCO
         $sopsExistentes = Sop::buscarPorEmpresa($empresaId);
@@ -128,9 +159,10 @@ class SopController
             }
             
             $sopsMap[$sop['sop_codigo']] = [
-                'id' => $sop['sop_codigo'],
+                'id' => $sop['id'], // CORREÇÃO: usar ID numérico do banco
                 'nome' => $sop['titulo'],
-                'status' => $status
+                'status' => $status,
+                'sop_codigo' => $sop['sop_codigo']  // Manter código também
             ];
         }
         
@@ -141,9 +173,17 @@ class SopController
             $iconeDept = $this->getIconePorDepartamento($nomeDepartamento);
             $sopsEspecificos = $this->criarSOPsEspecificosPorDepartamento($nomeDepartamento, $detalhes, $empresa, $diagnostico);
             
-            // Aplicar status dos SOPs existentes
+            // CORREÇÃO: Aplicar status dos SOPs existentes usando ID numérico
             foreach ($sopsEspecificos as &$sop) {
-                $sop['status'] = isset($sopsMap[$sop['id']]['status']) ? $sopsMap[$sop['id']]['status'] : 'nao_gerado';
+                $codigoSOP = $sop['id']; // Este é o código SOP
+                if (isset($sopsMap[$codigoSOP])) {
+                    $sop['status'] = $sopsMap[$codigoSOP]['status'];
+                    $sop['id'] = $sopsMap[$codigoSOP]['id']; // USAR ID NUMÉRICO DO BANCO
+                    $sop['sop_codigo'] = $codigoSOP; // Manter código também
+                } else {
+                    $sop['status'] = 'nao_gerado';
+                    $sop['sop_codigo'] = $codigoSOP;
+                }
             }
             
             $departamentosEstruturados[] = [
@@ -157,7 +197,8 @@ class SopController
         
         Logger::info('Departamentos criados com base no diagnóstico', [
             'total_departamentos' => count($departamentosEstruturados),
-            'departamentos' => array_column($departamentosEstruturados, 'nome')
+            'departamentos' => array_column($departamentosEstruturados, 'nome'),
+            'total_sops' => array_sum(array_column($departamentosEstruturados, 'total_sops'))
         ]);
         
         return $departamentosEstruturados;
@@ -930,16 +971,25 @@ class SopController
             $diagnosticoEspecifico = Diagnostico::buscarPorId($diagnosticoIdPost);
             if ($diagnosticoEspecifico) {
                 $empresaId = $diagnosticoEspecifico['empresa_id'];
-                Logger::info('Usando empresa do diagnóstico específico', [
+                Logger::info('DIAGNÓSTICO ESPECÍFICO DETECTADO - Usando dados específicos da empresa', [
                     'diagnostico_id' => $diagnosticoIdPost,
                     'empresa_id' => $empresaId,
-                    'sop_codigo' => $sopCodigo
+                    'sop_codigo' => $sopCodigo,
+                    'modo' => 'ESPECÍFICO_DO_DIAGNÓSTICO'
                 ]);
             } else {
                 $empresaId = Auth::garantirEmpresa();
+                Logger::warning('Diagnóstico especificado não encontrado, usando empresa do usuário', [
+                    'diagnostico_id_solicitado' => $diagnosticoIdPost,
+                    'empresa_usuario' => $empresaId
+                ]);
             }
         } else {
             $empresaId = Auth::garantirEmpresa();
+            Logger::info('Modo genérico - usando empresa do usuário atual', [
+                'empresa_id' => $empresaId,
+                'modo' => 'GENÉRICO'
+            ]);
         }
 
         if (empty($sopCodigo) || !$empresaId) {
@@ -971,7 +1021,9 @@ class SopController
                 'diagnostico_id' => $diagnosticoIdPost,
                 'sop_codigo' => $sopCodigo,
                 'empresa_id' => $empresaId,
-                'empresa_nome' => isset($empresa['nome']) ? $empresa['nome'] : 'N/A'
+                'empresa_nome' => isset($empresa['nome']) ? $empresa['nome'] : 'N/A',
+                'diagnostico_encontrado' => !empty($diagnostico),
+                'respostas_diagnostico' => !empty($diagnostico['respostas'])
             ]);
         } else {
             $diagnostico = Diagnostico::buscarUltimoPorEmpresa($empresaId);
@@ -990,6 +1042,16 @@ class SopController
         // PROCESSO ROBUSTO DE MAPEAMENTO COM DIAGNÓSTICO ESPECÍFICO
         $mapeamentoCompleto = $this->criarMapeamentoEmpresarial($empresa, $diagnostico);
         
+        Logger::info('Mapeamento empresarial criado', [
+            'empresa_id' => $empresaId,
+            'diagnostico_usado' => !empty($diagnostico),
+            'departamentos_extraidos' => $mapeamentoCompleto['departamentos_texto'],
+            'ferramentas_extraidas' => $mapeamentoCompleto['ferramentas'],
+            'problemas_extraidos' => $mapeamentoCompleto['problemas'],
+            'colaboradores' => $mapeamentoCompleto['colaboradores'],
+            'maturidade' => $mapeamentoCompleto['maturidade']
+        ]);
+        
         // Montar dados ESPECÍFICOS da empresa para o prompt
         $empresaDados = [
             'nome' => $empresa['nome'],
@@ -1004,6 +1066,17 @@ class SopController
             'mapeamento_detalhado' => $mapeamentoCompleto['mapeamento_detalhado'],
             'procedimentos_mercado' => $mapeamentoCompleto['procedimentos_mercado']
         ];
+        
+        Logger::info('Dados específicos da empresa preparados para IA', [
+            'empresa_nome' => $empresaDados['nome'],
+            'setor' => $empresaDados['setor'],
+            'colaboradores' => $empresaDados['colaboradores'],
+            'departamentos' => $empresaDados['departamentos'],
+            'ferramentas' => $empresaDados['ferramentas'],
+            'problemas' => substr($empresaDados['problemas'], 0, 200) . '...',
+            'tem_mapeamento_detalhado' => !empty($empresaDados['mapeamento_detalhado']),
+            'tem_procedimentos_mercado' => !empty($empresaDados['procedimentos_mercado'])
+        ]);
 
         // Dados ESPECÍFICOS do SOP com contexto do diagnóstico
         $departamentoSOP = $this->getDepartamentoPorId($sopCodigo);
@@ -1040,17 +1113,22 @@ class SopController
             ]);
         }
 
-        // Gerar prompt estruturado com contexto dos documentos
+        // Gerar prompt estruturado com contexto dos documentos - USAR PROMPT PADRÃO-OURO
         $prompt = ApiHelper::buildPromptSopDetalhado($empresaDados, $sopData, $contextoDocumentos);
         
         // Log para acompanhar uso da nova estrutura
-        Logger::info('Gerando SOP com novo prompt padrão-ouro', [
+        Logger::info('Gerando SOP com prompt padrão-ouro DETALHADO', [
             'sop_codigo' => $sopCodigo,
             'empresa' => $empresa['nome'],
             'setor' => $empresa['segmento'] ?? 'Tecnologia',
             'prompt_size' => strlen($prompt),
             'contexto_documentos' => !empty($contextoDocumentos),
-            'departamentos' => isset($mapeamentoCompleto['departamentos_array']) ? $mapeamentoCompleto['departamentos_array'] : []
+            'departamentos_empresa' => isset($mapeamentoCompleto['departamentos_array']) ? $mapeamentoCompleto['departamentos_array'] : [],
+            'usa_diagnostico_especifico' => !empty($diagnosticoIdPost),
+            'diagnostico_id' => $diagnosticoIdPost ?? null,
+            'ferramentas_empresa' => $empresaDados['ferramentas'],
+            'problemas_empresa' => substr($empresaDados['problemas'], 0, 100),
+            'contexto_departamento_especifico' => !empty($contextoEspecifico)
         ]);
 
         // Chamar IA (GPT ou Claude conforme config)
@@ -2648,11 +2726,119 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
     private function extrairDepartamentos(?array $diagnostico): string
     {
         if (!$diagnostico || empty($diagnostico['respostas'])) {
-            return 'Comercial, TI, Operações, Financeiro';
+            return 'Comercial, TI, Operações, Financeiro, RH';
         }
         
         $respostas = json_decode($diagnostico['respostas'], true);
-        return isset($respostas['departamentos']) ? implode(', ', $respostas['departamentos']) : 'Comercial, TI, Operações, Financeiro';
+        if (!$respostas) {
+            return 'Comercial, TI, Operações, Financeiro, RH';
+        }
+        
+        // CORREÇÃO: Extrair departamentos de TODAS as perguntas do diagnóstico
+        $departamentosEncontrados = [];
+        
+        // Buscar em diferentes campos do diagnóstico que podem conter departamentos
+        $camposParaBuscar = [
+            'departamentos', 'setores', 'areas_empresa', 'estrutura_empresa',
+            'departamentos_empresa', 'areas_atuacao', 'estrutura_organizacional'
+        ];
+        
+        foreach ($camposParaBuscar as $campo) {
+            if (isset($respostas[$campo])) {
+                if (is_array($respostas[$campo])) {
+                    $departamentosEncontrados = array_merge($departamentosEncontrados, $respostas[$campo]);
+                } else {
+                    // Se for string, dividir por vírgulas ou quebras de linha
+                    $depsTexto = str_replace([';', '\n', '\r'], ',', $respostas[$campo]);
+                    $depsArray = array_map('trim', explode(',', $depsTexto));
+                    $departamentosEncontrados = array_merge($departamentosEncontrados, $depsArray);
+                }
+            }
+        }
+        
+        // Buscar também em perguntas que podem conter informação de departamentos
+        $perguntasRelevantes = [
+            'empresa_colaboradores', 'estrutura_atual', 'principais_areas',
+            'equipe_atual', 'areas_responsabilidade', 'organograma'
+        ];
+        
+        foreach ($perguntasRelevantes as $pergunta) {
+            if (isset($respostas[$pergunta]) && is_string($respostas[$pergunta])) {
+                $texto = strtolower($respostas[$pergunta]);
+                
+                // Detectar departamentos mencionados no texto
+                $padroesDepto = [
+                    'comercial' => 'Comercial',
+                    'vendas' => 'Comercial',
+                    'ti' => 'TI',
+                    'tecnologia' => 'TI',
+                    'operac' => 'Operações',
+                    'produc' => 'Operações',
+                    'financeiro' => 'Financeiro',
+                    'contab' => 'Financeiro',
+                    'rh' => 'RH',
+                    'recursos humanos' => 'RH',
+                    'pessoas' => 'RH',
+                    'marketing' => 'Marketing',
+                    'juridico' => 'Jurídico',
+                    'legal' => 'Jurídico',
+                    'administrativo' => 'Administrativo',
+                    'compras' => 'Compras',
+                    'logistica' => 'Logística',
+                    'qualidade' => 'Qualidade'
+                ];
+                
+                foreach ($padroesDepto as $padrao => $departamento) {
+                    if (strpos($texto, $padrao) !== false) {
+                        $departamentosEncontrados[] = $departamento;
+                    }
+                }
+            }
+        }
+        
+        // Limpar e padronizar departamentos
+        $departamentosEncontrados = array_filter($departamentosEncontrados);
+        $departamentosEncontrados = array_unique($departamentosEncontrados);
+        $departamentosEncontrados = array_map('trim', $departamentosEncontrados);
+        $departamentosEncontrados = array_filter($departamentosEncontrados, function($dept) {
+            return !empty($dept) && strlen($dept) > 1;
+        });
+        
+        // Se não encontrou nenhum departamento específico, usar padrão baseado no segmento da empresa
+        if (empty($departamentosEncontrados)) {
+            $segmentoEmpresa = isset($respostas['segmento']) ? $respostas['segmento'] : 'Tecnologia';
+            
+            switch(strtolower($segmentoEmpresa)) {
+                case 'tecnologia':
+                    return 'Comercial, TI, Operações, Financeiro, RH';
+                case 'saude':
+                case 'saúde':
+                    return 'Atendimento, Clínico, Administrativo, Financeiro, RH';
+                case 'educacao':
+                case 'educação':
+                    return 'Pedagógico, Administrativo, Financeiro, Coordenação, RH';
+                case 'varejo':
+                    return 'Comercial, Operações, Estoque, Financeiro, RH';
+                case 'industria':
+                case 'indústria':
+                    return 'Produção, Comercial, Qualidade, Financeiro, RH, Compras';
+                case 'servicos':
+                case 'serviços':
+                    return 'Comercial, Operações, Atendimento, Financeiro, RH';
+                default:
+                    return 'Comercial, Operações, Administrativo, Financeiro, RH';
+            }
+        }
+        
+        $departamentosFinais = implode(', ', $departamentosEncontrados);
+        
+        Logger::info('Departamentos extraídos do diagnóstico', [
+            'departamentos_encontrados' => $departamentosEncontrados,
+            'total_departamentos' => count($departamentosEncontrados),
+            'string_final' => $departamentosFinais
+        ]);
+        
+        return $departamentosFinais;
     }
 
     private function extrairFerramentas(?array $diagnostico): string

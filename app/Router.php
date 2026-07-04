@@ -76,7 +76,7 @@ class Router
         $this->post('sop/adicionar', 'SopController', 'adicionarSOP');
         $this->post('sop/remover', 'SopController', 'removerSOP');
         $this->post('sop/gerar', 'SopController', 'gerar');
-        $this->get('sop/ver/{id}', 'SopController', 'ver');
+        $this->get('sop/ver', 'SopController', 'ver');
         $this->get('sop/revisar', 'SopController', 'revisar');
         $this->post('sop/aprovar', 'SopController', 'aprovar');
         $this->post('sop/ajustar', 'SopController', 'ajustar');

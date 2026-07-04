@@ -187,7 +187,7 @@ $diagnosticoId = isset($_GET['diagnostico_id']) ? (int) $_GET['diagnostico_id'] 
                                             📝 Revisar
                                         </a>
                                         <?php else: ?>
-                                        <a href="<?= APP_URL ?>/sop/ver/<?= urlencode($sop['id']) ?>" 
+                                        <a href="<?= APP_URL ?>/sop/ver?id=<?= $sop['id'] ?>" 
                                            class="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700">
                                             👁️ Ver SOP
                                         </a>
@@ -430,7 +430,9 @@ function exportarTodosSops() {
 
 <script>
 // Variáveis globais
-const DIAGNOSTICO_ID = <?= $diagnosticoId ? $diagnosticoId : 'null' ?>;
+const DIAGNOSTICO_ID = <?= isset($dados['diagnostico_id']) && !empty($dados['diagnostico_id']) ? $dados['diagnostico_id'] : 'null' ?>;
+
+console.log('Diagnóstico ID disponível:', DIAGNOSTICO_ID);
 
 // Função para selecionar empresa e navegar para próxima hierarquia
 function selecionarEmpresa(empresaId) {

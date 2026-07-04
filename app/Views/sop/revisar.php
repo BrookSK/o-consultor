@@ -296,9 +296,24 @@ async function salvarRascunho() {
     const formData = new FormData();
     formData.append('csrf_token', '<?= Csrf::token() ?>');
     
-    // CORREÇÃO: Usar o ID real do SOP do banco de dados
+    // CORREÇÃO: Usar o ID numérico do banco de dados, não o código SOP
     <?php if (isset($sop) && !empty($sop)): ?>
-        formData.append('sop_id', '<?= $sop['id'] ?? $sop['sop_codigo'] ?? 0 ?>');
+        <?php
+        // Buscar ID real do SOP no banco se necessário
+        if (!isset($sop['id']) || empty($sop['id'])) {
+            $sopReal = Database::queryOne("SELECT id FROM sops WHERE sop_codigo = :codigo LIMIT 1", ['codigo' => $sop['sop_codigo'] ?? '']);
+            $sopIdReal = $sopReal ? $sopReal['id'] : 0;
+        } else {
+            $sopIdReal = $sop['id'];
+        }
+        ?>
+        formData.append('sop_id', '<?= $sopIdReal ?>');
+        
+        <?php if (!$sopIdReal): ?>
+        console.error('ID do SOP não encontrado no banco');
+        alert('Erro: SOP não identificado no sistema. Verifique se o SOP foi gerado corretamente.');
+        return;
+        <?php endif; ?>
     <?php else: ?>
         console.error('SOP não encontrado');
         alert('Erro: SOP não identificado');
