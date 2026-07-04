@@ -2201,6 +2201,12 @@ class SopController
      */
     public function executarMapeamentoSetor(): void
     {
+        // LOG BÁSICO IMEDIATO
+        error_log("🔥🔥🔥 MÉTODO EXECUTAR MAPEAMENTO SETOR CHAMADO 🔥🔥🔥");
+        error_log("REQUEST_METHOD: " . $_SERVER['REQUEST_METHOD']);
+        error_log("REQUEST_URI: " . $_SERVER['REQUEST_URI']);
+        error_log("POST DATA: " . print_r($_POST, true));
+        
         $inicioProcesso = microtime(true);
         
         Auth::proteger();

@@ -165,6 +165,13 @@ $csrfToken = Session::get('csrf_token');
                 class="px-6 py-2 border border-red-300 text-red-700 rounded-lg hover:bg-red-50">
             🔄 Regenerar Token
         </button>
+        
+        <!-- Botão de Teste Básico JavaScript -->
+        <button type="button" 
+                onclick="testeBasicoJS()"
+                class="px-6 py-2 border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50">
+            🧪 Teste JS
+        </button>
     </div>
     
     <button type="button" 
@@ -188,10 +195,14 @@ console.log('Setores:', <?= json_encode(array_column($dados['setores'], 'nome_se
 
 // Mapear serviços de um setor específico
 async function mapearSetor(setorNome, index) {
+    console.log('🔥 FUNÇÃO MAPEAR SETOR CHAMADA 🔥');
     console.log('=== INICIANDO MAPEAMENTO ===');
     console.log('Setor:', setorNome, 'Tipo:', typeof setorNome);
     console.log('Index:', index, 'Tipo:', typeof index);
     console.log('URL da API:', '<?= APP_URL ?>/sop/executar-mapeamento-setor');
+    
+    // TESTE IMEDIATO: Verificar se chegou até aqui
+    alert(`🔥 TESTE: Função mapearSetor chamada!\nSetor: ${setorNome}\nIndex: ${index}`);
     
     // Validar parâmetros
     if (!setorNome || setorNome === '') {
@@ -210,6 +221,13 @@ async function mapearSetor(setorNome, index) {
     const loading = document.getElementById(`loading-${index}`);
     const status = document.getElementById(`status-setor-${index}`);
     const resultado = document.getElementById(`resultado-${index}`);
+    
+    console.log('🔍 ELEMENTOS ENCONTRADOS:', {
+        btnMapear: !!btnMapear,
+        loading: !!loading, 
+        status: !!status,
+        resultado: !!resultado
+    });
     
     if (!btnMapear) {
         console.error('ERRO: Botão não encontrado:', `btn-mapear-${index}`);
@@ -566,19 +584,35 @@ async function regenerarCSRF() {
     }
 }
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('=== PÁGINA CARREGADA ===');
+    console.log('🚀 PÁGINA CARREGADA - INICIANDO VERIFICAÇÕES 🚀');
     
     // Verificar se a função mapearSetor existe
     if (typeof mapearSetor === 'function') {
         console.log('✅ Função mapearSetor encontrada');
     } else {
         console.error('❌ Função mapearSetor NÃO encontrada');
+        alert('ERRO CRÍTICO: Função mapearSetor não foi carregada!');
+        return;
     }
+    
+    // Verificar variáveis globais
+    console.log('📊 VARIÁVEIS GLOBAIS:', {
+        estruturaId: typeof estruturaId !== 'undefined' ? estruturaId : 'UNDEFINED',
+        totalSetores: typeof totalSetores !== 'undefined' ? totalSetores : 'UNDEFINED',
+        setoresMapeados: typeof setoresMapeados !== 'undefined' ? setoresMapeados : 'UNDEFINED'
+    });
     
     // Atualizar status do CSRF
     const csrfMeta = document.querySelector('meta[name="csrf-token"]');
     const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
     const csrfStatus = document.getElementById('csrf-status');
+    
+    console.log('🔐 CSRF TOKEN STATUS:', {
+        meta_existe: !!csrfMeta,
+        token_existe: !!csrfToken,
+        token_tamanho: csrfToken ? csrfToken.length : 0,
+        status_element: !!csrfStatus
+    });
     
     if (csrfStatus) {
         if (csrfToken) {
@@ -587,18 +621,47 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             csrfStatus.textContent = '❌ Ausente';
             csrfStatus.className = 'font-mono text-red-600';
+            console.error('🚨 CSRF TOKEN AUSENTE!');
         }
     }
     
     // Verificar se todos os elementos necessários existem
-    console.log('=== VERIFICAÇÃO DE ELEMENTOS ===');
-    for (let i = 0; i < totalSetores; i++) {
+    console.log('🔍 VERIFICAÇÃO DE ELEMENTOS:');
+    let problemasEncontrados = 0;
+    
+    for (let i = 0; i < (typeof totalSetores !== 'undefined' ? totalSetores : 0); i++) {
         const btn = document.getElementById(`btn-mapear-${i}`);
-        if (btn) {
-            console.log(`✅ Botão ${i} encontrado`);
-        } else {
+        const loading = document.getElementById(`loading-${i}`);
+        const status = document.getElementById(`status-setor-${i}`);
+        const resultado = document.getElementById(`resultado-${i}`);
+        
+        const elementosOk = {
+            botao: !!btn,
+            loading: !!loading,
+            status: !!status,
+            resultado: !!resultado
+        };
+        
+        console.log(`Setor ${i}:`, elementosOk);
+        
+        if (!btn) {
             console.error(`❌ Botão ${i} NÃO encontrado`);
+            problemasEncontrados++;
         }
+        
+        // Teste do onclick
+        if (btn && btn.onclick) {
+            console.log(`✅ Botão ${i} tem evento onclick`);
+        } else if (btn) {
+            console.warn(`⚠️ Botão ${i} SEM evento onclick`);
+        }
+    }
+    
+    if (problemasEncontrados > 0) {
+        console.error(`🚨 ${problemasEncontrados} problemas encontrados nos elementos!`);
+        alert(`AVISO: ${problemasEncontrados} elementos não foram encontrados. Verifique o console.`);
+    } else {
+        console.log('✅ Todos os elementos encontrados com sucesso!');
     }
     
     // Se quiser iniciar automaticamente, descomente a linha abaixo:
@@ -614,6 +677,67 @@ async function mapearTodosSetores() {
             await mapearSetor(setores[i], i);
             await new Promise(resolve => setTimeout(resolve, 1000)); // Delay entre chamadas
         }
+    }
+}
+
+// Teste básico de JavaScript e DOM
+function testeBasicoJS() {
+    console.log('🧪 INICIANDO TESTE BÁSICO JavaScript 🧪');
+    
+    try {
+        // 1. Verificar variáveis globais
+        const vars = {
+            estruturaId: typeof estruturaId !== 'undefined' ? estruturaId : 'UNDEFINED',
+            totalSetores: typeof totalSetores !== 'undefined' ? totalSetores : 'UNDEFINED',
+            setoresMapeados: typeof setoresMapeados !== 'undefined' ? setoresMapeados : 'UNDEFINED',
+            APP_URL: '<?= APP_URL ?>'
+        };
+        
+        console.log('📊 Variáveis:', vars);
+        
+        // 2. Verificar função mapearSetor
+        const funcaoExiste = typeof mapearSetor === 'function';
+        console.log('🔧 Função mapearSetor existe:', funcaoExiste);
+        
+        // 3. Testar primeiro botão se existir
+        const primeiroBtn = document.getElementById('btn-mapear-0');
+        console.log('🔘 Primeiro botão existe:', !!primeiroBtn);
+        
+        if (primeiroBtn) {
+            console.log('🔘 Onclick do botão:', primeiroBtn.getAttribute('onclick'));
+        }
+        
+        // 4. Verificar CSRF
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        console.log('🔐 CSRF Token:', csrfToken ? 'Presente (' + csrfToken.length + ' chars)' : 'AUSENTE');
+        
+        // 5. Teste de chamada manual
+        if (funcaoExiste && typeof estruturaId !== 'undefined' && estruturaId) {
+            const confirmacao = confirm('🧪 TESTE: Deseja tentar chamar mapearSetor(0) manualmente?');
+            if (confirmacao) {
+                console.log('🚀 Chamando mapearSetor manualmente...');
+                // Não vamos chamar porque pode dar problema, só simular
+                alert('✅ Teste simulado. Verifique o console para detalhes.');
+            }
+        }
+        
+        // Relatório
+        const relatorio = `🧪 RELATÓRIO DO TESTE:
+        
+✅ JavaScript funcionando: SIM
+${funcaoExiste ? '✅' : '❌'} Função mapearSetor: ${funcaoExiste ? 'EXISTE' : 'NÃO EXISTE'}
+${vars.estruturaId !== 'UNDEFINED' ? '✅' : '❌'} estruturaId: ${vars.estruturaId}
+${vars.totalSetores !== 'UNDEFINED' ? '✅' : '❌'} totalSetores: ${vars.totalSetores}
+${!!primeiroBtn ? '✅' : '❌'} Primeiro botão: ${!!primeiroBtn ? 'ENCONTRADO' : 'NÃO ENCONTRADO'}
+${!!csrfToken ? '✅' : '❌'} CSRF Token: ${!!csrfToken ? 'PRESENTE' : 'AUSENTE'}
+        
+Verifique o console para mais detalhes.`;
+
+        alert(relatorio);
+        
+    } catch (error) {
+        console.error('❌ ERRO no teste básico:', error);
+        alert('❌ ERRO no teste básico: ' + error.message);
     }
 }
 </script>
