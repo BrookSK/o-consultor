@@ -8651,7 +8651,6 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             [$estruturaId]
         );
     }
-}
     
     /**
      * Criar prompt para detalhamento de serviço
@@ -8964,7 +8963,6 @@ Gere o SOP COMPLETO seguindo esta estrutura:";
         return null;
     }
 
-}
     /**
      * ADICIONAR SERVIÇO MANUAL ao sistema hierárquico
      */
@@ -9410,3 +9408,4 @@ Gere o SOP COMPLETO seguindo esta estrutura:";
             'total_servicos' => $totalServicos
         ];
     }
+}
