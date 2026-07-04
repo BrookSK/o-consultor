@@ -317,7 +317,13 @@ function toggleDepartamento(deptId) {
 async function gerarSop(sopId, sopNome) {
     const modal = document.getElementById('modalLoading');
     document.getElementById('loadingTitulo').textContent = 'Gerando SOP: ' + sopNome;
-    document.getElementById('loadingSubtitulo').textContent = 'Aplicando padrões baseados no setor da empresa...';
+    
+    if (DIAGNOSTICO_ID) {
+        document.getElementById('loadingSubtitulo').textContent = 'Usando diagnóstico específico da empresa para maior precisão...';
+    } else {
+        document.getElementById('loadingSubtitulo').textContent = 'Aplicando padrões baseados no setor da empresa...';
+    }
+    
     modal.classList.remove('hidden');
 
     const formData = new FormData();
@@ -325,9 +331,10 @@ async function gerarSop(sopId, sopNome) {
     formData.append('sop_id', sopId);
     formData.append('sop_nome', sopNome);
     
-    // Incluir diagnostico_id se disponível
+    // SEMPRE incluir diagnostico_id se disponível
     if (DIAGNOSTICO_ID) {
         formData.append('diagnostico_id', DIAGNOSTICO_ID);
+        console.log('Enviando diagnóstico específico:', DIAGNOSTICO_ID);
     }
 
     try {

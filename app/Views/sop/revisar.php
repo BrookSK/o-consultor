@@ -295,17 +295,68 @@ async function aprovarSop() {
 async function salvarRascunho() {
     const formData = new FormData();
     formData.append('csrf_token', '<?= Csrf::token() ?>');
-    formData.append('sop_id', '<?= $sop['id'] === 'SOP-TI-ONB-001' ? '1' : $sop['id'] ?>');
+    
+    // CORREÇÃO: Usar o ID real do SOP do banco de dados
+    <?php if (isset($sop) && !empty($sop)): ?>
+        formData.append('sop_id', '<?= $sop['id'] ?? $sop['sop_codigo'] ?? 0 ?>');
+    <?php else: ?>
+        console.error('SOP não encontrado');
+        alert('Erro: SOP não identificado');
+        return;
+    <?php endif; ?>
+    
+    // COLETAR TODOS OS CAMPOS EDITÁVEIS DA TELA
+    const campos = [
+        'objetivo', 'escopo_aplica', 'escopo_nao_aplica', 
+        'prerequisitos', 'ferramentas', 'checklist', 
+        'evidencias', 'relatorios'
+    ];
+    
+    campos.forEach(campo => {
+        const elemento = document.querySelector(`[name="${campo}"], #${campo}, .${campo}`);
+        if (elemento) {
+            if (elemento.type === 'checkbox') {
+                formData.append(campo, elemento.checked ? '1' : '0');
+            } else if (elemento.tagName === 'TEXTAREA') {
+                formData.append(campo, elemento.value);
+            } else if (elemento.value) {
+                formData.append(campo, elemento.value);
+            }
+        }
+    });
+    
+    // Coletar arrays (subtópicos, responsáveis, KPIs, etc.)
+    const camposArray = ['subtopicos', 'responsaveis', 'kpis'];
+    camposArray.forEach(campo => {
+        const elementos = document.querySelectorAll(`[data-field="${campo}"] input, [data-field="${campo}"] textarea`);
+        const valores = [];
+        elementos.forEach(el => {
+            if (el.value.trim()) valores.push(el.value.trim());
+        });
+        if (valores.length > 0) {
+            formData.append(campo, JSON.stringify(valores));
+        }
+    });
+    
+    console.log('Salvando rascunho com dados:', Object.fromEntries(formData));
+    
     try {
         const res = await fetch('<?= APP_URL ?>/sop/salvar-rascunho', { method: 'POST', body: formData });
         const data = await res.json();
         if (data.sucesso) {
-            if (typeof Toast !== 'undefined') Toast.sucesso(data.mensagem);
-            else alert(data.mensagem);
+            if (typeof Toast !== 'undefined') {
+                Toast.sucesso(data.mensagem);
+            } else {
+                alert(data.mensagem);
+            }
         } else {
+            console.error('Erro do servidor:', data);
             alert(data.erro || 'Erro ao salvar rascunho.');
         }
-    } catch(e) { alert('Erro de conexão.'); }
+    } catch(e) { 
+        console.error('Erro de conexão:', e);
+        alert('Erro de conexão.'); 
+    }
 }
 
 function mostrarAjusteIA() {

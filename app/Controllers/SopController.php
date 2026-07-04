@@ -38,16 +38,23 @@ class SopController
                 exit;
             }
             
-            // Usar empresa do diagnóstico
+            // Usar empresa do diagnóstico - FORÇAR SELEÇÃO AUTOMÁTICA
             $empresaId = $diagnostico['empresa_id'];
             $dados['empresa_atual'] = $this->carregarDadosEmpresa($empresaId, $diagnosticoId);
+            $dados['diagnostico_especifico'] = $diagnostico;  // Adicionar diagnóstico completo
             
             $empresa = Empresa::buscarPorId($empresaId);
             if ($empresa) {
-                $dados['departamentos'] = $this->getDepartamentosPorSetor($empresa['segmento'] ?? 'Tecnologia', $empresaId);
+                // Carregar departamentos baseados NO DIAGNÓSTICO REAL, não template genérico
+                $dados['departamentos'] = $this->getDepartamentosComBaseNoDiagnostico($empresa, $diagnostico, $empresaId);
             }
             
-            Logger::info('Acessando SOPs via diagnóstico', [
+            Logger::info('Acessando SOPs via diagnóstico - MODO ESPECÍFICO', [
+                'diagnostico_id' => $diagnosticoId,
+                'empresa_id' => $empresaId,
+                'empresa_nome' => $empresa['nome'] ?? 'N/A',
+                'departamentos_diagnostico' => $this->extrairDepartamentos($diagnostico)
+            ]);
                 'diagnostico_id' => $diagnosticoId,
                 'empresa_id' => $empresaId,
                 'empresa_nome' => $empresa['nome'] ?? 'N/A'
@@ -92,6 +99,277 @@ class SopController
         }
 
         require VIEW_PATH . '/sop/index.php';
+    }
+    
+    /**
+     * Carrega departamentos baseados NO DIAGNÓSTICO REAL da empresa, não templates genéricos
+     */
+    private function getDepartamentosComBaseNoDiagnostico(array $empresa, array $diagnostico, int $empresaId): array
+    {
+        Logger::info('Carregando departamentos com base no diagnóstico específico', [
+            'empresa_id' => $empresaId,
+            'diagnostico_id' => $diagnostico['id'],
+            'empresa_nome' => $empresa['nome']
+        ]);
+        
+        // 1. EXTRAIR DEPARTAMENTOS REAIS DO DIAGNÓSTICO
+        $departamentosReais = $this->extrairDepartamentosDetalhados($diagnostico);
+        
+        // 2. BUSCAR SOPs EXISTENTES NO BANCO
+        $sopsExistentes = Sop::buscarPorEmpresa($empresaId);
+        $sopsMap = [];
+        foreach ($sopsExistentes as $sop) {
+            switch($sop['status']) {
+                case 'ativo':
+                    $status = 'aprovado';
+                    break;
+                case 'rascunho':
+                    $status = 'gerado';
+                    break;
+                default:
+                    $status = 'nao_gerado';
+                    break;
+            }
+            
+            $sopsMap[$sop['sop_codigo']] = [
+                'id' => $sop['sop_codigo'],
+                'nome' => $sop['titulo'],
+                'status' => $status
+            ];
+        }
+        
+        // 3. CRIAR SOPs ESPECÍFICOS PARA CADA DEPARTAMENTO REAL DA EMPRESA
+        $departamentosEstruturados = [];
+        
+        foreach ($departamentosReais as $nomeDepartamento => $detalhes) {
+            $iconeDept = $this->getIconePorDepartamento($nomeDepartamento);
+            $sopsEspecificos = $this->criarSOPsEspecificosPorDepartamento($nomeDepartamento, $detalhes, $empresa, $diagnostico);
+            
+            // Aplicar status dos SOPs existentes
+            foreach ($sopsEspecificos as &$sop) {
+                $sop['status'] = $sopsMap[$sop['id']]['status'] ?? 'nao_gerado';
+            }
+            
+            $departamentosEstruturados[] = [
+                'nome' => $nomeDepartamento,
+                'icone' => $iconeDept,
+                'sops' => $sopsEspecificos,
+                'contexto_real' => $detalhes,  // Informações reais do diagnóstico
+                'total_sops' => count($sopsEspecificos)
+            ];
+        }
+        
+        Logger::info('Departamentos criados com base no diagnóstico', [
+            'total_departamentos' => count($departamentosEstruturados),
+            'departamentos' => array_column($departamentosEstruturados, 'nome')
+        ]);
+        
+        return $departamentosEstruturados;
+    }
+    
+    /**
+     * Extrai departamentos REAIS e DETALHADOS do diagnóstico
+     */
+    private function extrairDepartamentosDetalhados(array $diagnostico): array
+    {
+        $respostas = json_decode($diagnostico['respostas'], true) ?? [];
+        $departamentos = [];
+        
+        // Extrair departamentos básicos
+        $departamentosTexto = $this->extrairDepartamentos($diagnostico);
+        $departamentosArray = $this->parsearDepartamentos($departamentosTexto);
+        
+        // Para cada departamento, extrair informações específicas do diagnóstico
+        foreach ($departamentosArray as $dept) {
+            $departamentos[$dept] = [
+                'nome' => $dept,
+                'colaboradores' => $this->extrairColaboradoresPorDepartamento($respostas, $dept),
+                'funcoes_principais' => $this->extrairFuncoesPorDepartamento($respostas, $dept),
+                'ferramentas_usadas' => $this->extrairFerramentasPorDepartamento($respostas, $dept),
+                'problemas_identificados' => $this->extrairProblemasPorDepartamento($respostas, $dept),
+                'objetivos_especificos' => $this->extrairObjetivosPorDepartamento($respostas, $dept),
+                'processos_principais' => $this->identificarProcessosPrincipais($dept, $respostas),
+                'nivel_maturidade' => $this->calcularMaturidadePorDepartamento($respostas, $dept)
+            ];
+        }
+        
+        return $departamentos;
+    }
+    
+    /**
+     * Cria SOPs específicos para um departamento baseado no diagnóstico
+     */
+    private function criarSOPsEspecificosPorDepartamento(string $departamento, array $detalhes, array $empresa, array $diagnostico): array
+    {
+        $processos = $detalhes['processos_principais'];
+        $sops = [];
+        $contador = 1;
+        
+        foreach ($processos as $processo) {
+            $codigoSOP = $this->gerarCodigoSOPEspecifico($empresa['segmento'], $departamento, $processo, $contador);
+            
+            $sops[] = [
+                'id' => $codigoSOP,
+                'nome' => $processo,
+                'status' => 'nao_gerado',
+                'departamento' => $departamento,
+                'contexto_especifico' => [
+                    'funcoes' => $detalhes['funcoes_principais'],
+                    'ferramentas' => $detalhes['ferramentas_usadas'],
+                    'problemas' => $detalhes['problemas_identificados'],
+                    'objetivos' => $detalhes['objetivos_especificos'],
+                    'maturidade' => $detalhes['nivel_maturidade']
+                ],
+                'customizado' => true,  // Marca como específico para a empresa
+                'origem' => 'diagnostico_especifico'
+            ];
+            $contador++;
+        }
+        
+        return $sops;
+    }
+    
+    /**
+     * Métodos auxiliares para extração de dados específicos
+     */
+    private function extrairColaboradoresPorDepartamento(array $respostas, string $dept): array
+    {
+        // Extrair colaboradores específicos por departamento baseado nas respostas
+        return $respostas['colaboradores_' . strtolower($dept)] ?? ['Quantidade não especificada'];
+    }
+    
+    private function extrairFuncoesPorDepartamento(array $respostas, string $dept): array
+    {
+        $funcoesPadrao = [
+            'Comercial' => ['Prospecção', 'Vendas', 'Relacionamento com clientes'],
+            'TI' => ['Suporte técnico', 'Desenvolvimento', 'Infraestrutura'],
+            'Operações' => ['Produção', 'Qualidade', 'Logística'],
+            'Financeiro' => ['Contas a pagar/receber', 'Fluxo de caixa', 'Controles'],
+            'RH' => ['Recrutamento', 'Treinamento', 'Gestão de pessoas']
+        ];
+        
+        // Tentar extrair do diagnóstico, senão usar padrão
+        return $respostas['funcoes_' . strtolower($dept)] ?? $funcoesPadrao[$dept] ?? ['Funções operacionais'];
+    }
+    
+    private function extrairFerramentasPorDepartamento(array $respostas, string $dept): array
+    {
+        $ferramentasGerais = explode(',', $this->extrairFerramentas(['respostas' => json_encode($respostas)]));
+        return array_map('trim', $ferramentasGerais);
+    }
+    
+    private function extrairProblemasPorDepartamento(array $respostas, string $dept): array
+    {
+        $problemasGerais = $this->extrairProblemas(['respostas' => json_encode($respostas)]);
+        return explode(',', $problemasGerais);
+    }
+    
+    private function extrairObjetivosPorDepartamento(array $respostas, string $dept): array
+    {
+        $objetivosGerais = $this->extrairObjetivos(['respostas' => json_encode($respostas)]);
+        return explode(',', $objetivosGerais);
+    }
+    
+    private function identificarProcessosPrincipais(string $dept, array $respostas): array
+    {
+        $processosPorDepartamento = [
+            'Comercial' => [
+                'Prospecção de Clientes',
+                'Qualificação de Leads', 
+                'Apresentação de Propostas',
+                'Negociação e Fechamento',
+                'Pós-venda e Relacionamento'
+            ],
+            'TI' => [
+                'Atendimento de Chamados',
+                'Backup e Segurança',
+                'Manutenção de Sistemas',
+                'Desenvolvimento de Soluções',
+                'Gestão de Infraestrutura'
+            ],
+            'Operações' => [
+                'Recebimento de Pedidos',
+                'Planejamento de Produção',
+                'Controle de Qualidade',
+                'Expedição de Produtos',
+                'Gestão de Estoque'
+            ],
+            'Financeiro' => [
+                'Controle de Fluxo de Caixa',
+                'Contas a Pagar',
+                'Contas a Receber',
+                'Conciliação Bancária',
+                'Relatórios Gerenciais'
+            ],
+            'RH' => [
+                'Processo Seletivo',
+                'Onboarding de Colaboradores',
+                'Gestão de Performance',
+                'Treinamento e Desenvolvimento',
+                'Gestão de Benefícios'
+            ]
+        ];
+        
+        return $processosPorDepartamento[$dept] ?? ['Processo Operacional Padrão'];
+    }
+    
+    private function calcularMaturidadePorDepartamento(array $respostas, string $dept): int
+    {
+        // Calcular maturidade específica baseada nas respostas do diagnóstico
+        $score = $respostas['maturidade_percebida'] ?? 2;
+        return max(1, min(4, $score));
+    }
+    
+    private function gerarCodigoSOPEspecifico(string $setor, string $departamento, string $processo, int $contador): string
+    {
+        switch(strtolower($setor)) {
+            case 'tecnologia':
+                $prefixoSetor = 'TEC';
+                break;
+            case 'saúde':
+                $prefixoSetor = 'SAU';
+                break;
+            case 'educação':
+                $prefixoSetor = 'EDU';
+                break;
+            case 'varejo':
+                $prefixoSetor = 'VAR';
+                break;
+            case 'indústria':
+                $prefixoSetor = 'IND';
+                break;
+            default:
+                $prefixoSetor = 'GER';
+                break;
+        }
+        
+        $prefixoDept = strtoupper(substr($departamento, 0, 3));
+        
+        return sprintf('SOP-%s-%s-%03d', $prefixoSetor, $prefixoDept, $contador);
+    }
+    
+    private function getIconePorDepartamento(string $dept): string
+    {
+        switch(strtolower($dept)) {
+            case 'comercial':
+                return '💼';
+            case 'ti':
+                return '💻';
+            case 'operações':
+            case 'operacoes':
+                return '⚙️';
+            case 'financeiro':
+                return '💰';
+            case 'rh':
+                return '👥';
+            case 'marketing':
+                return '📢';
+            case 'juridico':
+            case 'jurídico':
+                return '⚖️';
+            default:
+                return '📋';
+        }
     }
     
     /**
@@ -642,7 +920,23 @@ class SopController
         $sopCodigo = htmlspecialchars(trim($_POST['sop_id'] ?? ''));
         $sopNome = htmlspecialchars(trim($_POST['sop_nome'] ?? ''));
         $diagnosticoIdPost = (int) ($_POST['diagnostico_id'] ?? 0);
-        $empresaId = Auth::garantirEmpresa();
+        
+        // IMPORTANTE: Priorizar empresa do diagnóstico, não do usuário atual
+        if ($diagnosticoIdPost > 0) {
+            $diagnosticoEspecifico = Diagnostico::buscarPorId($diagnosticoIdPost);
+            if ($diagnosticoEspecifico) {
+                $empresaId = $diagnosticoEspecifico['empresa_id'];
+                Logger::info('Usando empresa do diagnóstico específico', [
+                    'diagnostico_id' => $diagnosticoIdPost,
+                    'empresa_id' => $empresaId,
+                    'sop_codigo' => $sopCodigo
+                ]);
+            } else {
+                $empresaId = Auth::garantirEmpresa();
+            }
+        } else {
+            $empresaId = Auth::garantirEmpresa();
+        }
 
         if (empty($sopCodigo) || !$empresaId) {
             header('Content-Type: application/json');
@@ -665,17 +959,22 @@ class SopController
         // Buscar dados da empresa e diagnóstico
         $empresa = Empresa::buscarPorId($empresaId);
         
-        // Priorizar diagnóstico específico se foi passado via POST
+        // SEMPRE priorizar diagnóstico específico se foi passado
         $diagnostico = null;
         if ($diagnosticoIdPost > 0) {
             $diagnostico = Diagnostico::buscarPorId($diagnosticoIdPost);
-            Logger::info('Usando diagnóstico específico para geração de SOP', [
+            Logger::info('USANDO DIAGNÓSTICO ESPECÍFICO para geração de SOP', [
                 'diagnostico_id' => $diagnosticoIdPost,
                 'sop_codigo' => $sopCodigo,
-                'empresa_id' => $empresaId
+                'empresa_id' => $empresaId,
+                'empresa_nome' => $empresa['nome'] ?? 'N/A'
             ]);
         } else {
             $diagnostico = Diagnostico::buscarUltimoPorEmpresa($empresaId);
+            Logger::info('Usando último diagnóstico da empresa', [
+                'empresa_id' => $empresaId,
+                'diagnostico_id' => $diagnostico['id'] ?? null
+            ]);
         }
         
         if (!$empresa) {
@@ -684,10 +983,10 @@ class SopController
             exit;
         }
 
-        // NOVO: Processo robusto de mapeamento
+        // PROCESSO ROBUSTO DE MAPEAMENTO COM DIAGNÓSTICO ESPECÍFICO
         $mapeamentoCompleto = $this->criarMapeamentoEmpresarial($empresa, $diagnostico);
         
-        // Montar dados completos da empresa para o prompt
+        // Montar dados ESPECÍFICOS da empresa para o prompt
         $empresaDados = [
             'nome' => $empresa['nome'],
             'setor' => $empresa['segmento'] ?? 'Tecnologia',
@@ -702,12 +1001,16 @@ class SopController
             'procedimentos_mercado' => $mapeamentoCompleto['procedimentos_mercado']
         ];
 
+        // Dados ESPECÍFICOS do SOP com contexto do diagnóstico
+        $departamentoSOP = $this->getDepartamentoPorId($sopCodigo);
+        $contextoEspecifico = $mapeamentoCompleto['departamentos_detalhados'][$departamentoSOP] ?? null;
+        
         $sopData = [
             'id' => $sopCodigo,
             'nome' => $sopNome,
-            'departamento' => $this->getDepartamentoPorId($sopCodigo),
-            'subtopicos_texto' => $this->getSubtopicosPorId($sopCodigo),
-            'contexto_departamento' => $mapeamentoCompleto['departamentos_detalhados'][$this->getDepartamentoPorId($sopCodigo)] ?? null
+            'departamento' => $departamentoSOP,
+            'subtopicos_texto' => $this->getSubtopicosPorIdEspecifico($sopCodigo, $diagnostico),
+            'contexto_departamento' => $contextoEspecifico
         ];
 
         // Buscar documentos relevantes da empresa para enriquecer o SOP
@@ -841,6 +1144,56 @@ class SopController
         $map = ['COM' => 'Comercial', 'ONB' => 'Onboarding', 'OPS' => 'Operacional', 'FIN' => 'Financeiro', 'JUR' => 'Jurídico', 'RH' => 'RH'];
         preg_match('/SOP-\w+-(\w+)-/', $sopId, $m);
         return $map[$m[1] ?? ''] ?? 'Geral';
+    }
+
+    /**
+     * Retorna subtópicos específicos baseados no diagnóstico da empresa
+     */
+    private function getSubtopicosPorIdEspecifico(string $sopId, ?array $diagnostico): string
+    {
+        if (!$diagnostico) {
+            return $this->getSubtopicosPorId($sopId);
+        }
+        
+        $respostas = json_decode($diagnostico['respostas'], true) ?? [];
+        $departamento = $this->getDepartamentoPorId($sopId);
+        
+        // Gerar subtópicos específicos baseados no diagnóstico
+        $problemasEmpresa = explode(',', $this->extrairProblemas($diagnostico));
+        $ferramentasEmpresa = explode(',', $this->extrairFerramentas($diagnostico));
+        
+        switch($departamento) {
+            case 'Comercial':
+                return "- Subtópico A: Prospecção usando " . implode(' e ', array_slice($ferramentasEmpresa, 0, 2)) . 
+                       "\n- Subtópico B: Qualificação de Leads e Follow-up" .
+                       "\n- Subtópico C: Fechamento e Pós-venda";
+                       
+            case 'TI':
+                return "- Subtópico A: Recebimento via " . implode(' e ', array_slice($ferramentasEmpresa, 0, 2)) .
+                       "\n- Subtópico B: Classificação por Prioridade" .
+                       "\n- Subtópico C: Resolução e Documentação";
+                       
+            case 'Operações':
+                $problema1 = trim($problemasEmpresa[0] ?? 'Falta de padronização');
+                return "- Subtópico A: Planejamento e Recursos" .
+                       "\n- Subtópico B: Execução com Controle de Qualidade" .
+                       "\n- Subtópico C: Tratamento de: " . $problema1;
+                       
+            case 'Financeiro':
+                return "- Subtópico A: Controle Diário de Fluxo" .
+                       "\n- Subtópico B: Conciliação e Conferências" .
+                       "\n- Subtópico C: Relatórios e Análises";
+                       
+            case 'RH':
+                return "- Subtópico A: Processo Seletivo" .
+                       "\n- Subtópico B: Onboarding e Integração" .
+                       "\n- Subtópico C: Acompanhamento e Desenvolvimento";
+                       
+            default:
+                return "- Subtópico A: Preparação e Planejamento Específico" .
+                       "\n- Subtópico B: Execução com Monitoramento" .
+                       "\n- Subtópico C: Verificação e Melhoria Contínua";
+        }
     }
 
     /**
