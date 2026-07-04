@@ -478,9 +478,11 @@ async function criarEstruturaOrganizacional() {
         const data = await response.json();
         
         if (data.sucesso) {
-            atualizarLoading('Estrutura Criada!', 'Redirecionando...', 100);
+            atualizarLoading('Estrutura Criada!', 'Redirecionando para gestão hierárquica...', 100);
             setTimeout(() => {
-                window.location.reload();
+                // Garantir que redirect funciona corretamente
+                const redirectUrl = data.redirect || '<?= APP_URL ?>/sop/gerenciar-hierarquia?diagnostico_id=' + DIAGNOSTICO_ID;
+                window.location.href = redirectUrl;
             }, 2000);
         } else {
             esconderLoading();

@@ -966,11 +966,13 @@ class SopController
             'nomes_setores' => array_keys($todosSetores)
         ]);
         
+        // CORRIGIR: Garantir que sempre retorna 'setores' como chave principal
         return [
             'setores_base' => $setoresBase,
             'setores_especificos' => $setoresEspecificos,
-            'todos_setores' => $todosSetores,
-            'nicho' => $nicho
+            'setores' => $todosSetores, // CHAVE PRINCIPAL - sempre usar esta
+            'nicho' => $nicho,
+            'macro_categoria' => $this->obterMacroCategoriaPorNicho($nicho)
         ];
     }
     
@@ -2479,9 +2481,17 @@ class SopController
                 throw new Exception('Erro ao salvar estrutura organizacional');
             }
             
-            Logger::info('Estrutura hierárquica criada com sucesso', [
+            // DEBUG: Verificar se setores foram realmente criados
+            $setoresSalvos = Database::query(
+                "SELECT id, nome_setor, total_servicos FROM setores_empresa WHERE estrutura_id = ?",
+                [$estruturaId]
+            );
+            
+            Logger::info('Estrutura hierárquica criada com sucesso - DEBUG', [
                 'estrutura_id' => $estruturaId,
-                'total_setores' => count($estruturaCompleta['setores'] ?? []),
+                'total_setores_esperados' => count($estruturaCompleta['setores'] ?? []),
+                'total_setores_salvos' => count($setoresSalvos),
+                'setores_salvos' => array_column($setoresSalvos, 'nome_setor'),
                 'sistema' => 'hierarquico_permanente'
             ]);
             
@@ -7924,6 +7934,14 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         // Criar tabelas se não existem
         $this->criarTabelasHierarquicas();
         
+        // DEBUG: Verificar estrutura de dados recebida
+        Logger::info('DEBUG - salvarEstruturaOrganizacional iniciado', [
+            'diagnostico_id' => $diagnosticoId,
+            'empresa_id' => $empresa['id'],
+            'estrutura_keys' => array_keys($estruturaCompleta),
+            'total_setores' => count($estruturaCompleta['setores'] ?? [])
+        ]);
+        
         // Verificar se já existe estrutura para este diagnóstico
         $estruturaExistente = Database::queryOne(
             "SELECT id FROM estruturas_organizacionais WHERE diagnostico_id = ?",
@@ -7944,6 +7962,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             );
             
             $estruturaId = $estruturaExistente['id'];
+            Logger::info('Estrutura organizacional ATUALIZADA', ['estrutura_id' => $estruturaId]);
         } else {
             // Criar nova
             Database::execute(
@@ -7954,7 +7973,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                     $diagnosticoId,
                     $empresa['id'],
                     $empresa['nome'],
-                    $estruturaCompleta['macro_categoria'] ?? 'Tecnologia',
+                    $estruturaCompleta['nicho'] ?? 'Tecnologia',
                     $estruturaCompleta['macro_categoria'] ?? 'Tecnologia',
                     json_encode($estruturaCompleta, JSON_UNESCAPED_UNICODE),
                     count($estruturaCompleta['setores'] ?? [])
@@ -7962,9 +7981,11 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             );
             
             $estruturaId = (int) Database::lastInsertId();
+            Logger::info('Estrutura organizacional CRIADA', ['estrutura_id' => $estruturaId]);
         }
         
         // Salvar/atualizar setores
+        Logger::info('Iniciando salvamento de setores', ['total_setores' => count($estruturaCompleta['setores'] ?? [])]);
         $this->salvarSetoresEmpresa($estruturaId, $empresa['id'], $estruturaCompleta['setores'] ?? []);
         
         // Inicializar progresso hierárquico
@@ -7988,8 +8009,8 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         try {
             Database::queryOne("SELECT 1 FROM estruturas_organizacionais LIMIT 1");
         } catch (Exception $e) {
-            // Executar migration
-            $migrationContent = file_get_contents(ROOT_PATH . '/database/migrations/028_criar_sistema_gestao_hierarquica.sql');
+            // Executar migration corrigida
+            $migrationContent = file_get_contents(ROOT_PATH . '/database/migrations/029_criar_sistema_gestao_hierarquica_corrigido.sql');
             $statements = explode(';', $migrationContent);
             
             foreach ($statements as $statement) {
@@ -8092,57 +8113,86 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
      */
     private function salvarSetoresEmpresa(int $estruturaId, int $empresaId, array $setores): void
     {
+        Logger::info('DEBUG - salvarSetoresEmpresa iniciado', [
+            'estrutura_id' => $estruturaId,
+            'empresa_id' => $empresaId,
+            'total_setores' => count($setores),
+            'nomes_setores' => array_keys($setores)
+        ]);
+        
         foreach ($setores as $nomeSetor => $dadosSetor) {
-            // Verificar se setor já existe
-            $setorExistente = Database::queryOne(
-                "SELECT id FROM setores_empresa WHERE estrutura_id = ? AND nome_setor = ?",
-                [$estruturaId, $nomeSetor]
-            );
-            
-            $tipoSetor = $this->determinarTipoSetor($nomeSetor);
-            $totalServicos = count($dadosSetor['sops_padrao'] ?? []);
-            
-            if ($setorExistente) {
-                // Atualizar existente
-                Database::execute(
-                    "UPDATE setores_empresa 
-                     SET tipo_setor = ?, descricao = ?, contexto_especifico = ?, 
-                         total_servicos = ?, atualizado_em = NOW() 
-                     WHERE id = ?",
-                    [
-                        $tipoSetor,
-                        $dadosSetor['descricao'] ?? '',
-                        json_encode($dadosSetor, JSON_UNESCAPED_UNICODE),
-                        $totalServicos,
-                        $setorExistente['id']
-                    ]
+            try {
+                // Verificar se setor já existe
+                $setorExistente = Database::queryOne(
+                    "SELECT id FROM setores_empresa WHERE estrutura_id = ? AND nome_setor = ?",
+                    [$estruturaId, $nomeSetor]
                 );
                 
-                $setorId = $setorExistente['id'];
-            } else {
-                // Criar novo
-                Database::execute(
-                    "INSERT INTO setores_empresa 
-                     (estrutura_id, empresa_id, nome_setor, tipo_setor, descricao, 
-                      contexto_especifico, total_servicos, criado_em) 
-                     VALUES (?, ?, ?, ?, ?, ?, ?, NOW())",
-                    [
-                        $estruturaId,
-                        $empresaId,
-                        $nomeSetor,
-                        $tipoSetor,
-                        $dadosSetor['descricao'] ?? '',
-                        json_encode($dadosSetor, JSON_UNESCAPED_UNICODE),
-                        $totalServicos
-                    ]
-                );
+                $tipoSetor = $this->determinarTipoSetor($nomeSetor);
+                $totalServicos = count($dadosSetor['sops_padrao'] ?? []);
                 
-                $setorId = (int) Database::lastInsertId();
+                Logger::info('Processando setor', [
+                    'nome_setor' => $nomeSetor,
+                    'tipo_setor' => $tipoSetor,
+                    'total_servicos' => $totalServicos,
+                    'existe' => $setorExistente ? 'sim' : 'nao'
+                ]);
+                
+                if ($setorExistente) {
+                    // Atualizar existente
+                    Database::execute(
+                        "UPDATE setores_empresa 
+                         SET tipo_setor = ?, descricao = ?, contexto_especifico = ?, 
+                             total_servicos = ?, atualizado_em = NOW() 
+                         WHERE id = ?",
+                        [
+                            $tipoSetor,
+                            $dadosSetor['descricao'] ?? '',
+                            json_encode($dadosSetor, JSON_UNESCAPED_UNICODE),
+                            $totalServicos,
+                            $setorExistente['id']
+                        ]
+                    );
+                    
+                    $setorId = $setorExistente['id'];
+                    Logger::info('Setor atualizado', ['setor_id' => $setorId, 'nome' => $nomeSetor]);
+                } else {
+                    // Criar novo
+                    Database::execute(
+                        "INSERT INTO setores_empresa 
+                         (estrutura_id, empresa_id, nome_setor, tipo_setor, descricao, 
+                          contexto_especifico, total_servicos, criado_em) 
+                         VALUES (?, ?, ?, ?, ?, ?, ?, NOW())",
+                        [
+                            $estruturaId,
+                            $empresaId,
+                            $nomeSetor,
+                            $tipoSetor,
+                            $dadosSetor['descricao'] ?? '',
+                            json_encode($dadosSetor, JSON_UNESCAPED_UNICODE),
+                            $totalServicos
+                        ]
+                    );
+                    
+                    $setorId = (int) Database::lastInsertId();
+                    Logger::info('Setor criado', ['setor_id' => $setorId, 'nome' => $nomeSetor]);
+                }
+                
+                // Salvar serviços do setor
+                $this->salvarServicosSetor($setorId, $empresaId, $dadosSetor['sops_padrao'] ?? []);
+                
+            } catch (Exception $e) {
+                Logger::error('Erro ao salvar setor', [
+                    'nome_setor' => $nomeSetor,
+                    'erro' => $e->getMessage()
+                ]);
+                throw $e; // Re-throw para parar o processo
             }
-            
-            // Salvar serviços do setor
-            $this->salvarServicosSetor($setorId, $empresaId, $dadosSetor['sops_padrao'] ?? []);
         }
+        
+        Logger::info('salvarSetoresEmpresa concluído com sucesso', [
+            'total_setores_processados' => count($setores)
+        ]);
     }
     
     /**
@@ -8489,6 +8539,11 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             exit;
         }
         
+        Logger::info('DEBUG - gerenciarHierarquia iniciado', [
+            'diagnostico_id' => $diagnosticoId,
+            'estrutura_id' => $estruturaId
+        ]);
+        
         // Buscar ou criar estrutura organizacional
         if (!$estruturaId) {
             $estruturaExistente = Database::queryOne(
@@ -8496,6 +8551,11 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                 [$diagnosticoId]
             );
             $estruturaId = $estruturaExistente['id'] ?? 0;
+            
+            Logger::info('DEBUG - Estrutura localizada por diagnóstico', [
+                'estrutura_encontrada' => $estruturaId > 0 ? 'sim' : 'nao',
+                'estrutura_id' => $estruturaId
+            ]);
         }
         
         $dados = [
@@ -8508,6 +8568,16 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             // Carregar hierarquia completa
             $dados['hierarquia'] = $this->carregarHierarquiaCompleta($estruturaId);
             $dados['progresso'] = $this->carregarProgressoHierarquico($estruturaId);
+            
+            Logger::info('DEBUG - Dados da hierarquia carregados', [
+                'estrutura_id' => $estruturaId,
+                'total_setores' => count($dados['hierarquia']['setores'] ?? []),
+                'progresso_existe' => $dados['progresso'] ? 'sim' : 'nao'
+            ]);
+        } else {
+            Logger::warning('DEBUG - Nenhuma estrutura encontrada', [
+                'diagnostico_id' => $diagnosticoId
+            ]);
         }
         
         require VIEW_PATH . '/sop/gerenciar-hierarquia.php';
