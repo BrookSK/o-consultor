@@ -19,7 +19,7 @@ class SopController
         $dados = [];
 
         // Verificar se veio de um diagnóstico específico
-        $diagnosticoId = (int) ($_GET['diagnostico_id'] ?? 0);
+        $diagnosticoId = (int) (isset($_GET['diagnostico_id']) ? $_GET['diagnostico_id'] : 0);
         
         if ($diagnosticoId) {
             // Buscar diagnóstico para obter a empresa
@@ -52,12 +52,8 @@ class SopController
             Logger::info('Acessando SOPs via diagnóstico - MODO ESPECÍFICO', [
                 'diagnostico_id' => $diagnosticoId,
                 'empresa_id' => $empresaId,
-                'empresa_nome' => $empresa['nome'] ?? 'N/A',
+                'empresa_nome' => isset($empresa['nome']) ? $empresa['nome'] : 'N/A',
                 'departamentos_diagnostico' => $this->extrairDepartamentos($diagnostico)
-            ]);
-                'diagnostico_id' => $diagnosticoId,
-                'empresa_id' => $empresaId,
-                'empresa_nome' => $empresa['nome'] ?? 'N/A'
             ]);
             
         } else {
@@ -84,7 +80,7 @@ class SopController
                     $empresa = Empresa::buscarPorId($empresaId);
                     if ($empresa) {
                         $dados['empresa_atual'] = $this->carregarDadosEmpresa($empresaId);
-                        $dados['departamentos'] = $this->getDepartamentosPorSetor($empresa['segmento'] ?? 'Tecnologia', $empresaId);
+                        $dados['departamentos'] = $this->getDepartamentosPorSetor(isset($empresa['segmento']) ? $empresa['segmento'] : 'Tecnologia', $empresaId);
                     }
                 }
             } else {
@@ -93,7 +89,7 @@ class SopController
                 $dados['empresa_atual'] = $this->carregarDadosEmpresa($empresaId);
                 $empresa = Empresa::buscarPorId($empresaId);
                 if ($empresa) {
-                    $dados['departamentos'] = $this->getDepartamentosPorSetor($empresa['segmento'] ?? 'Tecnologia', $empresaId);
+                    $dados['departamentos'] = $this->getDepartamentosPorSetor(isset($empresa['segmento']) ? $empresa['segmento'] : 'Tecnologia', $empresaId);
                 }
             }
         }
@@ -147,7 +143,7 @@ class SopController
             
             // Aplicar status dos SOPs existentes
             foreach ($sopsEspecificos as &$sop) {
-                $sop['status'] = $sopsMap[$sop['id']]['status'] ?? 'nao_gerado';
+                $sop['status'] = isset($sopsMap[$sop['id']]['status']) ? $sopsMap[$sop['id']]['status'] : 'nao_gerado';
             }
             
             $departamentosEstruturados[] = [
@@ -172,7 +168,10 @@ class SopController
      */
     private function extrairDepartamentosDetalhados(array $diagnostico): array
     {
-        $respostas = json_decode($diagnostico['respostas'], true) ?? [];
+        $respostas = json_decode($diagnostico['respostas'], true);
+        if (!$respostas) {
+            $respostas = [];
+        }
         $departamentos = [];
         
         // Extrair departamentos básicos
@@ -235,7 +234,7 @@ class SopController
     private function extrairColaboradoresPorDepartamento(array $respostas, string $dept): array
     {
         // Extrair colaboradores específicos por departamento baseado nas respostas
-        return $respostas['colaboradores_' . strtolower($dept)] ?? ['Quantidade não especificada'];
+        return isset($respostas['colaboradores_' . strtolower($dept)]) ? $respostas['colaboradores_' . strtolower($dept)] : ['Quantidade não especificada'];
     }
     
     private function extrairFuncoesPorDepartamento(array $respostas, string $dept): array
@@ -249,7 +248,11 @@ class SopController
         ];
         
         // Tentar extrair do diagnóstico, senão usar padrão
-        return $respostas['funcoes_' . strtolower($dept)] ?? $funcoesPadrao[$dept] ?? ['Funções operacionais'];
+        $funcoes = isset($respostas['funcoes_' . strtolower($dept)]) ? $respostas['funcoes_' . strtolower($dept)] : null;
+        if ($funcoes) {
+            return $funcoes;
+        }
+        return isset($funcoesPadrao[$dept]) ? $funcoesPadrao[$dept] : ['Funções operacionais'];
     }
     
     private function extrairFerramentasPorDepartamento(array $respostas, string $dept): array
@@ -310,13 +313,13 @@ class SopController
             ]
         ];
         
-        return $processosPorDepartamento[$dept] ?? ['Processo Operacional Padrão'];
+        return isset($processosPorDepartamento[$dept]) ? $processosPorDepartamento[$dept] : ['Processo Operacional Padrão'];
     }
     
     private function calcularMaturidadePorDepartamento(array $respostas, string $dept): int
     {
         // Calcular maturidade específica baseada nas respostas do diagnóstico
-        $score = $respostas['maturidade_percebida'] ?? 2;
+        $score = isset($respostas['maturidade_percebida']) ? $respostas['maturidade_percebida'] : 2;
         return max(1, min(4, $score));
     }
     
@@ -380,7 +383,8 @@ class SopController
         // Extrair dados do diagnóstico se existir
         $respostas = [];
         if ($diagnostico && !empty($diagnostico['respostas'])) {
-            $respostas = json_decode($diagnostico['respostas'], true) ?? [];
+            $respostasJson = json_decode($diagnostico['respostas'], true);
+            $respostas = $respostasJson ? $respostasJson : [];
         }
         
         // 1. MAPEAMENTO DE DEPARTAMENTOS
@@ -687,12 +691,12 @@ class SopController
         return [
             'id' => $empresa['id'],
             'nome' => $empresa['nome'],
-            'segmento' => $empresa['segmento'] ?? 'Tecnologia',
-            'maturidade' => $empresa['score_maturidade'] ?? 2,
-            'norma' => ApiHelper::getNormasPorSetor($empresa['segmento'] ?? 'Tecnologia'),
+            'segmento' => isset($empresa['segmento']) ? $empresa['segmento'] : 'Tecnologia',
+            'maturidade' => isset($empresa['score_maturidade']) ? $empresa['score_maturidade'] : 2,
+            'norma' => ApiHelper::getNormasPorSetor(isset($empresa['segmento']) ? $empresa['segmento'] : 'Tecnologia'),
             'total_sops' => $stats['total'],
             'aprovados' => $stats['aprovados'],
-            'diagnostico_id' => $diagnostico['id'] ?? null,
+            'diagnostico_id' => isset($diagnostico['id']) ? $diagnostico['id'] : null,
         ];
     }
 
@@ -917,9 +921,9 @@ class SopController
         Auth::proteger();
         Csrf::verificar();
 
-        $sopCodigo = htmlspecialchars(trim($_POST['sop_id'] ?? ''));
-        $sopNome = htmlspecialchars(trim($_POST['sop_nome'] ?? ''));
-        $diagnosticoIdPost = (int) ($_POST['diagnostico_id'] ?? 0);
+        $sopCodigo = htmlspecialchars(trim(isset($_POST['sop_id']) ? $_POST['sop_id'] : ''));
+        $sopNome = htmlspecialchars(trim(isset($_POST['sop_nome']) ? $_POST['sop_nome'] : ''));
+        $diagnosticoIdPost = (int) (isset($_POST['diagnostico_id']) ? $_POST['diagnostico_id'] : 0);
         
         // IMPORTANTE: Priorizar empresa do diagnóstico, não do usuário atual
         if ($diagnosticoIdPost > 0) {
@@ -967,13 +971,13 @@ class SopController
                 'diagnostico_id' => $diagnosticoIdPost,
                 'sop_codigo' => $sopCodigo,
                 'empresa_id' => $empresaId,
-                'empresa_nome' => $empresa['nome'] ?? 'N/A'
+                'empresa_nome' => isset($empresa['nome']) ? $empresa['nome'] : 'N/A'
             ]);
         } else {
             $diagnostico = Diagnostico::buscarUltimoPorEmpresa($empresaId);
             Logger::info('Usando último diagnóstico da empresa', [
                 'empresa_id' => $empresaId,
-                'diagnostico_id' => $diagnostico['id'] ?? null
+                'diagnostico_id' => isset($diagnostico['id']) ? $diagnostico['id'] : null
             ]);
         }
         
@@ -1003,7 +1007,7 @@ class SopController
 
         // Dados ESPECÍFICOS do SOP com contexto do diagnóstico
         $departamentoSOP = $this->getDepartamentoPorId($sopCodigo);
-        $contextoEspecifico = $mapeamentoCompleto['departamentos_detalhados'][$departamentoSOP] ?? null;
+        $contextoEspecifico = isset($mapeamentoCompleto['departamentos_detalhados'][$departamentoSOP]) ? $mapeamentoCompleto['departamentos_detalhados'][$departamentoSOP] : null;
         
         $sopData = [
             'id' => $sopCodigo,
@@ -1046,7 +1050,7 @@ class SopController
             'setor' => $empresa['segmento'] ?? 'Tecnologia',
             'prompt_size' => strlen($prompt),
             'contexto_documentos' => !empty($contextoDocumentos),
-            'departamentos' => $mapeamentoCompleto['departamentos_array'] ?? []
+            'departamentos' => isset($mapeamentoCompleto['departamentos_array']) ? $mapeamentoCompleto['departamentos_array'] : []
         ]);
 
         // Chamar IA (GPT ou Claude conforme config)
@@ -1063,7 +1067,7 @@ class SopController
             ]);
             
             // Sucesso: criar SOP no banco
-            $sopId = $this->criarSopNoBanco($sopCodigo, $sopNome, $empresaId, $diagnostico['id'] ?? null, $resultado['conteudo']);
+            $sopId = $this->criarSopNoBanco($sopCodigo, $sopNome, $empresaId, isset($diagnostico['id']) ? $diagnostico['id'] : null, $resultado['conteudo']);
             
             if ($sopId) {
                 // Registrar uso dos documentos que contribuíram para o SOP
@@ -1077,7 +1081,7 @@ class SopController
                     'sop_codigo' => $sopCodigo, 
                     'sop_id' => $sopId,
                     'documentos_utilizados' => count($documentosRelevantes),
-                    'diagnostico_origem' => $diagnostico['id'] ?? 'ultimo_disponivel'
+                    'diagnostico_origem' => isset($diagnostico['id']) ? $diagnostico['id'] : 'ultimo_disponivel'
                 ]);
                 header('Content-Type: application/json');
                 echo json_encode([
@@ -1092,7 +1096,7 @@ class SopController
             }
         } else {
             // IA falhou: criar SOP básico e avisar
-            $sopId = $this->criarSopBasico($sopCodigo, $sopNome, $empresaId, $diagnostico['id'] ?? null);
+            $sopId = $this->criarSopBasico($sopCodigo, $sopNome, $empresaId, isset($diagnostico['id']) ? $diagnostico['id'] : null);
             Logger::warning('SOP gerado básico (IA falhou)', ['sop_codigo' => $sopCodigo, 'erro' => $resultado['erro']]);
             
             header('Content-Type: application/json');
