@@ -632,21 +632,24 @@
                 </button>
 
                 <div class="flex gap-3">
+                    <!-- Botão Próximo/Finalizar -->
                     <button type="submit" :disabled="loading"
                             class="px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                            :class="{ 'opacity-50': loading }"
-                            x-text="blocoAtual === 5 ? 'Finalizar' : 'Próximo →'">
-                        <span x-show="!loading">Próximo →</span>
+                            :class="{ 'opacity-50': loading }">
+                        <span x-show="!loading" x-text="blocoAtual === 5 ? 'Finalizar' : 'Próximo →'"></span>
                         <span x-show="loading">Salvando...</span>
                     </button>
 
+                    <!-- Botão Gerar Diagnóstico -->
                     <button type="button" @click="gerarDiagnostico()" x-show="blocoAtual === 5" :disabled="generating"
-                            class="px-6 py-3 bg-accent text-white rounded-lg hover:bg-accent-70 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                            :class="{ 'opacity-50': generating }"
-                            x-show="!generating">
-                        🚀 Gerar Diagnóstico
+                            class="px-6 py-3 bg-accent text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                            :class="{ 'opacity-50': generating }">
+                        <span x-show="!generating">🚀 Gerar Diagnóstico</span>
+                        <span x-show="generating" class="flex items-center gap-2">
+                            <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                            Gerando...
+                        </span>
                     </button>
-                    <span x-show="generating">Gerando...</span>
                 </div>
             </div>
         </form>
@@ -738,6 +741,7 @@ function diagnosticoWizard() {
         },
 
         async salvarEAvancar() {
+            console.log('salvarEAvancar chamado, bloco atual:', this.blocoAtual);
             this.loading = true;
 
             try {
@@ -766,12 +770,18 @@ function diagnosticoWizard() {
                     }
                 });
 
+                console.log('Enviando dados para:', APP_URL + '/diagnostico/salvar-bloco');
+                
                 const response = await fetch(APP_URL + '/diagnostico/salvar-bloco', {
                     method: 'POST',
                     body: formData
                 });
 
+                console.log('Resposta recebida:', response.status);
+                
                 const result = await response.json();
+                console.log('Resultado:', result);
+
                 if (result.sucesso) {
                     // Atualizar bloco máximo acessível
                     this.maxBlocoAcessivel = Math.max(this.maxBlocoAcessivel, this.blocoAtual + 1);
@@ -780,41 +790,127 @@ function diagnosticoWizard() {
                     if (this.blocoAtual < 5) {
                         this.blocoAtual++;
                     } else {
+                        // Estamos no bloco 5, forçar a atualização para bloco_atual = 5
+                        await this.forcarAtualizacaoBloco5();
                         this.showToast('Diagnóstico salvo! Clique em "Gerar Diagnóstico" para finalizar.', 'success');
                     }
                 } else {
                     this.showToast(result.mensagem || 'Erro ao salvar', 'error');
                 }
-            } catch {
-                this.showToast('Erro na conexão', 'error');
+            } catch (error) {
+                console.error('Erro em salvarEAvancar:', error);
+                this.showToast('Erro na conexão: ' + error.message, 'error');
             } finally {
                 this.loading = false;
             }
         },
 
         async gerarDiagnostico() {
+            console.log('gerarDiagnostico chamado');
             this.generating = true;
 
             try {
+                // Primeiro, salvar o bloco atual se estamos no bloco 5
+                if (this.blocoAtual === 5) {
+                    console.log('Salvando bloco 5 antes de gerar diagnóstico...');
+                    await this.salvarBlocoSilencioso();
+                }
+
                 const formData = new FormData();
                 formData.append('csrf_token', '<?= Csrf::token() ?>');
                 formData.append('rascunho_id', '<?= $dados['rascunho']['id'] ?>');
+
+                console.log('Gerando diagnóstico para rascunho:', '<?= $dados['rascunho']['id'] ?>');
 
                 const response = await fetch(APP_URL + '/diagnostico/gerar', {
                     method: 'POST',
                     body: formData
                 });
 
+                console.log('Resposta gerar:', response.status);
+                
                 const result = await response.json();
+                console.log('Resultado gerar:', result);
+
                 if (result.sucesso) {
+                    console.log('Redirecionando para:', result.redirect);
                     window.location.href = result.redirect || APP_URL + '/diagnostico/resultado';
                 } else {
                     this.showToast(result.mensagem || 'Erro ao gerar diagnóstico', 'error');
                 }
-            } catch {
-                this.showToast('Erro na conexão', 'error');
+            } catch (error) {
+                console.error('Erro em gerarDiagnostico:', error);
+                this.showToast('Erro na conexão: ' + error.message, 'error');
             } finally {
                 this.generating = false;
+            }
+        },
+
+        async salvarBlocoSilencioso() {
+            try {
+                const formData = new FormData();
+                formData.append('csrf_token', '<?= Csrf::token() ?>');
+                formData.append('bloco', this.blocoAtual);
+                formData.append('rascunho_id', '<?= $dados['rascunho']['id'] ?>');
+
+                // Adicionar todos os dados do formulário
+                Object.keys(this.form).forEach(key => {
+                    const value = this.form[key];
+                    
+                    if (Array.isArray(value)) {
+                        if (key === 'departamentos' && value.length > 0) {
+                            value.forEach(v => formData.append('departamentos[]', v));
+                        } else if (key === 'canais_vendas' && value.length > 0) {
+                            value.forEach(v => formData.append('canais_vendas[]', v));
+                        } else if (key === 'politicas_rh' && value.length > 0) {
+                            value.forEach(v => formData.append('politicas_rh[]', v));
+                        } else if (key === 'seguros' && value.length > 0) {
+                            value.forEach(v => formData.append('seguros[]', v));
+                        }
+                    } else if (value && value !== '') {
+                        formData.append(key, value);
+                    }
+                });
+
+                await fetch(APP_URL + '/diagnostico/salvar-bloco', {
+                    method: 'POST',
+                    body: formData
+                });
+            } catch (error) {
+                console.error('Erro ao salvar silenciosamente:', error);
+            }
+        },
+
+        showToast(message, type = 'success') {
+            console.log('Toast:', type, message);
+            // Toast simples
+            const toast = document.createElement('div');
+            toast.className = `fixed top-4 right-4 z-50 px-6 py-3 rounded-lg text-white shadow-md ${type === 'success' ? 'bg-green-500' : 'bg-red-500'}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            setTimeout(() => toast.remove(), 5000);
+        },
+
+        async forcarAtualizacaoBloco5() {
+            try {
+                const formData = new FormData();
+                formData.append('csrf_token', '<?= Csrf::token() ?>');
+                formData.append('bloco', 5);
+                formData.append('rascunho_id', '<?= $dados['rascunho']['id'] ?>');
+                formData.append('forcar_bloco_5', 'true');
+                
+                console.log('Forçando atualização do bloco 5');
+                
+                const response = await fetch(APP_URL + '/diagnostico/salvar-bloco', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                console.log('Resultado forçar bloco 5:', result);
+            } catch (error) {
+                console.error('Erro ao forçar bloco 5:', error);
             }
         }
     };

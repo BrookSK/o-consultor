@@ -423,12 +423,13 @@ class DiagnosticoController
             ]);
             
             // Atualizar bloco_atual para o próximo bloco se necessário
-            $proximoBloco = $bloco < 5 ? $bloco + 1 : 5;
+            $proximoBloco = min($bloco + 1, 5); // Limitar a 5
             $novoBlocoAtual = max($rascunho['bloco_atual'], $proximoBloco);
             
-            // Atualizar bloco_atual para o próximo bloco apenas se necessário
-            $proximoBloco = $bloco + 1;
-            $novoBlocoAtual = max($rascunho['bloco_atual'], $proximoBloco);
+            // Se é bloco 5 e tem flag especial, forçar bloco_atual = 5
+            if ($bloco == 5 && isset($_POST['forcar_bloco_5'])) {
+                $novoBlocoAtual = 5;
+            }
             
             // Só atualizar se realmente avançou
             if ($novoBlocoAtual > $rascunho['bloco_atual'] && $novoBlocoAtual <= 5) {
@@ -440,7 +441,8 @@ class DiagnosticoController
                 Logger::acao('Bloco atual atualizado', [
                     'rascunho_id' => $rascunhoId,
                     'bloco_anterior' => $rascunho['bloco_atual'],
-                    'novo_bloco_atual' => $novoBlocoAtual
+                    'novo_bloco_atual' => $novoBlocoAtual,
+                    'forcado_bloco_5' => isset($_POST['forcar_bloco_5'])
                 ]);
             }
             
@@ -503,10 +505,31 @@ class DiagnosticoController
             exit;
         }
         
-        // Verificar se todos os 5 blocos foram preenchidos
-        if ($rascunho['bloco_atual'] < 5) {
+        // Verificar se os blocos essenciais foram preenchidos
+        if ($rascunho['bloco_atual'] < 4) {
             header('Content-Type: application/json');
-            echo json_encode(['sucesso' => false, 'mensagem' => 'Complete todos os 5 blocos antes de gerar o diagnóstico']);
+            echo json_encode([
+                'sucesso' => false, 
+                'mensagem' => 'Complete pelo menos 4 blocos antes de gerar o diagnóstico',
+                'debug_info' => [
+                    'bloco_atual' => $rascunho['bloco_atual'],
+                    'rascunho_id' => $rascunhoId
+                ]
+            ]);
+            exit;
+        }
+        
+        // Verificar se os campos obrigatórios estão preenchidos
+        if (empty($rascunho['empresa_nome']) || empty($rascunho['setor'])) {
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => false, 
+                'mensagem' => 'Campos obrigatórios não preenchidos (nome da empresa e setor)',
+                'debug_info' => [
+                    'empresa_nome' => $rascunho['empresa_nome'] ?? 'vazio',
+                    'setor' => $rascunho['setor'] ?? 'vazio'
+                ]
+            ]);
             exit;
         }
         
