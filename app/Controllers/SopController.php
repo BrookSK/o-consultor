@@ -205,7 +205,7 @@ class SopController
     }
     
     /**
-     * Extrai departamentos REAIS e DETALHADOS do diagnóstico
+     * Extrai departamentos REAIS e DETALHADOS do diagnóstico - NOVA ESTRUTURA PROFISSIONAL
      */
     private function extrairDepartamentosDetalhados(array $diagnostico): array
     {
@@ -214,149 +214,475 @@ class SopController
             Logger::warning('Respostas do diagnóstico vazias ou inválidas', ['diagnostico_id' => $diagnostico['id']]);
             $respostas = [];
         }
-        $departamentos = [];
         
-        // Extrair departamentos básicos MELHORADO
-        $departamentosTexto = $this->extrairDepartamentos($diagnostico);
-        $departamentosArray = $this->parsearDepartamentos($departamentosTexto);
+        // 1. IDENTIFICAR O NICHO DA EMPRESA
+        $nicho = $this->identificarNichoEmpresa($respostas, $diagnostico);
         
-        Logger::info('Departamentos extraídos do diagnóstico', [
+        // 2. ESTRUTURA BASE (10 SETORES OBRIGATÓRIOS) + SETORES ESPECÍFICOS DO NICHO
+        $estruturaCompleta = $this->criarEstruturaCompletaPorNicho($nicho, $respostas);
+        
+        Logger::info('Estrutura empresarial COMPLETA criada', [
             'diagnostico_id' => $diagnostico['id'],
-            'departamentos_texto' => $departamentosTexto,
-            'departamentos_array' => $departamentosArray,
-            'total_departamentos' => count($departamentosArray)
+            'nicho_identificado' => $nicho,
+            'setores_base' => count($estruturaCompleta['setores_base']),
+            'setores_especificos' => count($estruturaCompleta['setores_especificos']),
+            'total_setores' => count($estruturaCompleta['todos_setores'])
         ]);
         
-        // GARANTIR que temos PELO MENOS os departamentos essenciais baseados no setor
-        if (empty($departamentosArray) || count($departamentosArray) < 2) {
-            $setorEmpresa = $respostas['segmento'] ?? 'Tecnologia';
-            $departamentosMinimos = $this->getDepartamentosEssenciaisPorSetor($setorEmpresa);
-            $departamentosArray = array_merge($departamentosArray, $departamentosMinimos);
-            $departamentosArray = array_unique($departamentosArray);
-            
-            Logger::info('Departamentos mínimos adicionados por setor', [
-                'setor' => $setorEmpresa,
-                'departamentos_minimos' => $departamentosMinimos,
-                'departamentos_finais' => $departamentosArray
-            ]);
-        }
+        $departamentos = [];
         
-        // Para cada departamento, extrair informações específicas do diagnóstico
-        foreach ($departamentosArray as $dept) {
-            $departamentos[$dept] = [
-                'nome' => $dept,
-                'colaboradores' => $this->extrairColaboradoresPorDepartamento($respostas, $dept),
-                'funcoes_principais' => $this->extrairFuncoesPorDepartamento($respostas, $dept),
-                'ferramentas_usadas' => $this->extrairFerramentasPorDepartamento($respostas, $dept),
-                'problemas_identificados' => $this->extrairProblemasPorDepartamento($respostas, $dept),
-                'objetivos_especificos' => $this->extrairObjetivosPorDepartamento($respostas, $dept),
-                'processos_principais' => $this->identificarProcessosPrincipais($dept, $respostas),
-                'nivel_maturidade' => $this->calcularMaturidadePorDepartamento($respostas, $dept)
+        // 3. PROCESSAR TODOS OS SETORES (BASE + ESPECÍFICOS)
+        foreach ($estruturaCompleta['todos_setores'] as $setor => $config) {
+            $departamentos[$setor] = [
+                'nome' => $setor,
+                'tipo' => $config['tipo'], // 'base' ou 'especifico'
+                'descricao' => $config['descricao'],
+                'colaboradores' => $this->extrairColaboradoresPorSetor($respostas, $setor),
+                'funcoes_principais' => $config['funcoes_principais'],
+                'ferramentas_usadas' => $this->identificarFerramentasPorSetor($respostas, $setor),
+                'problemas_identificados' => $this->identificarProblemasPorSetor($respostas, $setor),
+                'objetivos_especificos' => $this->definirObjetivosPorSetor($setor, $respostas),
+                'processos_principais' => $config['sops_padrao'], // SOPs específicos do setor
+                'nivel_maturidade' => $this->calcularMaturidadePorSetor($respostas, $setor),
+                'kpis_essenciais' => $config['kpis_essenciais'],
+                'nicho_origem' => $nicho
             ];
             
-            Logger::info('Departamento detalhado criado', [
-                'departamento' => $dept,
-                'total_processos' => count($departamentos[$dept]['processos_principais']),
-                'processos' => $departamentos[$dept]['processos_principais']
+            Logger::info('Setor processado', [
+                'setor' => $setor,
+                'tipo' => $config['tipo'],
+                'total_sops' => count($config['sops_padrao']),
+                'sops' => $config['sops_padrao']
             ]);
         }
         
-        Logger::info('TODOS os departamentos processados', [
-            'total_departamentos' => count($departamentos),
-            'departamentos_nomes' => array_keys($departamentos),
-            'total_processos_geral' => array_sum(array_map(function($d) { return count($d['processos_principais']); }, $departamentos))
+        Logger::info('ESTRUTURA EMPRESARIAL COMPLETA processada', [
+            'nicho' => $nicho,
+            'total_setores' => count($departamentos),
+            'setores_nomes' => array_keys($departamentos),
+            'total_sops_geral' => array_sum(array_map(function($d) { return count($d['processos_principais']); }, $departamentos))
         ]);
         
         return $departamentos;
     }
     
     /**
-     * Retorna departamentos essenciais por setor para garantir cobertura mínima
+     * Identifica o nicho da empresa baseado no diagnóstico
      */
-    private function getDepartamentosEssenciaisPorSetor(string $setor): array
+    private function identificarNichoEmpresa(array $respostas, array $diagnostico): string
     {
-        switch(strtolower($setor)) {
-            case 'tecnologia':
-            case 'tech':
-            case 'software':
-                return ['Comercial', 'TI', 'Operações', 'Financeiro', 'RH'];
-                
-            case 'saúde':
-            case 'saude':
-            case 'hospital':
-            case 'clinica':
-                return ['Atendimento', 'Clínico', 'Administrativo', 'Financeiro', 'RH'];
-                
-            case 'educação':
-            case 'educacao':
-            case 'escola':
-                return ['Pedagógico', 'Administrativo', 'Financeiro', 'Coordenação', 'RH'];
-                
-            case 'varejo':
-            case 'loja':
-            case 'comercio':
-                return ['Comercial', 'Operações', 'Estoque', 'Financeiro', 'RH'];
-                
-            case 'indústria':
-            case 'industria':
-            case 'fabrica':
-                return ['Produção', 'Comercial', 'Qualidade', 'Financeiro', 'RH', 'Compras'];
-                
-            case 'serviços':
-            case 'servicos':
-            case 'consultoria':
-                return ['Comercial', 'Operações', 'Atendimento', 'Financeiro', 'RH'];
-                
-            case 'logística':
-            case 'logistica':
-            case 'transporte':
-                return ['Operações', 'Comercial', 'Logística', 'Financeiro', 'RH'];
-                
-            default:
-                return ['Comercial', 'Operações', 'Administrativo', 'Financeiro', 'RH'];
+        // 1. Primeiro, verificar se há campo direto de segmento
+        if (isset($respostas['segmento']) && !empty($respostas['segmento'])) {
+            $segmento = strtolower(trim($respostas['segmento']));
+            $nichoMapeado = $this->mapearSegmentoParaNicho($segmento);
+            if ($nichoMapeado) {
+                Logger::info('Nicho identificado via segmento direto', ['segmento' => $segmento, 'nicho' => $nichoMapeado]);
+                return $nichoMapeado;
+            }
         }
+        
+        // 2. Analisar campos de texto para identificar o nicho
+        $camposParaAnalise = [
+            'atividade_principal', 'ramo_atividade', 'area_atuacao', 'produtos_servicos',
+            'descricao_empresa', 'principal_produto', 'atividade_empresa', 'setor_empresa'
+        ];
+        
+        $textoCompleto = '';
+        foreach ($camposParaAnalise as $campo) {
+            if (isset($respostas[$campo]) && is_string($respostas[$campo])) {
+                $textoCompleto .= ' ' . strtolower($respostas[$campo]);
+            }
+        }
+        
+        // 3. Detectar nicho por palavras-chave
+        $nichosDeteccao = [
+            'construção' => ['construc', 'obra', 'engenharia', 'edificac', 'reforma', 'construtora', 'empreiteira'],
+            'saúde' => ['saude', 'saúde', 'clinica', 'clínica', 'hospital', 'médic', 'medic', 'odonto', 'fisiotera', 'psicolog'],
+            'ecommerce' => ['ecommerce', 'e-commerce', 'loja virtual', 'marketplace', 'vendas online', 'varejo online'],
+            'educação' => ['educac', 'educação', 'escola', 'curso', 'ensino', 'treinamento', 'universidade', 'faculdade'],
+            'alimentação' => ['restaurante', 'lanchonete', 'padaria', 'alimentac', 'comida', 'culinária', 'gastronomia'],
+            'imobiliário' => ['imobil', 'corretora', 'imovel', 'imóvel', 'locacao', 'locação', 'venda casa'],
+            'advocacia' => ['advocacia', 'advogad', 'juridic', 'jurídic', 'direito', 'escritório juríd'],
+            'tecnologia' => ['software', 'tecnologia', 'sistema', 'desenvolvimento', 'programac', 'ti ', 'tech'],
+            'beleza' => ['beleza', 'estética', 'salao', 'salão', 'barbearia', 'manicure', 'cabeleireiro'],
+            'fitness' => ['academia', 'fitness', 'musculac', 'musculação', 'personal trainer', 'exercício'],
+            'turismo' => ['turismo', 'hotel', 'pousada', 'viagem', 'hospitalidade', 'hotelaria'],
+            'indústria' => ['industria', 'indústria', 'fabrica', 'fábrica', 'manufactura', 'produc industrial'],
+            'logística' => ['logistic', 'logística', 'transporte', 'entrega', 'frete', 'distribuidora'],
+            'consultoria' => ['consultoria', 'consultor', 'assessoria', 'serviços profissionais'],
+            'financeiro' => ['financ', 'banco', 'credito', 'crédito', 'fintech', 'pagamento', 'cobrança'],
+            'marketing' => ['marketing', 'agência', 'publicidade', 'propaganda', 'comunicac'],
+            'automotivo' => ['automotiv', 'carro', 'veículo', 'oficina', 'mecânica', 'concessionária'],
+            'agronegócio' => ['agro', 'fazenda', 'rural', 'agricola', 'agrícola', 'pecuária', 'campo'],
+            'ong' => ['ong', 'social', 'beneficente', 'beneficiente', 'caridade', 'filantropia']
+        ];
+        
+        foreach ($nichosDeteccao as $nicho => $palavrasChave) {
+            foreach ($palavrasChave as $palavra) {
+                if (strpos($textoCompleto, $palavra) !== false) {
+                    Logger::info('Nicho identificado via análise de texto', [
+                        'nicho' => $nicho,
+                        'palavra_detectada' => $palavra,
+                        'texto_analisado' => substr($textoCompleto, 0, 200)
+                    ]);
+                    return $nicho;
+                }
+            }
+        }
+        
+        // 4. Fallback para tecnologia (mais comum)
+        Logger::info('Nicho não identificado, usando fallback', ['nicho_fallback' => 'tecnologia']);
+        return 'tecnologia';
     }
     
     /**
-     * Cria SOPs específicos para um departamento baseado no diagnóstico
+     * Mapeia segmento direto para nicho
      */
-    private function criarSOPsEspecificosPorDepartamento(string $departamento, array $detalhes, array $empresa, array $diagnostico): array
+    private function mapearSegmentoParaNicho(string $segmento): ?string
+    {
+        $mapeamento = [
+            'tecnologia' => 'tecnologia',
+            'tech' => 'tecnologia', 
+            'software' => 'tecnologia',
+            'saúde' => 'saúde',
+            'saude' => 'saúde',
+            'medicina' => 'saúde',
+            'construção' => 'construção',
+            'construcao' => 'construção',
+            'engenharia' => 'construção',
+            'educação' => 'educação',
+            'educacao' => 'educação',
+            'ensino' => 'educação',
+            'varejo' => 'ecommerce',
+            'comércio' => 'ecommerce',
+            'comercio' => 'ecommerce',
+            'indústria' => 'indústria',
+            'industria' => 'indústria',
+            'serviços' => 'consultoria',
+            'servicos' => 'consultoria'
+        ];
+        
+        return $mapeamento[$segmento] ?? null;
+    }
+    
+    /**
+     * Cria SOPs específicos para um setor baseado na estrutura profissional
+     */
+    private function criarSOPsEspecificosPorDepartamento(string $setor, array $detalhes, array $empresa, array $diagnostico): array
     {
         $processos = $detalhes['processos_principais'];
         $sops = [];
         $contador = 1;
         
-        // GERAR MÚLTIPLOS SOPs POR DEPARTAMENTO - baseado nos processos reais
+        // GERAR SOPs baseados nos processos PROFISSIONAIS do setor
         foreach ($processos as $processo) {
-            $codigoSOP = $this->gerarCodigoSOPEspecifico($empresa['segmento'], $departamento, $processo, $contador);
+            $codigoSOP = $this->gerarCodigoSOPProfissional($empresa['segmento'], $setor, $processo, $contador);
             
             $sops[] = [
                 'id' => $codigoSOP,  // Código SOP (será substituído por ID do banco se existir)
                 'nome' => $processo,
                 'status' => 'nao_gerado',
-                'departamento' => $departamento,
+                'departamento' => $setor,
                 'contexto_especifico' => [
                     'funcoes' => $detalhes['funcoes_principais'],
                     'ferramentas' => $detalhes['ferramentas_usadas'],
                     'problemas' => $detalhes['problemas_identificados'],
                     'objetivos' => $detalhes['objetivos_especificos'],
-                    'maturidade' => $detalhes['nivel_maturidade']
+                    'maturidade' => $detalhes['nivel_maturidade'],
+                    'kpis_essenciais' => $detalhes['kpis_essenciais'],
+                    'tipo_setor' => $detalhes['tipo'], // 'base' ou 'especifico'
+                    'nicho_origem' => $detalhes['nicho_origem']
                 ],
-                'customizado' => true,  // Marca como específico para a empresa
-                'origem' => 'diagnostico_especifico',
-                'setor_empresa' => $empresa['segmento'] ?? 'Geral'
+                'customizado' => true,
+                'origem' => 'estrutura_profissional',
+                'setor_empresa' => $empresa['segmento'] ?? 'Geral',
+                'tipo_setor' => $detalhes['tipo']
             ];
             $contador++;
         }
         
-        Logger::info('SOPs específicos criados para departamento', [
-            'departamento' => $departamento,
+        Logger::info('SOPs profissionais criados para setor', [
+            'setor' => $setor,
+            'tipo' => $detalhes['tipo'],
             'total_sops' => count($sops),
             'processos' => $processos,
-            'empresa_setor' => $empresa['segmento'] ?? 'Geral'
+            'empresa_nicho' => $detalhes['nicho_origem'] ?? 'não identificado'
         ]);
         
         return $sops;
+    }
+    
+    /**
+     * Gera código SOP profissional baseado na nova estrutura
+     */
+    private function gerarCodigoSOPProfissional(string $segmento, string $setor, string $processo, int $contador): string
+    {
+        // Prefixo do segmento da empresa
+        $prefixoSegmento = match(strtolower($segmento)) {
+            'tecnologia', 'tech', 'software' => 'TEC',
+            'saúde', 'saude', 'medicina' => 'SAU',
+            'construção', 'construcao', 'engenharia' => 'CON',
+            'educação', 'educacao', 'ensino' => 'EDU',
+            'varejo', 'ecommerce', 'comercio' => 'VAR',
+            'indústria', 'industria', 'fabrica' => 'IND',
+            'logística', 'logistica', 'transporte' => 'LOG',
+            'alimentação', 'alimentacao', 'restaurante' => 'ALI',
+            'imobiliário', 'imobiliario' => 'IMO',
+            'advocacia', 'juridico' => 'ADV',
+            'beleza', 'estetica' => 'BEL',
+            'fitness', 'academia' => 'FIT',
+            'consultoria', 'servicos' => 'CON',
+            default => 'GER'
+        };
+        
+        // Código do setor (primeiras letras significativas)
+        $codigoSetor = $this->gerarCodigoSetor($setor);
+        
+        // Código do processo
+        $codigoProcesso = $this->gerarCodigoProcesso($processo);
+        
+        return sprintf('SOP-%s-%s-%s-%03d', $prefixoSegmento, $codigoSetor, $codigoProcesso, $contador);
+    }
+    
+    /**
+     * Gera código específico para o setor
+     */
+    private function gerarCodigoSetor(string $setor): string
+    {
+        // Mapear setores para códigos de 3 letras
+        $codigosSetor = [
+            // Setores Base
+            'CAPTAÇÃO / MARKETING' => 'MKT',
+            'COMERCIAL / VENDAS' => 'COM',
+            'FINANCEIRO' => 'FIN',
+            'ATENDIMENTO' => 'ATE',
+            'SUPORTE' => 'SUP',
+            'OPERACIONAL / PRODUÇÃO' => 'OPS',
+            'RH / GESTÃO DE PESSOAS' => 'RH',
+            'ADMINISTRATIVO' => 'ADM',
+            'TI / INFRAESTRUTURA' => 'TI',
+            'QUALIDADE / MELHORIA CONTÍNUA' => 'QUA',
+            
+            // Setores Específicos - Construção
+            'ORÇAMENTAÇÃO E ENGENHARIA DE CUSTOS' => 'ORC',
+            'SUPRIMENTOS / COMPRAS DE OBRA' => 'SUP',
+            'GESTÃO DE OBRAS / CAMPO' => 'OBR',
+            'SEGURANÇA DO TRABALHO (SESMT)' => 'SEG',
+            
+            // Setores Específicos - Saúde
+            'AGENDAMENTO E RECEPÇÃO' => 'AGE',
+            'PRONTUÁRIO E COMPLIANCE (LGPD)' => 'PRO',
+            'CORPO CLÍNICO' => 'CLI',
+            
+            // Setores Específicos - E-commerce
+            'GESTÃO DE MARKETPLACE' => 'MAR',
+            'LOGÍSTICA E FULFILLMENT' => 'LOG',
+            'PÓS-VENDA / TROCAS E DEVOLUÇÕES' => 'DEV',
+            
+            // Setores Específicos - Educação
+            'PEDAGÓGICO / CONTEÚDO' => 'PED',
+            'SECRETARIA ACADÊMICA' => 'SEC',
+            
+            // Setores Específicos - Tecnologia
+            'PRODUTO' => 'PRD',
+            'DESENVOLVIMENTO / ENGENHARIA' => 'DEV',
+            'CUSTOMER SUCCESS' => 'CS'
+        ];
+        
+        return $codigosSetor[$setor] ?? 'GEN';
+    }
+    
+    /**
+     * Gera código específico para o processo
+     */
+    private function gerarCodigoProcesso(string $processo): string
+    {
+        $processoLower = strtolower($processo);
+        
+        // Detectar tipo de processo pelas palavras-chave
+        if (strpos($processoLower, 'lead') !== false || strpos($processoLower, 'prospec') !== false) {
+            return 'LED';
+        } elseif (strpos($processoLower, 'venda') !== false || strpos($processoLower, 'comercial') !== false) {
+            return 'VEN';
+        } elseif (strpos($processoLower, 'atend') !== false || strpos($processoLower, 'suporte') !== false) {
+            return 'ATE';
+        } elseif (strpos($processoLower, 'financ') !== false || strpos($processoLower, 'fluxo') !== false) {
+            return 'FIN';
+        } elseif (strpos($processoLower, 'qualidade') !== false || strpos($processoLower, 'controle') !== false) {
+            return 'QUA';
+        } elseif (strpos($processoLower, 'produto') !== false || strpos($processoLower, 'desenvolvimen') !== false) {
+            return 'PRD';
+        } elseif (strpos($processoLower, 'onboard') !== false || strpos($processoLower, 'integra') !== false) {
+            return 'ONB';
+        } elseif (strpos($processoLower, 'backup') !== false || strpos($processoLower, 'segur') !== false) {
+            return 'SEC';
+        } elseif (strpos($processoLower, 'recrutam') !== false || strpos($processoLower, 'seleç') !== false) {
+            return 'REC';
+        } elseif (strpos($processoLower, 'treina') !== false || strpos($processoLower, 'capaci') !== false) {
+            return 'TRE';
+        } else {
+            // Código genérico baseado nas primeiras letras
+            $palavras = explode(' ', $processo);
+            $codigo = '';
+            foreach ($palavras as $palavra) {
+                if (strlen($palavra) > 2) {
+                    $codigo .= strtoupper(substr($palavra, 0, 1));
+                    if (strlen($codigo) >= 3) break;
+                }
+            }
+        /**
+     * Extrai colaboradores por setor específico
+     */
+    private function extrairColaboradoresPorSetor(array $respostas, string $setor): array
+    {
+        // Tentar extrair informações específicas por setor
+        $colaboradoresGerais = $respostas['colaboradores'] ?? $respostas['numero_colaboradores'] ?? 'Não informado';
+        
+        // Se há informação específica por departamento, usar
+        $setorLower = strtolower($setor);
+        if (isset($respostas['colaboradores_' . $setorLower])) {
+            return $respostas['colaboradores_' . $setorLower];
+        }
+        
+        return [$colaboradoresGerais];
+    }
+    
+    /**
+     * Identifica ferramentas por setor baseado no diagnóstico
+     */
+    private function identificarFerramentasPorSetor(array $respostas, string $setor): array
+    {
+        $ferramentasGerais = $respostas['ferramentas'] ?? $respostas['sistemas_utilizados'] ?? '';
+        $ferramentasArray = array_map('trim', explode(',', $ferramentasGerais));
+        
+        // Filtrar ferramentas relevantes por setor
+        $ferramentasSetor = [];
+        $setorLower = strtolower($setor);
+        
+        foreach ($ferramentasArray as $ferramenta) {
+            $ferramentaLower = strtolower($ferramenta);
+            
+            // Ferramentas gerais que se aplicam a qualquer setor
+            if (strpos($ferramentaLower, 'email') !== false || 
+                strpos($ferramentaLower, 'whatsapp') !== false ||
+                strpos($ferramentaLower, 'excel') !== false ||
+                strpos($ferramentaLower, 'google') !== false) {
+                $ferramentasSetor[] = $ferramenta;
+            }
+            
+            // Ferramentas específicas por setor
+            if (strpos($setorLower, 'marketing') !== false || strpos($setorLower, 'captação') !== false) {
+                if (strpos($ferramentaLower, 'facebook') !== false ||
+                    strpos($ferramentaLower, 'instagram') !== false ||
+                    strpos($ferramentaLower, 'ads') !== false ||
+                    strpos($ferramentaLower, 'analytics') !== false) {
+                    $ferramentasSetor[] = $ferramenta;
+                }
+            }
+            
+            if (strpos($setorLower, 'comercial') !== false || strpos($setorLower, 'vendas') !== false) {
+                if (strpos($ferramentaLower, 'crm') !== false ||
+                    strpos($ferramentaLower, 'pipeline') !== false ||
+                    strpos($ferramentaLower, 'vendas') !== false) {
+                    $ferramentasSetor[] = $ferramenta;
+                }
+            }
+            
+            if (strpos($setorLower, 'financeiro') !== false) {
+                if (strpos($ferramentaLower, 'contabil') !== false ||
+                    strpos($ferramentaLower, 'erp') !== false ||
+                    strpos($ferramentaLower, 'banco') !== false) {
+                    $ferramentasSetor[] = $ferramenta;
+                }
+            }
+        }
+        
+        return !empty($ferramentasSetor) ? array_unique($ferramentasSetor) : ['Ferramentas básicas de escritório'];
+    }
+    
+    /**
+     * Identifica problemas específicos por setor
+     */
+    private function identificarProblemasPorSetor(array $respostas, string $setor): array
+    {
+        $problemasGerais = $respostas['pontos_melhoria'] ?? $respostas['principais_problemas'] ?? '';
+        $problemasArray = array_map('trim', explode(',', $problemasGerais));
+        
+        // Problemas padrão por setor se não houver específicos
+        $problemasSetor = [
+            'CAPTAÇÃO / MARKETING' => 'Baixa geração de leads qualificados',
+            'COMERCIAL / VENDAS' => 'Taxa de conversão baixa',
+            'FINANCEIRO' => 'Controles manuais e fluxo de caixa',
+            'ATENDIMENTO' => 'Tempo de resposta elevado',
+            'SUPORTE' => 'Falta de base de conhecimento',
+            'OPERACIONAL / PRODUÇÃO' => 'Processos não padronizados',
+            'RH / GESTÃO DE PESSOAS' => 'Falta de treinamento estruturado',
+            'ADMINISTRATIVO' => 'Documentação desorganizada',
+            'TI / INFRAESTRUTURA' => 'Sistemas não integrados',
+            'QUALIDADE / MELHORIA CONTÍNUA' => 'Falta de indicadores'
+        ];
+        
+        $problemaPadrao = $problemasSetor[$setor] ?? 'Necessita padronização de processos';
+        
+        return array_filter(array_merge($problemasArray, [$problemaPadrao]));
+    }
+    
+    /**
+     * Define objetivos específicos por setor
+     */
+    private function definirObjetivosPorSetor(string $setor, array $respostas): array
+    {
+        $objetivoGeral = $respostas['objetivo_12_meses'] ?? 'Estruturar e otimizar processos';
+        
+        // Objetivos específicos por setor
+        $objetivosSetor = [
+            'CAPTAÇÃO / MARKETING' => ['Aumentar geração de leads em 50%', 'Melhorar ROI das campanhas'],
+            'COMERCIAL / VENDAS' => ['Aumentar taxa de conversão', 'Reduzir ciclo de vendas'],
+            'FINANCEIRO' => ['Automatizar controles financeiros', 'Reduzir inadimplência'],
+            'ATENDIMENTO' => ['Melhorar satisfação do cliente', 'Reduzir tempo de resposta'],
+            'SUPORTE' => ['Aumentar first call resolution', 'Criar base de conhecimento'],
+            'OPERACIONAL / PRODUÇÃO' => ['Padronizar processos produtivos', 'Melhorar qualidade'],
+            'RH / GESTÃO DE PESSOAS' => ['Estruturar processo seletivo', 'Reduzir turnover'],
+            'ADMINISTRATIVO' => ['Digitalizar documentação', 'Otimizar rotinas administrativas'],
+            'TI / INFRAESTRUTURA' => ['Modernizar infraestrutura', 'Implementar backup automático'],
+            'QUALIDADE / MELHORIA CONTÍNUA' => ['Implementar sistema de qualidade', 'Criar indicadores']
+        ];
+        
+        $objetivosEspecificos = $objetivosSetor[$setor] ?? ['Estruturar processos do setor'];
+        
+        return array_merge([$objetivoGeral], $objetivosEspecificos);
+    }
+    
+    /**
+     * Calcula maturidade específica por setor
+     */
+    private function calcularMaturidadePorSetor(array $respostas, string $setor): int
+    {
+        // Maturidade geral da empresa
+        $maturidadeGeral = $respostas['maturidade_percebida'] ?? 2;
+        
+        // Ajustes por setor baseado em características típicas
+        $ajustesSetor = [
+            'TI / INFRAESTRUTURA' => 1,  // TI geralmente mais maduro
+            'FINANCEIRO' => 0,           // Financeiro costuma ser estruturado
+            'CAPTAÇÃO / MARKETING' => -1, // Marketing pode ser menos estruturado
+            'QUALIDADE / MELHORIA CONTÍNUA' => -1, // Qualidade vem depois
+        ];
+        
+        $ajuste = $ajustesSetor[$setor] ?? 0;
+        $maturidadeSetor = $maturidadeGeral + $ajuste;
+        
+        return max(1, min(4, $maturidadeSetor));
+    }
+    
+    /**
+     * Método legado mantido para compatibilidade
+     */
+    private function identificarProcessosPrincipais(string $dept, array $respostas): array
+    {
+        // Este método agora é usado apenas para compatibilidade
+        // A nova estrutura usa os SOPs definidos na estrutura profissional
+        return ['Processo Operacional Padrão'];
     }
     
     /**
@@ -404,7 +730,166 @@ class SopController
         return explode(',', $objetivosGerais);
     }
     
-    private function identificarProcessosPrincipais(string $dept, array $respostas): array
+    /**
+     * Cria estrutura empresarial COMPLETA: 10 setores base + setores específicos do nicho
+     */
+    private function criarEstruturaCompletaPorNicho(string $nicho, array $respostas): array
+    {
+        // 1. ESTRUTURA BASE (10 SETORES OBRIGATÓRIOS - TODA EMPRESA TEM)
+        $setoresBase = [
+            'CAPTAÇÃO / MARKETING' => [
+                'tipo' => 'base',
+                'descricao' => 'Geração de leads, tráfego, prospecção, branding',
+                'funcoes_principais' => ['Geração de leads', 'Gestão de tráfego', 'Prospecção ativa', 'Branding e posicionamento'],
+                'sops_padrao' => [
+                    'Geração e Qualificação de Leads',
+                    'Gestão de Campanhas Digitais', 
+                    'Prospecção Ativa de Prospects',
+                    'Construção de Brand Awareness',
+                    'Análise de Métricas de Marketing'
+                ],
+                'kpis_essenciais' => ['Taxa de conversão de leads', 'CAC (Custo de Aquisição)', 'ROI de campanhas']
+            ],
+            'COMERCIAL / VENDAS' => [
+                'tipo' => 'base',
+                'descricao' => 'Qualificação, negociação, fechamento',
+                'funcoes_principais' => ['Qualificação de leads', 'Negociação comercial', 'Fechamento de vendas', 'Gestão de pipeline'],
+                'sops_padrao' => [
+                    'Qualificação e Follow-up de Leads',
+                    'Apresentação de Propostas Comerciais',
+                    'Negociação e Fechamento de Vendas',
+                    'Gestão de Pipeline de Vendas',
+                    'Onboarding de Novos Clientes'
+                ],
+                'kpis_essenciais' => ['Taxa de conversão', 'Ticket médio', 'Ciclo de vendas']
+            ],
+            'FINANCEIRO' => [
+                'tipo' => 'base', 
+                'descricao' => 'Contas a pagar/receber, fluxo de caixa, cobrança, fiscal',
+                'funcoes_principais' => ['Controle de fluxo de caixa', 'Contas a pagar/receber', 'Cobrança', 'Controle fiscal'],
+                'sops_padrao' => [
+                    'Controle de Fluxo de Caixa Diário',
+                    'Gestão de Contas a Pagar',
+                    'Gestão de Contas a Receber',
+                    'Processo de Cobrança e Inadimplência',
+                    'Conciliação Bancária e Fiscal'
+                ],
+                'kpis_essenciais' => ['DRE mensal', 'Inadimplência (%)', 'Prazo médio recebimento']
+            ],
+            'ATENDIMENTO' => [
+                'tipo' => 'base',
+                'descricao' => 'Pré e pós-venda, relacionamento com cliente',
+                'funcoes_principais' => ['Atendimento pré-venda', 'Suporte pós-venda', 'Relacionamento com clientes'],
+                'sops_padrao' => [
+                    'Atendimento e Suporte ao Cliente',
+                    'Gestão de Relacionamento Pós-Venda',
+                    'Tratamento de Reclamações e Feedback',
+                    'Processo de Retenção de Clientes',
+                    'Pesquisa de Satisfação'
+                ],
+                'kpis_essenciais' => ['NPS', 'Tempo de resposta', 'Taxa de retenção']
+            ],
+            'SUPORTE' => [
+                'tipo' => 'base',
+                'descricao' => 'Resolução de problemas, dúvidas técnicas, SAC',
+                'funcoes_principais' => ['Resolução de problemas técnicos', 'Suporte especializado', 'Base de conhecimento'],
+                'sops_padrao' => [
+                    'Atendimento de Chamados Técnicos',
+                    'Escalação de Problemas Complexos',
+                    'Gestão de Base de Conhecimento',
+                    'Suporte Remoto e Presencial',
+                    'SLA de Atendimento'
+                ],
+                'kpis_essenciais' => ['Tempo médio de resolução', 'First Call Resolution', 'Satisfação suporte']
+            ],
+            'OPERACIONAL / PRODUÇÃO' => [
+                'tipo' => 'base',
+                'descricao' => 'Entrega do produto/serviço em si',
+                'funcoes_principais' => ['Produção/execução', 'Controle de qualidade', 'Entrega final'],
+                'sops_padrao' => [
+                    'Planejamento e Execução de Produção',
+                    'Controle de Qualidade de Entregas',
+                    'Gestão de Projetos/Serviços',
+                    'Processo de Melhoria Contínua',
+                    'Gestão de Recursos e Capacidade'
+                ],
+                'kpis_essenciais' => ['Tempo de entrega', 'Índice de qualidade', 'Produtividade']
+            ],
+            'RH / GESTÃO DE PESSOAS' => [
+                'tipo' => 'base',
+                'descricao' => 'Recrutamento, treinamento, cultura',
+                'funcoes_principais' => ['Recrutamento e seleção', 'Treinamento', 'Gestão de performance', 'Cultura organizacional'],
+                'sops_padrao' => [
+                    'Processo de Recrutamento e Seleção',
+                    'Onboarding de Novos Colaboradores',
+                    'Gestão de Performance e Avaliações',
+                    'Treinamento e Desenvolvimento',
+                    'Gestão de Clima Organizacional'
+                ],
+                'kpis_essenciais' => ['Turnover (%)', 'Tempo de contratação', 'Satisfação colaboradores']
+            ],
+            'ADMINISTRATIVO' => [
+                'tipo' => 'base',
+                'descricao' => 'Compras, contratos, documentação, jurídico básico',
+                'funcoes_principais' => ['Gestão de contratos', 'Compras e suprimentos', 'Documentação legal', 'Suporte administrativo'],
+                'sops_padrao' => [
+                    'Gestão de Contratos e Documentação',
+                    'Processo de Compras e Suprimentos',
+                    'Controle de Protocolo e Arquivos',
+                    'Suporte Jurídico Básico',
+                    'Gestão de Facilities e Patrimônio'
+                ],
+                'kpis_essenciais' => ['Prazo de contratos', 'Economia em compras', 'Compliance documental']
+            ],
+            'TI / INFRAESTRUTURA' => [
+                'tipo' => 'base',
+                'descricao' => 'Sistemas, ferramentas, dados',
+                'funcoes_principais' => ['Gestão de sistemas', 'Infraestrutura tecnológica', 'Segurança de dados', 'Suporte técnico'],
+                'sops_padrao' => [
+                    'Gestão de Infraestrutura de TI',
+                    'Backup e Segurança de Dados',
+                    'Suporte Técnico Interno',
+                    'Gestão de Usuários e Acessos',
+                    'Manutenção de Sistemas'
+                ],
+                'kpis_essenciais' => ['Uptime dos sistemas', 'Tempo resolução TI', 'Incidentes de segurança']
+            ],
+            'QUALIDADE / MELHORIA CONTÍNUA' => [
+                'tipo' => 'base',
+                'descricao' => 'SOPs, indicadores, auditoria interna',
+                'funcoes_principais' => ['Gestão de processos', 'Auditoria interna', 'Indicadores de qualidade', 'Melhoria contínua'],
+                'sops_padrao' => [
+                    'Auditoria Interna de Processos',
+                    'Gestão de Indicadores e KPIs',
+                    'Tratamento de Não Conformidades',
+                    'Processo de Melhoria Contínua',
+                    'Padronização de Procedimentos'
+                ],
+                'kpis_essenciais' => ['Não conformidades', 'Processos auditados', 'Melhorias implementadas']
+            ]
+        ];
+        
+        // 2. SETORES ESPECÍFICOS POR NICHO
+        $setoresEspecificos = $this->getSetoresEspecificosPorNicho($nicho);
+        
+        // 3. COMBINAR ESTRUTURA FINAL
+        $todosSetores = array_merge($setoresBase, $setoresEspecificos);
+        
+        Logger::info('Estrutura empresarial COMPLETA criada', [
+            'nicho' => $nicho,
+            'setores_base' => count($setoresBase),
+            'setores_especificos' => count($setoresEspecificos),
+            'total_setores' => count($todosSetores),
+            'nomes_setores' => array_keys($todosSetores)
+        ]);
+        
+        return [
+            'setores_base' => $setoresBase,
+            'setores_especificos' => $setoresEspecificos,
+            'todos_setores' => $todosSetores,
+            'nicho' => $nicho
+        ];
+    }
     {
         // PROCESSOS ESPECÍFICOS POR DEPARTAMENTO - baseados em empresas reais
         $processosPorDepartamento = [
@@ -723,9 +1208,249 @@ class SopController
     }
     
     /**
-     * Cria mapeamento empresarial completo baseado no diagnóstico
+     * Extrai dados completos da empresa do diagnóstico para a Chamada 1
      */
-    private function criarMapeamentoEmpresarial(array $empresa, ?array $diagnostico): array
+    private function extrairDadosEmpresaCompletos(array $empresa, array $diagnostico, array $respostas): array
+    {
+        return [
+            'nome' => $empresa['nome'],
+            'nicho' => $this->identificarNichoEmpresa($respostas, $diagnostico),
+            'subnicho' => $respostas['subnicho'] ?? '',
+            'porte' => $this->determinarPorteEmpresa($respostas),
+            'modelo_negocio' => $respostas['modelo_negocio'] ?? $respostas['atividade_principal'] ?? 'Não especificado',
+            'produtos_servicos' => $respostas['produtos_servicos'] ?? $respostas['principal_produto'] ?? 'Não especificado',
+            'publico_alvo' => $respostas['publico_alvo'] ?? $respostas['clientes_principais'] ?? 'Não especificado',
+            'num_funcionarios' => $respostas['colaboradores'] ?? $respostas['numero_colaboradores'] ?? 'Não informado',
+            'faturamento' => $respostas['faturamento'] ?? $respostas['receita_mensal'] ?? 'Não informado',
+            'localizacao' => $respostas['localizacao'] ?? $respostas['cidade'] ?? 'Brasil',
+            'canais_venda' => $respostas['canais_venda'] ?? $respostas['como_vende'] ?? 'Não especificado',
+            'dores_desafios' => $respostas['pontos_melhoria'] ?? $respostas['principais_problemas'] ?? 'Não relatado',
+            'ferramentas_atuais' => $respostas['ferramentas'] ?? $respostas['sistemas_utilizados'] ?? 'Não especificado',
+            'estagio' => $this->determinarEstagioEmpresa($respostas)
+        ];
+    }
+
+    /**
+     * Determina o porte da empresa baseado nos dados
+     */
+    private function determinarPorteEmpresa(array $respostas): string
+    {
+        $colaboradores = $respostas['colaboradores'] ?? $respostas['numero_colaboradores'] ?? '';
+        
+        if (is_numeric($colaboradores)) {
+            $num = (int) $colaboradores;
+            if ($num <= 5) return 'micro';
+            if ($num <= 20) return 'pequena';
+            if ($num <= 100) return 'media';
+            return 'grande';
+        }
+        
+        // Fallback baseado em faturamento ou outras pistas
+        $faturamento = strtolower($respostas['faturamento'] ?? '');
+        if (strpos($faturamento, 'milhão') !== false || strpos($faturamento, 'milhões') !== false) {
+            return 'grande';
+        }
+        
+        return 'pequena'; // Padrão
+    }
+
+    /**
+     * Determina o estágio da empresa
+     */
+    private function determinarEstagioEmpresa(array $respostas): string
+    {
+        $maturidade = $respostas['maturidade_percebida'] ?? 2;
+        
+        switch($maturidade) {
+            case 1: return 'inicial';
+            case 2: return 'em_estruturacao';
+            case 3: return 'em_crescimento';
+            case 4: return 'consolidada';
+            default: return 'em_estruturacao';
+        }
+    }
+
+    /**
+     * Conta total de SOPs na estrutura
+     */
+    private function contarTotalSOPs(array $setores): int
+    {
+        $total = 0;
+        foreach ($setores as $setor) {
+            $total += count($setor['sops'] ?? []);
+        }
+        return $total;
+    }
+
+    /**
+     * Salva estrutura temporariamente para processamento em etapas
+     */
+    private function salvarEstruturaTemporaria(int $diagnosticoId, array $estrutura): int
+    {
+        return Database::insert(
+            "INSERT INTO estruturas_temporarias (diagnostico_id, estrutura_json, criado_em) VALUES (?, ?, NOW())",
+            [$diagnosticoId, json_encode($estrutura, JSON_UNESCAPED_UNICODE)]
+        );
+    }
+
+    /**
+     * Busca estrutura temporária salva
+     */
+    private function buscarEstruturaTemporaria(int $estruturaId): ?array
+    {
+        $resultado = Database::queryOne(
+            "SELECT * FROM estruturas_temporarias WHERE id = ? AND criado_em > DATE_SUB(NOW(), INTERVAL 2 HOUR)",
+            [$estruturaId]
+        );
+        
+        if (!$resultado) return null;
+        
+        return [
+            'diagnostico_id' => $resultado['diagnostico_id'],
+            'estrutura' => json_decode($resultado['estrutura_json'], true)
+        ];
+    }
+
+    /**
+     * Extrai contextos da empresa para geração de SOPs
+     */
+    private function extrairContextosEmpresa(array $empresa, array $diagnostico, array $respostas, array $diagnosticoEstrutura): array
+    {
+        return [
+            'nome' => $empresa['nome'],
+            'nicho' => $diagnosticoEstrutura['macro_categoria'],
+            'macro_categoria' => $diagnosticoEstrutura['macro_categoria'],
+            'porte' => $this->determinarPorteEmpresa($respostas),
+            'estagio' => $this->determinarEstagioEmpresa($respostas),
+            'modelo_negocio' => $respostas['modelo_negocio'] ?? $respostas['atividade_principal'] ?? 'Não especificado',
+            'produtos_servicos' => $respostas['produtos_servicos'] ?? $respostas['principal_produto'] ?? 'Não especificado',
+            'publico_alvo' => $respostas['publico_alvo'] ?? $respostas['clientes_principais'] ?? 'Não especificado',
+            'ferramentas_atuais' => $respostas['ferramentas'] ?? $respostas['sistemas_utilizados'] ?? 'Não especificado',
+            'nivel_maturidade' => $diagnosticoEstrutura['diagnostico']['nivel_maturidade']
+        ];
+    }
+
+    /**
+     * Encontra um SOP específico por índice na estrutura
+     */
+    private function encontrarSOPPorIndex(array $setores, int $sopIndex): ?array
+    {
+        $indiceAtual = 0;
+        
+        foreach ($setores as $setor) {
+            foreach ($setor['sops'] as $sop) {
+                if ($indiceAtual === $sopIndex) {
+                    return array_merge($sop, [
+                        'nome_setor' => $setor['nome_setor'],
+                        'responsavel_sugerido' => $setor['responsavel_sugerido']
+                    ]);
+                }
+                $indiceAtual++;
+            }
+        }
+        
+        return null;
+    }
+
+    /**
+     * Salva SOP gerado individualmente
+     */
+    private function salvarSOPGerado(int $empresaId, int $diagnosticoId, array $sopData, string $conteudo): int
+    {
+        return Sop::criar([
+            'empresa_id' => $empresaId,
+            'diagnostico_id' => $diagnosticoId,
+            'sop_codigo' => $sopData['id_sop'],
+            'titulo' => $sopData['nome_sop'],
+            'departamento' => $sopData['nome_setor'],
+            'conteudo' => substr($conteudo, 0, 1000), // Resumo
+            'conteudo_completo' => $conteudo, // Conteúdo completo em Markdown
+            'versao' => '1.0',
+            'status' => 'rascunho',
+            'gerado_por_ia' => 1,
+            'criticidade' => $sopData['criticidade'],
+            'formato' => 'markdown_n3' // Nova estrutura N1/N2/N3
+        ]);
+    }
+
+    /**
+     * Busca SOPs gerados para uma empresa/diagnóstico
+     */
+    private function buscarSOPsGerados(int $empresaId, int $diagnosticoId): array
+    {
+        return Database::query(
+            "SELECT * FROM sops WHERE empresa_id = ? AND diagnostico_id = ? ORDER BY departamento, titulo",
+            [$empresaId, $diagnosticoId]
+        );
+    }
+
+    /**
+     * Consolida conteúdo de todos os SOPs
+     */
+    private function consolidarConteudoSOPs(array $sopsGerados): string
+    {
+        $conteudoCompleto = '';
+        $setorAtual = '';
+        
+        foreach ($sopsGerados as $sop) {
+            if ($sop['departamento'] !== $setorAtual) {
+                $setorAtual = $sop['departamento'];
+                $conteudoCompleto .= "\n\n# SETOR: " . strtoupper($setorAtual) . "\n\n";
+            }
+            
+            $conteudoCompleto .= $sop['conteudo_completo'] . "\n\n---\n\n";
+        }
+        
+        return $conteudoCompleto;
+    }
+
+    /**
+     * Salva manual completo final
+     */
+    private function salvarManualCompleto(int $empresaId, int $diagnosticoId, string $conteudo): int
+    {
+        return Database::insert(
+            "INSERT INTO manuais_completos (empresa_id, diagnostico_id, conteudo_completo, versao, criado_em) VALUES (?, ?, ?, '1.0', NOW())",
+            [$empresaId, $diagnosticoId, $conteudo]
+        );
+    }
+
+    /**
+     * Exibe o manual completo gerado
+     */
+    public function exibirManualCompleto(): void
+    {
+        Auth::proteger();
+        
+        $manualId = (int) (isset($_GET['id']) ? $_GET['id'] : 0);
+        if (!$manualId) {
+            Flash::set('erro', 'Manual não especificado.');
+            header('Location: ' . APP_URL . '/manual-operacional');
+            exit;
+        }
+
+        $manual = Database::queryOne(
+            "SELECT * FROM manuais_completos WHERE id = ?",
+            [$manualId]
+        );
+
+        if (!$manual || !Auth::podeAcessarEmpresa($manual['empresa_id'])) {
+            Flash::set('erro', 'Manual não encontrado ou sem permissão.');
+            header('Location: ' . APP_URL . '/manual-operacional');
+            exit;
+        }
+
+        $empresa = Empresa::buscarPorId($manual['empresa_id']);
+        $diagnostico = Diagnostico::buscarPorId($manual['diagnostico_id']);
+
+        $dados = [
+            'manual' => $manual,
+            'empresa' => $empresa,
+            'diagnostico' => $diagnostico
+        ];
+
+        require VIEW_PATH . '/sop/manual-completo.php';
+    }
     {
         // Extrair dados do diagnóstico se existir
         $respostas = [];
@@ -1261,7 +1986,271 @@ class SopController
     }
 
     /**
-     * Gera um SOP individual via AJAX (F-05 Implementation)
+     * NOVA ARQUITETURA: Gera manual completo em 3 etapas
+     * Etapa 1: Diagnóstico e estrutura organizacional
+     */
+    public function gerarManualCompleto(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+
+        $diagnosticoIdPost = (int) (isset($_POST['diagnostico_id']) ? $_POST['diagnostico_id'] : 0);
+        
+        if (!$diagnosticoIdPost) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Diagnóstico não informado.']);
+            exit;
+        }
+
+        $diagnostico = Diagnostico::buscarPorId($diagnosticoIdPost);
+        if (!$diagnostico) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Diagnóstico não encontrado.']);
+            exit;
+        }
+
+        $empresa = Empresa::buscarPorId($diagnostico['empresa_id']);
+        if (!$empresa) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Empresa não encontrada.']);
+            exit;
+        }
+
+        // ETAPA 1: Extrair dados da empresa do diagnóstico
+        $respostas = json_decode($diagnostico['respostas'], true) ?? [];
+        $dadosEmpresa = $this->extrairDadosEmpresaCompletos($empresa, $diagnostico, $respostas);
+        
+        Logger::info('Iniciando geração de manual completo - NOVA ARQUITETURA', [
+            'empresa_id' => $empresa['id'],
+            'diagnostico_id' => $diagnosticoIdPost,
+            'empresa_nome' => $empresa['nome'],
+            'nicho_detectado' => $dadosEmpresa['nicho']
+        ]);
+
+        // CHAMADA 1: Diagnóstico e Estrutura Organizacional
+        $prompt1 = ApiHelper::buildPromptDiagnosticoEstrutura($dadosEmpresa);
+        $resultado1 = ApiHelper::chamarAnalise($prompt1, true);
+
+        if (!$resultado1['sucesso'] || !is_array($resultado1['conteudo'])) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro na análise organizacional: ' . ($resultado1['erro'] ?? 'Resposta inválida')]);
+            exit;
+        }
+
+        $diagnosticoEstrutura = $resultado1['conteudo'];
+        
+        Logger::info('Chamada 1 completa - Estrutura organizacional definida', [
+            'macro_categoria' => $diagnosticoEstrutura['macro_categoria'] ?? 'não definida',
+            'total_setores' => count($diagnosticoEstrutura['setores'] ?? []),
+            'total_sops' => $this->contarTotalSOPs($diagnosticoEstrutura['setores'] ?? [])
+        ]);
+
+        // Salvar estrutura temporariamente
+        $estruturaId = $this->salvarEstruturaTemporaria($diagnosticoIdPost, $diagnosticoEstrutura);
+        
+        header('Content-Type: application/json');
+        echo json_encode([
+            'sucesso' => true,
+            'etapa' => 1,
+            'estrutura_id' => $estruturaId,
+            'total_sops' => $this->contarTotalSOPs($diagnosticoEstrutura['setores'] ?? []),
+            'redirect' => APP_URL . '/sop/processar-sops?estrutura_id=' . $estruturaId
+        ]);
+        exit;
+    }
+
+    /**
+     * NOVA ARQUITETURA: Processa todos os SOPs individualmente
+     * Etapa 2: Geração profunda de cada SOP
+     */
+    public function processarSOPs(): void
+    {
+        Auth::proteger();
+        
+        $estruturaId = (int) (isset($_GET['estrutura_id']) ? $_GET['estrutura_id'] : 0);
+        if (!$estruturaId) {
+            Flash::set('erro', 'Estrutura não encontrada.');
+            header('Location: ' . APP_URL . '/manual-operacional');
+            exit;
+        }
+
+        // Buscar estrutura salva
+        $estruturaData = $this->buscarEstruturaTemporaria($estruturaId);
+        if (!$estruturaData) {
+            Flash::set('erro', 'Dados da estrutura não encontrados.');
+            header('Location: ' . APP_URL . '/manual-operacional');
+            exit;
+        }
+
+        $diagnosticoEstrutura = $estruturaData['estrutura'];
+        $diagnostico = Diagnostico::buscarPorId($estruturaData['diagnostico_id']);
+        $empresa = Empresa::buscarPorId($diagnostico['empresa_id']);
+
+        // Preparar contextos para geração dos SOPs
+        $respostas = json_decode($diagnostico['respostas'], true) ?? [];
+        $contextosEmpresa = $this->extrairContextosEmpresa($empresa, $diagnostico, $respostas, $diagnosticoEstrutura);
+
+        require VIEW_PATH . '/sop/processar-sops.php';
+    }
+
+    /**
+     * NOVA ARQUITETURA: Gera um SOP individual via AJAX
+     * Chamada individual da Etapa 2
+     */
+    public function gerarSOPIndividual(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+
+        $estruturaId = (int) (isset($_POST['estrutura_id']) ? $_POST['estrutura_id'] : 0);
+        $sopIndex = (int) (isset($_POST['sop_index']) ? $_POST['sop_index'] : 0);
+        
+        if (!$estruturaId) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Estrutura não informada.']);
+            exit;
+        }
+
+        // Buscar dados da estrutura
+        $estruturaData = $this->buscarEstruturaTemporaria($estruturaId);
+        if (!$estruturaData) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Estrutura não encontrada.']);
+            exit;
+        }
+
+        $diagnosticoEstrutura = $estruturaData['estrutura'];
+        $diagnostico = Diagnostico::buscarPorId($estruturaData['diagnostico_id']);
+        $empresa = Empresa::buscarPorId($diagnostico['empresa_id']);
+
+        // Encontrar SOP específico
+        $sopData = $this->encontrarSOPPorIndex($diagnosticoEstrutura['setores'], $sopIndex);
+        if (!$sopData) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'SOP não encontrado.']);
+            exit;
+        }
+
+        // Preparar contextos
+        $respostas = json_decode($diagnostico['respostas'], true) ?? [];
+        $contextosEmpresa = $this->extrairContextosEmpresa($empresa, $diagnostico, $respostas, $diagnosticoEstrutura);
+
+        Logger::info('Gerando SOP individual - NOVA ARQUITETURA', [
+            'sop_nome' => $sopData['nome_sop'],
+            'sop_id' => $sopData['id_sop'],
+            'setor' => $sopData['nome_setor'],
+            'criticidade' => $sopData['criticidade']
+        ]);
+
+        // CHAMADA 2: Geração profunda do SOP
+        $prompt2 = ApiHelper::buildPromptSOPProfundo($contextosEmpresa, $sopData);
+        $resultado2 = ApiHelper::chamarAnalise($prompt2, false); // Resposta em Markdown, não JSON
+
+        if (!$resultado2['sucesso']) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro na geração do SOP: ' . ($resultado2['erro'] ?? 'Erro desconhecido')]);
+            exit;
+        }
+
+        // Salvar SOP gerado
+        $sopId = $this->salvarSOPGerado($empresa['id'], $diagnostico['id'], $sopData, $resultado2['conteudo']);
+
+        Logger::info('SOP individual gerado com sucesso', [
+            'sop_id_banco' => $sopId,
+            'sop_codigo' => $sopData['id_sop'],
+            'tamanho_conteudo' => strlen($resultado2['conteudo'])
+        ]);
+
+        header('Content-Type: application/json');
+        echo json_encode([
+            'sucesso' => true,
+            'sop_id' => $sopId,
+            'sop_nome' => $sopData['nome_sop'],
+            'tamanho' => strlen($resultado2['conteudo'])
+        ]);
+        exit;
+    }
+
+    /**
+     * NOVA ARQUITETURA: Monta manual final
+     * Etapa 3: Consolidação de todos os SOPs
+     */
+    public function montarManualFinal(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+
+        $estruturaId = (int) (isset($_POST['estrutura_id']) ? $_POST['estrutura_id'] : 0);
+        
+        if (!$estruturaId) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Estrutura não informada.']);
+            exit;
+        }
+
+        // Buscar estrutura e SOPs gerados
+        $estruturaData = $this->buscarEstruturaTemporaria($estruturaId);
+        if (!$estruturaData) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Estrutura não encontrada.']);
+            exit;
+        }
+
+        $diagnosticoEstrutura = $estruturaData['estrutura'];
+        $diagnostico = Diagnostico::buscarPorId($estruturaData['diagnostico_id']);
+
+        // Buscar todos os SOPs gerados para esta empresa
+        $sopsGerados = $this->buscarSOPsGerados($diagnostico['empresa_id'], $diagnostico['id']);
+        
+        if (empty($sopsGerados)) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Nenhum SOP foi gerado ainda.']);
+            exit;
+        }
+
+        Logger::info('Montando manual final', [
+            'empresa_id' => $diagnostico['empresa_id'],
+            'total_sops_gerados' => count($sopsGerados)
+        ]);
+
+        // Consolidar todo o conteúdo
+        $todosOsSops = $this->consolidarConteudoSOPs($sopsGerados);
+
+        // CHAMADA 3: Montagem final do manual
+        $prompt3 = ApiHelper::buildPromptMontagemFinal(
+            $diagnosticoEstrutura['diagnostico'],
+            $diagnosticoEstrutura,
+            $todosOsSops
+        );
+        
+        $resultado3 = ApiHelper::chamarAnalise($prompt3, false); // Resposta em Markdown
+
+        if (!$resultado3['sucesso']) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro na montagem final: ' . ($resultado3['erro'] ?? 'Erro desconhecido')]);
+            exit;
+        }
+
+        // Salvar manual completo
+        $manualId = $this->salvarManualCompleto($diagnostico['empresa_id'], $diagnostico['id'], $resultado3['conteudo']);
+
+        Logger::info('Manual completo gerado com sucesso', [
+            'manual_id' => $manualId,
+            'tamanho_manual' => strlen($resultado3['conteudo']),
+            'total_sops_incluidos' => count($sopsGerados)
+        ]);
+
+        header('Content-Type: application/json');
+        echo json_encode([
+            'sucesso' => true,
+            'manual_id' => $manualId,
+            'redirect' => APP_URL . '/sop/manual-completo?id=' . $manualId
+        ]);
+        exit;
+    }
+
+    /**
+     * Gera um SOP individual via AJAX (método original mantido para compatibilidade)
      */
     public function gerar(): void
     {
@@ -2489,7 +3478,586 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         <html>
         <body style='font-family: Arial, sans-serif; font-size: 12px; line-height: 1.4;'>
             <h1 style='color: #333; border-bottom: 2px solid #0066cc; padding-bottom: 10px;'>
-                {$sop['sop_codigo']} - {$sop['titulo']}
+            /**
+     * Retorna setores ESPECÍFICOS por nicho da empresa
+     */
+    private function getSetoresEspecificosPorNicho(string $nicho): array
+    {
+        switch($nicho) {
+            case 'construção':
+                return [
+                    'ORÇAMENTAÇÃO E ENGENHARIA DE CUSTOS' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Levantamento de quantitativos, BDI, cotação de insumos',
+                        'funcoes_principais' => ['Levantamento quantitativo', 'Composição de BDI', 'Cotação de materiais'],
+                        'sops_padrao' => [
+                            'Levantamento de Quantitativos de Obra',
+                            'Composição de BDI e Preços Unitários',
+                            'Cotação de Insumos e Materiais',
+                            'Elaboração de Orçamento Detalhado',
+                            'Análise de Viabilidade de Projetos'
+                        ],
+                        'kpis_essenciais' => ['Precisão orçamentária', 'Prazo de orçamento', 'Margem de lucro']
+                    ],
+                    'SUPRIMENTOS / COMPRAS DE OBRA' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Cotação, homologação de fornecedores, prazo de entrega',
+                        'funcoes_principais' => ['Compras especializadas', 'Gestão de fornecedores', 'Logística de obra'],
+                        'sops_padrao' => [
+                            'Cotação e Seleção de Fornecedores',
+                            'Homologação de Fornecedores de Obra',
+                            'Controle de Prazo de Entrega',
+                            'Gestão de Estoque de Obra',
+                            'Negociação de Contratos de Fornecimento'
+                        ],
+                        'kpis_essenciais' => ['Prazo de entrega', 'Economia em compras', 'Qualidade fornecedores']
+                    ],
+                    'GESTÃO DE OBRAS / CAMPO' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Diário de obra, cronograma físico-financeiro, medições',
+                        'funcoes_principais' => ['Gestão executiva', 'Controle de cronograma', 'Medições e relatórios'],
+                        'sops_padrao' => [
+                            'Diário de Obra e Controle Diário',
+                            'Cronograma Físico-Financeiro',
+                            'Medições e Boletim de Obra',
+                            'Controle de Mão de Obra',
+                            'Gestão de Equipamentos de Obra'
+                        ],
+                        'kpis_essenciais' => ['Avanço físico (%)', 'Prazo de obra', 'Produtividade equipes']
+                    ],
+                    'SEGURANÇA DO TRABALHO (SESMT)' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'DDS, uso de EPI, laudos',
+                        'funcoes_principais' => ['Segurança ocupacional', 'Treinamentos', 'Compliance trabalhista'],
+                        'sops_padrao' => [
+                            'DDS - Diálogo Diário de Segurança',
+                            'Controle de EPI e Equipamentos',
+                            'Elaboração de Laudos e ASO',
+                            'Investigação de Acidentes',
+                            'Treinamento de Segurança'
+                        ],
+                        'kpis_essenciais' => ['Taxa de acidentes', 'Compliance NR', 'Treinamentos realizados']
+                    ]
+                ];
+                
+            case 'saúde':
+                return [
+                    'AGENDAMENTO E RECEPÇÃO' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Confirmação de consulta, no-show, encaixe',
+                        'funcoes_principais' => ['Gestão de agenda', 'Recepção especializada', 'Controle de fluxo'],
+                        'sops_padrao' => [
+                            'Agendamento e Confirmação de Consultas',
+                            'Controle de No-Show e Remarcações',
+                            'Encaixe de Urgências',
+                            'Gestão de Lista de Espera',
+                            'Protocolo de Recepção'
+                        ],
+                        'kpis_essenciais' => ['Taxa no-show', 'Tempo de espera', 'Satisfação recepção']
+                    ],
+                    'PRONTUÁRIO E COMPLIANCE (LGPD)' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Sigilo, armazenamento de dados sensíveis',
+                        'funcoes_principais' => ['Gestão de prontuários', 'Compliance LGPD', 'Segurança de dados'],
+                        'sops_padrao' => [
+                            'Gestão de Prontuário Eletrônico',
+                            'Compliance LGPD em Saúde',
+                            'Sigilo Médico e Confidencialidade',
+                            'Backup de Dados Clínicos',
+                            'Auditoria de Acesso a Dados'
+                        ],
+                        'kpis_essenciais' => ['Compliance LGPD', 'Incidentes de dados', 'Auditoria prontuários']
+                    ],
+                    'CORPO CLÍNICO' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Escalas, protocolos clínicos, prontuário eletrônico',
+                        'funcoes_principais' => ['Gestão médica', 'Protocolos clínicos', 'Escalas médicas'],
+                        'sops_padrao' => [
+                            'Escalas Médicas e Plantões',
+                            'Protocolos Clínicos Padronizados',
+                            'Interconsultas e Referências',
+                            'Controle de Prescrições',
+                            'Educação Médica Continuada'
+                        ],
+                        'kpis_essenciais' => ['Produtividade médica', 'Protocolos seguidos', 'Satisfação pacientes']
+                    ]
+                ];
+                
+            case 'ecommerce':
+                return [
+                    'GESTÃO DE MARKETPLACE' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Cadastro de produto, precificação por canal',
+                        'funcoes_principais' => ['Gestão multicanal', 'Precificação dinâmica', 'Catálogo de produtos'],
+                        'sops_padrao' => [
+                            'Cadastro de Produtos em Marketplace',
+                            'Precificação por Canal de Venda',
+                            'Gestão de Estoque Multicanal',
+                            'Otimização de Anúncios',
+                            'Análise de Performance por Canal'
+                        ],
+                        'kpis_essenciais' => ['Conversão por canal', 'Share of voice', 'Margem por marketplace']
+                    ],
+                    'LOGÍSTICA E FULFILLMENT' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Separação, embalagem, prazo de despacho',
+                        'funcoes_principais' => ['Fulfillment', 'Gestão logística', 'Controle de prazos'],
+                        'sops_padrao' => [
+                            'Separação e Picking de Pedidos',
+                            'Embalagem e Proteção de Produtos',
+                            'Despacho e Prazo de Entrega',
+                            'Gestão de Transportadoras',
+                            'Rastreamento de Envios'
+                        ],
+                        'kpis_essenciais' => ['Tempo de despacho', 'Avarias (%)', 'Prazo de entrega']
+                    ],
+                    'PÓS-VENDA / TROCAS E DEVOLUÇÕES' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Reembolso, código de defesa do consumidor',
+                        'funcoes_principais' => ['Pós-venda especializado', 'Gestão de devoluções', 'Compliance CDC'],
+                        'sops_padrao' => [
+                            'Processo de Trocas e Devoluções',
+                            'Reembolso e Estorno',
+                            'SAC E-commerce Especializado',
+                            'Compliance Código Defesa Consumidor',
+                            'Gestão de Avaliações Online'
+                        ],
+                        'kpis_essenciais' => ['Taxa de devolução', 'Tempo de reembolso', 'NPS e-commerce']
+                    ]
+                ];
+                
+            case 'educação':
+                return [
+                    'PEDAGÓGICO / CONTEÚDO' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Criação e revisão de material, grade curricular',
+                        'funcoes_principais' => ['Desenvolvimento pedagógico', 'Criação de conteúdo', 'Gestão curricular'],
+                        'sops_padrao' => [
+                            'Desenvolvimento de Conteúdo Pedagógico',
+                            'Revisão e Atualização Curricular',
+                            'Criação de Material Didático',
+                            'Planejamento de Aulas',
+                            'Avaliação Pedagógica'
+                        ],
+                        'kpis_essenciais' => ['Qualidade do conteúdo', 'Engajamento alunos', 'Aprovação pedagógica']
+                    ],
+                    'SECRETARIA ACADÊMICA' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Matrícula, histórico, emissão de certificados',
+                        'funcoes_principais' => ['Gestão acadêmica', 'Documentação estudantil', 'Certificações'],
+                        'sops_padrao' => [
+                            'Processo de Matrícula e Inscrição',
+                            'Gestão de Histórico Escolar',
+                            'Emissão de Certificados',
+                            'Controle de Frequência',
+                            'Documentação Acadêmica'
+                        ],
+                        'kpis_essenciais' => ['Taxa de matrícula', 'Prazo documentação', 'Satisfação acadêmica']
+                    ]
+                ];
+                
+            case 'tecnologia':
+                return [
+                    'PRODUTO' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Roadmap, priorização de backlog',
+                        'funcoes_principais' => ['Gestão de produto', 'Roadmap estratégico', 'Backlog management'],
+                        'sops_padrao' => [
+                            'Gestão de Roadmap de Produto',
+                            'Priorização de Backlog',
+                            'Pesquisa e Validação com Usuários',
+                            'Definição de Features',
+                            'Análise de Métricas de Produto'
+                        ],
+                        'kpis_essenciais' => ['Feature adoption', 'User engagement', 'Product-market fit']
+                    ],
+                    'DESENVOLVIMENTO / ENGENHARIA' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Code review, deploy, versionamento',
+                        'funcoes_principais' => ['Desenvolvimento de software', 'DevOps', 'Qualidade de código'],
+                        'sops_padrao' => [
+                            'Processo de Code Review',
+                            'Pipeline de Deploy e CI/CD',
+                            'Versionamento e Release',
+                            'Gestão de Ambiente',
+                            'Documentação Técnica'
+                        ],
+                        'kpis_essenciais' => ['Lead time', 'Bug rate', 'Deploy frequency']
+                    ],
+                    'CUSTOMER SUCCESS' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Onboarding, health score, upsell',
+                        'funcoes_principais' => ['Sucesso do cliente', 'Onboarding', 'Expansion revenue'],
+                        'sops_padrao' => [
+                            'Onboarding de Clientes SaaS',
+                            'Monitoramento de Health Score',
+                            'Processo de Upsell e Cross-sell',
+                            'Gestão de Renovações',
+                            'Análise de Churn'
+                        ],
+                        'kpis_essenciais' => ['Churn rate', 'NPS', 'Expansion revenue']
+                    ]
+                ];
+                
+            case 'alimentação':
+                return [
+                    'COZINHA / PRODUÇÃO DE ALIMENTOS' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Ficha técnica, boas práticas de manipulação',
+                        'funcoes_principais' => ['Preparo de alimentos', 'Controle qualidade', 'Higiene alimentar'],
+                        'sops_padrao' => [
+                            'Fichas Técnicas e Receituário',
+                            'Boas Práticas de Manipulação',
+                            'Controle de Temperatura',
+                            'Higienização e Sanitização',
+                            'Controle de Validade'
+                        ],
+                        'kpis_essenciais' => ['Tempo de preparo', 'Qualidade alimentar', 'Aproveitamento ingredientes']
+                    ],
+                    'SALÃO / ATENDIMENTO NO LOCAL' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Tempo de espera, turno de mesa',
+                        'funcoes_principais' => ['Atendimento presencial', 'Gestão de mesas', 'Experiência cliente'],
+                        'sops_padrao' => [
+                            'Recepção e Acomodação',
+                            'Atendimento de Mesa',
+                            'Gestão de Fila de Espera',
+                            'Turno e Limpeza de Mesa',
+                            'Cobrança e Fechamento'
+                        ],
+                        'kpis_essenciais' => ['Tempo de espera', 'Giro de mesa', 'Satisfação atendimento']
+                    ],
+                    'DELIVERY' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Tempo de entrega, embalagem térmica, parceria com apps',
+                        'funcoes_principais' => ['Gestão delivery', 'Embalagem', 'Logística entrega'],
+                        'sops_padrao' => [
+                            'Gestão de Pedidos Online',
+                            'Embalagem e Acondicionamento',
+                            'Logística de Entrega',
+                            'Gestão de Apps de Delivery',
+                            'Controle de Prazo'
+                        ],
+                        'kpis_essenciais' => ['Tempo de entrega', 'Qualidade na chegada', 'Taxa de avarias']
+                    ]
+                ];
+                
+            case 'imobiliário':
+                return [
+                    'CAPTAÇÃO DE IMÓVEIS' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Visita técnica, documentação do imóvel',
+                        'funcoes_principais' => ['Captação imóveis', 'Avaliação técnica', 'Documentação'],
+                        'sops_padrao' => [
+                            'Prospecção e Captação de Imóveis',
+                            'Visita Técnica e Avaliação',
+                            'Análise Documental',
+                            'Precificação e Posicionamento',
+                            'Fotografia e Marketing'
+                        ],
+                        'kpis_essenciais' => ['Imóveis captados/mês', 'Tempo de venda', 'Margem por venda']
+                    ],
+                    'LOCAÇÃO / ADMINISTRAÇÃO DE IMÓVEIS' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Vistoria de entrada/saída, repasse ao proprietário',
+                        'funcoes_principais' => ['Gestão locatícia', 'Vistorias', 'Relacionamento proprietários'],
+                        'sops_padrao' => [
+                            'Vistoria de Entrada',
+                            'Gestão de Contratos de Locação',
+                            'Cobrança e Repasse',
+                            'Vistoria de Saída',
+                            'Manutenção Preventiva'
+                        ],
+                        'kpis_essenciais' => ['Inadimplência (%)', 'Vacância', 'Satisfação proprietários']
+                    ]
+                ];
+                
+            case 'advocacia':
+                return [
+                    'CONTENCIOSO' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Prazos processuais, andamento de processo',
+                        'funcoes_principais' => ['Gestão processual', 'Controle prazos', 'Acompanhamento judicial'],
+                        'sops_padrao' => [
+                            'Controle de Prazos Processuais',
+                            'Acompanhamento de Andamentos',
+                            'Elaboração de Petições',
+                            'Gestão de Audiências',
+                            'Relatórios Processuais'
+                        ],
+                        'kpis_essenciais' => ['Prazos em dia (%)', 'Taxa de êxito', 'Produtividade por advogado']
+                    ],
+                    'CONSULTIVO' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Elaboração de pareceres, contratos',
+                        'funcoes_principais' => ['Consultoria jurídica', 'Elaboração contratos', 'Pareceres'],
+                        'sops_padrao' => [
+                            'Elaboração de Pareceres Jurídicos',
+                            'Análise e Revisão de Contratos',
+                            'Consultoria Preventiva',
+                            'Due Diligence',
+                            'Compliance Jurídico'
+                        ],
+                        'kpis_essenciais' => ['Prazo de entrega', 'Qualidade pareceres', 'Faturamento consultivo']
+                    ]
+                ];
+                
+            case 'beleza':
+                return [
+                    'AGENDA E RECEPÇÃO' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Confirmação, encaixe, política de atraso',
+                        'funcoes_principais' => ['Gestão de agenda', 'Recepção especializada', 'Controle de fluxo'],
+                        'sops_padrao' => [
+                            'Agendamento e Confirmação',
+                            'Recepção e Acolhimento',
+                            'Gestão de Encaixes',
+                            'Política de Atrasos',
+                            'Follow-up de Clientes'
+                        ],
+                        'kpis_essenciais' => ['Taxa de no-show', 'Ocupação agenda', 'Satisfação recepção']
+                    ],
+                    'SALA DE PROCEDIMENTOS' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Protocolo de higienização, ficha de anamnese',
+                        'funcoes_principais' => ['Execução procedimentos', 'Higienização', 'Segurança'],
+                        'sops_padrao' => [
+                            'Protocolo de Higienização',
+                            'Ficha de Anamnese',
+                            'Execução de Procedimentos',
+                            'Controle de Materiais',
+                            'Pós-procedimento'
+                        ],
+                        'kpis_essenciais' => ['Satisfação procedimentos', 'Tempo médio', 'Segurança (0 acidentes)']
+                    ]
+                ];
+                
+            case 'fitness':
+                return [
+                    'CONSULTORIA DE TREINO' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Avaliação física, plano de treino',
+                        'funcoes_principais' => ['Avaliação física', 'Prescrição treino', 'Acompanhamento'],
+                        'sops_padrao' => [
+                            'Avaliação Física Completa',
+                            'Prescrição de Treino',
+                            'Acompanhamento e Evolução',
+                            'Reavaliação Periódica',
+                            'Orientação Nutricional Básica'
+                        ],
+                        'kpis_essenciais' => ['Evolução clientes', 'Satisfação treino', 'Retenção personal']
+                    ],
+                    'RETENÇÃO DE ALUNOS' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Acompanhamento de frequência, reativação de inativos',
+                        'funcoes_principais' => ['Controle frequência', 'Reativação', 'Engajamento'],
+                        'sops_padrao' => [
+                            'Controle de Frequência',
+                            'Identificação de Inativos',
+                            'Processo de Reativação',
+                            'Programas de Engajamento',
+                            'Feedback e Melhoria'
+                        ],
+                        'kpis_essenciais' => ['Taxa de retenção', 'Frequência média', 'Reativações/mês']
+                    ]
+                ];
+                
+            case 'turismo':
+                return [
+                    'RESERVAS' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Confirmação, overbooking, cancelamento',
+                        'funcoes_principais' => ['Gestão reservas', 'Revenue management', 'Atendimento'],
+                        'sops_padrao' => [
+                            'Processo de Reservas',
+                            'Gestão de Overbooking',
+                            'Política de Cancelamento',
+                            'Check-in e Check-out',
+                            'Revenue Management'
+                        ],
+                        'kpis_essenciais' => ['Taxa ocupação', 'RevPAR', 'Satisfação hospede']
+                    ],
+                    'GOVERNANÇA / HOUSEKEEPING' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Checklist de limpeza, manutenção de quartos',
+                        'funcoes_principais' => ['Limpeza especializada', 'Manutenção', 'Controle qualidade'],
+                        'sops_padrao' => [
+                            'Checklist de Limpeza',
+                            'Manutenção Preventiva',
+                            'Controle de Amenities',
+                            'Inspeção de Qualidade',
+                            'Gestão de Enxoval'
+                        ],
+                        'kpis_essenciais' => ['Qualidade limpeza', 'Tempo por quarto', 'Satisfação housekeeping']
+                    ]
+                ];
+                
+            case 'indústria':
+                return [
+                    'PRODUÇÃO / FÁBRICA (PCP)' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Ordem de produção, controle de lote',
+                        'funcoes_principais' => ['Planejamento produção', 'Controle processo', 'Gestão lotes'],
+                        'sops_padrao' => [
+                            'Planejamento de Produção',
+                            'Controle de Lotes',
+                            'Ordens de Produção',
+                            'Sequenciamento',
+                            'Controle de Capacidade'
+                        ],
+                        'kpis_essenciais' => ['OEE', 'Produtividade', 'Prazo de entrega']
+                    ],
+                    'QUALIDADE INDUSTRIAL' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Inspeção, não conformidade',
+                        'funcoes_principais' => ['Controle qualidade', 'Inspeções', 'Melhorias'],
+                        'sops_padrao' => [
+                            'Inspeção de Qualidade',
+                            'Controle de Não Conformidades',
+                            'Calibração de Equipamentos',
+                            'Auditoria de Processo',
+                            'Melhoria Contínua'
+                        ],
+                        'kpis_essenciais' => ['Taxa de defeitos', 'First pass yield', 'Custo da qualidade']
+                    ]
+                ];
+                
+            case 'logística':
+                return [
+                    'FROTA' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Manutenção veicular, checklist de saída',
+                        'funcoes_principais' => ['Gestão frota', 'Manutenção', 'Controle operacional'],
+                        'sops_padrao' => [
+                            'Manutenção Preventiva de Frota',
+                            'Checklist de Saída',
+                            'Controle de Combustível',
+                            'Gestão de Motoristas',
+                            'Monitoramento GPS'
+                        ],
+                        'kpis_essenciais' => ['Disponibilidade frota', 'Custo por km', 'Acidentes']
+                    ],
+                    'ROTEIRIZAÇÃO' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Definição de rotas, otimização de entrega',
+                        'funcoes_principais' => ['Planejamento rotas', 'Otimização', 'Monitoramento'],
+                        'sops_padrao' => [
+                            'Planejamento de Rotas',
+                            'Otimização de Entregas',
+                            'Sequenciamento de Paradas',
+                            'Monitoramento em Tempo Real',
+                            'Análise de Performance'
+                        ],
+                        'kpis_essenciais' => ['Km rodado', 'Entregas no prazo', 'Custo por entrega']
+                    ]
+                ];
+                
+            case 'consultoria':
+                return [
+                    'DELIVERY DE PROJETOS' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Escopo, cronograma, entregáveis',
+                        'funcoes_principais' => ['Gestão projetos', 'Entregas', 'Cliente management'],
+                        'sops_padrao' => [
+                            'Definição de Escopo',
+                            'Planejamento de Projeto',
+                            'Gestão de Entregáveis',
+                            'Controle de Cronograma',
+                            'Encerramento de Projeto'
+                        ],
+                        'kpis_essenciais' => ['Prazo de entrega', 'Margem por projeto', 'Satisfação cliente']
+                    ]
+                ];
+                
+            case 'financeiro':
+                return [
+                    'ANÁLISE DE CRÉDITO / RISCO' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Score, aprovação, política de risco',
+                        'funcoes_principais' => ['Análise crédito', 'Gestão risco', 'Aprovação'],
+                        'sops_padrao' => [
+                            'Análise de Crédito',
+                            'Políticas de Risco',
+                            'Processo de Aprovação',
+                            'Monitoramento de Carteira',
+                            'Provisões e Perdas'
+                        ],
+                        'kpis_essenciais' => ['Taxa inadimplência', 'Aprovação crédito', 'ROE']
+                    ]
+                ];
+                
+            case 'marketing':
+                return [
+                    'PLANEJAMENTO DE CONTAS' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Briefing, aprovação de campanha',
+                        'funcoes_principais' => ['Account planning', 'Briefing', 'Estratégia'],
+                        'sops_padrao' => [
+                            'Briefing e Planejamento',
+                            'Desenvolvimento de Estratégia',
+                            'Aprovação de Campanhas',
+                            'Execução e Monitoramento',
+                            'Relatórios de Performance'
+                        ],
+                        'kpis_essenciais' => ['ROI campanhas', 'Taxa aprovação', 'Satisfação cliente']
+                    ]
+                ];
+                
+            case 'automotivo':
+                return [
+                    'VENDAS DE VEÍCULOS' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Test-drive, avaliação de usado',
+                        'funcoes_principais' => ['Vendas veículos', 'Test-drive', 'Avaliação'],
+                        'sops_padrao' => [
+                            'Atendimento e Qualificação',
+                            'Test-drive e Demonstração',
+                            'Avaliação de Usado',
+                            'Negociação e Fechamento',
+                            'Entrega do Veículo'
+                        ],
+                        'kpis_essenciais' => ['Vendas/mês', 'Margem por venda', 'Satisfação pós-venda']
+                    ]
+                ];
+                
+            case 'agronegócio':
+                return [
+                    'PRODUÇÃO AGRÍCOLA/PECUÁRIA' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Manejo, plantio, colheita',
+                        'funcoes_principais' => ['Produção agrícola', 'Manejo', 'Controle sanitário'],
+                        'sops_padrao' => [
+                            'Planejamento de Safra',
+                            'Manejo de Solo',
+                            'Controle Fitossanitário',
+                            'Operações de Campo',
+                            'Colheita e Pós-colheita'
+                        ],
+                        'kpis_essenciais' => ['Produtividade/hectare', 'Custo produção', 'Qualidade produto']
+                    ]
+                ];
+                
+            case 'ong':
+                return [
+                    'CAPTAÇÃO DE RECURSOS' => [
+                        'tipo' => 'especifico',
+                        'descricao' => 'Prospecção de doadores, editais',
+                        'funcoes_principais' => ['Fundraising', 'Relacionamento doadores', 'Projetos'],
+                        'sops_padrao' => [
+                            'Prospecção de Doadores',
+                            'Elaboração de Projetos',
+                            'Submissão de Editais',
+                            'Prestação de Contas',
+                            'Relacionamento com Financiadores'
+                        ],
+                        'kpis_essenciais' => ['Recursos captados', 'Taxa aprovação projetos', 'Retenção doadores']
+                    ]
+                ];
+                
+            default:
+                return []; // Sem setores específicos para nichos não mapeados
+        }
+    }$sop['sop_codigo']} - {$sop['titulo']}
             </h1>
             
             <p><strong>Empresa:</strong> {$sop['empresa']}</p>

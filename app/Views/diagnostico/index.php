@@ -141,6 +141,13 @@
                                     title="Reprocessar diagnóstico com correções atualizadas">
                                 🔄 Reprocessar
                             </button>
+                            
+                            <button type="button" 
+                                    onclick="gerarManualCompleto(<?= $diag['id'] ?>)"
+                                    class="text-purple-600 hover:text-purple-800 text-sm font-medium border border-purple-200 hover:border-purple-300 px-2 py-1 rounded transition"
+                                    title="Gerar Manual Operacional Completo (Nova Arquitetura)">
+                                🧠 Manual Completo
+                            </button>
                             <?php endif; ?>
                         </div>
                     </td>
@@ -207,6 +214,53 @@ async function reprocessarDiagnostico(diagnosticoId) {
         button.disabled = false;
         button.textContent = originalText;
         button.className = button.className.replace('text-gray-500', 'text-orange-600');
+    }
+}
+
+// NOVA FUNÇÃO: Gerar Manual Completo com Nova Arquitetura
+async function gerarManualCompleto(diagnosticoId) {
+    if (!confirm('Deseja gerar um Manual Operacional Completo usando a Nova Arquitetura? Isso criará 50-70 SOPs profissionais baseados no diagnóstico.')) {
+        return;
+    }
+    
+    const button = event.target;
+    const originalText = button.textContent;
+    
+    try {
+        // Mostrar loading
+        button.disabled = true;
+        button.textContent = '🧠 Gerando...';
+        button.className = button.className.replace('text-purple-600', 'text-gray-500');
+        
+        const formData = new FormData();
+        formData.append('csrf_token', '<?= Csrf::token() ?>');
+        formData.append('diagnostico_id', diagnosticoId);
+        
+        const response = await fetch('<?= APP_URL ?>/sop/gerar-manual-completo', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.sucesso) {
+            showToast(`Estrutura organizacional criada! ${result.total_sops} SOPs serão gerados.`, 'success');
+            
+            // Redirecionar para a tela de processamento
+            setTimeout(() => {
+                window.location.href = result.redirect;
+            }, 1500);
+        } else {
+            showToast(result.erro || 'Erro ao iniciar geração do manual', 'error');
+        }
+    } catch (error) {
+        console.error('Erro na geração do manual:', error);
+        showToast('Erro de conexão. Tente novamente.', 'error');
+    } finally {
+        // Restaurar botão
+        button.disabled = false;
+        button.textContent = originalText;
+        button.className = button.className.replace('text-gray-500', 'text-purple-600');
     }
 }
 

@@ -98,6 +98,14 @@ $diagnosticoId = isset($_GET['diagnostico_id']) ? (int) $_GET['diagnostico_id'] 
             </div>
             <div class="flex gap-2">
                 <?php if (Auth::perfil() === 'ADMIN_HOLDING' || Auth::perfil() === 'CONSULTOR_INTERNO'): ?>
+                
+                <!-- NOVA ARQUITETURA: Botão Manual Completo -->
+                <?php if ($diagnosticoId): ?>
+                <button onclick="gerarManualCompleto()" class="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700 font-medium">
+                    🧠 Gerar Manual Completo (Nova Arquitetura)
+                </button>
+                <?php endif; ?>
+                
                 <button onclick="abrirModalNovoSOP()" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">
                     ➕ Criar Novo SOP
                 </button>
@@ -464,6 +472,50 @@ async function salvarNovoSOP() {
 // Exportar todos os SOPs
 function exportarTodosSops() {
     window.location.href = '<?= APP_URL ?>/sop/exportar-todos-zip';
+}
+
+// NOVA ARQUITETURA: Gerar Manual Completo em 3 Etapas
+async function gerarManualCompleto() {
+    if (!DIAGNOSTICO_ID) {
+        alert('É necessário um diagnóstico específico para gerar o manual completo.');
+        return;
+    }
+    
+    const modal = document.getElementById('modalLoading');
+    document.getElementById('loadingTitulo').textContent = 'Iniciando Análise Organizacional';
+    document.getElementById('loadingSubtitulo').textContent = 'Analisando estrutura da empresa e definindo SOPs necessários...';
+    modal.classList.remove('hidden');
+
+    try {
+        const response = await fetch('<?= APP_URL ?>/sop/gerar-manual-completo', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+                diagnostico_id: DIAGNOSTICO_ID,
+                csrf_token: '<?= Csrf::token() ?>'
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.sucesso) {
+            document.getElementById('loadingTitulo').textContent = 'Análise Concluída!';
+            document.getElementById('loadingSubtitulo').textContent = `${data.total_sops} SOPs identificados. Redirecionando para geração...`;
+            
+            setTimeout(() => {
+                window.location.href = data.redirect;
+            }, 2000);
+        } else {
+            modal.classList.add('hidden');
+            alert('Erro na análise organizacional: ' + (data.erro || 'Erro desconhecido'));
+        }
+    } catch (error) {
+        modal.classList.add('hidden');
+        console.error('Erro:', error);
+        alert('Erro de comunicação com o servidor');
+    }
 }
 </script>
 

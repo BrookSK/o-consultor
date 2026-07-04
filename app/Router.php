@@ -76,6 +76,14 @@ class Router
         $this->post('sop/adicionar', 'SopController', 'adicionarSOP');
         $this->post('sop/remover', 'SopController', 'removerSOP');
         $this->post('sop/gerar', 'SopController', 'gerar');
+        
+        // NOVA ARQUITETURA: Manual Completo em 3 Etapas
+        $this->post('sop/gerar-manual-completo', 'SopController', 'gerarManualCompleto');     // Etapa 1: Diagnóstico e Estrutura
+        $this->get('sop/processar-sops', 'SopController', 'processarSOPs');                  // Etapa 2: View de processamento
+        $this->post('sop/gerar-sop-individual', 'SopController', 'gerarSOPIndividual');     // Etapa 2: AJAX individual
+        $this->post('sop/montar-manual-final', 'SopController', 'montarManualFinal');       // Etapa 3: Montagem final
+        $this->get('sop/manual-completo', 'SopController', 'exibirManualCompleto');         // Exibir manual final
+        
         $this->get('sop/ver', 'SopController', 'ver');
         $this->get('sop/revisar', 'SopController', 'revisar');
         $this->post('sop/aprovar', 'SopController', 'aprovar');

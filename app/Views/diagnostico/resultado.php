@@ -159,16 +159,80 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
         </svg>
         <span>
-            <span class="block font-semibold">Gerar Manual Operacional</span>
-            <span class="block text-xs text-white/70">SOPs personalizados por departamento</span>
+            <span class="block font-semibold">Manual Operacional (Legado)</span>
+            <span class="block text-xs text-white/70">SOPs básicos por departamento</span>
         </span>
     </a>
+
+    <button onclick="gerarManualCompleto(<?= $resultado['diagnostico_id'] ?>)" 
+            class="flex-1 bg-purple-600 text-white px-6 py-4 rounded-lg font-medium text-sm hover:bg-purple-700 transition text-center flex items-center justify-center gap-3">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+        </svg>
+        <span>
+            <span class="block font-semibold">🧠 Manual Completo (Nova Arquitetura)</span>
+            <span class="block text-xs text-white/70">50-70 SOPs profissionais com estrutura N1/N2/N3</span>
+        </span>
+    </button>
 </div>
 
 <!-- Link voltar -->
 <div class="mt-6 text-center">
     <a href="<?= APP_URL ?>/diagnostico" class="text-sm text-gray-500 hover:text-primary">← Voltar para lista de diagnósticos</a>
 </div>
+
+<!-- NOVA ARQUITETURA: Modal de Loading -->
+<div id="modal-loading-manual" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-lg p-8 max-w-md w-full mx-4 shadow-xl">
+        <div class="text-center">
+            <div class="inline-block w-16 h-16 border-4 border-gray-200 border-t-purple-600 rounded-full animate-spin mb-4"></div>
+            <h3 class="text-lg font-semibold text-gray-800 mb-2" id="modal-titulo-manual">Iniciando Nova Arquitetura...</h3>
+            <p class="text-sm text-gray-500" id="modal-subtitulo-manual">Analisando estrutura organizacional...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+// NOVA ARQUITETURA: Gerar Manual Completo
+async function gerarManualCompleto(diagnosticoId) {
+    if (!confirm('Deseja gerar um Manual Operacional Completo usando a Nova Arquitetura?\n\n✨ Isso criará 50-70 SOPs profissionais baseados no diagnóstico\n🧠 Estrutura N1/N2/N3 com máxima profundidade\n📋 Procedimentos auto-suficientes\n⚡ Conteúdo específico da empresa (não genérico)')) {
+        return;
+    }
+    
+    // Mostrar modal de loading
+    document.getElementById('modal-loading-manual').classList.remove('hidden');
+    
+    try {
+        const formData = new FormData();
+        formData.append('csrf_token', '<?= Csrf::token() ?>');
+        formData.append('diagnostico_id', diagnosticoId);
+        
+        const response = await fetch('<?= APP_URL ?>/sop/gerar-manual-completo', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.sucesso) {
+            document.getElementById('modal-titulo-manual').textContent = 'Estrutura Criada com Sucesso!';
+            document.getElementById('modal-subtitulo-manual').textContent = `${result.total_sops} SOPs serão gerados. Redirecionando...`;
+            
+            // Redirecionar para a tela de processamento
+            setTimeout(() => {
+                window.location.href = result.redirect;
+            }, 2000);
+        } else {
+            document.getElementById('modal-loading-manual').classList.add('hidden');
+            alert('Erro ao iniciar geração do manual: ' + (result.erro || 'Erro desconhecido'));
+        }
+    } catch (error) {
+        console.error('Erro na geração do manual:', error);
+        document.getElementById('modal-loading-manual').classList.add('hidden');
+        alert('Erro de conexão. Tente novamente.');
+    }
+}
+</script>
 
 <?php $conteudo = ob_get_clean(); ?>
 <?php require VIEW_PATH . '/layouts/layout.php'; ?>

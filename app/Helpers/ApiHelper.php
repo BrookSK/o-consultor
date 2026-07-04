@@ -379,7 +379,229 @@ Responda APENAS em JSON válido. Não inclua texto fora do JSON.";
     }
 
     /**
+     * CHAMADA 1 — Diagnóstico e Estrutura Organizacional 
+     * Gera o "cérebro" do processo: diagnóstico + lista exata de setores/SOPs
+     */
+    public static function buildPromptDiagnosticoEstrutura(array $dadosEmpresa): string
+    {
+        return "Você é um consultor sênior de estruturação organizacional. Sua tarefa nesta etapa NÃO é escrever os SOPs — é diagnosticar a empresa e definir com precisão QUAIS setores e QUAIS SOPs ela precisa, para que cada um seja detalhado individualmente depois.
+
+=========================== DADOS DE ENTRADA ===========================
+Nome da empresa: {$dadosEmpresa['nome']}
+Nicho/segmento: {$dadosEmpresa['nicho']}
+Sub-nicho (se houver): {$dadosEmpresa['subnicho']}
+Porte da empresa: {$dadosEmpresa['porte']}
+Modelo de negócio: {$dadosEmpresa['modelo_negocio']}
+Principais produtos/serviços: {$dadosEmpresa['produtos_servicos']}
+Público-alvo: {$dadosEmpresa['publico_alvo']}
+Número de funcionários atual: {$dadosEmpresa['num_funcionarios']}
+Faturamento aproximado (opcional): {$dadosEmpresa['faturamento']}
+Localização/regionalidade: {$dadosEmpresa['localizacao']}
+Canais de venda: {$dadosEmpresa['canais_venda']}
+Principais dores/desafios relatados: {$dadosEmpresa['dores_desafios']}
+Ferramentas/sistemas já usados: {$dadosEmpresa['ferramentas_atuais']}
+Estágio da empresa: {$dadosEmpresa['estagio']}
+
+=========================== O QUE FAZER ===========================
+1. Classifique o nicho em uma macro-categoria (construção civil, saúde/estética, e-commerce, educação, alimentação, imobiliário, jurídico, tecnologia, beleza, fitness, turismo, indústria, logística, consultoria, financeiro, marketing, automotivo, agronegócio, terceiro setor, ou outra).
+
+2. Monte a estrutura de setores: os 10 setores base (Captação, Comercial, Financeiro, Atendimento, Suporte, Operacional, RH, Administrativo, TI, Qualidade) + os setores específicos exigidos pelo nicho.
+
+3. Para cada setor, ADAPTADO ao nicho e porte informados (não genérico), liste os SOPs essenciais que esse setor precisa ter documentados — pense em TODAS as situações recorrentes e também nas situações de exceção/crise que alguém da equipe pode enfrentar sozinho.
+
+4. Priorize os SOPs por criticidade (1 = crítico/gera risco ou perda financeira se não documentado, 2 = importante, 3 = complementar).
+
+5. Não gere o conteúdo dos SOPs aqui — apenas identifique e liste. O conteúdo profundo será gerado em outra etapa.
+
+=========================== FORMATO DE SAÍDA (APENAS JSON, sem texto fora do JSON, sem markdown, sem comentários) ===========================
+{
+  \"empresa\": \"{$dadosEmpresa['nome']}\",
+  \"macro_categoria\": \"string\",
+  \"diagnostico\": {
+    \"nivel_maturidade\": \"inicial | em_estruturacao | em_crescimento | consolidada\",
+    \"principais_riscos\": [\"string\", \"string\"],
+    \"dores_conectadas_a_setores\": [
+      {\"dor\": \"string\", \"setor_relacionado\": \"string\", \"explicacao\": \"string\"}
+    ],
+    \"prioridades_recomendadas\": [\"string\", \"string\"]
+  },
+  \"setores\": [
+    {
+      \"nome_setor\": \"string\",
+      \"tipo\": \"base | especifico_do_nicho\",
+      \"funcao_no_negocio\": \"string\",
+      \"responsavel_sugerido\": \"string (cargo, considerando o porte)\",
+      \"sops\": [
+        {
+          \"id_sop\": \"string (slug único, ex: financeiro-cobranca-inadimplencia)\",
+          \"nome_sop\": \"string\",
+          \"objetivo_resumido\": \"string (1-2 frases)\",
+          \"criticidade\": 1,
+          \"gatilho_de_entrada\": \"string (o que dispara a execução desse SOP)\"
+        }
+      ]
+    }
+  ]
+}
+
+Responda APENAS com o JSON válido. Não inclua texto adicional fora do JSON.";
+    }
+
+    /**
+     * CHAMADA 2 — Gerador de SOP Profundo (uma chamada por SOP)
+     * Esta chamada roda em loop para cada SOP identificado na Chamada 1
+     */
+    public static function buildPromptSOPProfundo(array $contextosEmpresa, array $dadosSOP): string
+    {
+        return "Você é um especialista em documentação operacional e treinamento de equipes, com profundo conhecimento prático do nicho \"{$contextosEmpresa['nicho']}\" ({$contextosEmpresa['macro_categoria']}). Sua tarefa é criar UM ÚNICO SOP (Procedimento Operacional Padrão) extremamente detalhado, de forma que qualquer pessoa nova na empresa consiga executá-lo e resolver qualquer variação da situação SEM precisar perguntar para outra pessoa.
+
+=========================== CONTEXTO DA EMPRESA (não repita isso na resposta, apenas use como base) ===========================
+Empresa: {$contextosEmpresa['nome']}
+Nicho: {$contextosEmpresa['nicho']} | Macro-categoria: {$contextosEmpresa['macro_categoria']}
+Porte: {$contextosEmpresa['porte']} | Estágio: {$contextosEmpresa['estagio']}
+Modelo de negócio: {$contextosEmpresa['modelo_negocio']}
+Produtos/serviços: {$contextosEmpresa['produtos_servicos']}
+Público-alvo: {$contextosEmpresa['publico_alvo']}
+Ferramentas/sistemas usados: {$contextosEmpresa['ferramentas_atuais']}
+Nível de maturidade organizacional: {$contextosEmpresa['nivel_maturidade']}
+
+=========================== SETOR E SOP A DETALHAR ===========================
+Setor: {$dadosSOP['nome_setor']}
+Responsável sugerido: {$dadosSOP['responsavel_sugerido']}
+SOP a documentar: {$dadosSOP['nome_sop']}
+Objetivo resumido: {$dadosSOP['objetivo_resumido']}
+Gatilho de entrada: {$dadosSOP['gatilho_de_entrada']}
+Criticidade: {$dadosSOP['criticidade']}
+
+=========================== ESTRUTURA OBRIGATÓRIA — NÍVEIS N1, N2, N3 + CHECKLISTS ===========================
+Gere o SOP com TODAS as seções abaixo, sem pular nenhuma, com profundidade real (não genérica, não superficial). Sempre que possível, use exemplos concretos ligados ao nicho e aos produtos/serviços da empresa, e não exemplos abstratos.
+
+# SOP: {$dadosSOP['nome_sop']}
+**Setor:** {$dadosSOP['nome_setor']} | **Criticidade:** {$dadosSOP['criticidade']} | **Responsável:** {$dadosSOP['responsavel_sugerido']}
+
+## 1. Objetivo
+O que este procedimento garante, por que ele existe, o que acontece se ele NÃO for seguido (risco real e concreto).
+
+## 2. Quando executar (gatilhos)
+Todos os eventos/situações que disparam esse procedimento — não apenas o gatilho principal, mas variações (ex: entrada manual, entrada automática via sistema, solicitação de cliente, alerta interno).
+
+## 3. Papéis e responsabilidades
+Quem executa, quem aprova (se houver alçada), quem é informado, e o que fazer se a pessoa responsável estiver ausente (plano de contingência de responsabilidade).
+
+## 4. Glossário rápido
+Termos técnicos do nicho usados neste SOP, explicados em linguagem simples, para alguém sem experiência prévia entender de imediato.
+
+## 5. Ferramentas, sistemas e documentos necessários
+Liste cada ferramenta/sistema/planilha/documento necessário, para que serve especificamente neste procedimento, e onde encontrá-lo.
+
+## 6. NÍVEL N1 — Execução Padrão (situação comum, 80% dos casos)
+Passo a passo numerado, extremamente específico (sem \"verifique se está tudo certo\" — diga O QUE verificar e COMO). Inclua:
+- Pré-requisitos antes de começar
+- Passos numerados de execução
+- O que preencher/registrar em cada etapa e onde
+- Tempo médio esperado por etapa
+- Resultado esperado ao final (como saber que deu certo)
+
+**Checklist N1 (execução padrão):**
+- [ ] item verificável 1
+- [ ] item verificável 2
+- [ ] item verificável 3
+(gerar todos os itens necessários, não um número fixo)
+
+## 7. NÍVEL N2 — Situações Intermediárias e Exceções (variações comuns, ~15% dos casos)
+Liste as exceções/variações mais prováveis neste procedimento específico (não genéricas) e, para cada uma, um mini fluxo de decisão:
+- Situação de exceção 1: [descrição] → Como identificar → O que fazer → Como registrar → Quando essa exceção deixa de ser N2 e vira N3
+- Situação de exceção 2: [...]
+- (cobrir o maior número real de variações que esse SOP específico pode ter)
+
+**Checklist N2 (tratamento de exceção):**
+- [ ] item verificável 1
+- [ ] item verificável 2
+
+## 8. NÍVEL N3 — Casos Críticos e Escalonamento (situações raras/complexas, ~5% dos casos)
+Cenários de alto risco, legal, financeiro ou reputacional ligados a este SOP. Para cada cenário:
+- Descrição do cenário crítico
+- Critério objetivo de quando classificar como N3 (não deixe subjetivo)
+- Para quem escalar (cargo/setor) e por qual canal
+- O que o executor deve fazer ENQUANTO aguarda a escalada (não deixar o cliente/processo parado)
+- Prazo máximo de resposta esperado após escalar
+
+**Checklist N3 (antes de escalar):**
+- [ ] item verificável 1
+- [ ] item verificável 2
+
+## 9. Erros comuns e como evitá-los
+Liste erros reais e específicos que pessoas novas cometem nesse tipo de procedimento neste nicho, e a forma correta de evitar cada um.
+
+## 10. Scripts e modelos prontos (se aplicável)
+Se o SOP envolve comunicação com cliente, fornecedor ou equipe (e-mail, mensagem, ligação, atendimento presencial), forneça modelo de texto pronto para uso, adaptado ao tom da empresa e ao nicho.
+
+## 11. Indicadores de sucesso (KPIs)
+Como medir se este procedimento está sendo bem executado (métrica, meta, frequência de acompanhamento, responsável pela métrica).
+
+## 12. Perguntas frequentes (FAQ para quem está aprendendo)
+Simule de 5 a 10 perguntas reais que uma pessoa nova faria sobre este procedimento, e responda de forma direta.
+
+## 13. Frequência de execução e revisão
+Com que frequência esse SOP é executado, e de quanto em quanto tempo ele deve ser revisado/atualizado.
+
+=========================== REGRAS DE QUALIDADE ===========================
+- Proibido generalizar. Cada passo deve refletir a realidade do nicho \"{$contextosEmpresa['nicho']}\" e do modelo de negócio informado.
+- Proibido deixar etapas incompletas do tipo \"faça o necessário\" — sempre especifique o que é o necessário.
+- Se alguma informação depender de dado que a empresa não informou (ex: nome de um sistema específico), use um placeholder claro como \"[nome do sistema usado pela empresa]\" em vez de inventar uma ferramenta.
+- Escreva em português do Brasil, tom técnico, direto e didático — like um manual de treinamento real, não um texto teórico.
+- Priorize profundidade e assertividade sobre brevidade. Este documento deve ser suficiente para substituir a necessidade de perguntar a um colega mais experiente.
+
+Responda em formato Markdown bem estruturado.";
+    }
+
+    /**
+     * CHAMADA 3 — Montagem Final do Manual (organiza tudo em documento final)
+     */
+    public static function buildPromptMontagemFinal(array $diagnosticoJson, array $estruturaJson, string $todosOsSops): string
+    {
+        $diagnostico = json_encode($diagnosticoJson, JSON_UNESCAPED_UNICODE);
+        $estrutura = json_encode($estruturaJson, JSON_UNESCAPED_UNICODE);
+        
+        return "Você é um editor técnico. Você vai montar o MANUAL COMPLETO DA EMPRESA a partir de partes já geradas. Não invente novo conteúdo de SOP — apenas organize, conecte e complemente com as seções estruturais abaixo.
+
+=========================== MATERIAL JÁ GERADO (input) ===========================
+Diagnóstico da empresa (JSON da Chamada 1): {$diagnostico}
+Lista de setores e SOPs (JSON da Chamada 1): {$estrutura}
+Conteúdo completo de todos os SOPs gerados (Chamada 2): {$todosOsSops}
+
+=========================== O QUE GERAR ===========================
+# MANUAL COMPLETO DA EMPRESA — {$estruturaJson['empresa']}
+
+## 1. Informações da Empresa
+(sintetize os dados de entrada em texto legível)
+
+## 2. Diagnóstico Inicial
+(use o diagnóstico já gerado na Chamada 1, apresentado de forma legível)
+
+## 3. Estrutura Organizacional Completa
+(apresente o organograma textual: setores base + específicos do nicho, com função e responsável de cada um)
+
+## 4. Fluxo de Processos Entre Setores
+(mapeie como o trabalho flui entre os setores listados, do primeiro contato com cliente até o pós-venda/suporte, específico para o modelo de negócio informado)
+
+## 5. SOPs por Setor
+(organize TODOS os SOPs já gerados na Chamada 2, agrupados por setor, mantendo a estrutura N1/N2/N3/checklists de cada um — não resuma o conteúdo, apenas organize e insira)
+
+## 6. Roadmap de Implementação
+(sugira ordem de implementação: primeiros 30 dias, 90 dias, 6 meses, considerando criticidade dos SOPs definida na Chamada 1)
+
+## 7. Próximos Passos Recomendados
+(3 a 5 ações imediatas)
+
+Regras: não altere o conteúdo técnico dos SOPs já gerados, apenas formate e conecte. Português do Brasil, Markdown com headers.
+
+Responda em formato Markdown completo e bem estruturado.";
+    }
+
+    /**
      * Constrói prompt padrão-ouro para geração de SOP com alta assertividade e completude
+     * DEPRECATED: Use a nova arquitetura de 3 chamadas
      */
     public static function buildPromptSopDetalhado(array $empresa, array $sop, string $contextoDocumentos = ''): string
     {

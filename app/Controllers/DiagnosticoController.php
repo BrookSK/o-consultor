@@ -526,15 +526,16 @@ class DiagnosticoController
                 exit;
             }
             
-            Logger::info('Reprocessando diagnóstico', ['diagnostico_id' => $diagnosticoId]);
+            Logger::info('Reprocessando diagnóstico com NOVA ARQUITETURA', ['diagnostico_id' => $diagnosticoId]);
             
+            // NOVA ABORDAGEM: Usar a nova arquitetura de 3 etapas
             // Extrair dados do diagnóstico existente
             $respostasAnteriores = json_decode($diagnostico['respostas'], true) ?? [];
             
-            // Recalcular score com correções
+            // Recalcular score com correções (manter compatibilidade)
             $novoScore = $this->calcularScore($respostasAnteriores);
             
-            // Gerar novo resultado
+            // Gerar novo resultado básico (para compatibilidade)
             $novoResultado = $this->gerarResultado($respostasAnteriores, $novoScore);
             
             // Atualizar diagnóstico
@@ -547,16 +548,17 @@ class DiagnosticoController
                 ]
             );
             
-            Logger::info('Diagnóstico reprocessado com sucesso', [
+            Logger::info('Diagnóstico reprocessado - redirecionando para nova arquitetura', [
                 'diagnostico_id' => $diagnosticoId,
                 'novo_score' => $novoScore
             ]);
             
             echo json_encode([
                 'sucesso' => true,
-                'mensagem' => 'Diagnóstico reprocessado com sucesso!',
+                'mensagem' => 'Diagnóstico reprocessado! Gerando Manual Completo com Nova Arquitetura...',
                 'diagnostico_id' => $diagnosticoId,
                 'novo_score' => $novoScore,
+                'usar_nova_arquitetura' => true,
                 'redirect' => APP_URL . '/diagnostico/resultado/' . $diagnosticoId
             ]);
             
