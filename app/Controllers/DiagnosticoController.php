@@ -158,6 +158,70 @@ class DiagnosticoController
     }
     
     /**
+     * Wizard único de diagnóstico (nova abordagem)
+     */
+    public function wizard(): void
+    {
+        Auth::proteger();
+        
+        $usuario = Auth::usuario();
+        $empresaId = Auth::empresa();
+        
+        // Para ADMIN_HOLDING, buscar empresas disponíveis
+        $empresasDisponiveis = [];
+        if (Auth::perfil() === 'ADMIN_HOLDING') {
+            $empresasDisponiveis = Database::query(
+                "SELECT e.id, e.nome, e.segmento, e.responsavel_id, u.nome as responsavel_nome
+                 FROM empresas e 
+                 LEFT JOIN usuarios u ON e.responsavel_id = u.id
+                 ORDER BY e.nome ASC"
+            );
+        }
+        
+        // Buscar ou criar rascunho em andamento
+        $rascunho = Diagnostico::buscarOuCriarRascunho($usuario['id']);
+        
+        if (empty($rascunho)) {
+            Flash::set('erro', 'Erro ao iniciar diagnóstico. Tente novamente.');
+            header('Location: ' . APP_URL . '/diagnostico');
+            exit;
+        }
+        
+        // Auto-preencher com dados da empresa se disponível
+        if (!empty($rascunho['empresa_id'])) {
+            $empresaRascunho = Database::queryOne(
+                "SELECT nome, segmento FROM empresas WHERE id = :id",
+                ['id' => $rascunho['empresa_id']]
+            );
+            
+            if ($empresaRascunho && empty($rascunho['empresa_nome'])) {
+                Database::execute(
+                    "UPDATE diagnosticos_rascunho SET empresa_nome = :nome, setor = :setor WHERE id = :id",
+                    [
+                        'nome' => $empresaRascunho['nome'],
+                        'setor' => $empresaRascunho['segmento'],
+                        'id' => $rascunho['id']
+                    ]
+                );
+                
+                $rascunho['empresa_nome'] = $empresaRascunho['nome'];
+                $rascunho['setor'] = $empresaRascunho['segmento'];
+            }
+        }
+        
+        // Opções para selects
+        $opcoes = $this->getOpcoesWizard();
+        
+        $dados = [
+            'rascunho' => $rascunho,
+            'opcoes' => $opcoes,
+            'empresas_disponiveis' => $empresasDisponiveis
+        ];
+
+        require VIEW_PATH . '/diagnostico/wizard.php';
+    }
+    
+    /**
      * Exibir bloco específico do diagnóstico
      */
     public function bloco(): void

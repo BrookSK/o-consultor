@@ -36,6 +36,7 @@ class Router
 
         // Diagnóstico
         $this->get('diagnostico', 'DiagnosticoController', 'index');
+        $this->get('diagnostico/wizard', 'DiagnosticoController', 'wizard'); // Nova rota do wizard
         $this->get('diagnostico/novo', 'DiagnosticoController', 'novo');
         $this->get('diagnostico/bloco', 'DiagnosticoController', 'bloco');
         $this->post('diagnostico/salvar-bloco', 'DiagnosticoController', 'salvarBloco');

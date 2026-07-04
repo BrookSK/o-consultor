@@ -16,13 +16,23 @@
         <h1 class="text-2xl font-bold text-gray-800">Diagnósticos Empresariais</h1>
         <p class="text-gray-500 mt-1">Avaliação de maturidade das empresas clientes.</p>
     </div>
-    <a href="<?= APP_URL ?>/diagnostico/novo"
-       class="bg-accent text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-orange-700 transition flex items-center gap-2">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-        </svg>
-        Novo Diagnóstico
-    </a>
+    <div class="flex gap-3">
+        <a href="<?= APP_URL ?>/diagnostico/wizard"
+           class="bg-primary text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-primary-700 transition flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+            </svg>
+            Wizard Diagnóstico
+        </a>
+        
+        <a href="<?= APP_URL ?>/diagnostico/novo"
+           class="bg-accent text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-orange-700 transition flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Diagnóstico Completo
+        </a>
+    </div>
 </div>
 
 <!-- Filtros -->
