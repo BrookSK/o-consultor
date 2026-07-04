@@ -827,9 +827,21 @@ function diagnosticoWizard() {
                     body: formData
                 });
 
-                console.log('Resposta gerar:', response.status);
+                console.log('Resposta gerar:', response.status, response.statusText);
                 
-                const result = await response.json();
+                // Verificar se a resposta é JSON válido
+                const responseText = await response.text();
+                console.log('Texto da resposta:', responseText);
+                
+                let result;
+                try {
+                    result = JSON.parse(responseText);
+                } catch (parseError) {
+                    console.error('Erro ao fazer parse da resposta:', parseError);
+                    this.showToast('Erro do servidor: resposta inválida', 'error');
+                    return;
+                }
+                
                 console.log('Resultado gerar:', result);
 
                 if (result.sucesso) {

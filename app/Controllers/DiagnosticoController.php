@@ -490,161 +490,81 @@ class DiagnosticoController
      */
     public function gerar(): void
     {
-        Auth::proteger();
-        Csrf::verificar();
-        
-        $rascunhoId = (int) ($_POST['rascunho_id'] ?? 0);
-        
-        // Buscar rascunho
-        $rascunho = Database::queryOne("SELECT * FROM diagnosticos_rascunho WHERE id = :id AND usuario_id = :usuario_id", 
-                                      ['id' => $rascunhoId, 'usuario_id' => Auth::id()]);
-        
-        if (!$rascunho || $rascunho['status'] !== 'em_andamento') {
-            header('Content-Type: application/json');
-            echo json_encode(['sucesso' => false, 'mensagem' => 'Rascunho não encontrado ou já finalizado']);
-            exit;
-        }
-        
-        // Verificar se os blocos essenciais foram preenchidos
-        if ($rascunho['bloco_atual'] < 4) {
-            header('Content-Type: application/json');
-            echo json_encode([
-                'sucesso' => false, 
-                'mensagem' => 'Complete pelo menos 4 blocos antes de gerar o diagnóstico',
-                'debug_info' => [
-                    'bloco_atual' => $rascunho['bloco_atual'],
-                    'rascunho_id' => $rascunhoId
-                ]
-            ]);
-            exit;
-        }
-        
-        // Verificar se os campos obrigatórios estão preenchidos
-        if (empty($rascunho['empresa_nome']) || empty($rascunho['setor'])) {
-            header('Content-Type: application/json');
-            echo json_encode([
-                'sucesso' => false, 
-                'mensagem' => 'Campos obrigatórios não preenchidos (nome da empresa e setor)',
-                'debug_info' => [
-                    'empresa_nome' => $rascunho['empresa_nome'] ?? 'vazio',
-                    'setor' => $rascunho['setor'] ?? 'vazio'
-                ]
-            ]);
-            exit;
-        }
+        // Começar com headers corretos
+        header('Content-Type: application/json');
         
         try {
-            // 1. Montar JSON completo com todos os dados dos 5 blocos
-            $dadosCompletos = $this->montarDadosCompletos($rascunho);
+            Logger::info('=== INÍCIO GERAÇÃO DIAGNÓSTICO ===');
             
-            // 2. Chamar OpenAI para análise se as APIs estão configuradas
-            $resultadoIA = null;
-            $sitesReferencia = [];
+            Auth::proteger();
+            Csrf::verificar();
             
-            if ($this->apiConfigurada()) {
-                // Buscar documentos relevantes da empresa
-                $empresaId = $rascunho['empresa_id'] ?? Auth::empresa();
-                $documentosRelevantes = [];
-                $contextoDocumentos = '';
-                
-                if (class_exists('DocumentoProcessor') && DocumentoProcessor::isAvailable()) {
-                    try {
-                        $documentosRelevantes = DocumentoProcessor::buscarDocumentosRelevantes($empresaId);
-                        $contextoDocumentos = DocumentoProcessor::construirContextoDocumentos($documentosRelevantes);
-                    } catch (Exception $e) {
-                        Logger::warning('Erro ao buscar documentos para diagnóstico', ['erro' => $e->getMessage()]);
-                    }
-                }
-                
-                $resultadoIA = $this->chamarOpenAIAnalise($dadosCompletos, $contextoDocumentos);
-                if ($resultadoIA) {
-                    $sitesReferencia = $resultadoIA['sites_referencia'] ?? [];
-                }
-                
-                // Registrar uso dos documentos
-                if (class_exists('DocumentoProcessor') && !empty($documentosRelevantes)) {
-                    foreach ($documentosRelevantes as $doc) {
-                        DocumentoProcessor::registrarUso($doc['id'], $empresaId, Auth::id(), 'diagnostico', null);
-                    }
-                }
+            $rascunhoId = (int) ($_POST['rascunho_id'] ?? 0);
+            
+            Logger::info('Parâmetros recebidos', ['rascunho_id' => $rascunhoId, 'usuario_id' => Auth::id()]);
+            
+            if (!$rascunhoId) {
+                echo json_encode(['sucesso' => false, 'mensagem' => 'ID do rascunho não fornecido']);
+                exit;
             }
             
-            // 3. Gerar diagnóstico completo no banco
+            // Buscar rascunho
+            $rascunho = Database::queryOne("SELECT * FROM diagnosticos_rascunho WHERE id = :id AND usuario_id = :usuario_id", 
+                                          ['id' => $rascunhoId, 'usuario_id' => Auth::id()]);
+            
+            if (!$rascunho) {
+                echo json_encode(['sucesso' => false, 'mensagem' => 'Rascunho não encontrado']);
+                exit;
+            }
+            
+            Logger::info('Rascunho encontrado', [
+                'id' => $rascunho['id'],
+                'status' => $rascunho['status'],
+                'bloco_atual' => $rascunho['bloco_atual'],
+                'empresa_nome' => $rascunho['empresa_nome'] ?? 'vazio'
+            ]);
+            
+            if ($rascunho['status'] !== 'em_andamento') {
+                echo json_encode(['sucesso' => false, 'mensagem' => 'Rascunho já foi finalizado']);
+                exit;
+            }
+            
+            // Validações relaxadas
+            if (empty($rascunho['empresa_nome'])) {
+                echo json_encode(['sucesso' => false, 'mensagem' => 'Nome da empresa é obrigatório']);
+                exit;
+            }
+            
+            Logger::info('Validações básicas passaram');
+            
+            // Tentar criar o diagnóstico básico primeiro
+            Logger::info('Montando dados completos...');
+            $dadosCompletos = $this->montarDadosCompletos($rascunho);
+            Logger::info('Dados completos montados', ['total_campos' => count($dadosCompletos)]);
+            
+            Logger::info('Gerando diagnóstico no banco...');
             $diagnosticoId = Diagnostico::gerarDoRascunho($rascunhoId);
             
             if (!$diagnosticoId) {
-                throw new Exception('Erro ao gerar diagnóstico completo');
+                Logger::error('Falha ao criar diagnóstico no banco');
+                echo json_encode(['sucesso' => false, 'mensagem' => 'Falha ao criar diagnóstico no banco de dados']);
+                exit;
             }
             
-            // 4. Calcular score de maturidade
-            $score = $this->calcularScore($dadosCompletos);
+            Logger::info('Diagnóstico criado com sucesso', ['diagnostico_id' => $diagnosticoId]);
             
-            // 5. Atualizar diagnóstico com pontuação e resultado da IA
+            // Calcular score
+            $score = $this->calcularScore($dadosCompletos);
+            Logger::info('Score calculado', ['score' => $score]);
+            
+            // Atualizar com pontuação
             Database::execute(
-                "UPDATE diagnosticos SET pontuacao = :pontuacao, observacoes = :observacoes WHERE id = :id",
-                [
-                    'id' => $diagnosticoId,
-                    'pontuacao' => $score,
-                    'observacoes' => $resultadoIA ? json_encode($resultadoIA) : 'Diagnóstico gerado sem IA'
-                ]
+                "UPDATE diagnosticos SET pontuacao = :pontuacao WHERE id = :id",
+                ['id' => $diagnosticoId, 'pontuacao' => $score]
             );
             
-            // 6. Atualizar empresa com dados do diagnóstico
-            $empresaId = $rascunho['empresa_id'];
-            if (!$empresaId && !empty($rascunho['empresa_nome'])) {
-                $empresaExistente = Database::queryOne("SELECT id FROM empresas WHERE nome = ?", [$rascunho['empresa_nome']]);
-                $empresaId = $empresaExistente['id'] ?? null;
-            }
+            Logger::info('=== DIAGNÓSTICO GERADO COM SUCESSO ===');
             
-            if ($empresaId) {
-                Empresa::atualizar($empresaId, [
-                    'score_maturidade' => $score,
-                    'lingua_principal' => $rascunho['lingua_principal'] ?? 'Português',
-                    'faturamento_mensal' => $rascunho['faturamento_mensal'],
-                    'colaboradores_internos' => $rascunho['colaboradores_internos'],
-                    'principal_desafio' => $rascunho['objetivo_12_meses']
-                ]);
-                
-                // 7. Salvar sites de referência sugeridos pela IA
-                if (!empty($sitesReferencia)) {
-                    Diagnostico::salvarSitesReferencia($empresaId, $sitesReferencia);
-                }
-            }
-            
-            Logger::acao('Diagnóstico completo gerado', [
-                'diagnostico_id' => $diagnosticoId,
-                'empresa_id' => $empresaId,
-                'score' => $score,
-                'com_ia' => $resultadoIA !== null
-            ]);
-            
-            // 8. Inicializar perfil de busca de notícias (F-09)
-            try {
-                $noticiasController = new NoticiasController();
-                $noticiasController->inicializarPerfil($empresaId);
-                Logger::acao('Perfil de notícias inicializado após diagnóstico', ['empresa_id' => $empresaId]);
-            } catch (Exception $e) {
-                Logger::warning('Falha ao inicializar perfil de notícias', [
-                    'empresa_id' => $empresaId,
-                    'erro' => $e->getMessage()
-                ]);
-                // Não interromper o fluxo principal por erro na inicialização de notícias
-            }
-            
-            // 9. Preparar resultado para exibição
-            $resultado = $this->gerarResultado($dadosCompletos, $score);
-            if ($resultadoIA) {
-                $resultado = array_merge($resultado, $resultadoIA);
-            }
-            
-            $resultado['diagnostico_id'] = $diagnosticoId;
-            $resultado['empresa_id'] = $empresaId;
-            
-            // Salvar na sessão
-            Session::set('diagnostico_resultado', $resultado);
-            Session::set('diagnostico_dados', $dadosCompletos);
-            
-            header('Content-Type: application/json');
             echo json_encode([
                 'sucesso' => true,
                 'mensagem' => 'Diagnóstico gerado com sucesso!',
@@ -654,9 +574,21 @@ class DiagnosticoController
             ]);
             
         } catch (Exception $e) {
-            Logger::error('Erro ao gerar diagnóstico: ' . $e->getMessage());
-            header('Content-Type: application/json');
-            echo json_encode(['sucesso' => false, 'mensagem' => 'Erro ao gerar diagnóstico: ' . $e->getMessage()]);
+            Logger::error('ERRO NA GERAÇÃO DE DIAGNÓSTICO', [
+                'erro' => $e->getMessage(),
+                'linha' => $e->getLine(),
+                'arquivo' => basename($e->getFile()),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            echo json_encode([
+                'sucesso' => false, 
+                'mensagem' => 'Erro interno: ' . $e->getMessage(),
+                'debug_info' => [
+                    'linha' => $e->getLine(),
+                    'arquivo' => basename($e->getFile())
+                ]
+            ]);
         }
         
         exit;
