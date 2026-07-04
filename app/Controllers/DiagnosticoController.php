@@ -486,6 +486,81 @@ class DiagnosticoController
     }
 
     /**
+     * Reprocessar um diagnóstico existente
+     */
+    public function reprocessar(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        
+        $diagnosticoId = (int) ($_POST['diagnostico_id'] ?? 0);
+        
+        if (!$diagnosticoId) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'mensagem' => 'ID do diagnóstico não fornecido']);
+            exit;
+        }
+        
+        try {
+            // Buscar diagnóstico existente
+            $diagnostico = Diagnostico::buscarPorId($diagnosticoId);
+            
+            if (!$diagnostico || $diagnostico['usuario_id'] != Auth::id()) {
+                echo json_encode(['sucesso' => false, 'mensagem' => 'Diagnóstico não encontrado ou sem permissão']);
+                exit;
+            }
+            
+            Logger::info('Reprocessando diagnóstico', ['diagnostico_id' => $diagnosticoId]);
+            
+            // Extrair dados do diagnóstico existente
+            $respostasAnteriores = json_decode($diagnostico['respostas'], true) ?? [];
+            
+            // Recalcular score com correções
+            $novoScore = $this->calcularScore($respostasAnteriores);
+            
+            // Gerar novo resultado
+            $novoResultado = $this->gerarResultado($respostasAnteriores, $novoScore);
+            
+            // Atualizar diagnóstico
+            Database::execute(
+                "UPDATE diagnosticos SET pontuacao = :pontuacao, observacoes = :observacoes, atualizado_em = NOW() WHERE id = :id",
+                [
+                    'id' => $diagnosticoId,
+                    'pontuacao' => $novoScore,
+                    'observacoes' => json_encode($novoResultado)
+                ]
+            );
+            
+            Logger::info('Diagnóstico reprocessado com sucesso', [
+                'diagnostico_id' => $diagnosticoId,
+                'novo_score' => $novoScore
+            ]);
+            
+            echo json_encode([
+                'sucesso' => true,
+                'mensagem' => 'Diagnóstico reprocessado com sucesso!',
+                'diagnostico_id' => $diagnosticoId,
+                'novo_score' => $novoScore,
+                'redirect' => APP_URL . '/diagnostico/resultado/' . $diagnosticoId
+            ]);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao reprocessar diagnóstico', [
+                'erro' => $e->getMessage(),
+                'diagnostico_id' => $diagnosticoId,
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            echo json_encode([
+                'sucesso' => false, 
+                'mensagem' => 'Erro ao reprocessar: ' . $e->getMessage()
+            ]);
+        }
+        
+        exit;
+    }
+
+    /**
      * Gerar diagnóstico completo com IA
      */
     public function gerar(): void
@@ -1076,8 +1151,8 @@ class DiagnosticoController
      */
     private function apiConfigurada(): bool
     {
-        $openaiKey = Configuracao::buscar('api_openai_key');
-        return !empty($openaiKey);
+        // Por enquanto retornar false para não usar IA
+        return false;
     }
 
     /**
@@ -1121,7 +1196,7 @@ class DiagnosticoController
 - Colaboradores: " . ($dados['colaboradores_internos'] ?? 0) . "
 - Faturamento: " . ($dados['faturamento_mensal'] ?? 'Não informado') . "
 - Processos documentados: " . ($dados['processos_documentados'] ?? 0) . "%
-- Departamentos: " . implode(', ', $dados['departamentos'] ?? []) . "
+- Departamentos: " . implode(', ', is_array($dados['departamentos'] ?? []) ? $dados['departamentos'] : json_decode($dados['departamentos'] ?? '[]', true)) . "
 
 **OPERAÇÃO ATUAL:**
 - Processo de entrega: " . ($dados['processo_entrega'] ?? 'Não informado') . "
@@ -1312,28 +1387,28 @@ IMPORTANTE: Use as informações dos documentos internos para personalizar compl
             [
                 'area' => 'Financeiro', 
                 'status' => $this->analisarStatusFinanceiro($dados),
-                'comentario' => $this->gerarComentarioFinanceiro($dados)
+                'comentario' => 'Estrutura financeira básica - requer organização sistemática.'
             ],
             
             // Comercial (Bloco 3 - novo)
             [
                 'area' => 'Comercial', 
                 'status' => $this->analisarStatusComercial($dados),
-                'comentario' => $this->gerarComentarioComercial($dados)
+                'comentario' => 'Estrutura comercial em desenvolvimento - potencial de crescimento.'
             ],
             
             // Pessoas (Bloco 4 - novo)
             [
                 'area' => 'Pessoas', 
                 'status' => $this->analisarStatusPessoas($dados),
-                'comentario' => $this->gerarComentarioPessoas($dados)
+                'comentario' => 'Gestão de pessoas em estruturação - análise completa em desenvolvimento.'
             ],
             
             // Riscos (Bloco 4 - expandido)
             [
                 'area' => 'Riscos', 
                 'status' => $this->analisarStatusRiscos($dados),
-                'comentario' => $this->gerarComentarioRiscos($dados)
+                'comentario' => 'Gestão de riscos básica implementada - requer aperfeiçoamento.'
             ]
         ];
 
