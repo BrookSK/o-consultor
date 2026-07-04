@@ -9300,28 +9300,4 @@ Gere o SOP COMPLETO seguindo esta estrutura:";
         
         exit;
     }
-    /**
-     * Calcular estatísticas para nova arquitetura (compatibilidade)
-     */
-    private function calcularEstatisticasNovaArquitetura(array $setoresPorNome): array
-    {
-        $totalCriticos = 0;
-        $totalServicos = 0;
-        
-        foreach ($setoresPorNome as $setor) {
-            if (!empty($setor['servicos_detalhados'])) {
-                foreach ($setor['servicos_detalhados'] as $servico) {
-                    $totalServicos++;
-                    if (isset($servico['criticidade']) && $servico['criticidade'] == 1) {
-                        $totalCriticos++;
-                    }
-                }
-            }
-        }
-        
-        return [
-            'servicos_criticos' => $totalCriticos,
-            'total_servicos' => $totalServicos
-        ];
-    }
 }
