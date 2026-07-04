@@ -2173,7 +2173,16 @@ class SopController
         // Verificar e criar tabelas necessárias se não existirem
         $this->verificarTabelasNovaArquitetura();
         
-        Csrf::verificar();
+        // Validação CSRF customizada para API
+        if (!Csrf::validar()) {
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => false, 
+                'erro' => 'Token CSRF inválido. Recarregue a página e tente novamente.',
+                'codigo_erro' => 'CSRF_INVALID'
+            ]);
+            exit;
+        }
 
         $estruturaId = (int) (isset($_POST['estrutura_id']) ? $_POST['estrutura_id'] : 0);
         $setorNome = isset($_POST['setor_nome']) ? trim($_POST['setor_nome']) : '';
@@ -3097,6 +3106,7 @@ class SopController
 
     /**
      * Listar todos os SOPs gerados para um diagnóstico específico
+     * PRIORIDADE: Mostrar dados da nova arquitetura se existirem
      */
     public function listarSopsPorDiagnostico(): void
     {
@@ -3133,7 +3143,117 @@ class SopController
             exit;
         }
 
-        // Buscar todos os SOPs gerados para este diagnóstico
+        // PRIORIDADE 1: Verificar se existe estrutura da nova arquitetura
+        $estruturaNovaArquitetura = $this->buscarEstruturaPorDiagnostico($diagnosticoId);
+        $usarNovaArquitetura = false;
+        
+        if ($estruturaNovaArquitetura) {
+            Logger::info('Encontrada estrutura da nova arquitetura', [
+                'diagnostico_id' => $diagnosticoId,
+                'estrutura_id' => $estruturaNovaArquitetura['id']
+            ]);
+            $usarNovaArquitetura = true;
+        }
+
+        // Buscar dados baseados na arquitetura disponível
+        if ($usarNovaArquitetura) {
+            $dados = $this->carregarDadosNovaArquitetura($diagnostico, $empresa, $estruturaNovaArquitetura);
+        } else {
+            $dados = $this->carregarDadosArquiteturaTradicional($diagnostico, $empresa);
+        }
+
+        require VIEW_PATH . '/sop/listar-por-diagnostico.php';
+    }
+
+    /**
+     * Buscar estrutura da nova arquitetura por diagnóstico
+     */
+    private function buscarEstruturaPorDiagnostico(int $diagnosticoId): ?array
+    {
+        try {
+            return Database::queryOne(
+                "SELECT * FROM estruturas_temporarias WHERE diagnostico_id = ? ORDER BY criado_em DESC LIMIT 1",
+                [$diagnosticoId]
+            );
+        } catch (Exception $e) {
+            Logger::info('Tabelas da nova arquitetura não encontradas', ['erro' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    /**
+     * Carregar dados da nova arquitetura (PRIORIDADE)
+     */
+    private function carregarDadosNovaArquitetura(array $diagnostico, array $empresa, array $estrutura): array
+    {
+        $estruturaId = $estrutura['id'];
+        
+        // Buscar setores mapeados
+        $setoresMapeados = Database::query(
+            "SELECT * FROM servicos_mapeados WHERE estrutura_id = ? ORDER BY setor_nome",
+            [$estruturaId]
+        );
+
+        // Buscar serviços detalhados
+        $servicosDetalhados = Database::query(
+            "SELECT sd.*, sm.setor_nome, sm.setor_tipo,
+                    DATE_FORMAT(sd.criado_em, '%d/%m/%Y às %H:%i') as data_criacao_formatada
+             FROM servicos_detalhados sd
+             JOIN servicos_mapeados sm ON sd.servico_mapeado_id = sm.id
+             WHERE sd.estrutura_id = ?
+             ORDER BY sm.setor_nome, sd.criticidade ASC, sd.servico_nome",
+            [$estruturaId]
+        );
+
+        // Buscar progresso
+        $progresso = Database::queryOne(
+            "SELECT * FROM progresso_manual WHERE estrutura_id = ?",
+            [$estruturaId]
+        );
+
+        // Organizar por setores
+        $setoresPorNome = [];
+        foreach ($setoresMapeados as $setor) {
+            $setoresPorNome[$setor['setor_nome']] = [
+                'info' => $setor,
+                'servicos_mapeados' => json_decode($setor['servicos_json'], true) ?? [],
+                'servicos_detalhados' => []
+            ];
+        }
+
+        foreach ($servicosDetalhados as $servico) {
+            $setorNome = $servico['setor_nome'];
+            if (isset($setoresPorNome[$setorNome])) {
+                $setoresPorNome[$setorNome]['servicos_detalhados'][] = $servico;
+            }
+        }
+
+        Logger::info('Dados da nova arquitetura carregados', [
+            'diagnostico_id' => $diagnostico['id'],
+            'total_setores' => count($setoresPorNome),
+            'total_servicos_detalhados' => count($servicosDetalhados),
+            'progresso' => $progresso['progresso_percentual'] ?? 0
+        ]);
+
+        return [
+            'diagnostico' => $diagnostico,
+            'empresa' => $empresa,
+            'usar_nova_arquitetura' => true,
+            'estrutura' => $estrutura,
+            'setores' => $setoresPorNome,
+            'progresso' => $progresso,
+            'total_setores_mapeados' => count($setoresMapeados),
+            'total_servicos_detalhados' => count($servicosDetalhados),
+            'estatisticas' => $this->calcularEstatisticasNovaArquitetura($setoresPorNome)
+        ];
+    }
+
+    /**
+     * Carregar dados da arquitetura tradicional (FALLBACK)
+     */
+    private function carregarDadosArquiteturaTradicional(array $diagnostico, array $empresa): array
+    {
+        // Buscar SOPs tradicionais
         $sopsGerados = Database::query(
             "SELECT s.*, 
                     CASE 
@@ -3146,66 +3266,67 @@ class SopController
              FROM sops s 
              WHERE s.empresa_id = ? AND s.diagnostico_id = ? 
              ORDER BY s.departamento, s.titulo",
-            [$empresa['id'], $diagnosticoId]
+            [$empresa['id'], $diagnostico['id']]
         );
 
-        // Buscar SOPs da nova arquitetura se existirem
-        $sopsNovaArquitetura = [];
-        try {
-            $sopsNovaArquitetura = Database::query(
-                "SELECT sd.*, sm.setor_nome,
-                        DATE_FORMAT(sd.criado_em, '%d/%m/%Y às %H:%i') as data_criacao_formatada
-                 FROM servicos_detalhados sd
-                 JOIN servicos_mapeados sm ON sd.servico_mapeado_id = sm.id
-                 JOIN estruturas_temporarias et ON sd.estrutura_id = et.id
-                 WHERE et.diagnostico_id = ? AND sd.status = 'concluido'
-                 ORDER BY sm.setor_nome, sd.servico_nome",
-                [$diagnosticoId]
-            );
-        } catch (Exception $e) {
-            // Tabelas da nova arquitetura podem não existir
-            Logger::info('Tabelas da nova arquitetura não encontradas', ['erro' => $e->getMessage()]);
-        }
-
-        // Agrupar SOPs por departamento/setor
+        // Agrupar por departamento
         $sopsPorDepartamento = [];
-        
-        // SOPs tradicionais
         foreach ($sopsGerados as $sop) {
             $dept = $sop['departamento'] ?: 'Outros';
             if (!isset($sopsPorDepartamento[$dept])) {
                 $sopsPorDepartamento[$dept] = [
                     'nome' => $dept,
-                    'sops_tradicionais' => [],
-                    'sops_nova_arquitetura' => []
+                    'sops_tradicionais' => []
                 ];
             }
             $sopsPorDepartamento[$dept]['sops_tradicionais'][] = $sop;
         }
-        
-        // SOPs nova arquitetura
-        foreach ($sopsNovaArquitetura as $sop) {
-            $dept = $sop['setor_nome'] ?: 'Outros';
-            if (!isset($sopsPorDepartamento[$dept])) {
-                $sopsPorDepartamento[$dept] = [
-                    'nome' => $dept,
-                    'sops_tradicionais' => [],
-                    'sops_nova_arquitetura' => []
-                ];
-            }
-            $sopsPorDepartamento[$dept]['sops_nova_arquitetura'][] = $sop;
-        }
 
-        $dados = [
+        Logger::info('Dados da arquitetura tradicional carregados', [
+            'diagnostico_id' => $diagnostico['id'],
+            'total_sops' => count($sopsGerados),
+            'departamentos' => array_keys($sopsPorDepartamento)
+        ]);
+
+        return [
             'diagnostico' => $diagnostico,
             'empresa' => $empresa,
+            'usar_nova_arquitetura' => false,
             'sops_por_departamento' => $sopsPorDepartamento,
             'total_sops_tradicional' => count($sopsGerados),
-            'total_sops_nova_arquitetura' => count($sopsNovaArquitetura),
-            'total_geral' => count($sopsGerados) + count($sopsNovaArquitetura)
+            'total_geral' => count($sopsGerados)
         ];
+    }
 
-        require VIEW_PATH . '/sop/listar-por-diagnostico.php';
+    /**
+     * Calcular estatísticas da nova arquitetura
+     */
+    private function calcularEstatisticasNovaArquitetura(array $setores): array
+    {
+        $totalServicos = 0;
+        $servicosCriticos = 0;
+        $servicosCompletos = 0;
+
+        foreach ($setores as $setor) {
+            foreach ($setor['servicos_detalhados'] as $servico) {
+                $totalServicos++;
+                
+                if ($servico['criticidade'] == 1) {
+                    $servicosCriticos++;
+                }
+                
+                if ($servico['status'] == 'concluido') {
+                    $servicosCompletos++;
+                }
+            }
+        }
+
+        return [
+            'total_servicos' => $totalServicos,
+            'servicos_criticos' => $servicosCriticos,
+            'servicos_completos' => $servicosCompletos,
+            'percentual_completo' => $totalServicos > 0 ? round(($servicosCompletos / $totalServicos) * 100, 1) : 0
+        ];
     }
 
     /**
@@ -6029,5 +6150,23 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         ");
 
         Logger::info('Tabelas da nova arquitetura criadas automaticamente');
+    }
+
+    /**
+     * Regenerar token CSRF via AJAX (para debug)
+     */
+    public function regenerarTokenCSRF(): void
+    {
+        Auth::proteger();
+        
+        $novoToken = Csrf::gerar();
+        
+        header('Content-Type: application/json');
+        echo json_encode([
+            'sucesso' => true,
+            'novo_token' => $novoToken,
+            'timestamp' => date('Y-m-d H:i:s')
+        ]);
+        exit;
     }
 }

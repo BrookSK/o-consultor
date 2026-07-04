@@ -1,11 +1,16 @@
-<?php $tituloPagina = 'Mapear Serviços - Etapa 2A'; ?>
+<?php 
+$tituloPagina = 'Mapear Serviços - Etapa 2A'; 
+
+// Garantir que existe um CSRF token válido
+if (!Session::get('csrf_token')) {
+    Session::set('csrf_token', Csrf::gerar());
+}
+$csrfToken = Session::get('csrf_token');
+?>
 <?php ob_start(); ?>
 
 <!-- CSRF Token -->
-<?php if (!Session::get('csrf_token')): ?>
-    <?php Session::set('csrf_token', Csrf::gerar()); ?>
-<?php endif; ?>
-<meta name="csrf-token" content="<?= Session::get('csrf_token') ?>">
+<meta name="csrf-token" content="<?= $csrfToken ?>">
 
 <!-- Progresso das Etapas -->
 <div class="mb-8">
@@ -152,6 +157,13 @@
                 onclick="testarConexaoAPI()"
                 class="px-6 py-2 border border-yellow-300 text-yellow-700 rounded-lg hover:bg-yellow-50">
             🔧 Testar API
+        </button>
+        
+        <!-- Botão para Regenerar CSRF -->
+        <button type="button" 
+                onclick="regenerarCSRF()"
+                class="px-6 py-2 border border-red-300 text-red-700 rounded-lg hover:bg-red-50">
+            🔄 Regenerar Token
         </button>
     </div>
     
@@ -403,28 +415,48 @@ async function testarConexaoAPI() {
         const csrfMeta = document.querySelector('meta[name="csrf-token"]');
         const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
         console.log('CSRF Token encontrado:', csrfToken ? 'SIM' : 'NÃO');
+        console.log('CSRF Token valor:', csrfToken);
         
         if (!csrfToken) {
             alert('ERRO: CSRF Token não encontrado!\n\nRecarregue a página.');
             return;
         }
         
-        // Fazer uma requisição de teste simples
+        // Fazer uma requisição de teste com dados mínimos válidos
+        const formData = new FormData();
+        formData.append('csrf_token', csrfToken);
+        formData.append('estrutura_id', '1'); // Valor de teste
+        formData.append('setor_nome', 'TESTE'); // Valor de teste
+        
         const response = await fetch('<?= APP_URL ?>/sop/executar-mapeamento-setor', {
             method: 'POST',
-            body: new FormData() // Requisição vazia para testar rota
+            body: formData
         });
         
-        console.log('Teste de rota - Status:', response.status);
-        console.log('Teste de rota - Headers:', response.headers);
+        console.log('Teste - Status:', response.status);
+        console.log('Teste - Headers:', Object.fromEntries(response.headers.entries()));
         
         const responseText = await response.text();
-        console.log('Teste de rota - Resposta:', responseText.substring(0, 500));
+        console.log('Teste - Resposta completa:', responseText);
+        
+        let result = null;
+        try {
+            result = JSON.parse(responseText);
+            console.log('Teste - JSON:', result);
+        } catch (e) {
+            console.log('Teste - Não é JSON válido');
+        }
         
         if (response.status === 200) {
-            alert('✅ ROTA OK\n\nA rota da API está funcionando. O problema pode estar nos dados enviados.');
+            if (result && result.sucesso === false) {
+                alert(`⚠️ API RESPONDE MAS COM ERRO\n\nErro: ${result.erro}\nCódigo: ${result.codigo_erro || 'N/A'}`);
+            } else {
+                alert('✅ API FUNCIONANDO\n\nA API está respondendo corretamente.');
+            }
+        } else if (response.status === 403) {
+            alert(`❌ ERRO 403 - ACESSO NEGADO\n\nProblema de autenticação ou CSRF.\n\nResposta: ${responseText.substring(0, 200)}`);
         } else {
-            alert(`❌ PROBLEMA NA ROTA\n\nStatus: ${response.status}\nResposta: ${responseText.substring(0, 200)}`);
+            alert(`❌ ERRO HTTP ${response.status}\n\nResposta: ${responseText.substring(0, 200)}`);
         }
         
     } catch (error) {
@@ -433,7 +465,64 @@ async function testarConexaoAPI() {
     }
 }
 
-// Auto-mapear todos os setores ao carregar (opcional)
+// Regenerar token CSRF
+async function regenerarCSRF() {
+    console.log('=== REGENERANDO TOKEN CSRF ===');
+    
+    try {
+        const response = await fetch('<?= APP_URL ?>/sop/regenerar-csrf', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            }
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            
+            if (result.sucesso) {
+                // Atualizar meta tag
+                const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                if (csrfMeta) {
+                    csrfMeta.setAttribute('content', result.novo_token);
+                    console.log('Novo token recebido do servidor:', result.novo_token);
+                    
+                    // Atualizar status visual
+                    const csrfStatus = document.getElementById('csrf-status');
+                    if (csrfStatus) {
+                        csrfStatus.textContent = '✅ Renovado';
+                        csrfStatus.className = 'font-mono text-green-600';
+                    }
+                    
+                    alert('✅ Token CSRF regenerado com sucesso!\n\nAgora tente usar os botões de mapeamento.');
+                }
+            } else {
+                throw new Error('Servidor retornou erro: ' + (result.erro || 'Desconhecido'));
+            }
+        } else {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+    } catch (error) {
+        console.error('Erro ao regenerar CSRF:', error);
+        
+        // Fallback: gerar token temporário local
+        const novoToken = 'csrf_local_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        
+        const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        if (csrfMeta) {
+            csrfMeta.setAttribute('content', novoToken);
+            
+            const csrfStatus = document.getElementById('csrf-status');
+            if (csrfStatus) {
+                csrfStatus.textContent = '⚠️ Local';
+                csrfStatus.className = 'font-mono text-orange-600';
+            }
+        }
+        
+        alert(`⚠️ Erro ao regenerar token no servidor.\n\nErro: ${error.message}\n\nFoi gerado um token local temporário, mas recomenda-se recarregar a página.`);
+    }
+}
 document.addEventListener('DOMContentLoaded', function() {
     console.log('=== PÁGINA CARREGADA ===');
     
