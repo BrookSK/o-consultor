@@ -83,6 +83,16 @@ class Router
         $this->post('sop/executar-mapeamento-setor', 'SopController', 'executarMapeamentoSetor'); // Etapa 2A: AJAX por setor
         $this->post('sop/regenerar-csrf', 'SopController', 'regenerarTokenCSRF');               // Debug: Regenerar CSRF
         $this->post('sop/verificar-criar-tabelas', 'SopController', 'verificarCriarTabelas');   // Debug: Verificar/criar tabelas
+        $this->post('sop/detalhar-servico-individual', 'SopController', 'detalharServicoIndividual'); // Novo: Detalhar serviço específico
+        $this->post('sop/gerar-sop-individual', 'SopController', 'gerarSopIndividual');         // Novo: Gerar SOP específico
+        $this->get('sop/ver-detalhamento-servico', 'SopController', 'verDetalhamentoServico'); // Novo: Ver detalhamento
+        $this->get('sop/ver-sop-individual', 'SopController', 'verSopIndividual');             // Novo: Ver SOP individual
+        $this->post('sop/adicionar-servico-manual', 'SopController', 'adicionarServicoManual'); // Novo: Adicionar serviço manual
+        $this->get('sop/listar-servicos-manuais', 'SopController', 'listarServicosManuais');   // Novo: Listar serviços manuais
+        $this->post('sop/excluir-servico-manual', 'SopController', 'excluirServicoManual');    // Novo: Excluir serviço manual
+        $this->post('sop/transcrever-audio-whisper', 'SopController', 'transcreverAudioWhisper'); // Novo: Transcrever áudio com Whisper
+        $this->post('sop/gerar-sop-por-transcricao', 'SopController', 'gerarSopPorTranscricao'); // Novo: Gerar SOP a partir de transcrição
+        $this->post('sop/salvar-alteracoes-sop', 'SopController', 'salvarAlteracoesSop');       // Novo: Salvar edições do SOP
         $this->get('sop/detalhar-servicos', 'SopController', 'detalharServicos');                 // Etapa 2B: View detalhamento
         $this->post('sop/executar-detalhamento-servico', 'SopController', 'executarDetalhamentoServico'); // Etapa 2B: AJAX por serviço
         $this->get('sop/processar-sops', 'SopController', 'processarSOPs');                       // Etapa 3: View de processamento

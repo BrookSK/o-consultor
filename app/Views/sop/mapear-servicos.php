@@ -128,6 +128,48 @@ $csrfToken = Session::get('csrf_token');
                 <div class="mt-2 text-sm text-green-600" id="total-servicos-<?= $index ?>">
                     <!-- Total será inserido aqui -->
                 </div>
+                
+                <!-- Gerenciamento Manual (initially hidden) -->
+                <div class="mt-4 p-4 bg-purple-50 border border-purple-200 rounded-lg hidden" id="gerenciamento-manual-<?= $index ?>">
+                    <h5 class="font-medium text-purple-900 mb-3">✏️ Gerenciamento Manual de Serviços</h5>
+                    
+                    <!-- Adicionar Serviço -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-purple-800 mb-2">Adicionar Novo Serviço:</label>
+                        <div class="flex space-x-2">
+                            <input type="text" 
+                                   id="novo-servico-nome-<?= $index ?>" 
+                                   placeholder="Nome do serviço (ex: Análise de performance mensal)" 
+                                   class="flex-1 px-3 py-2 border border-purple-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                   onkeypress="if(event.key==='Enter') adicionarServicoManual(<?= $index ?>)">
+                            <select id="novo-servico-criticidade-<?= $index ?>" 
+                                    class="px-3 py-2 border border-purple-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
+                                <option value="baixa">Baixa</option>
+                                <option value="media" selected>Média</option>
+                                <option value="alta">Alta</option>
+                            </select>
+                            <button onclick="adicionarServicoManual(<?= $index ?>)" 
+                                    class="px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition">
+                                ➕ Adicionar
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Lista de Serviços Manuais -->
+                    <div id="servicos-manuais-<?= $index ?>">
+                        <!-- Serviços manuais serão listados aqui -->
+                    </div>
+                    
+                    <div class="flex justify-between items-center mt-4 pt-3 border-t border-purple-200">
+                        <button onclick="ocultarGerenciamentoManual(<?= $index ?>)" 
+                                class="text-sm text-purple-600 hover:text-purple-800">
+                            ← Fechar Gerenciamento
+                        </button>
+                        <div class="text-xs text-purple-600">
+                            Serviços manuais são salvos automaticamente
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -402,9 +444,34 @@ async function mapearSetor(setorNome, index) {
             if (listaServicos && result.servicos && Array.isArray(result.servicos)) {
                 if (result.servicos.length > 0) {
                     listaServicos.innerHTML = result.servicos.map((s, i) => 
-                        `<div class="text-sm p-2 bg-gray-50 rounded border">
-                            <div class="font-medium">${s.nome || s.titulo || s.servico || `Serviço ${i + 1}`}</div>
-                            <div class="text-xs text-gray-500">Criticidade: ${s.criticidade || s.prioridade || 'Média'}</div>
+                        `<div class="text-sm p-3 bg-white rounded border border-gray-200 hover:border-blue-300 hover:shadow-sm transition-all group" id="servico-${index}-${i}">
+                            <div class="flex items-start justify-between">
+                                <div class="flex-1">
+                                    <div class="font-medium text-gray-800 group-hover:text-blue-600">${s.nome || s.titulo || s.servico || `Serviço ${i + 1}`}</div>
+                                    <div class="text-xs text-gray-500 mt-1">
+                                        <span>Criticidade: ${s.criticidade || s.prioridade || 'Média'}</span>
+                                        <span class="ml-3">Categoria: ${s.categoria || 'N/A'}</span>
+                                        <span class="ml-3 px-1 py-0.5 bg-gray-100 rounded text-gray-600">Auto</span>
+                                    </div>
+                                </div>
+                                <div class="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button onclick="detalharServicoIndividual(${index}, ${i}, '${(s.nome || s.titulo || s.servico || `Serviço ${i + 1}`).replace(/'/g, "\\'")}'); event.stopPropagation();" 
+                                            class="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                                            title="Detalhar este serviço">
+                                        📋
+                                    </button>
+                                    <button onclick="gerarSopIndividual(${index}, ${i}, '${(s.nome || s.titulo || s.servico || `Serviço ${i + 1}`).replace(/'/g, "\\'")}'); event.stopPropagation();" 
+                                            class="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition"
+                                            title="Gerar SOP">
+                                        🔧
+                                    </button>
+                                    <button onclick="excluirServicoMapeado(${index}, ${i}); event.stopPropagation();" 
+                                            class="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 transition"
+                                            title="Excluir este serviço">
+                                        🗑️
+                                    </button>
+                                </div>
+                            </div>
                         </div>`
                     ).join('');
                 } else {
@@ -413,7 +480,15 @@ async function mapearSetor(setorNome, index) {
             }
             
             if (totalServicos) {
-                totalServicos.textContent = `${result.total_servicos || 0} serviços identificados`;
+                totalServicos.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <span>${result.total_servicos || 0} serviços identificados</span>
+                        <button onclick="mostrarGerenciamentoManual(${index})" 
+                                class="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded hover:bg-purple-200 transition">
+                            ✏️ Gerenciar Manualmente
+                        </button>
+                    </div>
+                `;
             }
             
             if (resultado) resultado.classList.remove('hidden');
@@ -579,6 +654,404 @@ Verifique o console do navegador para detalhes completos.`;
     alert(relatorio);
     
     return diagnostico;
+}
+
+// Detalhar um serviço individual
+async function detalharServicoIndividual(setorIndex, servicoIndex, servicoNome) {
+    console.log('📋 DETALHANDO SERVIÇO INDIVIDUAL:', {
+        setorIndex, 
+        servicoIndex, 
+        servicoNome,
+        estruturaId
+    });
+    
+    try {
+        // Confirmação do usuário
+        const confirmacao = confirm(`📋 DETALHAR SERVIÇO:\n\n"${servicoNome}"\n\nIsto irá gerar detalhamentos específicos para este serviço incluindo:\n• Processos N1, N2, N3\n• Cenários de problemas\n• Estratégias de contenção\n\nContinuar?`);
+        
+        if (!confirmacao) {
+            return;
+        }
+        
+        // Obter CSRF token
+        const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+        
+        if (!csrfToken) {
+            throw new Error('Token CSRF não encontrado. Recarregue a página.');
+        }
+        
+        // Preparar dados
+        const formData = new FormData();
+        formData.append('estrutura_id', String(estruturaId));
+        formData.append('setor_index', String(setorIndex));
+        formData.append('servico_index', String(servicoIndex));
+        formData.append('servico_nome', servicoNome);
+        formData.append('csrf_token', csrfToken);
+        
+        // Fazer requisição
+        console.log('🔄 Fazendo requisição de detalhamento...');
+        const response = await fetch(appUrl + '/sop/detalhar-servico-individual', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.sucesso) {
+            console.log('✅ Detalhamento gerado:', result);
+            
+            // Abrir em nova aba ou mostrar modal
+            const url = `${appUrl}/sop/ver-detalhamento-servico?detalhamento_id=${result.detalhamento_id}`;
+            window.open(url, '_blank');
+            
+            alert(`✅ Detalhamento gerado com sucesso!\n\n• ${result.total_cenarios || 0} cenários identificados\n• ${result.total_processos || 0} processos mapeados\n\nAbrindo em nova aba...`);
+            
+        } else {
+            throw new Error(result.erro || 'Erro desconhecido no detalhamento');
+        }
+        
+    } catch (error) {
+        console.error('❌ Erro no detalhamento:', error);
+        alert(`❌ Erro ao detalhar serviço:\n\n${error.message}\n\nTente novamente ou contate o suporte.`);
+    }
+}
+
+// Gerar SOP de um serviço individual
+async function gerarSopIndividual(setorIndex, servicoIndex, servicoNome) {
+    console.log('🔧 GERANDO SOP INDIVIDUAL:', {
+        setorIndex, 
+        servicoIndex, 
+        servicoNome,
+        estruturaId
+    });
+    
+    try {
+        // Confirmação do usuário
+        const confirmacao = confirm(`🔧 GERAR SOP COMPLETO:\n\n"${servicoNome}"\n\nIsto irá gerar um SOP completo para este serviço específico incluindo:\n• Procedimentos operacionais\n• Fluxos de trabalho\n• Checklist de qualidade\n• Procedimentos de emergência\n\nContinuar?`);
+        
+        if (!confirmacao) {
+            return;
+        }
+        
+        // Obter CSRF token
+        const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+        
+        if (!csrfToken) {
+            throw new Error('Token CSRF não encontrado. Recarregue a página.');
+        }
+        
+        // Preparar dados
+        const formData = new FormData();
+        formData.append('estrutura_id', String(estruturaId));
+        formData.append('setor_index', String(setorIndex));
+        formData.append('servico_index', String(servicoIndex));
+        formData.append('servico_nome', servicoNome);
+        formData.append('csrf_token', csrfToken);
+        
+        // Fazer requisição
+        console.log('🔄 Fazendo requisição de geração de SOP...');
+        const response = await fetch(appUrl + '/sop/gerar-sop-individual', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.sucesso) {
+            console.log('✅ SOP gerado:', result);
+            
+            // Abrir em nova aba
+            const url = `${appUrl}/sop/ver-sop-individual?sop_id=${result.sop_id}`;
+            window.open(url, '_blank');
+            
+            alert(`✅ SOP gerado com sucesso!\n\n• ${result.total_procedimentos || 0} procedimentos criados\n• ${result.total_checklists || 0} checklists incluídos\n\nAbrindo em nova aba...`);
+            
+        } else {
+            throw new Error(result.erro || 'Erro desconhecido na geração do SOP');
+        }
+        
+    } catch (error) {
+        console.error('❌ Erro na geração do SOP:', error);
+        alert(`❌ Erro ao gerar SOP:\n\n${error.message}\n\nTente novamente ou contate o suporte.`);
+    }
+}
+
+// Excluir um serviço mapeado
+function excluirServicoMapeado(setorIndex, servicoIndex) {
+    console.log('🗑️ EXCLUINDO SERVIÇO:', {setorIndex, servicoIndex});
+    
+    const confirmacao = confirm('Tem certeza que deseja excluir este serviço do mapeamento?');
+    if (!confirmacao) return;
+    
+    try {
+        // Remove o elemento da tela
+        const servicoElement = document.getElementById(`servico-${setorIndex}-${servicoIndex}`);
+        if (servicoElement) {
+            servicoElement.remove();
+        }
+        
+        // Atualizar contador
+        const totalElement = document.getElementById(`total-servicos-${setorIndex}`);
+        if (totalElement) {
+            const currentCount = document.querySelectorAll(`#lista-servicos-${setorIndex} > div`).length;
+            totalElement.querySelector('span').textContent = `${currentCount} serviços identificados`;
+        }
+        
+        console.log('✅ Serviço excluído da interface');
+        
+    } catch (error) {
+        console.error('❌ Erro ao excluir serviço:', error);
+        alert('Erro ao excluir serviço. Recarregue a página e tente novamente.');
+    }
+}
+
+// Mostrar painel de gerenciamento manual
+function mostrarGerenciamentoManual(setorIndex) {
+    console.log('✏️ MOSTRANDO GERENCIAMENTO MANUAL para setor:', setorIndex);
+    
+    const painelGerenciamento = document.getElementById(`gerenciamento-manual-${setorIndex}`);
+    if (painelGerenciamento) {
+        painelGerenciamento.classList.remove('hidden');
+        
+        // Focar no campo de input
+        const inputNome = document.getElementById(`novo-servico-nome-${setorIndex}`);
+        if (inputNome) {
+            inputNome.focus();
+        }
+        
+        // Carregar serviços manuais existentes
+        carregarServicosManuais(setorIndex);
+    }
+}
+
+// Ocultar painel de gerenciamento manual
+function ocultarGerenciamentoManual(setorIndex) {
+    console.log('✏️ OCULTANDO GERENCIAMENTO MANUAL para setor:', setorIndex);
+    
+    const painelGerenciamento = document.getElementById(`gerenciamento-manual-${setorIndex}`);
+    if (painelGerenciamento) {
+        painelGerenciamento.classList.add('hidden');
+    }
+}
+
+// Adicionar serviço manual
+async function adicionarServicoManual(setorIndex) {
+    console.log('➕ ADICIONANDO SERVIÇO MANUAL para setor:', setorIndex);
+    
+    const inputNome = document.getElementById(`novo-servico-nome-${setorIndex}`);
+    const selectCriticidade = document.getElementById(`novo-servico-criticidade-${setorIndex}`);
+    
+    if (!inputNome || !selectCriticidade) {
+        alert('Elementos do formulário não encontrados.');
+        return;
+    }
+    
+    const nomeServico = inputNome.value.trim();
+    const criticidade = selectCriticidade.value;
+    
+    if (!nomeServico) {
+        alert('Por favor, informe o nome do serviço.');
+        inputNome.focus();
+        return;
+    }
+    
+    try {
+        // Obter CSRF token
+        const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+        
+        if (!csrfToken) {
+            throw new Error('Token CSRF não encontrado. Recarregue a página.');
+        }
+        
+        // Obter dados do setor
+        const setorNome = dadosIniciais.setores[setorIndex]?.nome_setor;
+        if (!setorNome) {
+            throw new Error('Setor não encontrado.');
+        }
+        
+        // Preparar dados
+        const formData = new FormData();
+        formData.append('estrutura_id', String(estruturaId));
+        formData.append('setor_index', String(setorIndex));
+        formData.append('setor_nome', setorNome);
+        formData.append('servico_nome', nomeServico);
+        formData.append('criticidade', criticidade);
+        formData.append('csrf_token', csrfToken);
+        
+        console.log('🔄 Salvando serviço manual...', {nomeServico, criticidade, setorNome});
+        
+        // Fazer requisição
+        const response = await fetch(appUrl + '/sop/adicionar-servico-manual', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.sucesso) {
+            console.log('✅ Serviço manual adicionado:', result);
+            
+            // Limpar formulário
+            inputNome.value = '';
+            selectCriticidade.value = 'media';
+            
+            // Recarregar lista de serviços manuais
+            carregarServicosManuais(setorIndex);
+            
+            // Feedback visual
+            inputNome.classList.add('border-green-500');
+            setTimeout(() => {
+                inputNome.classList.remove('border-green-500');
+            }, 2000);
+            
+        } else {
+            throw new Error(result.erro || 'Erro desconhecido ao adicionar serviço');
+        }
+        
+    } catch (error) {
+        console.error('❌ Erro ao adicionar serviço manual:', error);
+        alert(`❌ Erro ao adicionar serviço:\n\n${error.message}`);
+    }
+}
+
+// Carregar serviços manuais existentes
+async function carregarServicosManuais(setorIndex) {
+    console.log('📂 CARREGANDO SERVIÇOS MANUAIS para setor:', setorIndex);
+    
+    try {
+        const response = await fetch(`${appUrl}/sop/listar-servicos-manuais?estrutura_id=${estruturaId}&setor_index=${setorIndex}`, {
+            method: 'GET'
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            
+            if (result.sucesso && result.servicos) {
+                exibirServicosManuais(setorIndex, result.servicos);
+            }
+        }
+        
+    } catch (error) {
+        console.error('❌ Erro ao carregar serviços manuais:', error);
+    }
+}
+
+// Exibir serviços manuais na interface
+function exibirServicosManuais(setorIndex, servicos) {
+    const container = document.getElementById(`servicos-manuais-${setorIndex}`);
+    if (!container) return;
+    
+    if (!servicos || servicos.length === 0) {
+        container.innerHTML = '<div class="text-sm text-purple-600 italic">Nenhum serviço manual adicionado ainda.</div>';
+        return;
+    }
+    
+    container.innerHTML = servicos.map((servico, i) => `
+        <div class="flex items-center justify-between p-2 bg-white border border-purple-200 rounded mb-2">
+            <div class="flex-1">
+                <div class="font-medium text-purple-900">${servico.nome}</div>
+                <div class="text-xs text-purple-600">
+                    Criticidade: ${servico.criticidade} • 
+                    <span class="px-1 py-0.5 bg-purple-100 rounded">Manual</span>
+                </div>
+            </div>
+            <div class="flex space-x-1">
+                <button onclick="detalharServicoManual('${servico.nome}', ${setorIndex})" 
+                        class="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                        title="Detalhar">
+                    📋
+                </button>
+                <button onclick="gerarSopServicoManual('${servico.nome}', ${setorIndex})" 
+                        class="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+                        title="Gerar SOP">
+                    🔧
+                </button>
+                <button onclick="excluirServicoManual('${servico.nome}', ${setorIndex})" 
+                        class="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+                        title="Excluir">
+                    🗑️
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Detalhar serviço manual
+async function detalharServicoManual(servicoNome, setorIndex) {
+    console.log('📋 DETALHANDO SERVIÇO MANUAL:', {servicoNome, setorIndex});
+    return detalharServicoIndividual(setorIndex, -1, servicoNome);
+}
+
+// Gerar SOP de serviço manual
+async function gerarSopServicoManual(servicoNome, setorIndex) {
+    console.log('🔧 GERANDO SOP DE SERVIÇO MANUAL:', {servicoNome, setorIndex});
+    return gerarSopIndividual(setorIndex, -1, servicoNome);
+}
+
+// Excluir serviço manual
+async function excluirServicoManual(servicoNome, setorIndex) {
+    console.log('🗑️ EXCLUINDO SERVIÇO MANUAL:', {servicoNome, setorIndex});
+    
+    const confirmacao = confirm(`Tem certeza que deseja excluir o serviço manual "${servicoNome}"?`);
+    if (!confirmacao) return;
+    
+    try {
+        // Obter CSRF token
+        const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+        
+        if (!csrfToken) {
+            throw new Error('Token CSRF não encontrado.');
+        }
+        
+        // Preparar dados
+        const formData = new FormData();
+        formData.append('estrutura_id', String(estruturaId));
+        formData.append('setor_index', String(setorIndex));
+        formData.append('servico_nome', servicoNome);
+        formData.append('csrf_token', csrfToken);
+        
+        // Fazer requisição
+        const response = await fetch(appUrl + '/sop/excluir-servico-manual', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.sucesso) {
+            console.log('✅ Serviço manual excluído');
+            carregarServicosManuais(setorIndex);
+        } else {
+            throw new Error(result.erro || 'Erro ao excluir');
+        }
+        
+    } catch (error) {
+        console.error('❌ Erro ao excluir serviço manual:', error);
+        alert(`❌ Erro ao excluir serviço:\n\n${error.message}`);
+    }
 }
 
 // Prosseguir para Etapa 2B

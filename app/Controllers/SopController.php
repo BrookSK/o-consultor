@@ -6637,7 +6637,8 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                 'progresso_manual_completo', 
                 'servicos_mapeados',
                 'servicos_detalhados',
-                'sops_gerados_nova_arquitetura'
+                'sops_gerados_nova_arquitetura',
+                'servicos_manuais'
             ];
             
             foreach ($tabelasNecessarias as $tabela) {
@@ -6720,5 +6721,758 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                 }
             }
         }
+    }
+
+    /**
+     * Detalhar um serviço específico individualmente
+     */
+    public function detalharServicoIndividual(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        
+        $estruturaId = (int) ($_POST['estrutura_id'] ?? 0);
+        $setorIndex = (int) ($_POST['setor_index'] ?? 0);
+        $servicoIndex = (int) ($_POST['servico_index'] ?? 0);
+        $servicoNome = trim($_POST['servico_nome'] ?? '');
+        
+        Logger::info('Iniciando detalhamento individual', [
+            'estrutura_id' => $estruturaId,
+            'setor_index' => $setorIndex,
+            'servico_index' => $servicoIndex,
+            'servico_nome' => $servicoNome
+        ]);
+        
+        if (!$estruturaId || !$servicoNome) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Dados incompletos.']);
+            exit;
+        }
+        
+        try {
+            // Buscar dados da estrutura
+            $estruturaData = $this->buscarEstruturaTemporaria($estruturaId);
+            if (!$estruturaData) {
+                throw new Exception('Estrutura não encontrada.');
+            }
+            
+            $diagnostico = Diagnostico::buscarPorId($estruturaData['diagnostico_id']);
+            $empresa = Empresa::buscarPorId($diagnostico['empresa_id']);
+            $respostas = json_decode($diagnostico['respostas'], true) ?? [];
+            $dadosEmpresa = $this->extrairDadosEmpresaCompletos($empresa, $diagnostico, $respostas);
+            
+            // Gerar detalhamento usando IA
+            $prompt = ApiHelper::buildPromptDetalhamentoServicoIndividual($dadosEmpresa, $servicoNome);
+            $resultadoIA = ApiHelper::chamarClaude($prompt);
+            
+            if (!$resultadoIA) {
+                throw new Exception('Erro na comunicação com a IA.');
+            }
+            
+            $detalhamento = json_decode($resultadoIA, true);
+            if (!$detalhamento) {
+                throw new Exception('Resposta inválida da IA.');
+            }
+            
+            // Salvar detalhamento no banco
+            $detalhamentoId = Database::execute(
+                "INSERT INTO servicos_detalhados (estrutura_id, setor_nome, servico_nome, detalhamento_json, criado_em, empresa_id) 
+                 VALUES (:estrutura_id, :setor_nome, :servico_nome, :detalhamento, NOW(), :empresa_id)",
+                [
+                    'estrutura_id' => $estruturaId,
+                    'setor_nome' => $estruturaData['estrutura']['setores'][$setorIndex]['nome_setor'] ?? 'Setor Desconhecido',
+                    'servico_nome' => $servicoNome,
+                    'detalhamento' => json_encode($detalhamento, JSON_UNESCAPED_UNICODE),
+                    'empresa_id' => Auth::empresa()
+                ]
+            );
+            
+            $detalhamentoId = Database::lastInsertId();
+            
+            Logger::info('Detalhamento individual gerado', [
+                'detalhamento_id' => $detalhamentoId,
+                'servico' => $servicoNome
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => true,
+                'detalhamento_id' => $detalhamentoId,
+                'servico_nome' => $servicoNome,
+                'total_cenarios' => count($detalhamento['cenarios'] ?? []),
+                'total_processos' => count($detalhamento['processos'] ?? []),
+                'mensagem' => 'Detalhamento gerado com sucesso!'
+            ]);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro no detalhamento individual', [
+                'erro' => $e->getMessage(),
+                'servico' => $servicoNome
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => false,
+                'erro' => 'Erro ao gerar detalhamento: ' . $e->getMessage()
+            ]);
+        }
+        exit;
+    }
+
+    /**
+     * Gerar SOP de um serviço específico individualmente
+     */
+    public function gerarSopIndividual(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        
+        $estruturaId = (int) ($_POST['estrutura_id'] ?? 0);
+        $setorIndex = (int) ($_POST['setor_index'] ?? 0);
+        $servicoIndex = (int) ($_POST['servico_index'] ?? 0);
+        $servicoNome = trim($_POST['servico_nome'] ?? '');
+        
+        Logger::info('Iniciando geração de SOP individual', [
+            'estrutura_id' => $estruturaId,
+            'setor_index' => $setorIndex,
+            'servico_index' => $servicoIndex,
+            'servico_nome' => $servicoNome
+        ]);
+        
+        if (!$estruturaId || !$servicoNome) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Dados incompletos.']);
+            exit;
+        }
+        
+        try {
+            // Buscar dados da estrutura
+            $estruturaData = $this->buscarEstruturaTemporaria($estruturaId);
+            if (!$estruturaData) {
+                throw new Exception('Estrutura não encontrada.');
+            }
+            
+            $diagnostico = Diagnostico::buscarPorId($estruturaData['diagnostico_id']);
+            $empresa = Empresa::buscarPorId($diagnostico['empresa_id']);
+            $respostas = json_decode($diagnostico['respostas'], true) ?? [];
+            $dadosEmpresa = $this->extrairDadosEmpresaCompletos($empresa, $diagnostico, $respostas);
+            
+            // Buscar detalhamento existente (se houver)
+            $detalhamento = Database::queryOne(
+                "SELECT * FROM servicos_detalhados WHERE estrutura_id = :estrutura_id AND servico_nome = :servico_nome ORDER BY id DESC LIMIT 1",
+                ['estrutura_id' => $estruturaId, 'servico_nome' => $servicoNome]
+            );
+            
+            $detalhamentoData = null;
+            if ($detalhamento) {
+                $detalhamentoData = json_decode($detalhamento['detalhamento_json'], true);
+            }
+            
+            // Gerar SOP usando IA
+            $prompt = ApiHelper::buildPromptSOPIndividual($dadosEmpresa, $servicoNome, $detalhamentoData);
+            $resultadoIA = ApiHelper::chamarClaude($prompt);
+            
+            if (!$resultadoIA) {
+                throw new Exception('Erro na comunicação com a IA.');
+            }
+            
+            $sop = json_decode($resultadoIA, true);
+            if (!$sop) {
+                throw new Exception('Resposta inválida da IA.');
+            }
+            
+            // Salvar SOP no banco
+            $sopId = Database::execute(
+                "INSERT INTO sops_gerados_nova_arquitetura (estrutura_id, setor_nome, servico_nome, sop_json, criado_em, empresa_id, tipo) 
+                 VALUES (:estrutura_id, :setor_nome, :servico_nome, :sop, NOW(), :empresa_id, 'individual')",
+                [
+                    'estrutura_id' => $estruturaId,
+                    'setor_nome' => $estruturaData['estrutura']['setores'][$setorIndex]['nome_setor'] ?? 'Setor Desconhecido',
+                    'servico_nome' => $servicoNome,
+                    'sop' => json_encode($sop, JSON_UNESCAPED_UNICODE),
+                    'empresa_id' => Auth::empresa()
+                ]
+            );
+            
+            $sopId = Database::lastInsertId();
+            
+            Logger::info('SOP individual gerado', [
+                'sop_id' => $sopId,
+                'servico' => $servicoNome
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => true,
+                'sop_id' => $sopId,
+                'servico_nome' => $servicoNome,
+                'total_procedimentos' => count($sop['procedimentos'] ?? []),
+                'total_checklists' => count($sop['checklists'] ?? []),
+                'mensagem' => 'SOP gerado com sucesso!'
+            ]);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro na geração de SOP individual', [
+                'erro' => $e->getMessage(),
+                'servico' => $servicoNome
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => false,
+                'erro' => 'Erro ao gerar SOP: ' . $e->getMessage()
+            ]);
+        }
+        exit;
+    }
+
+    /**
+     * Ver detalhamento de um serviço
+     */
+    public function verDetalhamentoServico(): void
+    {
+        Auth::proteger();
+        
+        $detalhamentoId = (int) ($_GET['detalhamento_id'] ?? 0);
+        
+        if (!$detalhamentoId) {
+            Flash::set('erro', 'Detalhamento não encontrado.');
+            header('Location: ' . APP_URL . '/sop');
+            exit;
+        }
+        
+        $detalhamento = Database::queryOne(
+            "SELECT * FROM servicos_detalhados WHERE id = :id AND empresa_id = :empresa_id",
+            ['id' => $detalhamentoId, 'empresa_id' => Auth::empresa()]
+        );
+        
+        if (!$detalhamento) {
+            Flash::set('erro', 'Detalhamento não encontrado.');
+            header('Location: ' . APP_URL . '/sop');
+            exit;
+        }
+        
+        $dados = [
+            'detalhamento' => $detalhamento,
+            'detalhamento_data' => json_decode($detalhamento['detalhamento_json'], true),
+            'titulo_pagina' => 'Detalhamento: ' . $detalhamento['servico_nome']
+        ];
+        
+        require VIEW_PATH . '/sop/ver-detalhamento-servico.php';
+    }
+
+    /**
+     * Ver SOP individual
+     */
+    public function verSopIndividual(): void
+    {
+        Auth::proteger();
+        
+        $sopId = (int) ($_GET['sop_id'] ?? 0);
+        
+        if (!$sopId) {
+            Flash::set('erro', 'SOP não encontrado.');
+            header('Location: ' . APP_URL . '/sop');
+            exit;
+        }
+        
+        $sop = Database::queryOne(
+            "SELECT * FROM sops_gerados_nova_arquitetura WHERE id = :id AND empresa_id = :empresa_id",
+            ['id' => $sopId, 'empresa_id' => Auth::empresa()]
+        );
+        
+        if (!$sop) {
+            Flash::set('erro', 'SOP não encontrado.');
+            header('Location: ' . APP_URL . '/sop');
+            exit;
+        }
+        
+        $dados = [
+            'sop' => $sop,
+            'sop_data' => json_decode($sop['sop_json'], true),
+            'titulo_pagina' => 'SOP: ' . $sop['servico_nome']
+        ];
+        
+        require VIEW_PATH . '/sop/ver-sop-individual.php';
+    }
+
+    /**
+     * Adicionar serviço manual a um setor
+     */
+    public function adicionarServicoManual(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        
+        $estruturaId = (int) ($_POST['estrutura_id'] ?? 0);
+        $setorIndex = (int) ($_POST['setor_index'] ?? 0);
+        $setorNome = trim($_POST['setor_nome'] ?? '');
+        $servicoNome = trim($_POST['servico_nome'] ?? '');
+        $criticidade = trim($_POST['criticidade'] ?? 'media');
+        
+        Logger::info('Adicionando serviço manual', [
+            'estrutura_id' => $estruturaId,
+            'setor_nome' => $setorNome,
+            'servico_nome' => $servicoNome,
+            'criticidade' => $criticidade
+        ]);
+        
+        if (!$estruturaId || !$setorNome || !$servicoNome) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Dados incompletos.']);
+            exit;
+        }
+        
+        try {
+            // Verificar se já existe
+            $existente = Database::queryOne(
+                "SELECT id FROM servicos_manuais WHERE estrutura_id = :estrutura_id AND setor_nome = :setor_nome AND servico_nome = :servico_nome",
+                [
+                    'estrutura_id' => $estruturaId,
+                    'setor_nome' => $setorNome,
+                    'servico_nome' => $servicoNome
+                ]
+            );
+            
+            if ($existente) {
+                throw new Exception('Serviço já existe neste setor.');
+            }
+            
+            // Inserir novo serviço manual
+            $servicoId = Database::execute(
+                "INSERT INTO servicos_manuais (estrutura_id, setor_nome, servico_nome, criticidade, criado_em, empresa_id) 
+                 VALUES (:estrutura_id, :setor_nome, :servico_nome, :criticidade, NOW(), :empresa_id)",
+                [
+                    'estrutura_id' => $estruturaId,
+                    'setor_nome' => $setorNome,
+                    'servico_nome' => $servicoNome,
+                    'criticidade' => $criticidade,
+                    'empresa_id' => Auth::empresa()
+                ]
+            );
+            
+            $servicoId = Database::lastInsertId();
+            
+            Logger::info('Serviço manual adicionado', [
+                'servico_id' => $servicoId,
+                'servico_nome' => $servicoNome
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => true,
+                'servico_id' => $servicoId,
+                'mensagem' => 'Serviço adicionado com sucesso!'
+            ]);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao adicionar serviço manual', [
+                'erro' => $e->getMessage(),
+                'servico_nome' => $servicoNome
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => false,
+                'erro' => $e->getMessage()
+            ]);
+        }
+        exit;
+    }
+
+    /**
+     * Listar serviços manuais de um setor
+     */
+    public function listarServicosManuais(): void
+    {
+        Auth::proteger();
+        
+        $estruturaId = (int) ($_GET['estrutura_id'] ?? 0);
+        $setorIndex = (int) ($_GET['setor_index'] ?? 0);
+        
+        if (!$estruturaId) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Estrutura ID não informado.']);
+            exit;
+        }
+        
+        try {
+            // Buscar estrutura para obter nome do setor
+            $estruturaData = $this->buscarEstruturaTemporaria($estruturaId);
+            if (!$estruturaData) {
+                throw new Exception('Estrutura não encontrada.');
+            }
+            
+            $setorNome = $estruturaData['estrutura']['setores'][$setorIndex]['nome_setor'] ?? null;
+            if (!$setorNome) {
+                throw new Exception('Setor não encontrado.');
+            }
+            
+            // Buscar serviços manuais
+            $servicos = Database::query(
+                "SELECT * FROM servicos_manuais 
+                 WHERE estrutura_id = :estrutura_id AND setor_nome = :setor_nome AND empresa_id = :empresa_id 
+                 ORDER BY criado_em DESC",
+                [
+                    'estrutura_id' => $estruturaId,
+                    'setor_nome' => $setorNome,
+                    'empresa_id' => Auth::empresa()
+                ]
+            );
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => true,
+                'servicos' => array_map(function($s) {
+                    return [
+                        'id' => $s['id'],
+                        'nome' => $s['servico_nome'],
+                        'criticidade' => $s['criticidade'],
+                        'criado_em' => $s['criado_em']
+                    ];
+                }, $servicos)
+            ]);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao listar serviços manuais', [
+                'erro' => $e->getMessage(),
+                'estrutura_id' => $estruturaId,
+                'setor_index' => $setorIndex
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => false,
+                'erro' => $e->getMessage()
+            ]);
+        }
+        exit;
+    }
+
+    /**
+     * Excluir serviço manual
+     */
+    public function excluirServicoManual(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        
+        $estruturaId = (int) ($_POST['estrutura_id'] ?? 0);
+        $setorIndex = (int) ($_POST['setor_index'] ?? 0);
+        $servicoNome = trim($_POST['servico_nome'] ?? '');
+        
+        Logger::info('Excluindo serviço manual', [
+            'estrutura_id' => $estruturaId,
+            'setor_index' => $setorIndex,
+            'servico_nome' => $servicoNome
+        ]);
+        
+        if (!$estruturaId || !$servicoNome) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Dados incompletos.']);
+            exit;
+        }
+        
+        try {
+            // Buscar estrutura para obter nome do setor
+            $estruturaData = $this->buscarEstruturaTemporaria($estruturaId);
+            if (!$estruturaData) {
+                throw new Exception('Estrutura não encontrada.');
+            }
+            
+            $setorNome = $estruturaData['estrutura']['setores'][$setorIndex]['nome_setor'] ?? null;
+            if (!$setorNome) {
+                throw new Exception('Setor não encontrado.');
+            }
+            
+            // Excluir serviço manual
+            $rowsAffected = Database::execute(
+                "DELETE FROM servicos_manuais 
+                 WHERE estrutura_id = :estrutura_id AND setor_nome = :setor_nome AND servico_nome = :servico_nome AND empresa_id = :empresa_id",
+                [
+                    'estrutura_id' => $estruturaId,
+                    'setor_nome' => $setorNome,
+                    'servico_nome' => $servicoNome,
+                    'empresa_id' => Auth::empresa()
+                ]
+            );
+            
+            if ($rowsAffected > 0) {
+                Logger::info('Serviço manual excluído', [
+                    'servico_nome' => $servicoNome,
+                    'setor_nome' => $setorNome
+                ]);
+                
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'sucesso' => true,
+                    'mensagem' => 'Serviço excluído com sucesso!'
+                ]);
+            } else {
+                throw new Exception('Serviço não encontrado para exclusão.');
+            }
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao excluir serviço manual', [
+                'erro' => $e->getMessage(),
+                'servico_nome' => $servicoNome
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => false,
+                'erro' => $e->getMessage()
+            ]);
+        }
+        exit;
+    }
+
+    /**
+     * Transcrever áudio usando Whisper da OpenAI
+     */
+    public function transcreverAudioWhisper(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        
+        Logger::info('Iniciando transcrição com Whisper');
+        
+        if (!isset($_FILES['audio']) || $_FILES['audio']['error'] !== UPLOAD_ERR_OK) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Arquivo de áudio não foi recebido corretamente.']);
+            exit;
+        }
+        
+        $audioFile = $_FILES['audio'];
+        $allowedTypes = ['audio/webm', 'audio/mp4', 'audio/mpeg', 'audio/wav'];
+        
+        if (!in_array($audioFile['type'], $allowedTypes)) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Tipo de arquivo não suportado.']);
+            exit;
+        }
+        
+        try {
+            Logger::info('Processando áudio para Whisper', [
+                'tamanho' => $audioFile['size'],
+                'tipo' => $audioFile['type'],
+                'nome_original' => $audioFile['name']
+            ]);
+            
+            // Chamar Whisper via ApiHelper
+            $transcricao = ApiHelper::transcreverComWhisper($audioFile['tmp_name'], $audioFile['type']);
+            
+            if ($transcricao) {
+                Logger::info('Transcrição concluída com sucesso', [
+                    'tamanho_transcricao' => strlen($transcricao)
+                ]);
+                
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'sucesso' => true,
+                    'transcricao' => $transcricao,
+                    'tamanho_audio' => $audioFile['size'],
+                    'duracao_estimada' => round($audioFile['size'] / 16000, 2) . 's' // Estimativa baseada em 16kbps
+                ]);
+            } else {
+                throw new Exception('Whisper retornou resposta vazia');
+            }
+            
+        } catch (Exception $e) {
+            Logger::error('Erro na transcrição com Whisper', [
+                'erro' => $e->getMessage(),
+                'arquivo' => $audioFile['name']
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => false,
+                'erro' => 'Erro na transcrição: ' . $e->getMessage()
+            ]);
+        }
+        exit;
+    }
+
+    /**
+     * Gerar SOP a partir de transcrição de voz
+     */
+    public function gerarSopPorTranscricao(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        
+        $input = json_decode(file_get_contents('php://input'), true);
+        $sopId = (int) ($input['sop_id'] ?? 0);
+        $transcricao = trim($input['transcricao'] ?? '');
+        $contextoAtual = $input['contexto_atual'] ?? [];
+        
+        Logger::info('Gerando SOP por transcrição', [
+            'sop_id' => $sopId,
+            'tamanho_transcricao' => strlen($transcricao)
+        ]);
+        
+        if (!$sopId || !$transcricao) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Dados incompletos.']);
+            exit;
+        }
+        
+        try {
+            // Buscar SOP atual
+            $sopAtual = Database::queryOne(
+                "SELECT * FROM sops_gerados_nova_arquitetura WHERE id = :id AND empresa_id = :empresa_id",
+                ['id' => $sopId, 'empresa_id' => Auth::empresa()]
+            );
+            
+            if (!$sopAtual) {
+                throw new Exception('SOP não encontrado.');
+            }
+            
+            // Gerar novo SOP baseado na transcrição
+            $prompt = ApiHelper::buildPromptSOPPorTranscricao($transcricao, $contextoAtual, $sopAtual);
+            $resultadoIA = ApiHelper::chamarClaude($prompt);
+            
+            if (!$resultadoIA) {
+                throw new Exception('Erro na comunicação com a IA.');
+            }
+            
+            $novoSop = json_decode($resultadoIA, true);
+            if (!$novoSop) {
+                throw new Exception('Resposta inválida da IA.');
+            }
+            
+            // Atualizar SOP no banco
+            Database::execute(
+                "UPDATE sops_gerados_nova_arquitetura SET sop_json = :sop_json, atualizado_em = NOW() WHERE id = :id",
+                [
+                    'sop_json' => json_encode($novoSop, JSON_UNESCAPED_UNICODE),
+                    'id' => $sopId
+                ]
+            );
+            
+            Logger::info('SOP atualizado via transcrição', [
+                'sop_id' => $sopId,
+                'servico' => $sopAtual['servico_nome']
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => true,
+                'mensagem' => 'SOP atualizado com base na sua descrição!',
+                'sop_atualizado' => $novoSop
+            ]);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao gerar SOP por transcrição', [
+                'erro' => $e->getMessage(),
+                'sop_id' => $sopId
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => false,
+                'erro' => 'Erro ao gerar SOP: ' . $e->getMessage()
+            ]);
+        }
+        exit;
+    }
+
+    /**
+     * Salvar alterações manuais do SOP
+     */
+    public function salvarAlteracoesSop(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        
+        $input = json_decode(file_get_contents('php://input'), true);
+        $sopId = (int) ($input['sop_id'] ?? 0);
+        $alteracoes = $input['alteracoes'] ?? [];
+        
+        Logger::info('Salvando alterações do SOP', [
+            'sop_id' => $sopId,
+            'campos_alterados' => array_keys($alteracoes)
+        ]);
+        
+        if (!$sopId || empty($alteracoes)) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Dados incompletos.']);
+            exit;
+        }
+        
+        try {
+            // Buscar SOP atual
+            $sopAtual = Database::queryOne(
+                "SELECT * FROM sops_gerados_nova_arquitetura WHERE id = :id AND empresa_id = :empresa_id",
+                ['id' => $sopId, 'empresa_id' => Auth::empresa()]
+            );
+            
+            if (!$sopAtual) {
+                throw new Exception('SOP não encontrado.');
+            }
+            
+            // Decodificar JSON atual
+            $sopData = json_decode($sopAtual['sop_json'], true);
+            if (!$sopData) {
+                throw new Exception('Dados do SOP corrompidos.');
+            }
+            
+            // Aplicar alterações
+            foreach ($alteracoes as $campo => $valor) {
+                // Usar dot notation para campos aninhados (ex: "objetivo", "procedimentos.0.fase")
+                $this->setNestedValue($sopData, $campo, $valor);
+            }
+            
+            // Salvar SOP atualizado
+            Database::execute(
+                "UPDATE sops_gerados_nova_arquitetura SET sop_json = :sop_json, atualizado_em = NOW() WHERE id = :id",
+                [
+                    'sop_json' => json_encode($sopData, JSON_UNESCAPED_UNICODE),
+                    'id' => $sopId
+                ]
+            );
+            
+            Logger::info('Alterações do SOP salvas', [
+                'sop_id' => $sopId,
+                'campos_alterados' => array_keys($alteracoes)
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => true,
+                'mensagem' => 'Alterações salvas com sucesso!'
+            ]);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao salvar alterações do SOP', [
+                'erro' => $e->getMessage(),
+                'sop_id' => $sopId
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => false,
+                'erro' => 'Erro ao salvar: ' . $e->getMessage()
+            ]);
+        }
+        exit;
+    }
+
+    /**
+     * Auxiliar para definir valor em array aninhado usando dot notation
+     */
+    private function setNestedValue(array &$array, string $key, $value): void
+    {
+        $keys = explode('.', $key);
+        $current = &$array;
+        
+        foreach ($keys as $k) {
+            if (!isset($current[$k])) {
+                $current[$k] = [];
+            }
+            $current = &$current[$k];
+        }
+        
+        $current = $value;
     }
 }

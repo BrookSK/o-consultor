@@ -633,43 +633,219 @@ Público-alvo: {$dadosEmpresa['publico_alvo']}
 Desafios principais: {$dadosEmpresa['dores_desafios']}
 Ferramentas atuais: {$dadosEmpresa['ferramentas_atuais']}
 
-=========================== O QUE FAZER ===========================
+=========================== MAPEAMENTO ULTRA-AMPLO DE SERVIÇOS ===========================
 Pense em TODOS os serviços/processos que o setor \"{$setor}\" pode executar, incluindo:
 
-1. **Processos rotineiros** (dia-a-dia normal)
-2. **Processos críticos** (que geram risco se não feitos)
-3. **Processos de exceção** (situações não-padrão)
-4. **Processos de crise** (problemas, falhas, emergências)
-5. **Processos sazonais** (específicos de determinadas épocas)
-6. **Processos de crescimento** (quando empresa expande)
+## 1. PROCESSOS CORE (Essenciais)
+- Atividades principais e específicas do setor
+- Responsabilidades primárias no modelo de negócio
+- Entregas obrigatórias para funcionamento da empresa
 
-Para cada serviço, considere:
-- Situações ideais (tudo funciona)
-- Situações problemáticas (resistência, falhas técnicas, emergências)
-- Diferentes níveis de complexidade
-- Integrações com outros setores
+## 2. PROCESSOS OPERACIONAIS (Rotina)
+- Tarefas diárias, semanais, mensais
+- Manutenções preventivas e corretivas
+- Monitoramentos e controles regulares
 
-Seja exaustivo e específico para o nicho \"{$dadosEmpresa['nicho']}\". Não seja genérico.
+## 3. PROCESSOS ESTRATÉGICOS (Crescimento)
+- Planejamento e desenvolvimento
+- Inovação e melhorias
+- Expansão e otimização
 
-=========================== FORMATO DE SAÍDA (APENAS JSON) ===========================
+## 4. PROCESSOS DE INTEGRAÇÃO (Interface)
+- Comunicação com outros setores
+- Transferência de dados/informações
+- Colaboração interdepartamental
+
+## 5. PROCESSOS DE EXCEÇÃO (Não-padrão)
+- Situações atípicas ou especiais
+- Customizações e adaptações
+- Demandas urgentes ou extraordinárias
+
+## 6. PROCESSOS DE CRISE (Problemas)
+- Falhas técnicas e operacionais
+- Contingências e recuperação
+- Gestão de incidentes críticos
+
+## 7. PROCESSOS DE CONFORMIDADE (Governança)
+- Auditorias e controles
+- Documentação e compliance
+- Segurança e privacidade
+
+## 8. PROCESSOS SAZONAIS (Temporais)
+- Atividades específicas de períodos
+- Picos de demanda ou baixa temporada
+- Fechamentos e balanços periódicos
+
+=========================== EXEMPLOS POR SETOR ===========================
+
+=========================== DIRETRIZES UNIVERSAIS PARA TODOS OS SETORES ===========================
+
+**PENSE COMO UM ESPECIALISTA DO SETOR**: Você deve conhecer profundamente TODOS os processos possíveis, desde os mais básicos até os mais complexos.
+
+**CUBRA TODO O ESPECTRO DE ATIVIDADES**:
+- ✅ Processos diários, semanais, mensais, trimestrais, anuais
+- ✅ Situações de rotina, exceção, crise e emergência  
+- ✅ Atividades operacionais, táticas e estratégicas
+- ✅ Integrações com outros departamentos
+- ✅ Compliance, auditoria e controles internos
+- ✅ Projetos de melhoria e implementação
+- ✅ Treinamento e desenvolvimento de equipe
+
+**CONSIDERE DIFERENTES CENÁRIOS**:
+- 📊 **Rotina normal**: processos que funcionam perfeitamente
+- 🔥 **Situações críticas**: prazos apertados, alta demanda, recursos limitados
+- ⚠️ **Problemas técnicos**: falhas de sistema, equipamentos, comunicação
+- 👥 **Resistência humana**: dificuldades de equipe, treinamento, mudanças
+- 🏢 **Contexto empresarial**: crescimento, crise, reestruturação, sazonalidade
+
+**GRANULARIDADE MÁXIMA**: 
+Quebre processos grandes em sub-processos específicos. Por exemplo:
+- Ao invés de "Gestão de estoque" → "Controle de entrada de materiais", "Inventário cíclico mensal", "Análise de giro de produtos", "Gestão de produtos obsoletos"
+- Ao invés de "Treinamento" → "Onboarding de novos funcionários", "Treinamento técnico em sistemas", "Capacitação em vendas", "Desenvolvimento de liderança"
+
+=========================== EXEMPLOS ULTRA-AMPLOS POR SETOR ===========================
+
+**Se o setor for T.I./Tecnologia, inclua TODOS estes tipos:**
+- **Infraestrutura:** backup diário, migração de servidores, implementação de cloud, disaster recovery, capacity planning, configuração de redes, manutenção de datacenter, virtualização, storage management
+- **Desenvolvimento:** versionamento de código, deploy automatizado, integração de APIs, desenvolvimento mobile, testes unitários, code review, documentação técnica, refatoração de código
+- **Segurança:** gestão de patches, controle de acesso, incident response, pentest, auditoria de vulnerabilidades, firewall management, compliance LGPD, backup de segurança
+- **Dados:** ETL processes, data analytics, business intelligence, data governance, arquivamento, sincronização de sistemas, migração de dados, relatórios automatizados
+- **Suporte:** helpdesk níveis 1/2/3, suporte remoto, instalação de software, troubleshooting, treinamento de usuários, gestão de inventário de TI
+- **Projetos:** implementação de ERP, rollout de software, automação de processos, integração de sistemas, upgrade de infraestrutura, migração de plataformas
+
+**Se o setor for Vendas/Comercial, inclua TODOS estes tipos:**
+- **Prospecção:** geração de leads, qualificação de prospects, cold calling, email marketing, social selling, networking em eventos, pesquisa de mercado, análise de concorrentes
+- **Negociação:** elaboração de propostas comerciais, apresentações de vendas, tratamento de objeções, fechamento de contratos, negociação de preços, follow-up pós-proposta
+- **Relacionamento:** pós-venda ativo, programa de fidelização, upsell e cross-sell, gestão de contas-chave, customer success, renovação de contratos, relacionamento com parceiros
+- **Gestão:** administração de pipeline, forecasting de vendas, análise de métricas de performance, gestão de territórios, coaching de equipe, planejamento estratégico
+- **Suporte:** treinamento de produtos, criação de materiais de venda, configuração de CRM, automação de processos comerciais, análise de ROI de campanhas
+
+**Se o setor for Marketing, inclua TODOS estes tipos:**
+- **Marketing Digital:** gestão de redes sociais, campanhas Google Ads, SEO/SEM, email marketing, automação de marketing, marketing de conteúdo, influencer marketing
+- **Criação de Conteúdo:** blog corporativo, produção de vídeos, design gráfico, cases de sucesso, whitepapers, webinars, podcasts, newsletters
+- **Eventos e Relacionamento:** participação em feiras, organização de eventos corporativos, networking estratégico, parcerias comerciais, relações públicas
+- **Branding:** desenvolvimento de identidade visual, posicionamento de marca, rebranding, manual de marca, comunicação corporativa, brand awareness
+- **Analytics e Pesquisa:** análise de métricas, ROI de campanhas, pesquisa de mercado, customer journey mapping, análise de concorrência, market intelligence
+
+**Se o setor for RH/Recursos Humanos, inclua TODOS estes tipos:**
+- **Recrutamento e Seleção:** sourcing de candidatos, triagem de currículos, entrevistas técnicas e comportamentais, testes psicotécnicos, verificação de referências, onboarding completo
+- **Desenvolvimento de Pessoas:** programas de treinamento, planos de carreira, avaliação de performance, feedback 360°, coaching interno, mentoring, sucessão de lideranças
+- **Administração de Pessoal:** folha de pagamento, administração de benefícios, contratos de trabalho, políticas internas, gestão de ponto, controle de férias e licenças
+- **Cultura e Engajamento:** pesquisa de clima organizacional, programa de engajamento, eventos corporativos, comunicação interna, diversidade e inclusão, employer branding
+- **Compliance e Legal:** compliance trabalhista, auditoria de processos, relacionamento sindical, prevenção de passivos trabalhistas, gestão de contingências
+
+**Se o setor for Financeiro/Contábil, inclua TODOS estes tipos:**
+- **Contas a Pagar e Receber:** controle de recebimentos, gestão de pagamentos, conciliação bancária, cobrança de inadimplentes, negociação com fornecedores, gestão de fluxo de caixa
+- **Controle Financeiro:** elaboração de orçamento, análise de custos e margens, controle de centros de custo, análise de variações, relatórios gerenciais, indicadores financeiros
+- **Contabilidade:** escrituração contábil, balancetes mensais, demonstrações financeiras, conciliações contábeis, análise de balanço, auditoria contábil
+- **Impostos e Fiscal:** apuração de tributos, declarações obrigatórias, planejamento tributário, compliance fiscal, gestão de contingências fiscais, relacionamento com Receita Federal
+- **Tesouraria:** aplicações financeiras, análise de financiamentos, gestão de capital de giro, relacionamento bancário, análise de viabilidade de projetos, gestão de risco financeiro
+
+**Se o setor for Operações/Produção, inclua TODOS estes tipos:**
+- **Planejamento da Produção:** programação da produção, gestão de demanda, capacity planning, sequenciamento de ordens, balanceamento de linha, controle de materiais
+- **Controle de Qualidade:** inspeção de produtos, auditoria de processos, gestão de não-conformidades, melhorias contínuas, certificações ISO, controle estatístico de qualidade
+- **Logística e Suprimentos:** gestão de estoque, recebimento de materiais, expedição de produtos, controle de inventário, relacionamento com fornecedores, otimização de layout
+- **Manutenção:** manutenção preventiva, corretiva e preditiva, gestão de ativos, planejamento de paradas programadas, controle de peças de reposição, TPM
+- **Segurança e Meio Ambiente:** programa de segurança do trabalho, treinamentos de CIPA, análise de riscos, investigação de acidentes, gestão ambiental, compliance de normas
+
+**Se o setor for Atendimento/Customer Service, inclua TODOS estes tipos:**
+- **Suporte ao Cliente:** atendimento telefônico, chat online, suporte por email, gestão de tickets, escalação de problemas, suporte técnico especializado
+- **Relacionamento com Cliente:** acompanhamento pós-venda, programa de fidelização, pesquisa de satisfação, gestão de reclamações, customer journey management
+- **Customer Success:** onboarding de clientes, treinamento em produtos, análise de health score, programa de retenção, expansion revenue, análise de churn
+- **Processos de Atendimento:** definição de SLA, criação de scripts, treinamento de equipe, métricas de qualidade, análise de performance, base de conhecimento
+
+**Se o setor for Jurídico/Legal, inclua TODOS estes tipos:**
+- **Contratos:** elaboração de contratos, revisão jurídica, negociação de cláusulas, gestão de aditivos, controle de vencimentos, análise de riscos contratuais
+- **Compliance:** auditoria de conformidade, políticas internas, treinamentos regulatórios, gestão de riscos legais, compliance setorial específico
+- **Contencioso:** gestão de processos judiciais, relacionamento com escritórios externos, acompanhamento de prazos processuais, análise de contingências
+- **Societário:** assembleia de acionistas, alterações contratuais, registro em órgãos competentes, governança corporativa, due diligence
+- **Propriedade Intelectual:** registro de marcas e patentes, proteção de ativos intangíveis, contratos de licenciamento, análise de infração
+
+**Se o setor for Compras/Procurement, inclua TODOS estes tipos:**
+- **Sourcing:** pesquisa de fornecedores, qualificação de suppliers, análise de mercado, benchmarking de preços, desenvolvimento de fornecedores
+- **Negociação:** cotações e licitações, negociação de contratos, análise de propostas, gestão de SLA com fornecedores, renegociação de termos
+- **Gestão de Fornecedores:** avaliação de performance, auditorias de fornecedores, relacionamento estratégico, gestão de riscos de supply chain
+- **Processos de Compra:** requisições de compra, aprovações de gastos, controle orçamentário, análise de make-or-buy, gestão de categoria de produtos
+
+**Se o setor for Logística/Supply Chain, inclua TODOS estes tipos:**
+- **Armazenagem:** gestão de estoque, controle de inventário, layout de armazém, picking e packing, controle de temperatura/umidade
+- **Transporte:** gestão de frota, roteirização, controle de entregas, gestão de transportadoras, rastreamento de cargas, otimização de rotas
+- **Distribuição:** planejamento de distribuição, gestão de centros de distribuição, cross-docking, fulfillment, reverse logistics
+- **Supply Planning:** planejamento de demanda, gestão de safety stock, análise de giro de estoque, S&OP (Sales & Operations Planning)
+
+**Se o setor for Qualidade/QA, inclua TODOS estes tipos:**
+- **Controle de Qualidade:** inspeção de entrada, controle de processo, inspeção final, testes de produto, calibração de equipamentos
+- **Sistemas de Gestão:** implementação ISO 9001, auditoria interna, gestão de não-conformidades, ações corretivas e preventivas, melhoria contínua
+- **Desenvolvimento de Produto:** validação de novos produtos, testes de durabilidade, análise de falhas, controle de mudanças de engenharia
+- **Fornecedores:** qualificação de fornecedores, auditoria de qualidade, gestão de recall, controle de materiais críticos
+
+=========================== CRITÉRIOS DE ABRANGÊNCIA ===========================
+
+**SEJA ULTRA-ESPECÍFICO**: Para cada categoria, liste pelo menos 8-15 serviços diferentes
+**PENSE EM CENÁRIOS REAIS**: Inclua serviços que realmente acontecem (não apenas teoria)
+**CONSIDERE DIFERENTES COMPLEXIDADES**: Do mais simples ao mais complexo
+**INCLUA INTEGRAÇÕES**: Serviços que envolvem outros setores
+**ABORDE TODO O CICLO**: Do planejamento à execução e monitoramento
+
+=========================== RESPOSTA ESPERADA ===========================
+Forneça um JSON com esta estrutura:
+
+```json
 {
-  \"setor\": \"{$setor}\",
-  \"funcao_principal\": \"string (papel do setor na empresa)\",
-  \"servicos\": [
-    {
-      \"nome\": \"string (nome específico do serviço)\",
-      \"codigo\": \"string (slug único, ex: manutencao-preventiva-servidores)\",
-      \"categoria\": \"rotineiro | critico | excecao | crise | sazonal | crescimento\",
-      \"criticidade\": 1,
-      \"descricao_resumida\": \"string (1-2 frases do que é)\",
-      \"gatilho_entrada\": \"string (o que dispara este processo)\",
-      \"cenarios_problematicos\": [\"string\", \"string\", \"string\"],
-      \"integracao_setores\": [\"string\", \"string\"]
-    }
-  ]
+    \"setor\": \"{$setor}\",
+    \"empresa_contexto\": \"{$dadosEmpresa['nome']} - {$dadosEmpresa['nicho']}\",
+    \"total_servicos\": 0,
+    \"servicos\": [
+        {
+            \"nome\": \"Nome específico do serviço\",
+            \"categoria\": \"core|operacional|estrategico|integracao|excecao|crise|conformidade|sazonal\",
+            \"criticidade\": \"alta|media|baixa\",
+            \"frequencia\": \"diaria|semanal|mensal|trimestral|anual|sob_demanda|emergencial\",
+            \"complexidade\": \"simples|media|alta\",
+            \"descricao_resumida\": \"Uma frase explicando o que é\",
+            \"integracao_setores\": [\"setor1\", \"setor2\"],
+            \"recursos_principais\": [\"recurso1\", \"recurso2\"]
+        }
+    ]
 }
+```
 
-Responda APENAS com o JSON válido. Seja específico para o nicho e porte da empresa. Liste pelo menos 15-25 serviços diferentes.";
+**META DE QUANTIDADE PARA TODOS OS SETORES**: 
+- **Setores Operacionais** (T.I, Operações, Financeiro): 45-60 serviços
+- **Setores Comerciais** (Vendas, Marketing, Atendimento): 35-50 serviços  
+- **Setores de Apoio** (RH, Jurídico, Compras): 30-45 serviços
+- **Setores Especializados** (Qualidade, Logística): 25-40 serviços
+
+**REGRA UNIVERSAL PARA TODOS OS SETORES**: 
+- ❌ **NUNCA seja genérico** - cada serviço deve ser uma ação específica e executável
+- ✅ **SEMPRE seja ultra-específico** - descreva exatamente o que é feito
+
+**EXEMPLOS DE ESPECIFICIDADE PARA QUALQUER SETOR:**
+- ❌ Genérico: "Gestão de contratos" 
+- ✅ Específico: "Elaboração de contratos de fornecedores", "Revisão jurídica de aditivos contratuais", "Controle de vencimentos de contratos"
+
+- ❌ Genérico: "Controle financeiro"
+- ✅ Específico: "Conciliação bancária diária", "Análise de margem por produto", "Projeção de fluxo de caixa mensal"
+
+- ❌ Genérico: "Atendimento ao cliente" 
+- ✅ Específico: "Suporte técnico via chat online", "Gestão de reclamações no SAC", "Follow-up pós-venda por telefone"
+
+- ❌ Genérico: "Recursos humanos"
+- ✅ Específico: "Onboarding de novos funcionários", "Avaliação de performance semestral", "Cálculo da folha de pagamento"
+
+**AMPLITUDE OBRIGATÓRIA PARA TODOS OS SETORES:**
+Independente do setor, SEMPRE inclua serviços de:
+1. **Rotina operacional** (dia-a-dia, semanal, mensal)
+2. **Projetos e implementações** (mudanças, melhorias, novos processos)  
+3. **Gestão de crise** (problemas, falhas, emergências)
+4. **Compliance e controle** (auditorias, relatórios, conformidade)
+5. **Relacionamento interno** (integração com outros setores)
+6. **Análise e métricas** (indicadores, reports, análises)
+7. **Treinamento e capacitação** (desenvolvimento de pessoas)
+8. **Planejamento estratégico** (orçamento, metas, estratégias)
+
+Responda APENAS com o JSON válido, sem explicações adicionais.";
+
     }
 
     /**
@@ -1597,3 +1773,421 @@ Responda APENAS em JSON:
     }
 }
 
+
+    /**
+     * Prompt para detalhar um serviço específico individualmente
+     */
+    public static function buildPromptDetalhamentoServicoIndividual(array $dadosEmpresa, string $servicoNome): string
+    {
+        return "# DETALHAMENTO ESPECÍFICO DE SERVIÇO - ANÁLISE PROFUNDA
+
+## CONTEXTO DA EMPRESA
+- **Nome:** {$dadosEmpresa['nome']}
+- **Segmento:** {$dadosEmpresa['nicho']}
+- **Porte:** {$dadosEmpresa['porte']}
+- **Modelo de Negócio:** {$dadosEmpresa['modelo_negocio']}
+
+## SERVIÇO PARA DETALHAR
+**Serviço:** {$servicoNome}
+
+## OBJETIVO
+Criar um detalhamento EXTREMAMENTE ESPECÍFICO e prático para este serviço único, incluindo todos os cenários possíveis e estratégias de contenção N1-N2-N3.
+
+## ESTRUTURA DE RESPOSTA (JSON)
+```json
+{
+  \"servico_nome\": \"{$servicoNome}\",
+  \"descricao_completa\": \"Descrição detalhada do serviço\",
+  \"objetivo_principal\": \"Objetivo principal do serviço\",
+  \"processos\": [
+    {
+      \"nome\": \"Nome do processo\",
+      \"descricao\": \"Descrição detalhada\",
+      \"responsavel\": \"Cargo responsável\",
+      \"tempo_estimado\": \"Tempo de execução\",
+      \"recursos_necessarios\": [\"recurso1\", \"recurso2\"],
+      \"indicadores\": [\"indicador1\", \"indicador2\"]
+    }
+  ],
+  \"cenarios_problemas\": [
+    {
+      \"problema\": \"Descrição do problema específico\",
+      \"frequencia\": \"alta|média|baixa\",
+      \"impacto\": \"alto|médio|baixo\",
+      \"n1_contencao\": {
+        \"tempo_limite\": \"0-30 minutos\",
+        \"acoes\": [\"ação imediata 1\", \"ação imediata 2\"],
+        \"responsavel\": \"Operador/Técnico\"
+      },
+      \"n2_escalacao\": {
+        \"tempo_limite\": \"30 minutos - 4 horas\",
+        \"acoes\": [\"escalação 1\", \"escalação 2\"],
+        \"responsavel\": \"Supervisor/Coordenador\"
+      },
+      \"n3_emergencia\": {
+        \"tempo_limite\": \"4+ horas\",
+        \"acoes\": [\"medida extrema 1\", \"medida extrema 2\"],
+        \"responsavel\": \"Gerência/Diretoria\"
+      }
+    }
+  ],
+  \"fluxo_trabalho\": {
+    \"entrada\": \"O que inicia o serviço\",
+    \"etapas\": [
+      {
+        \"ordem\": 1,
+        \"nome\": \"Nome da etapa\",
+        \"descricao\": \"O que fazer\",
+        \"tempo\": \"Tempo estimado\",
+        \"validacao\": \"Como validar se foi feito corretamente\"
+      }
+    ],
+    \"saida\": \"O que é entregue/resultado\"
+  },
+  \"qualidade_controle\": {
+    \"criterios\": [\"critério 1\", \"critério 2\"],
+    \"checklist\": [\"item 1\", \"item 2\"],
+    \"metricas\": [\"métrica 1\", \"métrica 2\"]
+  },
+  \"riscos_mitigacao\": [
+    {
+      \"risco\": \"Descrição do risco\",
+      \"probabilidade\": \"alta|média|baixa\",
+      \"impacto\": \"alto|médio|baixo\",
+      \"prevencao\": \"Como prevenir\",
+      \"mitigacao\": \"Como mitigar se ocorrer\"
+    }
+  ]
+}
+```
+
+## DIRETRIZES IMPORTANTES
+1. **SEJA ULTRA-ESPECÍFICO**: Não use termos genéricos. Cada processo, problema e solução deve ser detalhado para ESTE serviço específico nesta empresa específica.
+2. **PROBLEMAS REAIS**: Inclua problemas que REALMENTE acontecem neste tipo de serviço (falhas técnicas, resistência humana, gargalos operacionais).
+3. **N1-N2-N3 PRÁTICOS**: As contenções devem ser ações CONCRETAS que podem ser executadas nos tempos especificados.
+4. **CONTEXTO EMPRESARIAL**: Considere o porte da empresa, recursos disponíveis e realidade operacional.
+5. **FLUXO REALISTA**: O fluxo deve refletir como o trabalho realmente acontece, não a teoria ideal.
+
+## RESPOSTA
+Retorne APENAS o JSON válido, sem explicações adicionais.";
+    }
+
+    /**
+     * Prompt para gerar SOP individual completo
+     */
+    public static function buildPromptSOPIndividual(array $dadosEmpresa, string $servicoNome, ?array $detalhamentoData = null): string
+    {
+        $detalhamentoInfo = '';
+        if ($detalhamentoData) {
+            $detalhamentoInfo = "\n## DETALHAMENTO EXISTENTE\n" . json_encode($detalhamentoData, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        }
+
+        return "# SOP COMPLETO - PROCEDIMENTO OPERACIONAL PADRÃO
+
+## CONTEXTO DA EMPRESA
+- **Nome:** {$dadosEmpresa['nome']}
+- **Segmento:** {$dadosEmpresa['nicho']}
+- **Porte:** {$dadosEmpresa['porte']}
+- **Modelo de Negócio:** {$dadosEmpresa['modelo_negocio']}
+
+## SERVIÇO
+**Serviço:** {$servicoNome}
+{$detalhamentoInfo}
+
+## OBJETIVO
+Criar um SOP COMPLETO e OPERACIONAL para este serviço específico, que possa ser usado imediatamente pela equipe.
+
+## ESTRUTURA DE RESPOSTA (JSON)
+```json
+{
+  \"sop_titulo\": \"SOP - {$servicoNome}\",
+  \"versao\": \"1.0\",
+  \"data_criacao\": \"" . date('Y-m-d') . "\",
+  \"objetivo\": \"Objetivo específico deste SOP\",
+  \"escopo\": \"Onde este SOP se aplica\",
+  \"responsaveis\": {
+    \"executor_principal\": \"Cargo principal\",
+    \"supervisor\": \"Cargo supervisor\",
+    \"aprovador\": \"Cargo aprovador\"
+  },
+  \"pre_requisitos\": [
+    \"Pré-requisito 1\",
+    \"Pré-requisito 2\"
+  ],
+  \"recursos_necessarios\": {
+    \"equipamentos\": [\"equipamento1\", \"equipamento2\"],
+    \"sistemas\": [\"sistema1\", \"sistema2\"],
+    \"documentos\": [\"documento1\", \"documento2\"],
+    \"pessoas\": [\"função1\", \"função2\"]
+  },
+  \"procedimentos\": [
+    {
+      \"fase\": \"Nome da fase\",
+      \"descricao\": \"Descrição da fase\",
+      \"passos\": [
+        {
+          \"passo\": 1,
+          \"acao\": \"Descrição detalhada da ação\",
+          \"responsavel\": \"Quem executa\",
+          \"tempo_estimado\": \"Tempo em minutos\",
+          \"criterio_qualidade\": \"Como validar que foi feito corretamente\",
+          \"observacoes\": \"Dicas importantes ou cuidados especiais\"
+        }
+      ]
+    }
+  ],
+  \"pontos_controle\": [
+    {
+      \"momento\": \"Quando verificar\",
+      \"o_que_verificar\": \"O que conferir\",
+      \"criterio_aceitacao\": \"Como saber se está correto\",
+      \"acao_se_nao_conforme\": \"O que fazer se não estiver conforme\"
+    }
+  ],
+  \"indicadores_performance\": [
+    {
+      \"nome\": \"Nome do indicador\",
+      \"formula\": \"Como calcular\",
+      \"meta\": \"Meta esperada\",
+      \"frequencia_medicao\": \"Quando medir\"
+    }
+  ],
+  \"procedimentos_emergencia\": {
+    \"situacoes_criticas\": [
+      {
+        \"situacao\": \"Descrição da situação crítica\",
+        \"sinais_alerta\": [\"sinal1\", \"sinal2\"],
+        \"acao_imediata\": \"O que fazer imediatamente\",
+        \"quem_notificar\": \"Quem avisar\",
+        \"tempo_resposta_maximo\": \"Tempo máximo para agir\"
+      }
+    ]
+  },
+  \"checklists\": {
+    \"inicio_atividade\": [\"item1\", \"item2\"],
+    \"durante_execucao\": [\"item1\", \"item2\"],
+    \"final_atividade\": [\"item1\", \"item2\"]
+  },
+  \"documentacao\": {
+    \"registros_obrigatorios\": [\"registro1\", \"registro2\"],
+    \"modelos_formularios\": [\"formulário1\", \"formulário2\"],
+    \"arquivo_evidencias\": \"Como e onde arquivar\"
+  },
+  \"treinamento\": {
+    \"competencias_necessarias\": [\"competência1\", \"competência2\"],
+    \"tempo_treinamento\": \"Horas de treinamento necessárias\",
+    \"avaliacao\": \"Como avaliar se a pessoa está apta\"
+  },
+  \"melhorias_sugestoes\": [
+    \"Sugestão de melhoria 1\",
+    \"Sugestão de melhoria 2\"
+  ]
+}
+```
+
+## DIRETRIZES PARA SOP DE EXCELÊNCIA
+1. **AÇÕES ESPECÍFICAS**: Cada passo deve ser uma ação clara e mensurável (\"Clique em X\", \"Verifique se Y\", \"Confirme que Z\").
+2. **TEMPOS REALISTAS**: Inclua tempos baseados na realidade operacional da empresa.
+3. **PONTOS DE DECISÃO**: Inclua \"se isso, então aquilo\" para diferentes cenários.
+4. **VALIDAÇÃO CONTÍNUA**: Cada passo deve ter um critério de qualidade claro.
+5. **EMERGÊNCIAS PRÁTICAS**: Situações críticas devem ter respostas imediatas e específicas.
+6. **LINGUAGEM OPERACIONAL**: Use linguagem que a equipe operacional entende e usa no dia-a-dia.
+
+## RESPOSTA
+Retorne APENAS o JSON válido, sem explicações adicionais.";
+    }
+    /**
+     * Transcrever áudio usando Whisper da OpenAI
+     */
+    public static function transcreverComWhisper(string $caminhoArquivo, string $tipoMime): ?string
+    {
+        $apiKey = self::obterChaveAPI('openai');
+        
+        if (!$apiKey) {
+            throw new Exception('Chave da API OpenAI não configurada');
+        }
+        
+        if (!file_exists($caminhoArquivo)) {
+            throw new Exception('Arquivo de áudio não encontrado');
+        }
+        
+        try {
+            // Preparar requisição para Whisper
+            $postfields = [
+                'model' => 'whisper-1',
+                'file' => new CURLFile($caminhoArquivo, $tipoMime, 'audio.webm'),
+                'language' => 'pt', // Português
+                'response_format' => 'json',
+                'temperature' => 0.2 // Mais preciso
+            ];
+            
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL => 'https://api.openai.com/v1/audio/transcriptions',
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 60,
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => $postfields,
+                CURLOPT_HTTPHEADER => [
+                    'Authorization: Bearer ' . $apiKey,
+                ]
+            ]);
+            
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $error = curl_error($ch);
+            curl_close($ch);
+            
+            if ($error) {
+                throw new Exception("Erro cURL: {$error}");
+            }
+            
+            if ($httpCode !== 200) {
+                Logger::error('Erro na API Whisper', [
+                    'http_code' => $httpCode,
+                    'response' => $response
+                ]);
+                throw new Exception("Erro HTTP {$httpCode} da API Whisper");
+            }
+            
+            $result = json_decode($response, true);
+            
+            if (!$result || !isset($result['text'])) {
+                throw new Exception('Resposta inválida da API Whisper');
+            }
+            
+            Logger::info('Transcrição Whisper concluída', [
+                'tamanho_transcricao' => strlen($result['text']),
+                'primeira_palavras' => substr($result['text'], 0, 50) . '...'
+            ]);
+            
+            return trim($result['text']);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro no Whisper', [
+                'erro' => $e->getMessage(),
+                'arquivo' => basename($caminhoArquivo)
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Prompt para gerar SOP baseado em transcrição de voz
+     */
+    public static function buildPromptSOPPorTranscricao(string $transcricao, array $contextoAtual, array $sopAtual): string
+    {
+        $servicoNome = $sopAtual['servico_nome'] ?? 'Serviço';
+        $setorNome = $sopAtual['setor_nome'] ?? 'Setor';
+        
+        return "# GERAÇÃO DE SOP BASEADO EM TRANSCRIÇÃO DE VOZ
+
+## CONTEXTO
+- **Serviço:** {$servicoNome}
+- **Setor:** {$setorNome}
+- **Situação:** O usuário gravou uma descrição detalhada do processo e queremos gerar um SOP profissional baseado na sua explicação
+
+## TRANSCRIÇÃO RECEBIDA
+```
+{$transcricao}
+```
+
+## SOP ATUAL (para referência)
+```json
+" . json_encode($contextoAtual, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) . "
+```
+
+## OBJETIVO
+Transformar a descrição falada em um SOP completo, estruturado e profissional, seguindo o formato padrão da plataforma.
+
+## DIRETRIZES PARA PROCESSAMENTO
+1. **EXTRAIR INFORMAÇÕES CHAVE** da transcrição:
+   - Passos específicos mencionados
+   - Tempos estimados citados
+   - Responsáveis mencionados
+   - Problemas e soluções descritos
+   - Pontos de controle indicados
+
+2. **MANTER ESPECIFICIDADE**: Use os detalhes exatos mencionados pelo usuário
+3. **COMPLEMENTAR COM BOAS PRÁTICAS**: Onde o usuário não especificou, adicione elementos padrão de SOP
+4. **PRESERVAR LINGUAGEM EMPRESARIAL**: Transforme linguagem coloquial em formato profissional
+5. **ESTRUTURA COMPLETA**: Mesmo se a transcrição for incompleta, gere um SOP completo
+
+## ESTRUTURA DE RESPOSTA (JSON)
+```json
+{
+  \"sop_titulo\": \"SOP - {$servicoNome}\",
+  \"versao\": \"2.0\",
+  \"data_criacao\": \"" . date('Y-m-d') . "\",
+  \"data_atualizacao\": \"" . date('Y-m-d H:i:s') . "\",
+  \"origem\": \"transcricao_voz\",
+  \"objetivo\": \"Objetivo específico baseado na descrição\",
+  \"escopo\": \"Escopo baseado no que foi descrito\",
+  \"responsaveis\": {
+    \"executor_principal\": \"Cargo mencionado ou inferido\",
+    \"supervisor\": \"Supervisor mencionado ou padrão\",
+    \"aprovador\": \"Aprovador mencionado ou padrão\"
+  },
+  \"pre_requisitos\": [
+    \"Pré-requisitos mencionados na transcrição\"
+  ],
+  \"recursos_necessarios\": {
+    \"equipamentos\": [\"equipamentos citados\"],
+    \"sistemas\": [\"sistemas mencionados\"],
+    \"documentos\": [\"documentos citados\"],
+    \"pessoas\": [\"funções mencionadas\"]
+  },
+  \"procedimentos\": [
+    {
+      \"fase\": \"Nome da fase baseada na descrição\",
+      \"descricao\": \"Descrição da fase\",
+      \"passos\": [
+        {
+          \"passo\": 1,
+          \"acao\": \"Ação específica mencionada pelo usuário\",
+          \"responsavel\": \"Responsável mencionado ou inferido\",
+          \"tempo_estimado\": \"Tempo mencionado ou estimado\",
+          \"criterio_qualidade\": \"Como validar (baseado na descrição)\",
+          \"observacoes\": \"Dicas ou cuidados mencionados\"
+        }
+      ]
+    }
+  ],
+  \"pontos_controle\": [
+    {
+      \"momento\": \"Quando verificar (baseado na transcrição)\",
+      \"o_que_verificar\": \"O que conferir\",
+      \"criterio_aceitacao\": \"Como saber se está correto\",
+      \"acao_se_nao_conforme\": \"O que fazer se não estiver conforme\"
+    }
+  ],
+  \"procedimentos_emergencia\": {
+    \"situacoes_criticas\": [
+      {
+        \"situacao\": \"Situação problemática mencionada\",
+        \"sinais_alerta\": [\"sinais mencionados\"],
+        \"acao_imediata\": \"Ação imediata descrita\",
+        \"quem_notificar\": \"Quem avisar (mencionado ou inferido)\",
+        \"tempo_resposta_maximo\": \"Tempo mencionado ou padrão\"
+      }
+    ]
+  },
+  \"checklists\": {
+    \"inicio_atividade\": [\"itens baseados na descrição\"],
+    \"durante_execucao\": [\"itens baseados na descrição\"],
+    \"final_atividade\": [\"itens baseados na descrição\"]
+  },
+  \"observacoes_transcricao\": \"Resumo dos pontos principais mencionados pelo usuário\"
+}
+```
+
+## REGRAS IMPORTANTES
+1. **FIDELIDADE À TRANSCRIÇÃO**: Use os detalhes específicos mencionados
+2. **LINGUAGEM PROFISSIONAL**: Transforme expressões coloquiais em linguagem técnica
+3. **COMPLETUDE**: Mesmo se a descrição for parcial, gere um SOP completo
+4. **REALISMO**: Os tempos e responsáveis devem ser realistas
+5. **AÇÃO ESPECÍFICA**: Cada passo deve ser uma ação clara e mensurável
+
+## RESPOSTA
+Retorne APENAS o JSON válido, sem explicações adicionais.";
+    }
