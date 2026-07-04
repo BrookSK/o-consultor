@@ -63,4 +63,28 @@ class Database
     {
         return self::getConexao()->lastInsertId();
     }
+
+    /**
+     * Inicia uma transação
+     */
+    public static function beginTransaction(): bool
+    {
+        return self::getConexao()->beginTransaction();
+    }
+
+    /**
+     * Confirma uma transação
+     */
+    public static function commit(): bool
+    {
+        return self::getConexao()->commit();
+    }
+
+    /**
+     * Reverte uma transação
+     */
+    public static function rollback(): bool
+    {
+        return self::getConexao()->rollBack();
+    }
 }

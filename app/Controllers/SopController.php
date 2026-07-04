@@ -1296,10 +1296,16 @@ class SopController
      */
     private function salvarEstruturaTemporaria(int $diagnosticoId, array $estrutura): int
     {
-        return Database::insert(
+        $sucesso = Database::execute(
             "INSERT INTO estruturas_temporarias (diagnostico_id, estrutura_json, criado_em) VALUES (?, ?, NOW())",
             [$diagnosticoId, json_encode($estrutura, JSON_UNESCAPED_UNICODE)]
         );
+        
+        if (!$sucesso) {
+            throw new Exception('Erro ao salvar estrutura temporária');
+        }
+        
+        return (int) Database::lastInsertId();
     }
 
     /**
@@ -1418,10 +1424,16 @@ class SopController
      */
     private function salvarManualCompleto(int $empresaId, int $diagnosticoId, string $conteudo): int
     {
-        return Database::insert(
+        $sucesso = Database::execute(
             "INSERT INTO manuais_completos (empresa_id, diagnostico_id, conteudo_completo, versao, criado_em) VALUES (?, ?, ?, '1.0', NOW())",
             [$empresaId, $diagnosticoId, $conteudo]
         );
+        
+        if (!$sucesso) {
+            throw new Exception('Erro ao salvar manual completo');
+        }
+        
+        return (int) Database::lastInsertId();
     }
 
     /**
@@ -2895,7 +2907,7 @@ class SopController
 
         try {
             // 1. Registrar ocorrência de contingência
-            $ocorrenciaId = Database::execute(
+            $sucessoInsert = Database::execute(
                 "INSERT INTO ocorrencias_contencao (empresa_id, sop_id, contencao_id, nivel, situacao_detectada, responsavel_execucao, usuario_responsavel, data_inicio) 
                  VALUES (:empresa_id, :sop_id, :contencao_id, :nivel, :situacao_detectada, :responsavel_execucao, :usuario_responsavel, NOW())",
                 [
@@ -2907,7 +2919,9 @@ class SopController
                     'responsavel_execucao' => $contencao['responsavel'],
                     'usuario_responsavel' => Auth::usuarioId(),
                 ]
-            ) ? Database::lastInsertId() : 0;
+            );
+            
+            $ocorrenciaId = $sucessoInsert ? (int) Database::lastInsertId() : 0;
 
             // 2. Se é N2 ou N3, agendar revisão automática do SOP
             if (in_array($nivel, ['N2', 'N3'])) {
