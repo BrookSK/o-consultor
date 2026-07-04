@@ -22,7 +22,8 @@
             <p class="text-gray-600 mt-1">
                 Procedimentos Operacionais Padrão gerados para <strong><?= htmlspecialchars($dados['empresa']['nome']) ?></strong>
                 <?php if ($dados['usar_nova_arquitetura']): ?>
-                    <span class="inline-block ml-2 px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full">Nova Arquitetura ✨</span>
+                    <span class="inline-block ml-2 px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full">Sistema Hierárquico ✨</span>
+                    <br><span class="text-sm text-gray-500 mt-1">🏢 Use "Gerenciar Hierarquicamente" para criar, editar e gerenciar setores e serviços</span>
                 <?php endif; ?>
             </p>
         </div>
@@ -72,7 +73,7 @@
             <div class="flex items-center justify-between">
                 <div>
                     <div class="text-sm font-medium text-green-600">Progresso</div>
-                    <div class="text-2xl font-bold text-green-700"><?= $dados['progresso']['progresso_percentual'] ?? 0 ?>%</div>
+                    <div class="text-2xl font-bold text-green-700"><?= number_format($dados['progresso']['percentual_conclusao'] ?? 0, 1) ?>%</div>
                 </div>
                 <div class="text-green-400">📊</div>
             </div>
@@ -236,9 +237,26 @@
                         </div>
                         <div class="flex items-center gap-2">
                             <button onclick="verDetalhamentoCompleto(<?= $servico['id'] ?>, '<?= htmlspecialchars($servico['servico_nome']) ?>')" 
-                                    class="px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition flex items-center gap-2">
-                                🧠 Ver Detalhamento
+                                    class="px-3 py-1 bg-gray-600 text-white text-xs rounded hover:bg-gray-700" title="Ver detalhes">
+                                👁️
                             </button>
+                            
+                            <?php if ($servico['status'] === 'mapeado'): ?>
+                            <a href="<?= APP_URL ?>/sop/gerenciar-hierarquia?diagnostico_id=<?= $dados['diagnostico']['id'] ?>&estrutura_id=<?= $dados['estrutura']['id'] ?>" 
+                               class="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700" title="Gerenciar na hierarquia">
+                                🔍 Detalhar
+                            </a>
+                            <?php elseif ($servico['status'] === 'detalhado'): ?>
+                            <a href="<?= APP_URL ?>/sop/gerenciar-hierarquia?diagnostico_id=<?= $dados['diagnostico']['id'] ?>&estrutura_id=<?= $dados['estrutura']['id'] ?>" 
+                               class="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700" title="Gerar SOP na hierarquia">
+                                📝 Gerar SOP
+                            </a>
+                            <?php else: ?>
+                            <a href="<?= APP_URL ?>/sop/gerenciar-hierarquia?diagnostico_id=<?= $dados['diagnostico']['id'] ?>&estrutura_id=<?= $dados['estrutura']['id'] ?>" 
+                               class="px-3 py-1 bg-purple-600 text-white text-xs rounded hover:bg-purple-700" title="Gerenciar na hierarquia">
+                                🏢 Gerenciar
+                            </a>
+                            <?php endif; ?>
                         </div>
                     </div>
                     <?php endforeach; ?>
@@ -348,6 +366,13 @@
     </a>
     
     <div class="flex gap-3">
+        <?php if ($dados['usar_nova_arquitetura'] && ($dados['sistema'] ?? '') === 'hierarquico'): ?>
+        <a href="<?= APP_URL ?>/sop/gerenciar-hierarquia?diagnostico_id=<?= $dados['diagnostico']['id'] ?>&estrutura_id=<?= $dados['estrutura']['id'] ?>" 
+           class="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition flex items-center gap-2">
+            🏢 Gerenciar Hierarquicamente
+        </a>
+        <?php endif; ?>
+        
         <?php if (!$dados['usar_nova_arquitetura']): ?>
         <a href="<?= APP_URL ?>/diagnostico/resultado/<?= $dados['diagnostico']['id'] ?>" 
            class="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition flex items-center gap-2">
@@ -466,21 +491,7 @@ function exportarTodosSops() {
 
 // Redirecionar para gestão hierárquica se disponível
 <?php if ($dados['usar_nova_arquitetura'] && ($dados['sistema'] ?? '') === 'hierarquico'): ?>
-function gerenciarHierarquicamente() {
-    window.location.href = `<?= APP_URL ?>/sop/gerenciar-hierarquia?diagnostico_id=<?= $dados['diagnostico']['id'] ?>`;
-}
-
-// Adicionar botão se for sistema hierárquico
-document.addEventListener('DOMContentLoaded', function() {
-    const botoesAcao = document.querySelector('.flex.gap-3');
-    if (botoesAcao) {
-        const botaoHierarquico = document.createElement('button');
-        botaoHierarquico.onclick = gerenciarHierarquicamente;
-        botaoHierarquico.className = 'px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition flex items-center gap-2';
-        botaoHierarquico.innerHTML = '🏢 Gestão Hierárquica';
-        botoesAcao.appendChild(botaoHierarquico);
-    }
-});
+// Funcionalidade de gestão hierárquica disponível - botão já adicionado via PHP
 <?php endif; ?>
 
 // Fechar modal com ESC

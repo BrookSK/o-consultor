@@ -33,6 +33,10 @@
     </div>
     
     <div class="flex gap-3">
+        <a href="<?= APP_URL ?>/sop/listar-por-diagnostico?diagnostico_id=<?= $dados['diagnostico_id'] ?>" 
+           class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm">
+            📋 Ver Lista Simples
+        </a>
         <?php if (!$dados['estrutura_existe']): ?>
         <button onclick="criarEstruturaOrganizacional()" 
                 class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium">

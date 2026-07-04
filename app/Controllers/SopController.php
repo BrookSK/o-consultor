@@ -3889,7 +3889,7 @@ class SopController
             [$estruturaId]
         );
         
-        // Organizar dados por setores
+        // Organizar dados por setores (MESMO FORMATO DA GESTÃO HIERÁRQUICA)
         $setoresPorNome = [];
         $totalServicosDetalhados = 0;
         $totalServicosCriticos = 0;
@@ -3903,12 +3903,31 @@ class SopController
                 [$setor['id']]
             );
             
-            // Contar serviços detalhados e críticos
-            $servicosDetalhados = array_filter($servicos, function($s) { return $s['status'] !== 'mapeado'; });
-            $servicosCriticos = array_filter($servicos, function($s) { return $s['criticidade'] === 'alta'; });
+            // Separar serviços mapeados e detalhados
+            $servicosMapeados = [];
+            $servicosDetalhados = [];
             
-            $totalServicosDetalhados += count($servicosDetalhados);
-            $totalServicosCriticos += count($servicosCriticos);
+            foreach ($servicos as $servico) {
+                $servicosMapeados[] = ['nome' => $servico['nome_servico']];
+                
+                // Se não é apenas mapeado, incluir nos detalhados
+                if ($servico['status'] !== 'mapeado') {
+                    $servicosDetalhados[] = [
+                        'id' => $servico['id'],
+                        'servico_nome' => $servico['nome_servico'],
+                        'servico_codigo' => $servico['codigo_servico'],
+                        'criticidade' => $servico['criticidade'] === 'alta' ? 1 : ($servico['criticidade'] === 'media' ? 2 : 3),
+                        'problemas_mapeados' => 0, // TODO: implementar contagem real
+                        'data_criacao_formatada' => date('d/m/Y às H:i', strtotime($servico['criado_em'])),
+                        'status' => $servico['status']
+                    ];
+                    $totalServicosDetalhados++;
+                }
+                
+                if ($servico['criticidade'] === 'alta') {
+                    $totalServicosCriticos++;
+                }
+            }
             
             $setoresPorNome[$setor['nome_setor']] = [
                 'info' => [
@@ -3917,20 +3936,8 @@ class SopController
                     'status' => $setor['status'],
                     'total_servicos' => $setor['total_servicos_reais']
                 ],
-                'servicos_mapeados' => array_map(function($s) {
-                    return ['nome' => $s['nome_servico']];
-                }, $servicos),
-                'servicos_detalhados' => array_map(function($s) {
-                    return [
-                        'id' => $s['id'],
-                        'servico_nome' => $s['nome_servico'],
-                        'servico_codigo' => $s['codigo_servico'],
-                        'criticidade' => $s['criticidade'] === 'alta' ? 1 : ($s['criticidade'] === 'media' ? 2 : 3),
-                        'problemas_mapeados' => 0, // TODO: implementar contagem real
-                        'data_criacao_formatada' => date('d/m/Y às H:i', strtotime($s['criado_em'])),
-                        'status' => $s['status']
-                    ];
-                }, $servicosDetalhados)
+                'servicos_mapeados' => $servicosMapeados,
+                'servicos_detalhados' => $servicosDetalhados
             ];
         }
         
@@ -3947,13 +3954,13 @@ class SopController
             'usar_nova_arquitetura' => true,
             'estrutura' => $estrutura,
             'setores' => $setoresPorNome,
-            'progresso' => $progresso ?: ['progresso_percentual' => 0],
+            'progresso' => $progresso ?: ['percentual_conclusao' => 0],
             'total_setores_mapeados' => count($setores),
             'total_servicos_detalhados' => $totalServicosDetalhados,
             'estatisticas' => [
                 'servicos_criticos' => $totalServicosCriticos
             ],
-            'sistema' => 'hierarquico'
+            'sistema' => 'hierarquico' // IMPORTANTE: Marcar como sistema hierárquico
         ];
     }
     
