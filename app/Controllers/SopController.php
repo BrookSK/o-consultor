@@ -8427,19 +8427,46 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         $prompt = $this->criarPromptDetalhamentoServico($servico, $contextoSetor, $respostasDiagnostico);
         
         // Chamar IA para detalhamento
-        $respostaIA = ApiHelper::chamarAnalise($prompt);
+        Logger::info('DEBUG - Chamando IA para detalhamento', [
+            'servico_id' => $servico['id'] ?? 'N/A',
+            'servico_nome' => $servico['nome_servico'] ?? 'N/A'
+        ]);
         
-        if (!$respostaIA['sucesso'] || !$respostaIA['conteudo']) {
-            return ['sucesso' => false, 'erro' => 'Erro na IA: ' . ($respostaIA['erro'] ?? 'não foi possível detalhar o serviço')];
+        $resultadoIA = ApiHelper::chamarAnalise($prompt);
+        
+        Logger::info('DEBUG - Resposta da IA recebida', [
+            'tipo_resposta' => gettype($resultadoIA),
+            'eh_array' => is_array($resultadoIA),
+            'tem_sucesso' => isset($resultadoIA['sucesso']),
+            'tem_conteudo' => isset($resultadoIA['conteudo'])
+        ]);
+        
+        // Verificar se houve sucesso na chamada da IA
+        if (!$resultadoIA || !is_array($resultadoIA)) {
+            Logger::error('DEBUG - Resposta da IA inválida', ['resposta' => $resultadoIA]);
+            return ['sucesso' => false, 'erro' => 'Erro na IA: resposta inválida'];
+        }
+        
+        if (!$resultadoIA['sucesso'] || empty($resultadoIA['conteudo'])) {
+            $erro = $resultadoIA['erro'] ?? 'não foi possível detalhar o serviço';
+            Logger::error('DEBUG - IA retornou erro', ['erro' => $erro]);
+            return ['sucesso' => false, 'erro' => 'Erro na IA: ' . $erro];
         }
         
         // Processar resposta da IA e extrair detalhamento estruturado
-        $detalhamento = $this->processarRespostaDetalhamentoIA($respostaIA['conteudo'], $servico);
+        $conteudoIA = $resultadoIA['conteudo'];
+        
+        Logger::info('DEBUG - Processando resposta da IA', [
+            'tipo_conteudo' => gettype($conteudoIA),
+            'tamanho_conteudo' => is_string($conteudoIA) ? strlen($conteudoIA) : 'não é string'
+        ]);
+        
+        $detalhamento = $this->processarRespostaDetalhamentoIA($conteudoIA, $servico);
         
         return [
             'sucesso' => true,
             'detalhamento' => $detalhamento,
-            'resposta_ia' => $respostaIA['conteudo']
+            'resposta_ia' => $conteudoIA
         ];
     }
     
@@ -8451,14 +8478,21 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         $prompt = $this->criarPromptGeracaoSopDetalhado($servico, $detalhamento, $diagnostico);
         
         // Chamar IA para gerar SOP
-        $respostaIA = ApiHelper::chamarAnalise($prompt);
+        $resultadoIA = ApiHelper::chamarAnalise($prompt);
         
-        if (!$respostaIA['sucesso'] || !$respostaIA['conteudo']) {
-            return ['sucesso' => false, 'erro' => 'Erro na IA: ' . ($respostaIA['erro'] ?? 'não foi possível gerar o SOP')];
+        // Verificar se houve sucesso na chamada da IA
+        if (!$resultadoIA || !is_array($resultadoIA)) {
+            return ['sucesso' => false, 'erro' => 'Erro na IA: resposta inválida'];
+        }
+        
+        if (!$resultadoIA['sucesso'] || empty($resultadoIA['conteudo'])) {
+            $erro = $resultadoIA['erro'] ?? 'não foi possível gerar o SOP';
+            return ['sucesso' => false, 'erro' => 'Erro na IA: ' . $erro];
         }
         
         // Salvar SOP na nova arquitetura
-        $sopId = $this->salvarSopNaNovaArquitetura($servico, $detalhamento, $respostaIA['conteudo'], $diagnostico);
+        $conteudoIA = $resultadoIA['conteudo'];
+        $sopId = $this->salvarSopNaNovaArquitetura($servico, $detalhamento, $conteudoIA, $diagnostico);
         
         if (!$sopId) {
             return ['sucesso' => false, 'erro' => 'Erro ao salvar SOP no banco de dados'];
@@ -8467,7 +8501,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         return [
             'sucesso' => true,
             'sop_id' => $sopId,
-            'conteudo_sop' => $respostaIA
+            'conteudo_sop' => $conteudoIA
         ];
     }
     

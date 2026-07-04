@@ -114,6 +114,99 @@
     <?php endif; ?>
 </div>
 
+<!-- Lista de Serviços Rápida -->
+<?php if (!empty($dados['hierarquia']['setores'])): ?>
+<!-- Seção de Acesso Rápido aos Serviços -->
+<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+    <div class="flex items-center gap-3 mb-4">
+        <span class="text-2xl">⚡</span>
+        <div>
+            <h2 class="text-lg font-semibold text-gray-800">Acesso Rápido aos Serviços</h2>
+            <p class="text-sm text-gray-500">Clique em qualquer serviço para processá-lo diretamente</p>
+        </div>
+    </div>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        <?php 
+        $todosServicos = [];
+        foreach ($dados['hierarquia']['setores'] as $setor) {
+            foreach ($setor['servicos'] as $servico) {
+                $servico['setor_nome'] = $setor['nome_setor'];
+                $todosServicos[] = $servico;
+            }
+        }
+        
+        // Ordenar por status para priorizar os que precisam de ação
+        usort($todosServicos, function($a, $b) {
+            $prioridade = ['mapeado' => 1, 'detalhado' => 2, 'sop_gerado' => 3, 'aprovado' => 4];
+            return ($prioridade[$a['status']] ?? 5) - ($prioridade[$b['status']] ?? 5);
+        });
+        
+        foreach (array_slice($todosServicos, 0, 12) as $servico): // Mostrar apenas 12 para não sobrecarregar
+        ?>
+        <div class="border border-gray-200 rounded-lg p-3 hover:border-blue-300 hover:bg-blue-50 transition cursor-pointer"
+             onclick="processarServicoRapido(<?= $servico['id'] ?>, '<?= $servico['status'] ?>')">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs text-gray-500 font-medium"><?= htmlspecialchars($servico['setor_nome']) ?></span>
+                <?php
+                switch($servico['status']) {
+                    case 'mapeado':
+                        $statusBadge = 'bg-gray-100 text-gray-600';
+                        $statusText = 'Mapeado';
+                        break;
+                    case 'detalhado':
+                        $statusBadge = 'bg-blue-100 text-blue-700';
+                        $statusText = 'Detalhado';
+                        break;
+                    case 'sop_gerado':
+                        $statusBadge = 'bg-green-100 text-green-700';
+                        $statusText = 'SOP Gerado';
+                        break;
+                    case 'aprovado':
+                        $statusBadge = 'bg-emerald-100 text-emerald-700';
+                        $statusText = 'Aprovado';
+                        break;
+                    default:
+                        $statusBadge = 'bg-gray-100 text-gray-500';
+                        $statusText = 'Indefinido';
+                        break;
+                }
+                ?>
+                <span class="px-2 py-1 text-xs rounded font-medium <?= $statusBadge ?>">
+                    <?= $statusText ?>
+                </span>
+            </div>
+            <h4 class="text-sm font-medium text-gray-800 mb-1"><?= htmlspecialchars($servico['nome_servico']) ?></h4>
+            <div class="text-xs text-gray-500 mb-2">
+                Código: <?= htmlspecialchars($servico['codigo_servico']) ?>
+            </div>
+            <div class="flex justify-between items-center">
+                <span class="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded">
+                    <?= ucfirst($servico['categoria']) ?>
+                </span>
+                
+                <?php if ($servico['status'] === 'mapeado'): ?>
+                <span class="text-xs text-blue-600 font-medium">👆 Clique para detalhar</span>
+                <?php elseif ($servico['status'] === 'detalhado'): ?>
+                <span class="text-xs text-green-600 font-medium">👆 Clique para gerar SOP</span>
+                <?php elseif ($servico['status'] === 'sop_gerado' || $servico['status'] === 'aprovado'): ?>
+                <span class="text-xs text-emerald-600 font-medium">👆 Clique para ver SOP</span>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php endforeach; ?>
+    </div>
+    
+    <?php if (count($todosServicos) > 12): ?>
+    <div class="text-center mt-4">
+        <span class="text-sm text-gray-500">
+            Mostrando 12 de <?= count($todosServicos) ?> serviços • Use a visualização hierárquica abaixo para ver todos
+        </span>
+    </div>
+    <?php endif; ?>
+</div>
+<?php endif; ?>
+
 <!-- Hierarquia Completa -->
 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
     <div class="flex items-center gap-3 mb-6">
@@ -180,9 +273,15 @@
                     <div class="space-y-3">
                         <?php foreach ($setor['servicos'] as $servico): ?>
                         <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
-                            <div class="flex items-center gap-3">
+                            <div class="flex items-center gap-3 flex-1">
                                 <code class="px-2 py-1 bg-white text-xs text-gray-600 rounded font-mono"><?= htmlspecialchars($servico['codigo_servico']) ?></code>
-                                <span class="text-sm text-gray-800"><?= htmlspecialchars($servico['nome_servico']) ?></span>
+                                
+                                <!-- Nome do serviço clicável -->
+                                <span class="text-sm text-gray-800 cursor-pointer hover:text-blue-600 font-medium" 
+                                      onclick="processarServicoRapido(<?= $servico['id'] ?>, '<?= $servico['status'] ?>')"
+                                      title="Clique para processar este serviço">
+                                    <?= htmlspecialchars($servico['nome_servico']) ?>
+                                </span>
                                 
                                 <!-- Badge de Status -->
                                 <?php
@@ -499,8 +598,39 @@ async function criarEstruturaOrganizacional() {
     }
 }
 
-// Processar serviço (detalhar, gerar SOP ou processo completo)
-async function processarServico(servicoId, etapa) {
+// Processar serviço de forma rápida (clique direto no card)
+async function processarServicoRapido(servicoId, status) {
+    let etapa, titulo, subtitulo;
+    
+    switch(status) {
+        case 'mapeado':
+            etapa = 'processo_completo';
+            titulo = 'Processo Completo: Detalhar + Gerar SOP';
+            subtitulo = 'Executando detalhamento e geração de SOP automaticamente...';
+            break;
+        case 'detalhado':
+            etapa = 'gerar_sop';
+            titulo = 'Gerando SOP';
+            subtitulo = 'Criando procedimento operacional padrão...';
+            break;
+        case 'sop_gerado':
+        case 'aprovado':
+            // Redirecionar para visualização do SOP
+            const servicoElement = document.querySelector(`[onclick*="processarServicoRapido(${servicoId}"]`);
+            const codigo = servicoElement ? servicoElement.querySelector('div:contains("Código:")') : null;
+            alert('Redirecionando para visualização do SOP...');
+            // TODO: Implementar redirecionamento para SOP específico
+            return;
+        default:
+            alert('Status do serviço não reconhecido');
+            return;
+    }
+    
+    await processarServico(servicoId, etapa, titulo, subtitulo);
+}
+
+// Processar serviço (detalhar, gerar SOP ou processo completo) - VERSÃO ATUALIZADA
+async function processarServico(servicoId, etapa, tituloCustom = null, subtituloCustom = null) {
     const etapaTitulos = {
         'detalhar': 'Detalhando Serviço',
         'gerar_sop': 'Gerando SOP',
@@ -513,7 +643,10 @@ async function processarServico(servicoId, etapa) {
         'processo_completo': 'Executando detalhamento e geração de SOP automaticamente...'
     };
     
-    mostrarLoading(etapaTitulos[etapa], etapaSubtitulos[etapa]);
+    const titulo = tituloCustom || etapaTitulos[etapa];
+    const subtitulo = subtituloCustom || etapaSubtitulos[etapa];
+    
+    mostrarLoading(titulo, subtitulo);
     
     try {
         const response = await fetch('<?= APP_URL ?>/sop/processar-servico-completo', {
@@ -552,6 +685,8 @@ async function processarServico(servicoId, etapa) {
         alert('Erro de comunicação com o servidor');
     }
 }
+
+// Processar serviço (detalhar, gerar SOP ou processo completo) - VERSÃO ORIGINAL REMOVIDA
 
 // Ver detalhamento de serviço
 function verDetalhamento(servicoId) {
@@ -718,13 +853,13 @@ function esconderLoading() {
 // Expandir todos os setores por padrão se houver poucos
 document.addEventListener('DOMContentLoaded', function() {
     const setores = document.querySelectorAll('[id^="setor-"]');
-    if (setores.length <= 3) {
-        setores.forEach(setor => {
-            setor.classList.remove('hidden');
-            const icon = document.getElementById('icon-' + setor.id);
-            if (icon) icon.style.transform = 'rotate(180deg)';
-        });
-    }
+    
+    // Expandir todos os setores automaticamente para melhor usabilidade
+    setores.forEach(setor => {
+        setor.classList.remove('hidden');
+        const icon = document.getElementById('icon-' + setor.id);
+        if (icon) icon.style.transform = 'rotate(180deg)';
+    });
     
     // Listener para arquivo de áudio
     const audioInput = document.getElementById('audioFile');
