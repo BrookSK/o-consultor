@@ -19,13 +19,23 @@
         <div class="flex items-center gap-3 mb-2">
             <code class="px-3 py-1 bg-gray-100 text-gray-700 rounded font-mono text-sm"><?= htmlspecialchars($servico['codigo_servico']) ?></code>
             <?php
-            $statusConfig = match($servico['status']) {
-                'mapeado' => ['bg' => 'bg-gray-100 text-gray-600', 'icon' => '○', 'label' => 'Mapeado'],
-                'detalhado' => ['bg' => 'bg-blue-100 text-blue-700', 'icon' => '◐', 'label' => 'Detalhado'],
-                'sop_gerado' => ['bg' => 'bg-green-100 text-green-700', 'icon' => '●', 'label' => 'SOP Gerado'],
-                'aprovado' => ['bg' => 'bg-emerald-100 text-emerald-700', 'icon' => '✓', 'label' => 'Aprovado'],
-                default => ['bg' => 'bg-gray-100 text-gray-500', 'icon' => '?', 'label' => 'Indefinido']
-            };
+            switch($servico['status']) {
+                case 'mapeado':
+                    $statusConfig = ['bg' => 'bg-gray-100 text-gray-600', 'icon' => '○', 'label' => 'Mapeado'];
+                    break;
+                case 'detalhado':
+                    $statusConfig = ['bg' => 'bg-blue-100 text-blue-700', 'icon' => '◐', 'label' => 'Detalhado'];
+                    break;
+                case 'sop_gerado':
+                    $statusConfig = ['bg' => 'bg-green-100 text-green-700', 'icon' => '●', 'label' => 'SOP Gerado'];
+                    break;
+                case 'aprovado':
+                    $statusConfig = ['bg' => 'bg-emerald-100 text-emerald-700', 'icon' => '✓', 'label' => 'Aprovado'];
+                    break;
+                default:
+                    $statusConfig = ['bg' => 'bg-gray-100 text-gray-500', 'icon' => '?', 'label' => 'Indefinido'];
+                    break;
+            }
             ?>
             <span class="px-3 py-1 text-sm font-medium rounded <?= $statusConfig['bg'] ?>">
                 <?= $statusConfig['icon'] ?> <?= $statusConfig['label'] ?>
@@ -74,12 +84,22 @@
             </div>
             <div>
                 <span class="text-sm font-medium text-gray-600">Criticidade:</span>
-                <span class="ml-2 px-2 py-1 <?= match($servico['criticidade']) {
-                    'alta' => 'bg-red-100 text-red-700',
-                    'media' => 'bg-yellow-100 text-yellow-700',
-                    'baixa' => 'bg-green-100 text-green-700',
-                    default => 'bg-gray-100 text-gray-700'
-                } ?> text-sm rounded"><?= ucfirst($servico['criticidade']) ?></span>
+                <span class="ml-2 px-2 py-1 <?php 
+                    switch($servico['criticidade']) {
+                        case 'alta':
+                            echo 'bg-red-100 text-red-700';
+                            break;
+                        case 'media':
+                            echo 'bg-yellow-100 text-yellow-700';
+                            break;
+                        case 'baixa':
+                            echo 'bg-green-100 text-green-700';
+                            break;
+                        default:
+                            echo 'bg-gray-100 text-gray-700';
+                            break;
+                    }
+                ?> text-sm rounded"><?= ucfirst($servico['criticidade']) ?></span>
             </div>
             <div>
                 <span class="text-sm font-medium text-gray-600">Frequência:</span>
@@ -91,18 +111,38 @@
             </div>
             <div>
                 <span class="text-sm font-medium text-gray-600">Origem:</span>
-                <span class="ml-2 px-2 py-1 <?= match($servico['origem']) {
-                    'automatico' => 'bg-blue-100 text-blue-700',
-                    'manual' => 'bg-green-100 text-green-700',
-                    'audio_transcricao' => 'bg-orange-100 text-orange-700',
-                    default => 'bg-gray-100 text-gray-700'
-                } ?> text-sm rounded">
-                    <?= match($servico['origem']) {
-                        'automatico' => '🤖 Automático',
-                        'manual' => '✋ Manual',
-                        'audio_transcricao' => '🎤 Áudio',
-                        default => '❓ Indefinido'
-                    } ?>
+                <span class="ml-2 px-2 py-1 <?php
+                    switch($servico['origem']) {
+                        case 'automatico':
+                            echo 'bg-blue-100 text-blue-700';
+                            break;
+                        case 'manual':
+                            echo 'bg-green-100 text-green-700';
+                            break;
+                        case 'audio_transcricao':
+                            echo 'bg-orange-100 text-orange-700';
+                            break;
+                        default:
+                            echo 'bg-gray-100 text-gray-700';
+                            break;
+                    }
+                ?> text-sm rounded">
+                    <?php
+                    switch($servico['origem']) {
+                        case 'automatico':
+                            echo '🤖 Automático';
+                            break;
+                        case 'manual':
+                            echo '✋ Manual';
+                            break;
+                        case 'audio_transcricao':
+                            echo '🎤 Áudio';
+                            break;
+                        default:
+                            echo '❓ Indefinido';
+                            break;
+                    }
+                    ?>
                 </span>
             </div>
         </div>

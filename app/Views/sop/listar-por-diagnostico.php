@@ -192,18 +192,34 @@
                                 
                                 <!-- Badges de Criticidade -->
                                 <?php 
-                                $critBadge = match($servico['criticidade']) {
-                                    1 => 'bg-red-100 text-red-700',
-                                    2 => 'bg-yellow-100 text-yellow-700',
-                                    3 => 'bg-blue-100 text-blue-700',
-                                    default => 'bg-gray-100 text-gray-700'
-                                };
-                                $critLabel = match($servico['criticidade']) {
-                                    1 => 'Crítico',
-                                    2 => 'Importante', 
-                                    3 => 'Complementar',
-                                    default => 'N/A'
-                                };
+                                switch($servico['criticidade']) {
+                                    case 1:
+                                        $critBadge = 'bg-red-100 text-red-700';
+                                        break;
+                                    case 2:
+                                        $critBadge = 'bg-yellow-100 text-yellow-700';
+                                        break;
+                                    case 3:
+                                        $critBadge = 'bg-blue-100 text-blue-700';
+                                        break;
+                                    default:
+                                        $critBadge = 'bg-gray-100 text-gray-700';
+                                        break;
+                                }
+                                switch($servico['criticidade']) {
+                                    case 1:
+                                        $critLabel = 'Crítico';
+                                        break;
+                                    case 2:
+                                        $critLabel = 'Importante';
+                                        break;
+                                    case 3:
+                                        $critLabel = 'Complementar';
+                                        break;
+                                    default:
+                                        $critLabel = 'N/A';
+                                        break;
+                                }
                                 ?>
                                 <span class="px-2 py-1 text-xs font-medium <?= $critBadge ?> rounded">
                                     <?= $critLabel ?>
@@ -298,9 +314,6 @@
                                     bg-yellow-100 text-yellow-600
                                 <?php else: ?>
                                     bg-gray-100 text-gray-600
-                                <?php endif; ?>">
-                                <?= $sop['status_formatado'] ?>
-                            </span>
                                 <?php endif; ?>">
                                 <?= $sop['status_formatado'] ?>
                             </span>
@@ -480,81 +493,3 @@ document.addEventListener('keydown', function(e) {
 
 <?php $conteudo = ob_get_clean(); ?>
 <?php require VIEW_PATH . '/layouts/layout.php'; ?>
-                                <strong>Última atualização:</strong> ${new Date().toLocaleString()}
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="bg-red-50 border border-red-200 rounded-lg p-6">
-                        <h4 class="font-semibold text-red-800 mb-3 flex items-center gap-2">
-                            ⚠️ Problemas Mapeados N1-N2-N3
-                        </h4>
-                        <p class="text-sm text-red-700 mb-3">Cenários problemáticos com soluções em 3 níveis de contenção:</p>
-                        <div class="space-y-2">
-                            <div class="bg-white p-3 rounded border-l-4 border-l-yellow-400">
-                                <strong class="text-yellow-700">N1 (0-30min):</strong> <span class="text-gray-700">Ações imediatas de contenção</span>
-                            </div>
-                            <div class="bg-white p-3 rounded border-l-4 border-l-orange-400">
-                                <strong class="text-orange-700">N2 (30min-4h):</strong> <span class="text-gray-700">Escalação e medidas intermediárias</span>
-                            </div>
-                            <div class="bg-white p-3 rounded border-l-4 border-l-red-400">
-                                <strong class="text-red-700">N3 (4h+):</strong> <span class="text-gray-700">Medidas extremas e reestruturação</span>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="bg-green-50 border border-green-200 rounded-lg p-6">
-                        <h4 class="font-semibold text-green-800 mb-3 flex items-center gap-2">
-                            🎯 KPIs e Controles
-                        </h4>
-                        <p class="text-sm text-green-700 mb-3">Métricas para monitoramento e pontos de controle específicos do processo.</p>
-                        <div class="bg-white p-4 rounded border">
-                            <div class="text-sm text-gray-600">
-                                <em>Detalhamento específico será carregado da base de dados...</em>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="text-center pt-4 border-t">
-                        <button onclick="alert('Endpoint para SOP completo será implementado')" 
-                                class="px-8 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium">
-                            📄 Visualizar SOP Completo
-                        </button>
-                    </div>
-                </div>
-            `;
-        }, 1000);
-        
-    } catch (error) {
-        conteudo.innerHTML = `
-            <div class="text-center py-8 text-red-600">
-                <div class="mb-2">❌ Erro ao carregar detalhamento</div>
-                <div class="text-sm">${error.message}</div>
-            </div>
-        `;
-    }
-}
-
-// Fechar modal
-function fecharModalDetalhamento() {
-    document.getElementById('modal-detalhamento').classList.add('hidden');
-}
-
-// Exportar todos os SOPs
-function exportarTodosSops() {
-    if (confirm('Deseja exportar todos os SOPs/serviços gerados para este diagnóstico?')) {
-        const diagnosticoId = <?= $dados['diagnostico']['id'] ?>;
-        window.open(`<?= APP_URL ?>/sop/exportar-todos-zip?diagnostico_id=${diagnosticoId}`, '_blank');
-    }
-}
-
-// Fechar modal ao clicar fora
-document.getElementById('modal-detalhamento').addEventListener('click', function(e) {
-    if (e.target === this) {
-        fecharModalDetalhamento();
-    }
-});
-</script>
-
-<?php $conteudo = ob_get_clean(); ?>
-<?php include VIEW_PATH . '/layouts/layout.php'; ?>

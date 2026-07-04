@@ -35,14 +35,26 @@
                         <p class="text-sm font-medium text-gray-800"><?= htmlspecialchars($sop['nome']) ?></p>
                     </td>
                     <?php foreach ($sop['raci'] as $valor):
-                        $corRaci = match($valor) {
-                            'R' => 'bg-blue-600 text-white',
-                            'A' => 'bg-red-600 text-white',
-                            'C' => 'bg-yellow-500 text-white',
-                            'I' => 'bg-green-600 text-white',
-                            'S' => 'bg-purple-600 text-white',
-                            default => 'bg-gray-100 text-gray-300',
-                        };
+                        switch($valor) {
+                            case 'R':
+                                $corRaci = 'bg-blue-600 text-white';
+                                break;
+                            case 'A':
+                                $corRaci = 'bg-red-600 text-white';
+                                break;
+                            case 'C':
+                                $corRaci = 'bg-yellow-500 text-white';
+                                break;
+                            case 'I':
+                                $corRaci = 'bg-green-600 text-white';
+                                break;
+                            case 'S':
+                                $corRaci = 'bg-purple-600 text-white';
+                                break;
+                            default:
+                                $corRaci = 'bg-gray-100 text-gray-300';
+                                break;
+                        }
                     ?>
                     <td class="px-3 py-3 text-center">
                         <span class="inline-flex w-7 h-7 rounded-full items-center justify-center text-xs font-bold <?= $corRaci ?>"><?= $valor ?></span>

@@ -160,11 +160,18 @@ class SopController
             } else {
                 // Para SOPs da arquitetura antiga, usar sop_codigo
                 $chave = $sop['sop_codigo'];
-                $status = match($sop['status']) {
-                    'ativo' => 'aprovado',
-                    'rascunho' => 'gerado',
-                    default => 'nao_gerado'
-                };
+                $status = 'nao_gerado';
+                switch($sop['status']) {
+                    case 'ativo':
+                        $status = 'aprovado';
+                        break;
+                    case 'rascunho':
+                        $status = 'gerado';
+                        break;
+                    default:
+                        $status = 'nao_gerado';
+                        break;
+                }
                 
                 $sopsMap[$chave] = [
                     'id' => $sop['id'],
@@ -222,8 +229,7 @@ class SopController
             'total_departamentos' => count($departamentosEstruturados),
             'departamentos' => array_column($departamentosEstruturados, 'nome'),
             'total_sops_mapeados' => count($sopsMap),
-            'exemplo_mapeamento' => array_slice($sopsMap, 0, 3) // Alguns exemplos para debug
-        ]);
+            'exemplo_mapeamento' => array_slice($sopsMap, 0, 3), // Alguns exemplos para debug
             'total_sops' => array_sum(array_column($departamentosEstruturados, 'total_sops'))
         ]);
         
@@ -444,22 +450,69 @@ class SopController
     private function gerarCodigoSOPProfissional(string $segmento, string $setor, string $processo, int $contador): string
     {
         // Prefixo do segmento da empresa
-        $prefixoSegmento = match(strtolower($segmento)) {
-            'tecnologia', 'tech', 'software' => 'TEC',
-            'saúde', 'saude', 'medicina' => 'SAU',
-            'construção', 'construcao', 'engenharia' => 'CON',
-            'educação', 'educacao', 'ensino' => 'EDU',
-            'varejo', 'ecommerce', 'comercio' => 'VAR',
-            'indústria', 'industria', 'fabrica' => 'IND',
-            'logística', 'logistica', 'transporte' => 'LOG',
-            'alimentação', 'alimentacao', 'restaurante' => 'ALI',
-            'imobiliário', 'imobiliario' => 'IMO',
-            'advocacia', 'juridico' => 'ADV',
-            'beleza', 'estetica' => 'BEL',
-            'fitness', 'academia' => 'FIT',
-            'consultoria', 'servicos' => 'CON',
-            default => 'GER'
-        };
+        $prefixoSegmento = 'GER'; // default
+        switch(strtolower($segmento)) {
+            case 'tecnologia':
+            case 'tech':
+            case 'software':
+                $prefixoSegmento = 'TEC';
+                break;
+            case 'saúde':
+            case 'saude':
+            case 'medicina':
+                $prefixoSegmento = 'SAU';
+                break;
+            case 'construção':
+            case 'construcao':
+            case 'engenharia':
+                $prefixoSegmento = 'CON';
+                break;
+            case 'educação':
+            case 'educacao':
+            case 'ensino':
+                $prefixoSegmento = 'EDU';
+                break;
+            case 'varejo':
+            case 'ecommerce':
+            case 'comercio':
+                $prefixoSegmento = 'VAR';
+                break;
+            case 'indústria':
+            case 'industria':
+            case 'fabrica':
+                $prefixoSegmento = 'IND';
+                break;
+            case 'logística':
+            case 'logistica':
+            case 'transporte':
+                $prefixoSegmento = 'LOG';
+                break;
+            case 'alimentação':
+            case 'alimentacao':
+            case 'restaurante':
+                $prefixoSegmento = 'ALI';
+                break;
+            case 'imobiliário':
+            case 'imobiliario':
+                $prefixoSegmento = 'IMO';
+                break;
+            case 'advocacia':
+            case 'juridico':
+                $prefixoSegmento = 'ADV';
+                break;
+            case 'beleza':
+            case 'estetica':
+                $prefixoSegmento = 'BEL';
+                break;
+            case 'fitness':
+            case 'academia':
+                $prefixoSegmento = 'FIT';
+                break;
+            case 'consultoria':
+            case 'servicos':
+                $prefixoSegmento = 'CON';
+                break;
+        }
         
         // Código do setor (primeiras letras significativas)
         $codigoSetor = $this->gerarCodigoSetor($setor);
@@ -1173,21 +1226,64 @@ class SopController
         }
         
         // PREFIXOS POR DEPARTAMENTO mais específicos
-        $prefixoDept = match(strtolower($departamento)) {
-            'comercial', 'vendas' => 'COM',
-            'ti', 'tecnologia', 'tech' => 'TI',
-            'operações', 'operacoes', 'produção', 'producao' => 'OPS',
-            'financeiro', 'contabilidade' => 'FIN',
-            'rh', 'recursos humanos', 'pessoas' => 'RH',
-            'marketing', 'mkt' => 'MKT',
-            'jurídico', 'juridico', 'legal' => 'JUR',
-            'administrativo', 'admin' => 'ADM',
-            'compras', 'procurement' => 'CPR',
-            'logística', 'logistica' => 'LOG',
-            'qualidade', 'qa', 'qc' => 'QUA',
-            'atendimento', 'sac', 'suporte' => 'ATE',
-            default => strtoupper(substr($departamento, 0, 3))
-        };
+        $prefixoDept = strtoupper(substr($departamento, 0, 3)); // default
+        switch(strtolower($departamento)) {
+            case 'comercial':
+            case 'vendas':
+                $prefixoDept = 'COM';
+                break;
+            case 'ti':
+            case 'tecnologia':
+            case 'tech':
+                $prefixoDept = 'TI';
+                break;
+            case 'operações':
+            case 'operacoes':
+            case 'produção':
+            case 'producao':
+                $prefixoDept = 'OPS';
+                break;
+            case 'financeiro':
+            case 'contabilidade':
+                $prefixoDept = 'FIN';
+                break;
+            case 'rh':
+            case 'recursos humanos':
+            case 'pessoas':
+                $prefixoDept = 'RH';
+                break;
+            case 'marketing':
+            case 'mkt':
+                $prefixoDept = 'MKT';
+                break;
+            case 'jurídico':
+            case 'juridico':
+            case 'legal':
+                $prefixoDept = 'JUR';
+                break;
+            case 'administrativo':
+            case 'admin':
+                $prefixoDept = 'ADM';
+                break;
+            case 'compras':
+            case 'procurement':
+                $prefixoDept = 'CPR';
+                break;
+            case 'logística':
+            case 'logistica':
+                $prefixoDept = 'LOG';
+                break;
+            case 'qualidade':
+            case 'qa':
+            case 'qc':
+                $prefixoDept = 'QUA';
+                break;
+            case 'atendimento':
+            case 'sac':
+            case 'suporte':
+                $prefixoDept = 'ATE';
+                break;
+        }
         
         // CÓDIGO baseado no TIPO DE PROCESSO (mais inteligente)
         $sufixoProcesso = 'GER'; // Padrão geral
@@ -3798,8 +3894,8 @@ class SopController
             );
             
             // Contar serviços detalhados e críticos
-            $servicosDetalhados = array_filter($servicos, fn($s) => $s['status'] !== 'mapeado');
-            $servicosCriticos = array_filter($servicos, fn($s) => $s['criticidade'] === 'alta');
+            $servicosDetalhados = array_filter($servicos, function($s) { return $s['status'] !== 'mapeado'; });
+            $servicosCriticos = array_filter($servicos, function($s) { return $s['criticidade'] === 'alta'; });
             
             $totalServicosDetalhados += count($servicosDetalhados);
             $totalServicosCriticos += count($servicosCriticos);
@@ -7992,7 +8088,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             
             foreach ($statements as $statement) {
                 $statement = trim($statement);
-                if (!empty($statement) && !str_starts_with($statement, '--')) {
+                if (!empty($statement) && strpos($statement, '--') !== 0) {
                     try {
                         Database::execute($statement);
                     } catch (Exception $e) {
@@ -8013,15 +8109,15 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
     {
         $nomeSetor = strtolower($nomeSetor);
         
-        if (str_contains($nomeSetor, 'operac') || str_contains($nomeSetor, 'produc') || str_contains($nomeSetor, 'tecnolog')) {
+        if (strpos($nomeSetor, 'operac') !== false || strpos($nomeSetor, 'produc') !== false || strpos($nomeSetor, 'tecnolog') !== false) {
             return 'core';
         }
         
-        if (str_contains($nomeSetor, 'rh') || str_contains($nomeSetor, 'financ') || str_contains($nomeSetor, 'admin')) {
+        if (strpos($nomeSetor, 'rh') !== false || strpos($nomeSetor, 'financ') !== false || strpos($nomeSetor, 'admin') !== false) {
             return 'apoio';
         }
         
-        if (str_contains($nomeSetor, 'diretoria') || str_contains($nomeSetor, 'estrateg') || str_contains($nomeSetor, 'planej')) {
+        if (strpos($nomeSetor, 'diretoria') !== false || strpos($nomeSetor, 'estrateg') !== false || strpos($nomeSetor, 'planej') !== false) {
             return 'estrategico';
         }
         
@@ -8542,10 +8638,10 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             // Calcular estatísticas do setor
             $setor['stats'] = [
                 'total_servicos' => count($setor['servicos']),
-                'mapeados' => count(array_filter($setor['servicos'], fn($s) => $s['status'] === 'mapeado')),
-                'detalhados' => count(array_filter($setor['servicos'], fn($s) => $s['status'] === 'detalhado')),
-                'com_sop' => count(array_filter($setor['servicos'], fn($s) => $s['status'] === 'sop_gerado' || $s['status'] === 'aprovado')),
-                'aprovados' => count(array_filter($setor['servicos'], fn($s) => $s['status'] === 'aprovado'))
+                'mapeados' => count(array_filter($setor['servicos'], function($s) { return $s['status'] === 'mapeado'; })),
+                'detalhados' => count(array_filter($setor['servicos'], function($s) { return $s['status'] === 'detalhado'; })),
+                'com_sop' => count(array_filter($setor['servicos'], function($s) { return $s['status'] === 'sop_gerado' || $s['status'] === 'aprovado'; })),
+                'aprovados' => count(array_filter($setor['servicos'], function($s) { return $s['status'] === 'aprovado'; }))
             ];
         }
         

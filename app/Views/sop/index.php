@@ -171,12 +171,20 @@ $diagnosticoId = isset($_GET['diagnostico_id']) ? (int) $_GET['diagnostico_id'] 
                         <div class="space-y-2">
                             <?php if (!empty($dept['sops'])): ?>
                                 <?php foreach ($dept['sops'] as $sop):
-                                    $statusConfig = match($sop['status']) {
-                                        'aprovado' => ['badge' => 'bg-green-100 text-green-700', 'label' => '✓ Aprovado', 'action' => 'ver'],
-                                        'gerado' => ['badge' => 'bg-blue-100 text-blue-700', 'label' => '● Gerado', 'action' => 'revisar'],
-                                        'em_revisao' => ['badge' => 'bg-yellow-100 text-yellow-700', 'label' => '◎ Em revisão', 'action' => 'revisar'],
-                                        default => ['badge' => 'bg-gray-100 text-gray-500', 'label' => '○ Não gerado', 'action' => 'gerar'],
-                                    };
+                                    switch($sop['status']) {
+                                        case 'aprovado':
+                                            $statusConfig = ['badge' => 'bg-green-100 text-green-700', 'label' => '✓ Aprovado', 'action' => 'ver'];
+                                            break;
+                                        case 'gerado':
+                                            $statusConfig = ['badge' => 'bg-blue-100 text-blue-700', 'label' => '● Gerado', 'action' => 'revisar'];
+                                            break;
+                                        case 'em_revisao':
+                                            $statusConfig = ['badge' => 'bg-yellow-100 text-yellow-700', 'label' => '◎ Em revisão', 'action' => 'revisar'];
+                                            break;
+                                        default:
+                                            $statusConfig = ['badge' => 'bg-gray-100 text-gray-500', 'label' => '○ Não gerado', 'action' => 'gerar'];
+                                            break;
+                                    }
                                 ?>
                                 <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
                                     <div class="flex items-center gap-3">

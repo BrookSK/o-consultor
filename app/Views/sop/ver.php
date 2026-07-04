@@ -179,11 +179,18 @@
                     </td>
                     <td class="px-3 py-2">
                         <?php 
-                        $zonaClass = match($kpi['zona_atual'] ?? 'verde') {
-                            'vermelha' => 'bg-red-100 text-red-700',
-                            'amarela' => 'bg-yellow-100 text-yellow-700',
-                            default => 'bg-green-100 text-green-700'
-                        };
+                        switch($kpi['zona_atual'] ?? 'verde') {
+                            case 'vermelha':
+                                $zonaClass = 'bg-red-100 text-red-700';
+                                break;
+                            case 'amarela':
+                                $zonaClass = 'bg-yellow-100 text-yellow-700';
+                                break;
+                            case 'verde':
+                            default:
+                                $zonaClass = 'bg-green-100 text-green-700';
+                                break;
+                        }
                         ?>
                         <span class="px-2 py-1 rounded text-xs font-medium <?= $zonaClass ?>"><?= ucfirst($kpi['zona_atual'] ?? 'Verde') ?></span>
                     </td>
@@ -289,14 +296,22 @@ document.getElementById('modal-contencao').addEventListener('click', function(e)
 <?php
 // Helper method for RACI function description
 function getRaciFuncao(string $papel): string {
-    return match(strtolower($papel)) {
-        'executor' => 'Responsável por executar as tarefas',
-        'aprovador' => 'Aprova decisões e resultados finais', 
-        'supervisor' => 'Supervisiona execução e escalações',
-        'informado' => 'Recebe atualizações de status',
-        'consultor' => 'Fornece expertise técnica',
-        'substituto' => 'Backup em caso de indisponibilidade',
-        default => 'Participa do processo'
-    };
+    switch(strtolower($papel)) {
+        case 'executor':
+            return 'Responsável por executar as tarefas';
+        case 'aprovador':
+            return 'Aprova decisões e resultados finais'; 
+        case 'supervisor':
+            return 'Supervisiona execução e escalações';
+        case 'informado':
+            return 'Recebe atualizações de status';
+        case 'consultor':
+            return 'Fornece expertise técnica';
+        case 'substituto':
+            return 'Backup em caso de indisponibilidade';
+        default:
+            return 'Participa do processo';
+    }
+}
 }
 ?>

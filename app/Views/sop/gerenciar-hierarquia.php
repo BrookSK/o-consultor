@@ -129,12 +129,22 @@
                  onclick="toggleSetor('setor-<?= $setor['id'] ?>')">
                 <div class="flex items-center gap-3">
                     <span class="text-xl">
-                        <?= match($setor['tipo_setor']) {
-                            'core' => '⚙️',
-                            'apoio' => '🛠️', 
-                            'estrategico' => '📋',
-                            default => '📁'
-                        } ?>
+                        <?php 
+                        switch($setor['tipo_setor']) {
+                            case 'core':
+                                echo '⚙️';
+                                break;
+                            case 'apoio':
+                                echo '🛠️';
+                                break; 
+                            case 'estrategico':
+                                echo '📋';
+                                break;
+                            default:
+                                echo '📁';
+                                break;
+                        }
+                        ?>
                     </span>
                     <div>
                         <h3 class="font-medium text-gray-800"><?= htmlspecialchars($setor['nome_setor']) ?></h3>
@@ -172,13 +182,23 @@
                                 
                                 <!-- Badge de Status -->
                                 <?php
-                                $statusConfig = match($servico['status']) {
-                                    'mapeado' => ['bg' => 'bg-gray-100 text-gray-600', 'icon' => '○', 'label' => 'Mapeado'],
-                                    'detalhado' => ['bg' => 'bg-blue-100 text-blue-700', 'icon' => '◐', 'label' => 'Detalhado'],
-                                    'sop_gerado' => ['bg' => 'bg-green-100 text-green-700', 'icon' => '●', 'label' => 'SOP Gerado'],
-                                    'aprovado' => ['bg' => 'bg-emerald-100 text-emerald-700', 'icon' => '✓', 'label' => 'Aprovado'],
-                                    default => ['bg' => 'bg-gray-100 text-gray-500', 'icon' => '?', 'label' => 'Indefinido']
-                                };
+                                switch($servico['status']) {
+                                    case 'mapeado':
+                                        $statusConfig = ['bg' => 'bg-gray-100 text-gray-600', 'icon' => '○', 'label' => 'Mapeado'];
+                                        break;
+                                    case 'detalhado':
+                                        $statusConfig = ['bg' => 'bg-blue-100 text-blue-700', 'icon' => '◐', 'label' => 'Detalhado'];
+                                        break;
+                                    case 'sop_gerado':
+                                        $statusConfig = ['bg' => 'bg-green-100 text-green-700', 'icon' => '●', 'label' => 'SOP Gerado'];
+                                        break;
+                                    case 'aprovado':
+                                        $statusConfig = ['bg' => 'bg-emerald-100 text-emerald-700', 'icon' => '✓', 'label' => 'Aprovado'];
+                                        break;
+                                    default:
+                                        $statusConfig = ['bg' => 'bg-gray-100 text-gray-500', 'icon' => '?', 'label' => 'Indefinido'];
+                                        break;
+                                }
                                 ?>
                                 <span class="px-2 py-1 text-xs font-medium rounded <?= $statusConfig['bg'] ?>">
                                     <?= $statusConfig['icon'] ?> <?= $statusConfig['label'] ?>

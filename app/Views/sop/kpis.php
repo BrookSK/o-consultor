@@ -40,18 +40,34 @@
             </thead>
             <tbody class="divide-y divide-gray-100">
                 <?php foreach ($dados['kpis'] as $kpi):
-                    $zonaBadge = match($kpi['zona']) {
-                        'verde' => 'bg-green-100 text-green-700',
-                        'amarela' => 'bg-yellow-100 text-yellow-700',
-                        'vermelha' => 'bg-red-100 text-red-700',
-                        default => 'bg-gray-100 text-gray-600',
-                    };
-                    $zonaIcon = match($kpi['zona']) {
-                        'verde' => '●',
-                        'amarela' => '◎',
-                        'vermelha' => '⚠',
-                        default => '○',
-                    };
+                    switch($kpi['zona']) {
+                        case 'verde':
+                            $zonaBadge = 'bg-green-100 text-green-700';
+                            break;
+                        case 'amarela':
+                            $zonaBadge = 'bg-yellow-100 text-yellow-700';
+                            break;
+                        case 'vermelha':
+                            $zonaBadge = 'bg-red-100 text-red-700';
+                            break;
+                        default:
+                            $zonaBadge = 'bg-gray-100 text-gray-600';
+                            break;
+                    }
+                    switch($kpi['zona']) {
+                        case 'verde':
+                            $zonaIcon = '●';
+                            break;
+                        case 'amarela':
+                            $zonaIcon = '◎';
+                            break;
+                        case 'vermelha':
+                            $zonaIcon = '⚠';
+                            break;
+                        default:
+                            $zonaIcon = '○';
+                            break;
+                    }
                 ?>
                 <tr class="hover:bg-gray-50 <?= $kpi['zona'] === 'vermelha' ? 'bg-red-50/30' : '' ?>">
                     <td class="px-4 py-3 font-medium text-gray-800"><?= htmlspecialchars($kpi['kpi']) ?></td>
