@@ -4066,16 +4066,6 @@ class SopController
         ];
     }
 
-        return [
-            'diagnostico' => $diagnostico,
-            'empresa' => $empresa,
-            'usar_nova_arquitetura' => false,
-            'sops_por_departamento' => $sopsPorDepartamento,
-            'total_sops_tradicional' => count($sopsGerados),
-            'total_geral' => count($sopsGerados)
-        ];
-    }
-
     /**
      * Calcular estatísticas da nova arquitetura
      */

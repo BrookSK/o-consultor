@@ -88,16 +88,33 @@ echo JornadaCliente::renderWidgetNavegacao($dados['usuario']['empresa_id']);
     <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5 hover:shadow-md transition">
         <div class="flex items-center justify-between mb-3">
             <div class="w-10 h-10 rounded-lg flex items-center justify-center
-                <?= match($kpi['cor']) {
-                    'blue' => 'bg-blue-100 text-blue-600',
-                    'green' => 'bg-green-100 text-green-600',
-                    'purple' => 'bg-purple-100 text-purple-600',
-                    'orange' => 'bg-orange-100 text-orange-600',
-                    default => 'bg-gray-100 text-gray-600',
-                } ?>">
-                <?php echo match($kpi['icone']) {
-                    'chart' => '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>',
-                    'book' => '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>',
+                <?php 
+                switch($kpi['cor']) {
+                    case 'blue':
+                        echo 'bg-blue-100 text-blue-600';
+                        break;
+                    case 'green':
+                        echo 'bg-green-100 text-green-600';
+                        break;
+                    case 'purple':
+                        echo 'bg-purple-100 text-purple-600';
+                        break;
+                    case 'orange':
+                        echo 'bg-orange-100 text-orange-600';
+                        break;
+                    default:
+                        echo 'bg-gray-100 text-gray-600';
+                        break;
+                }
+                ?>">
+                <?php 
+                switch($kpi['icone']) {
+                    case 'chart':
+                        echo '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>';
+                        break;
+                    case 'book':
+                        echo '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>';
+                        break;
                     'target' => '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
                     'calendar' => '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>',
                     default => '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>',

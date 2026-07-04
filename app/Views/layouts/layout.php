@@ -198,11 +198,17 @@ $paginaAtual = $_GET['url'] ?? 'dashboard';
                 ['url' => 'perfil', 'label' => 'Minha Conta', 'icone' => 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z'],
             ];
 
-            $menu = match($perfil) {
-                'ADMIN_HOLDING' => $menuAdmin,
-                'CONSULTOR_INTERNO' => $menuConsultor,
-                default => $menuCliente,
-            };
+            switch($perfil) {
+                case 'ADMIN_HOLDING':
+                    $menu = $menuAdmin;
+                    break;
+                case 'CONSULTOR_INTERNO':
+                    $menu = $menuConsultor;
+                    break;
+                default:
+                    $menu = $menuCliente;
+                    break;
+            }
 
             foreach ($menu as $item):
                 $ativo = (strpos($paginaAtual, $item['url']) === 0 || ($item['url'] === 'dashboard' && empty($paginaAtual)));
