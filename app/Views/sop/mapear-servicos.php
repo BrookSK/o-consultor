@@ -110,7 +110,7 @@ $csrfToken = Session::get('csrf_token');
                 </div>
                 
                 <button type="button" 
-                        onclick="mapearSetor(<?= json_encode($setor['nome_setor']) ?>, <?= $index ?>)"
+                        onclick="mapearSetorPorIndex(<?= $index ?>)"
                         class="btn-mapear px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition"
                         id="btn-mapear-<?= $index ?>">
                     🔍 Mapear Serviços
@@ -186,6 +186,13 @@ $csrfToken = Session::get('csrf_token');
                 class="px-6 py-2 border border-green-300 text-green-700 rounded-lg hover:bg-green-50">
             🔍 Diagnóstico Completo
         </button>
+        
+        <!-- Botão de Teste Direto -->
+        <button type="button" 
+                onclick="mapearSetorPorIndex(0)"
+                class="px-6 py-2 border border-orange-300 text-orange-700 rounded-lg hover:bg-orange-50">
+            🚀 Teste: Mapear Primeiro Setor
+        </button>
     </div>
     
     <button type="button" 
@@ -217,6 +224,22 @@ console.log('=== INICIALIZAÇÃO SEGURA ===');
 console.log('Estrutura ID:', estruturaId);
 console.log('Total Setores:', totalSetores);
 console.log('Setores:', dadosIniciais.setoresNomes);
+
+// Wrapper function to safely call mapearSetor using index
+function mapearSetorPorIndex(index) {
+    console.log('🔥 WRAPPER: mapearSetorPorIndex chamada com index:', index);
+    
+    if (!dadosIniciais.setoresNomes || !dadosIniciais.setoresNomes[index]) {
+        console.error('ERRO: Setor não encontrado no índice:', index);
+        alert('Erro: Setor não encontrado. Recarregue a página.');
+        return;
+    }
+    
+    const setorNome = dadosIniciais.setoresNomes[index];
+    console.log('🔥 WRAPPER: Chamando mapearSetor com:', setorNome, index);
+    
+    return mapearSetor(setorNome, index);
+}
 
 // Mapear serviços de um setor específico
 async function mapearSetor(setorNome, index) {
@@ -500,6 +523,7 @@ function diagnosticoCompleto() {
         // Funções
         funcoes: {
             mapearSetor: typeof mapearSetor === 'function',
+            mapearSetorPorIndex: typeof mapearSetorPorIndex === 'function',
             testarConexaoAPI: typeof testarConexaoAPI === 'function',
             regenerarCSRF: typeof regenerarCSRF === 'function'
         }
@@ -540,6 +564,7 @@ Token presente: ${diagnostico.csrf_token ? 'SIM (' + diagnostico.csrf_token.leng
 
 ⚙️ FUNÇÕES:
 mapearSetor: ${diagnostico.funcoes.mapearSetor ? 'EXISTE' : 'AUSENTE'}
+mapearSetorPorIndex: ${diagnostico.funcoes.mapearSetorPorIndex ? 'EXISTE' : 'AUSENTE'}
 testarConexaoAPI: ${diagnostico.funcoes.testarConexaoAPI ? 'EXISTE' : 'AUSENTE'}
 regenerarCSRF: ${diagnostico.funcoes.regenerarCSRF ? 'EXISTE' : 'AUSENTE'}
 
