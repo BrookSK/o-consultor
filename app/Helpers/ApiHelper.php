@@ -43,7 +43,7 @@ class ApiHelper
     public static function chamarOpenAI(string $prompt, ?string $model = null, bool $jsonMode = true): array
     {
         $apiKey = self::config('openai_key');
-        $model = $model ?? self::config('openai_modelo', 'gpt-4o');
+        $model = $model ? $model : self::config('openai_modelo', 'gpt-4o');
         $maxTokens = (int) self::config('openai_max_tokens', '8192');
 
         if (empty($apiKey)) {
@@ -75,7 +75,7 @@ class ApiHelper
         }
 
         // Extrair conteúdo da resposta
-        $conteudo = $resultado['dados']['choices'][0]['message']['content'] ?? null;
+        $conteudo = isset($resultado['dados']['choices'][0]['message']['content']) ? $resultado['dados']['choices'][0]['message']['content'] : null;
 
         if ($conteudo === null) {
             self::logErro('OpenAI', 'Resposta sem conteúdo', $resultado['dados']);
@@ -105,7 +105,7 @@ class ApiHelper
     public static function chamarAnthropic(string $prompt, ?string $model = null): array
     {
         $apiKey = self::config('anthropic_key');
-        $model = $model ?? self::config('anthropic_modelo', 'claude-sonnet-4-20250514');
+        $model = $model ? $model : self::config('anthropic_modelo', 'claude-sonnet-4-20250514');
 
         if (empty($apiKey)) {
             return ['sucesso' => false, 'conteudo' => null, 'erro' => 'Chave Anthropic não configurada. Acesse Admin > Configurações > APIs.'];
@@ -130,7 +130,7 @@ class ApiHelper
             return $resultado;
         }
 
-        $conteudo = $resultado['dados']['content'][0]['text'] ?? null;
+        $conteudo = isset($resultado['dados']['content'][0]['text']) ? $resultado['dados']['content'][0]['text'] : null;
 
         if ($conteudo === null) {
             self::logErro('Anthropic', 'Resposta sem conteúdo', $resultado['dados']);
@@ -156,7 +156,7 @@ class ApiHelper
     public static function chamarPerplexity(string $prompt, ?string $model = null): array
     {
         $apiKey = self::config('perplexity_key');
-        $model = $model ?? self::config('perplexity_modelo', 'sonar-pro');
+        $model = $model ? $model : self::config('perplexity_modelo', 'sonar-pro');
 
         if (empty($apiKey)) {
             return ['sucesso' => false, 'conteudo' => null, 'erro' => 'Chave Perplexity não configurada. Acesse Admin > Configurações > APIs.'];
@@ -179,7 +179,7 @@ class ApiHelper
             return $resultado;
         }
 
-        $conteudo = $resultado['dados']['choices'][0]['message']['content'] ?? null;
+        $conteudo = isset($resultado['dados']['choices'][0]['message']['content']) ? $resultado['dados']['choices'][0]['message']['content'] : null;
 
         if ($conteudo === null) {
             self::logErro('Perplexity', 'Resposta sem conteúdo', $resultado['dados']);
@@ -227,7 +227,7 @@ class ApiHelper
 
         if (!$resultado['sucesso']) {
             // Tentar com prompt simplificado se DALL-E rejeitou
-            if (strpos($resultado['erro'] ?? '', 'content_policy') !== false) {
+            if (strpos(isset($resultado['erro']) ? $resultado['erro'] : '', 'content_policy') !== false) {
                 $promptSimplificado = self::simplificarPromptImagem($prompt);
                 $resultado = self::executarCurl(
                     'https://api.openai.com/v1/images/generations',
@@ -246,7 +246,7 @@ class ApiHelper
             }
         }
 
-        $url = $resultado['dados']['data'][0]['url'] ?? null;
+        $url = isset($resultado['dados']['data'][0]['url']) ? $resultado['dados']['data'][0]['url'] : null;
 
         if (!$url) {
             self::logErro('DALL-E', 'Resposta sem URL de imagem', $resultado['dados']);
@@ -317,13 +317,15 @@ class ApiHelper
      */
     public static function buildPromptSop(array $empresa, array $sop, string $contextoDocumentos = ''): string
     {
-        $normas = self::getNormasPorSetor($empresa['setor'] ?? $empresa['segmento'] ?? 'Tecnologia');
+        $setor = isset($empresa['setor']) ? $empresa['setor'] : (isset($empresa['segmento']) ? $empresa['segmento'] : 'Tecnologia');
+        $normas = self::getNormasPorSetor($setor);
+        $setorEmpresa = $setor;
 
         return "Você é O Consultor, especialista em padronização operacional empresarial com profundo conhecimento em normas e padrões de mercado.
 
 DADOS DA EMPRESA:
 Nome: {$empresa['nome']}
-Setor: {$empresa['setor'] ?? $empresa['segmento'] ?? 'Tecnologia'}
+Setor: {$setorEmpresa}
 Porte: {$empresa['colaboradores']} colaboradores, faturamento {$empresa['faturamento']}, nível de maturidade {$empresa['maturidade']}/4
 Departamentos ativos: {$empresa['departamentos']}
 Ferramentas utilizadas: {$empresa['ferramentas']}
@@ -570,11 +572,13 @@ Responda APENAS em JSON válido, sem explicações.";
      */
     public static function buildPromptKpiCritico(array $empresa, array $kpi): string
     {
+        $setorEmpresa = isset($empresa['setor']) ? $empresa['setor'] : (isset($empresa['segmento']) ? $empresa['segmento'] : 'Tecnologia');
+        
         return "Você é O Consultor, especialista em análise de KPIs críticos empresariais.
 
 CONTEXTO DA EMPRESA:
 Nome: {$empresa['nome']}
-Setor: {$empresa['setor'] ?? $empresa['segmento'] ?? 'Tecnologia'}
+Setor: {$setorEmpresa}
 Nível de maturidade: {$empresa['maturidade']}/4
 Colaboradores: {$empresa['colaboradores']}
 Ferramentas: {$empresa['ferramentas']}
@@ -592,7 +596,7 @@ Responda APENAS em JSON com esta estrutura exata:
 {
   \"causas_raiz\": [
     \"Primeira hipótese específica para a empresa\",
-    \"Segunda hipótese considerando o setor {$empresa['setor'] ?? $empresa['segmento'] ?? 'Tecnologia'}\", 
+    \"Segunda hipótese considerando o setor {$setorEmpresa}\", 
     \"Terceira hipótese baseada na maturidade {$empresa['maturidade']}/4\"
   ],
   \"plano_acao_imediato\": [
@@ -608,7 +612,7 @@ Responda APENAS em JSON com esta estrutura exata:
 }
 
 IMPORTANTE:
-- Seja específico para o setor {$empresa['setor'] ?? $empresa['segmento'] ?? 'Tecnologia'}
+- Seja específico para o setor {$setorEmpresa}
 - Considere o porte da empresa ({$empresa['colaboradores']} pessoas)
 - Use as ferramentas disponíveis: {$empresa['ferramentas']}
 - Ações devem ser executáveis com a maturidade atual ({$empresa['maturidade']}/4)
@@ -673,7 +677,7 @@ Responda APENAS com um array JSON de URLs válidas. Sem explicações.";
             // HTTP error
             if ($httpCode < 200 || $httpCode >= 300) {
                 $dados = json_decode($resposta, true);
-                $msgErro = $dados['error']['message'] ?? $dados['error']['type'] ?? "HTTP {$httpCode}";
+                $msgErro = isset($dados['error']['message']) ? $dados['error']['message'] : (isset($dados['error']['type']) ? $dados['error']['type'] : "HTTP {$httpCode}");
                 self::logErro($provedor, "HTTP {$httpCode}: {$msgErro}", ['url' => $url, 'body' => substr($resposta, 0, 500)]);
                 return ['sucesso' => false, 'conteudo' => null, 'erro' => "API {$provedor}: {$msgErro}", 'dados' => $dados];
             }
@@ -746,7 +750,7 @@ Responda APENAS com um array JSON de URLs válidas. Sem explicações.";
             'Serviços' => 'ISO 9001:2015 como base universal',
         ];
 
-        return $normas[$setor] ?? 'ISO 9001:2015 como base universal, adaptada ao setor ' . $setor;
+        return isset($normas[$setor]) ? $normas[$setor] : 'ISO 9001:2015 como base universal, adaptada ao setor ' . $setor;
     }
 
     // =========================================================================
@@ -818,7 +822,7 @@ Responda APENAS com um array JSON de URLs válidas. Sem explicações.";
         return [
             'status' => $resultado['sucesso'] ? 'ok' : 'erro',
             'tempo'  => $tempo . 'ms',
-            'erro'   => $resultado['erro'] ?? null,
+            'erro'   => isset($resultado['erro']) ? $resultado['erro'] : null,
         ];
     }
 
@@ -831,9 +835,9 @@ Responda APENAS com um array JSON de URLs válidas. Sem explicações.";
      */
     public static function buildPromptAnaliseIntegrada(array $dadosEmpresa, string $contexto, string $tipo = 'geral'): string
     {
-        $empresa = $dadosEmpresa['nome'] ?? 'Empresa';
-        $setor = $dadosEmpresa['setor'] ?? 'Tecnologia';
-        $maturidade = $dadosEmpresa['maturidade'] ?? 2;
+        $empresa = isset($dadosEmpresa['nome']) ? $dadosEmpresa['nome'] : 'Empresa';
+        $setor = isset($dadosEmpresa['setor']) ? $dadosEmpresa['setor'] : 'Tecnologia';
+        $maturidade = isset($dadosEmpresa['maturidade']) ? $dadosEmpresa['maturidade'] : 2;
 
         return "ANÁLISE INTEGRADA - SISTEMA OPERACIONAL TRÊS BLOCOS
 
@@ -896,9 +900,9 @@ Responda APENAS em JSON:
      */
     public static function buildPromptConteudoAcademy(array $dadosUsuario, string $topico, array $contextoCursos): string
     {
-        $nome = $dadosUsuario['nome'] ?? 'Usuário';
-        $empresa = $dadosUsuario['empresa'] ?? 'Empresa';
-        $nivel = $dadosUsuario['nivel'] ?? 'Iniciante';
+        $nome = isset($dadosUsuario['nome']) ? $dadosUsuario['nome'] : 'Usuário';
+        $empresa = isset($dadosUsuario['empresa']) ? $dadosUsuario['empresa'] : 'Empresa';
+        $nivel = isset($dadosUsuario['nivel']) ? $dadosUsuario['nivel'] : 'Iniciante';
         $cursos = implode(', ', array_slice($contextoCursos, 0, 5));
 
         return "GERAÇÃO DE CONTEÚDO INTEGRADO - MY ACADEMY SSO
