@@ -310,4 +310,4 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 <?php $conteudo = ob_get_clean(); ?>
-<?php include VIEW_PATH . '/layouts/app.php'; ?>
+<?php include VIEW_PATH . '/layouts/layout.php'; ?>

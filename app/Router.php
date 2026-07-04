@@ -89,6 +89,7 @@ class Router
         $this->get('sop/manual-completo', 'SopController', 'exibirManualCompleto');               // Exibir manual final
         
         $this->get('sop/ver', 'SopController', 'ver');
+        $this->get('sop/listar-por-diagnostico', 'SopController', 'listarSopsPorDiagnostico'); // Lista SOPs de um diagnóstico
         $this->get('sop/revisar', 'SopController', 'revisar');
         $this->post('sop/aprovar', 'SopController', 'aprovar');
         $this->post('sop/ajustar', 'SopController', 'ajustar');

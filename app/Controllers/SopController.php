@@ -2102,30 +2102,65 @@ class SopController
             exit;
         }
 
-        // Buscar estrutura salva
-        $estruturaData = $this->buscarEstruturaTemporaria($estruturaId);
-        if (!$estruturaData) {
-            Flash::set('erro', 'Dados da estrutura não encontrados.');
+        try {
+            // Buscar estrutura salva
+            $estruturaData = $this->buscarEstruturaTemporaria($estruturaId);
+            if (!$estruturaData) {
+                Flash::set('erro', 'Dados da estrutura não encontrados.');
+                header('Location: ' . APP_URL . '/sop');
+                exit;
+            }
+
+            // Verificar se as tabelas da nova arquitetura existem
+            $this->verificarTabelasNovaArquitetura();
+
+            $diagnosticoEstrutura = $estruturaData['estrutura'];
+            $diagnostico = Diagnostico::buscarPorId($estruturaData['diagnostico_id']);
+            
+            if (!$diagnostico) {
+                Flash::set('erro', 'Diagnóstico não encontrado.');
+                header('Location: ' . APP_URL . '/sop');
+                exit;
+            }
+            
+            $empresa = Empresa::buscarPorId($diagnostico['empresa_id']);
+            if (!$empresa) {
+                Flash::set('erro', 'Empresa não encontrada.');
+                header('Location: ' . APP_URL . '/sop');
+                exit;
+            }
+
+            // Inicializar progresso se não existir (com tratamento de erro)
+            try {
+                $this->inicializarProgressoManual($estruturaId, $estruturaData);
+            } catch (Exception $e) {
+                Logger::error('Erro ao inicializar progresso', ['erro' => $e->getMessage()]);
+                // Continuar mesmo com erro no progresso
+            }
+            
+            $dados = [
+                'estrutura_id' => $estruturaId,
+                'empresa' => $empresa,
+                'diagnostico' => $diagnostico,
+                'setores' => $diagnosticoEstrutura['setores'] ?? [],
+                'progresso' => $this->buscarProgressoManual($estruturaId) ?? [
+                    'progresso_percentual' => 5,
+                    'etapa_atual' => 'etapa2a'
+                ]
+            ];
+
+            require VIEW_PATH . '/sop/mapear-servicos.php';
+            
+        } catch (Exception $e) {
+            Logger::error('Erro na tela de mapeamento de serviços', [
+                'erro' => $e->getMessage(),
+                'estrutura_id' => $estruturaId
+            ]);
+            
+            Flash::set('erro', 'Erro interno: ' . $e->getMessage());
             header('Location: ' . APP_URL . '/sop');
             exit;
         }
-
-        // Inicializar progresso se não existir
-        $this->inicializarProgressoManual($estruturaId, $estruturaData);
-
-        $diagnosticoEstrutura = $estruturaData['estrutura'];
-        $diagnostico = Diagnostico::buscarPorId($estruturaData['diagnostico_id']);
-        $empresa = Empresa::buscarPorId($diagnostico['empresa_id']);
-        
-        $dados = [
-            'estrutura_id' => $estruturaId,
-            'empresa' => $empresa,
-            'diagnostico' => $diagnostico,
-            'setores' => $diagnosticoEstrutura['setores'] ?? [],
-            'progresso' => $this->buscarProgressoManual($estruturaId)
-        ];
-
-        require VIEW_PATH . '/sop/mapear-servicos.php';
     }
 
     /**
@@ -3047,6 +3082,119 @@ class SopController
         ];
 
         require VIEW_PATH . '/sop/ver.php';
+    }
+
+    /**
+     * Listar todos os SOPs gerados para um diagnóstico específico
+     */
+    public function listarSopsPorDiagnostico(): void
+    {
+        Auth::proteger();
+        
+        $diagnosticoId = (int) (isset($_GET['diagnostico_id']) ? $_GET['diagnostico_id'] : 0);
+        
+        if (!$diagnosticoId) {
+            Flash::set('erro', 'Diagnóstico não especificado.');
+            header('Location: ' . APP_URL . '/diagnostico');
+            exit;
+        }
+
+        // Buscar diagnóstico
+        $diagnostico = Diagnostico::buscarPorId($diagnosticoId);
+        if (!$diagnostico) {
+            Flash::set('erro', 'Diagnóstico não encontrado.');
+            header('Location: ' . APP_URL . '/diagnostico');
+            exit;
+        }
+
+        // Verificar permissão
+        if (Auth::perfil() !== 'ADMIN_HOLDING' && $diagnostico['usuario_id'] != Auth::id()) {
+            Flash::set('erro', 'Sem permissão para acessar este diagnóstico.');
+            header('Location: ' . APP_URL . '/diagnostico');
+            exit;
+        }
+
+        // Buscar empresa
+        $empresa = Empresa::buscarPorId($diagnostico['empresa_id']);
+        if (!$empresa) {
+            Flash::set('erro', 'Empresa não encontrada.');
+            header('Location: ' . APP_URL . '/diagnostico');
+            exit;
+        }
+
+        // Buscar todos os SOPs gerados para este diagnóstico
+        $sopsGerados = Database::query(
+            "SELECT s.*, 
+                    CASE 
+                        WHEN s.status = 'ativo' THEN 'Aprovado'
+                        WHEN s.status = 'rascunho' THEN 'Rascunho' 
+                        WHEN s.status = 'revisao' THEN 'Em Revisão'
+                        ELSE 'Não Definido'
+                    END as status_formatado,
+                    DATE_FORMAT(s.criado_em, '%d/%m/%Y às %H:%i') as data_criacao_formatada
+             FROM sops s 
+             WHERE s.empresa_id = ? AND s.diagnostico_id = ? 
+             ORDER BY s.departamento, s.titulo",
+            [$empresa['id'], $diagnosticoId]
+        );
+
+        // Buscar SOPs da nova arquitetura se existirem
+        $sopsNovaArquitetura = [];
+        try {
+            $sopsNovaArquitetura = Database::query(
+                "SELECT sd.*, sm.setor_nome,
+                        DATE_FORMAT(sd.criado_em, '%d/%m/%Y às %H:%i') as data_criacao_formatada
+                 FROM servicos_detalhados sd
+                 JOIN servicos_mapeados sm ON sd.servico_mapeado_id = sm.id
+                 JOIN estruturas_temporarias et ON sd.estrutura_id = et.id
+                 WHERE et.diagnostico_id = ? AND sd.status = 'concluido'
+                 ORDER BY sm.setor_nome, sd.servico_nome",
+                [$diagnosticoId]
+            );
+        } catch (Exception $e) {
+            // Tabelas da nova arquitetura podem não existir
+            Logger::info('Tabelas da nova arquitetura não encontradas', ['erro' => $e->getMessage()]);
+        }
+
+        // Agrupar SOPs por departamento/setor
+        $sopsPorDepartamento = [];
+        
+        // SOPs tradicionais
+        foreach ($sopsGerados as $sop) {
+            $dept = $sop['departamento'] ?: 'Outros';
+            if (!isset($sopsPorDepartamento[$dept])) {
+                $sopsPorDepartamento[$dept] = [
+                    'nome' => $dept,
+                    'sops_tradicionais' => [],
+                    'sops_nova_arquitetura' => []
+                ];
+            }
+            $sopsPorDepartamento[$dept]['sops_tradicionais'][] = $sop;
+        }
+        
+        // SOPs nova arquitetura
+        foreach ($sopsNovaArquitetura as $sop) {
+            $dept = $sop['setor_nome'] ?: 'Outros';
+            if (!isset($sopsPorDepartamento[$dept])) {
+                $sopsPorDepartamento[$dept] = [
+                    'nome' => $dept,
+                    'sops_tradicionais' => [],
+                    'sops_nova_arquitetura' => []
+                ];
+            }
+            $sopsPorDepartamento[$dept]['sops_nova_arquitetura'][] = $sop;
+        }
+
+        $dados = [
+            'diagnostico' => $diagnostico,
+            'empresa' => $empresa,
+            'sops_por_departamento' => $sopsPorDepartamento,
+            'total_sops_tradicional' => count($sopsGerados),
+            'total_sops_nova_arquitetura' => count($sopsNovaArquitetura),
+            'total_geral' => count($sopsGerados) + count($sopsNovaArquitetura)
+        ];
+
+        require VIEW_PATH . '/sop/listar-por-diagnostico.php';
     }
 
     /**
@@ -5682,13 +5830,17 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         if (!$existente) {
             $totalSetores = count($estruturaData['estrutura']['setores'] ?? []);
             
+            // Buscar empresa_id do diagnóstico
+            $diagnostico = Diagnostico::buscarPorId($estruturaData['diagnostico_id']);
+            $empresaId = $diagnostico['empresa_id'] ?? 0;
+            
             Database::execute(
                 "INSERT INTO progresso_manual (estrutura_id, diagnostico_id, empresa_id, etapa_atual, total_setores, iniciado_em) 
                  VALUES (?, ?, ?, 'etapa2a', ?, NOW())",
                 [
                     $estruturaId,
                     $estruturaData['diagnostico_id'],
-                    $estruturaData['estrutura']['empresa_id'] ?? 0, // TODO: Extrair corretamente
+                    $empresaId,
                     $totalSetores
                 ]
             );
@@ -5767,5 +5919,20 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
              WHERE estrutura_id = ?",
             [$servicosDetalhados, $totalServicos, $percentualEtapa2B, $estruturaId]
         );
+    }
+
+    /**
+     * Verificar se as tabelas da nova arquitetura existem
+     */
+    private function verificarTabelasNovaArquitetura(): void
+    {
+        try {
+            // Tentar uma consulta simples em cada tabela
+            Database::queryOne("SELECT 1 FROM servicos_mapeados LIMIT 1");
+            Database::queryOne("SELECT 1 FROM servicos_detalhados LIMIT 1");
+            Database::queryOne("SELECT 1 FROM progresso_manual LIMIT 1");
+        } catch (Exception $e) {
+            throw new Exception('As tabelas da nova arquitetura não foram criadas. Execute a migração 026_adicionar_tabelas_servicos.sql primeiro.');
+        }
     }
 }
