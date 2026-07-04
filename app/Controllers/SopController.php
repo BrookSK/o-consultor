@@ -1221,9 +1221,12 @@ class SopController
      */
     private function extrairDadosEmpresaCompletos(array $empresa, array $diagnostico, array $respostas): array
     {
+        $nicho = $this->identificarNichoEmpresa($respostas, $diagnostico);
+        
         return [
             'nome' => $empresa['nome'],
-            'nicho' => $this->identificarNichoEmpresa($respostas, $diagnostico),
+            'nicho' => $nicho,
+            'macro_categoria' => $this->obterMacroCategoriaPorNicho($nicho),
             'subnicho' => $respostas['subnicho'] ?? '',
             'porte' => $this->determinarPorteEmpresa($respostas),
             'modelo_negocio' => $respostas['modelo_negocio'] ?? $respostas['atividade_principal'] ?? 'Não especificado',
@@ -1237,6 +1240,36 @@ class SopController
             'ferramentas_atuais' => $respostas['ferramentas'] ?? $respostas['sistemas_utilizados'] ?? 'Não especificado',
             'estagio' => $this->determinarEstagioEmpresa($respostas)
         ];
+    }
+
+    /**
+     * Obter macro categoria baseada no nicho da empresa
+     */
+    private function obterMacroCategoriaPorNicho(string $nicho): string
+    {
+        $macrocategorias = [
+            'tecnologia' => 'Tecnologia e Inovação',
+            'saúde' => 'Saúde e Bem-estar',
+            'construção' => 'Construção e Infraestrutura',
+            'educação' => 'Educação e Treinamento',
+            'ecommerce' => 'Varejo e E-commerce',
+            'indústria' => 'Indústria e Manufatura',
+            'logística' => 'Logística e Transporte',
+            'alimentação' => 'Alimentação e Gastronomia',
+            'imobiliário' => 'Mercado Imobiliário',
+            'advocacia' => 'Serviços Jurídicos',
+            'beleza' => 'Beleza e Estética',
+            'fitness' => 'Fitness e Bem-estar',
+            'turismo' => 'Turismo e Hospitalidade',
+            'consultoria' => 'Consultoria e Serviços Profissionais',
+            'financeiro' => 'Serviços Financeiros',
+            'marketing' => 'Marketing e Comunicação',
+            'automotivo' => 'Setor Automotivo',
+            'agronegócio' => 'Agronegócio e Rural',
+            'ong' => 'Terceiro Setor e ONGs'
+        ];
+        
+        return $macrocategorias[$nicho] ?? 'Serviços Gerais';
     }
 
     /**
@@ -2168,13 +2201,42 @@ class SopController
      */
     public function executarMapeamentoSetor(): void
     {
+        $inicioProcesso = microtime(true);
+        
         Auth::proteger();
         
+        Logger::info('=== INICIANDO MAPEAMENTO DE SETOR ===', [
+            'timestamp' => date('Y-m-d H:i:s'),
+            'usuario_id' => Auth::id(),
+            'perfil' => Auth::perfil(),
+            'ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown'
+        ]);
+        
         // Verificar e criar tabelas necessárias se não existirem
-        $this->verificarTabelasNovaArquitetura();
+        try {
+            $this->verificarTabelasNovaArquitetura();
+            Logger::info('Tabelas da nova arquitetura verificadas/criadas com sucesso');
+        } catch (Exception $e) {
+            Logger::error('Erro ao verificar/criar tabelas da nova arquitetura', [
+                'erro' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => false, 
+                'erro' => 'Erro na infraestrutura do banco de dados: ' . $e->getMessage(),
+                'codigo_erro' => 'DATABASE_SETUP_ERROR'
+            ]);
+            exit;
+        }
         
         // Validação CSRF customizada para API
         if (!Csrf::validar()) {
+            Logger::warning('Tentativa de acesso com CSRF inválido', [
+                'csrf_enviado' => $_POST['csrf_token'] ?? 'ausente',
+                'csrf_sessao' => Session::get('csrf_token') ? 'presente' : 'ausente',
+                'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'unknown'
+            ]);
             header('Content-Type: application/json');
             echo json_encode([
                 'sucesso' => false, 
@@ -2187,62 +2249,272 @@ class SopController
         $estruturaId = (int) (isset($_POST['estrutura_id']) ? $_POST['estrutura_id'] : 0);
         $setorNome = isset($_POST['setor_nome']) ? trim($_POST['setor_nome']) : '';
         
+        Logger::info('Dados recebidos do formulário', [
+            'estrutura_id' => $estruturaId,
+            'setor_nome' => $setorNome,
+            'post_data_keys' => array_keys($_POST),
+            'post_data_sizes' => array_map(function($v) { return is_string($v) ? strlen($v) : gettype($v); }, $_POST)
+        ]);
+        
         if (!$estruturaId || !$setorNome) {
+            Logger::error('Dados incompletos no formulário', [
+                'estrutura_id' => $estruturaId,
+                'setor_nome' => $setorNome,
+                'estrutura_id_valido' => $estruturaId > 0,
+                'setor_nome_valido' => !empty($setorNome)
+            ]);
             header('Content-Type: application/json');
             echo json_encode(['sucesso' => false, 'erro' => 'Dados incompletos.']);
             exit;
         }
 
         // Buscar dados necessários
+        Logger::info('Buscando estrutura temporária', ['estrutura_id' => $estruturaId]);
         $estruturaData = $this->buscarEstruturaTemporaria($estruturaId);
         if (!$estruturaData) {
+            Logger::error('Estrutura temporária não encontrada', [
+                'estrutura_id' => $estruturaId,
+                'busca_realizada' => true
+            ]);
             header('Content-Type: application/json');
             echo json_encode(['sucesso' => false, 'erro' => 'Estrutura não encontrada.']);
             exit;
         }
 
+        Logger::info('Estrutura temporária encontrada', [
+            'estrutura_id' => $estruturaId,
+            'diagnostico_id' => $estruturaData['diagnostico_id'],
+            'estrutura_keys' => array_keys($estruturaData['estrutura'] ?? []),
+            'estrutura_size' => strlen(json_encode($estruturaData['estrutura'] ?? []))
+        ]);
+
         // Inicializar progresso se não existir
         try {
             $this->inicializarProgressoManual($estruturaId, $estruturaData);
+            Logger::info('Progresso manual inicializado/verificado', ['estrutura_id' => $estruturaId]);
         } catch (Exception $e) {
-            Logger::error('Erro ao inicializar progresso no mapeamento', ['erro' => $e->getMessage()]);
+            Logger::error('Erro ao inicializar progresso no mapeamento', [
+                'estrutura_id' => $estruturaId,
+                'erro' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
         }
 
+        // Buscar diagnóstico e empresa
+        Logger::info('Buscando dados do diagnóstico', ['diagnostico_id' => $estruturaData['diagnostico_id']]);
         $diagnostico = Diagnostico::buscarPorId($estruturaData['diagnostico_id']);
+        if (!$diagnostico) {
+            Logger::error('Diagnóstico não encontrado', [
+                'diagnostico_id' => $estruturaData['diagnostico_id'],
+                'estrutura_id' => $estruturaId
+            ]);
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Diagnóstico não encontrado.']);
+            exit;
+        }
+
+        Logger::info('Diagnóstico encontrado', [
+            'diagnostico_id' => $diagnostico['id'],
+            'empresa_id' => $diagnostico['empresa_id'],
+            'usuario_id' => $diagnostico['usuario_id'],
+            'respostas_size' => strlen($diagnostico['respostas'] ?? ''),
+            'criado_em' => $diagnostico['criado_em']
+        ]);
+
         $empresa = Empresa::buscarPorId($diagnostico['empresa_id']);
-        
+        if (!$empresa) {
+            Logger::error('Empresa não encontrada', [
+                'empresa_id' => $diagnostico['empresa_id'],
+                'diagnostico_id' => $diagnostico['id']
+            ]);
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Empresa não encontrada.']);
+            exit;
+        }
+
+        Logger::info('Empresa encontrada', [
+            'empresa_id' => $empresa['id'],
+            'empresa_nome' => $empresa['nome'],
+            'segmento' => $empresa['segmento'] ?? 'não informado'
+        ]);
+
         // Preparar dados para o prompt
         $respostas = json_decode($diagnostico['respostas'], true) ?? [];
-        $dadosEmpresa = $this->extrairDadosEmpresaCompletos($empresa, $diagnostico, $respostas);
+        Logger::info('Respostas do diagnóstico processadas', [
+            'respostas_count' => count($respostas),
+            'respostas_keys' => array_keys($respostas),
+            'json_decode_success' => $respostas !== null
+        ]);
 
-        Logger::info('Iniciando mapeamento de setor', [
+        $dadosEmpresa = $this->extrairDadosEmpresaCompletos($empresa, $diagnostico, $respostas);
+        Logger::info('Dados da empresa extraídos', [
+            'dados_keys' => array_keys($dadosEmpresa),
+            'nome' => $dadosEmpresa['nome'] ?? 'não definido',
+            'nicho' => $dadosEmpresa['nicho'] ?? 'não definido',
+            'macro_categoria' => $dadosEmpresa['macro_categoria'] ?? 'não definido',
+            'porte' => $dadosEmpresa['porte'] ?? 'não definido'
+        ]);
+
+        // Validar se todos os dados necessários estão presentes
+        $camposObrigatorios = ['nome', 'nicho', 'macro_categoria', 'porte', 'modelo_negocio'];
+        foreach ($camposObrigatorios as $campo) {
+            if (!isset($dadosEmpresa[$campo]) || empty($dadosEmpresa[$campo])) {
+                Logger::error('Campo obrigatório ausente nos dados da empresa', [
+                    'campo_ausente' => $campo,
+                    'dados_empresa_completos' => $dadosEmpresa,
+                    'respostas_diagnostico' => $respostas,
+                    'empresa_data' => $empresa
+                ]);
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'sucesso' => false, 
+                    'erro' => "Dados da empresa incompletos. Campo '{$campo}' não encontrado.",
+                    'codigo_erro' => 'DADOS_INCOMPLETOS'
+                ]);
+                exit;
+            }
+        }
+
+        Logger::info('Todos os campos obrigatórios validados com sucesso', [
             'estrutura_id' => $estruturaId,
             'setor' => $setorNome,
-            'empresa' => $dadosEmpresa['nome']
+            'empresa' => $dadosEmpresa['nome'],
+            'nicho' => $dadosEmpresa['nicho'],
+            'macro_categoria' => $dadosEmpresa['macro_categoria']
         ]);
 
         // CHAMADA API: Mapear todos os serviços do setor
-        $prompt = ApiHelper::buildPromptListagemServicos($setorNome, $dadosEmpresa);
-        $resultado = ApiHelper::chamarAnalise($prompt, true);
+        Logger::info('Preparando chamada para a API de mapeamento', [
+            'setor' => $setorNome,
+            'prompt_dados' => [
+                'empresa_nome' => $dadosEmpresa['nome'],
+                'nicho' => $dadosEmpresa['nicho'],
+                'macro_categoria' => $dadosEmpresa['macro_categoria'],
+                'porte' => $dadosEmpresa['porte']
+            ]
+        ]);
+
+        try {
+            $inicioAPI = microtime(true);
+            $prompt = ApiHelper::buildPromptListagemServicos($setorNome, $dadosEmpresa);
+            $tempoPrompt = microtime(true) - $inicioAPI;
+            
+            Logger::info('Prompt construído com sucesso', [
+                'setor' => $setorNome,
+                'prompt_size' => strlen($prompt),
+                'tempo_construcao_ms' => round($tempoPrompt * 1000, 2),
+                'prompt_preview' => substr($prompt, 0, 200) . '...'
+            ]);
+
+            $inicioChamadaAPI = microtime(true);
+            $resultado = ApiHelper::chamarAnalise($prompt, true);
+            $tempoChamadaAPI = microtime(true) - $inicioChamadaAPI;
+            
+            Logger::info('Resposta da API recebida', [
+                'setor' => $setorNome,
+                'tempo_chamada_ms' => round($tempoChamadaAPI * 1000, 2),
+                'resultado_sucesso' => $resultado['sucesso'] ?? false,
+                'resultado_keys' => array_keys($resultado ?? []),
+                'conteudo_type' => gettype($resultado['conteudo'] ?? null),
+                'conteudo_size' => is_array($resultado['conteudo'] ?? null) ? count($resultado['conteudo']) : 0
+            ]);
+
+        } catch (Exception $e) {
+            Logger::error('Erro ao construir prompt ou chamar API', [
+                'setor' => $setorNome,
+                'erro_mensagem' => $e->getMessage(),
+                'erro_codigo' => $e->getCode(),
+                'erro_arquivo' => $e->getFile(),
+                'erro_linha' => $e->getLine(),
+                'dados_empresa_keys' => array_keys($dadosEmpresa),
+                'trace' => $e->getTraceAsString()
+            ]);
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => false, 
+                'erro' => 'Erro interno: ' . $e->getMessage(),
+                'codigo_erro' => 'API_ERROR'
+            ]);
+            exit;
+        }
 
         if (!$resultado['sucesso'] || !is_array($resultado['conteudo'])) {
+            Logger::error('API retornou erro ou conteúdo inválido', [
+                'setor' => $setorNome,
+                'resultado_completo' => $resultado,
+                'conteudo_type' => gettype($resultado['conteudo'] ?? null),
+                'erro_api' => $resultado['erro'] ?? 'não informado'
+            ]);
             header('Content-Type: application/json');
             echo json_encode(['sucesso' => false, 'erro' => 'Erro no mapeamento: ' . ($resultado['erro'] ?? 'Resposta inválida')]);
             exit;
         }
 
         $servicosMapeados = $resultado['conteudo'];
-        
-        // Salvar no banco
-        $servicoMapeadoId = $this->salvarServicosMapeados($estruturaId, $setorNome, $servicosMapeados);
-        
-        // Atualizar progresso
-        $this->atualizarProgressoEtapa2A($estruturaId);
-        
-        Logger::info('Mapeamento de setor concluído', [
+        Logger::info('Serviços mapeados pela API', [
             'setor' => $setorNome,
             'total_servicos' => count($servicosMapeados['servicos'] ?? []),
-            'servico_mapeado_id' => $servicoMapeadoId
+            'servicos_nomes' => array_map(function($s) { return $s['nome'] ?? 'sem nome'; }, $servicosMapeados['servicos'] ?? []),
+            'funcao_principal' => $servicosMapeados['funcao_principal'] ?? 'não definida'
+        ]);
+        
+        // Salvar no banco
+        Logger::info('Salvando serviços mapeados no banco de dados', [
+            'estrutura_id' => $estruturaId,
+            'setor' => $setorNome,
+            'total_servicos' => count($servicosMapeados['servicos'] ?? [])
+        ]);
+
+        try {
+            $servicoMapeadoId = $this->salvarServicosMapeados($estruturaId, $setorNome, $servicosMapeados);
+            Logger::info('Serviços salvos com sucesso', [
+                'servico_mapeado_id' => $servicoMapeadoId,
+                'estrutura_id' => $estruturaId,
+                'setor' => $setorNome
+            ]);
+        } catch (Exception $e) {
+            Logger::error('Erro ao salvar serviços mapeados', [
+                'estrutura_id' => $estruturaId,
+                'setor' => $setorNome,
+                'erro' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'dados_para_salvar' => $servicosMapeados
+            ]);
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => false, 
+                'erro' => 'Erro ao salvar dados: ' . $e->getMessage(),
+                'codigo_erro' => 'SAVE_ERROR'
+            ]);
+            exit;
+        }
+        
+        // Atualizar progresso
+        Logger::info('Atualizando progresso da Etapa 2A', ['estrutura_id' => $estruturaId]);
+        try {
+            $this->atualizarProgressoEtapa2A($estruturaId);
+            Logger::info('Progresso atualizado com sucesso', ['estrutura_id' => $estruturaId]);
+        } catch (Exception $e) {
+            Logger::error('Erro ao atualizar progresso', [
+                'estrutura_id' => $estruturaId,
+                'erro' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+        }
+        
+        $tempoTotal = microtime(true) - $inicioProcesso;
+        
+        Logger::info('=== MAPEAMENTO DE SETOR CONCLUÍDO COM SUCESSO ===', [
+            'setor' => $setorNome,
+            'estrutura_id' => $estruturaId,
+            'total_servicos' => count($servicosMapeados['servicos'] ?? []),
+            'servico_mapeado_id' => $servicoMapeadoId,
+            'tempo_total_segundos' => round($tempoTotal, 2),
+            'performance' => [
+                'tempo_prompt_ms' => round($tempoPrompt * 1000, 2),
+                'tempo_api_ms' => round($tempoChamadaAPI * 1000, 2),
+                'tempo_total_ms' => round($tempoTotal * 1000, 2)
+            ]
         ]);
 
         header('Content-Type: application/json');
@@ -2250,7 +2522,10 @@ class SopController
             'sucesso' => true,
             'setor' => $setorNome,
             'total_servicos' => count($servicosMapeados['servicos'] ?? []),
-            'servicos' => $servicosMapeados['servicos'] ?? []
+            'servicos' => $servicosMapeados['servicos'] ?? [],
+            'funcao_principal' => $servicosMapeados['funcao_principal'] ?? '',
+            'servico_mapeado_id' => $servicoMapeadoId,
+            'tempo_processamento' => round($tempoTotal, 2)
         ]);
         exit;
     }
@@ -5843,25 +6118,124 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
      */
     private function salvarServicosMapeados(int $estruturaId, string $setorNome, array $servicosMapeados): int
     {
+        Logger::info('=== INICIANDO SALVAMENTO DE SERVIÇOS MAPEADOS ===', [
+            'estrutura_id' => $estruturaId,
+            'setor_nome' => $setorNome,
+            'servicos_count' => count($servicosMapeados['servicos'] ?? []),
+            'dados_keys' => array_keys($servicosMapeados)
+        ]);
+
         $totalServicos = count($servicosMapeados['servicos'] ?? []);
         
-        $sucesso = Database::execute(
-            "INSERT INTO servicos_mapeados (estrutura_id, setor_nome, setor_tipo, servicos_json, total_servicos, status, criado_em, processado_em) 
-             VALUES (?, ?, ?, ?, ?, 'concluido', NOW(), NOW())",
-            [
-                $estruturaId,
-                $setorNome,
-                'base', // TODO: Determinar tipo baseado no setor
-                json_encode($servicosMapeados, JSON_UNESCAPED_UNICODE),
-                $totalServicos
-            ]
-        );
-        
-        if (!$sucesso) {
-            throw new Exception('Erro ao salvar serviços mapeados');
+        // Validar dados antes de salvar
+        if ($totalServicos === 0) {
+            Logger::warning('Nenhum serviço foi mapeado para o setor', [
+                'estrutura_id' => $estruturaId,
+                'setor_nome' => $setorNome,
+                'dados_completos' => $servicosMapeados
+            ]);
         }
-        
-        return (int) Database::lastInsertId();
+
+        // Preparar dados para inserção
+        $jsonServicos = json_encode($servicosMapeados, JSON_UNESCAPED_UNICODE);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            Logger::error('Erro ao codificar serviços em JSON', [
+                'json_error' => json_last_error_msg(),
+                'dados_originais' => $servicosMapeados
+            ]);
+            throw new Exception('Erro ao codificar dados em JSON: ' . json_last_error_msg());
+        }
+
+        Logger::info('Dados preparados para inserção', [
+            'estrutura_id' => $estruturaId,
+            'setor_nome' => $setorNome,
+            'setor_tipo' => 'base', // TODO: Determinar tipo baseado no setor
+            'total_servicos' => $totalServicos,
+            'json_size' => strlen($jsonServicos),
+            'json_valid' => json_last_error() === JSON_ERROR_NONE
+        ]);
+
+        try {
+            $sucesso = Database::execute(
+                "INSERT INTO servicos_mapeados (estrutura_id, setor_nome, setor_tipo, servicos_json, total_servicos, status, criado_em, processado_em) 
+                 VALUES (?, ?, ?, ?, ?, 'concluido', NOW(), NOW())",
+                [
+                    $estruturaId,
+                    $setorNome,
+                    'base', // TODO: Determinar tipo baseado no setor
+                    $jsonServicos,
+                    $totalServicos
+                ]
+            );
+
+            if (!$sucesso) {
+                Logger::error('Database::execute retornou false', [
+                    'estrutura_id' => $estruturaId,
+                    'setor_nome' => $setorNome,
+                    'query_params' => [
+                        'estrutura_id' => $estruturaId,
+                        'setor_nome' => $setorNome,
+                        'setor_tipo' => 'base',
+                        'total_servicos' => $totalServicos,
+                        'json_size' => strlen($jsonServicos)
+                    ]
+                ]);
+                throw new Exception('Falha na execução da query de inserção');
+            }
+
+            $lastInsertId = (int) Database::lastInsertId();
+            
+            Logger::info('Serviços mapeados salvos com sucesso', [
+                'servico_mapeado_id' => $lastInsertId,
+                'estrutura_id' => $estruturaId,
+                'setor_nome' => $setorNome,
+                'total_servicos' => $totalServicos,
+                'database_insert_success' => true
+            ]);
+
+            // Validação pós-inserção: verificar se o registro foi realmente salvo
+            $registroSalvo = Database::queryOne(
+                "SELECT id, setor_nome, total_servicos, status FROM servicos_mapeados WHERE id = ?",
+                [$lastInsertId]
+            );
+
+            if (!$registroSalvo) {
+                Logger::error('Registro não encontrado após inserção', [
+                    'expected_id' => $lastInsertId,
+                    'estrutura_id' => $estruturaId,
+                    'setor_nome' => $setorNome
+                ]);
+                throw new Exception('Falha na verificação pós-inserção');
+            }
+
+            Logger::info('Validação pós-inserção bem-sucedida', [
+                'registro_salvo' => $registroSalvo,
+                'dados_conferem' => [
+                    'setor_nome' => $registroSalvo['setor_nome'] === $setorNome,
+                    'total_servicos' => (int)$registroSalvo['total_servicos'] === $totalServicos,
+                    'status' => $registroSalvo['status'] === 'concluido'
+                ]
+            ]);
+
+            return $lastInsertId;
+
+        } catch (Exception $e) {
+            Logger::error('Erro na operação de banco de dados', [
+                'estrutura_id' => $estruturaId,
+                'setor_nome' => $setorNome,
+                'erro_mensagem' => $e->getMessage(),
+                'erro_codigo' => $e->getCode(),
+                'erro_arquivo' => $e->getFile(),
+                'erro_linha' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+                'dados_tentativa' => [
+                    'total_servicos' => $totalServicos,
+                    'json_size' => strlen($jsonServicos),
+                    'setor_tipo' => 'base'
+                ]
+            ]);
+            throw $e;
+        }
     }
 
     /**
@@ -5995,24 +6369,93 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
      */
     private function atualizarProgressoEtapa2A(int $estruturaId): void
     {
-        // Contar setores mapeados
-        $setoresMapeados = Database::queryOne(
-            "SELECT COUNT(*) as total FROM servicos_mapeados WHERE estrutura_id = ? AND status = 'concluido'",
-            [$estruturaId]
-        )['total'] ?? 0;
-        
-        // Buscar total de setores
-        $progresso = $this->buscarProgressoManual($estruturaId);
-        $totalSetores = $progresso['total_setores'] ?? 1;
-        
-        // Calcular percentual (Etapa 2A = 25% do total)
-        $percentualEtapa2A = ($setoresMapeados / $totalSetores) * 25;
-        
-        Database::execute(
-            "UPDATE progresso_manual SET setores_mapeados = ?, progresso_percentual = ?, atualizado_em = NOW() 
-             WHERE estrutura_id = ?",
-            [$setoresMapeados, $percentualEtapa2A, $estruturaId]
-        );
+        Logger::info('=== ATUALIZANDO PROGRESSO ETAPA 2A ===', [
+            'estrutura_id' => $estruturaId
+        ]);
+
+        try {
+            // Contar setores mapeados
+            $querySetoresMapeados = Database::queryOne(
+                "SELECT COUNT(*) as total FROM servicos_mapeados WHERE estrutura_id = ? AND status = 'concluido'",
+                [$estruturaId]
+            );
+            $setoresMapeados = $querySetoresMapeados['total'] ?? 0;
+
+            Logger::info('Setores mapeados contabilizados', [
+                'estrutura_id' => $estruturaId,
+                'setores_mapeados' => $setoresMapeados,
+                'query_result' => $querySetoresMapeados
+            ]);
+            
+            // Buscar total de setores
+            $progresso = $this->buscarProgressoManual($estruturaId);
+            if (!$progresso) {
+                Logger::warning('Progresso manual não encontrado', [
+                    'estrutura_id' => $estruturaId
+                ]);
+                return;
+            }
+
+            $totalSetores = $progresso['total_setores'] ?? 1;
+            Logger::info('Dados de progresso recuperados', [
+                'estrutura_id' => $estruturaId,
+                'total_setores' => $totalSetores,
+                'setores_mapeados' => $setoresMapeados,
+                'progresso_atual' => $progresso['progresso_percentual'] ?? 0
+            ]);
+            
+            // Calcular percentual (Etapa 2A = 25% do total)
+            $percentualEtapa2A = ($setoresMapeados / $totalSetores) * 25;
+            
+            Logger::info('Novo percentual calculado', [
+                'estrutura_id' => $estruturaId,
+                'calculo' => "({$setoresMapeados} / {$totalSetores}) * 25",
+                'percentual_etapa2a' => $percentualEtapa2A,
+                'percentual_formatado' => round($percentualEtapa2A, 2) . '%'
+            ]);
+            
+            $updateResult = Database::execute(
+                "UPDATE progresso_manual SET setores_mapeados = ?, progresso_percentual = ?, atualizado_em = NOW() 
+                 WHERE estrutura_id = ?",
+                [$setoresMapeados, $percentualEtapa2A, $estruturaId]
+            );
+
+            if ($updateResult) {
+                Logger::info('Progresso atualizado com sucesso', [
+                    'estrutura_id' => $estruturaId,
+                    'setores_mapeados' => $setoresMapeados,
+                    'percentual_final' => $percentualEtapa2A,
+                    'database_update_success' => true
+                ]);
+
+                // Verificação pós-update
+                $progressoAtualizado = $this->buscarProgressoManual($estruturaId);
+                Logger::info('Verificação pós-update', [
+                    'progresso_pos_update' => $progressoAtualizado,
+                    'dados_conferem' => [
+                        'setores_mapeados' => (int)$progressoAtualizado['setores_mapeados'] === $setoresMapeados,
+                        'percentual' => abs((float)$progressoAtualizado['progresso_percentual'] - $percentualEtapa2A) < 0.01
+                    ]
+                ]);
+            } else {
+                Logger::error('Falha ao atualizar progresso no banco', [
+                    'estrutura_id' => $estruturaId,
+                    'setores_mapeados' => $setoresMapeados,
+                    'percentual' => $percentualEtapa2A
+                ]);
+            }
+
+        } catch (Exception $e) {
+            Logger::error('Erro ao atualizar progresso da Etapa 2A', [
+                'estrutura_id' => $estruturaId,
+                'erro_mensagem' => $e->getMessage(),
+                'erro_codigo' => $e->getCode(),
+                'erro_arquivo' => $e->getFile(),
+                'erro_linha' => $e->getLine(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
+        }
     }
 
     /**

@@ -269,20 +269,51 @@ async function mapearSetor(setorNome, index) {
         console.log('=== RESPOSTA RECEBIDA ===');
         console.log('Tamanho da resposta:', responseText.length);
         console.log('Primeiros 500 chars:', responseText.substring(0, 500));
-        
+        console.log('Status HTTP:', response.status);
+        console.log('Headers da resposta:', Object.fromEntries(response.headers.entries()));
+
         let result;
         try {
             result = JSON.parse(responseText);
             console.log('JSON parseado com sucesso:', result);
+            
+            // Log detalhado do resultado
+            if (result.sucesso) {
+                console.log('✅ SUCESSO - Detalhes:', {
+                    setor: result.setor,
+                    total_servicos: result.total_servicos,
+                    servico_mapeado_id: result.servico_mapeado_id,
+                    tempo_processamento: result.tempo_processamento,
+                    funcao_principal: result.funcao_principal,
+                    servicos_nomes: result.servicos ? result.servicos.map(s => s.nome) : []
+                });
+            } else {
+                console.error('❌ ERRO - Detalhes:', {
+                    erro: result.erro,
+                    codigo_erro: result.codigo_erro,
+                    resultado_completo: result
+                });
+            }
+            
         } catch (parseError) {
             console.error('ERRO ao fazer parse do JSON:', parseError);
             console.error('Resposta completa:', responseText);
+            console.error('Possíveis problemas:', {
+                'contem_html': responseText.includes('<html') || responseText.includes('<!DOCTYPE'),
+                'contem_php_error': responseText.includes('PHP Parse error') || responseText.includes('PHP Fatal error'),
+                'comeca_com_warning': responseText.trim().startsWith('Warning:'),
+                'tamanho_resposta': responseText.length,
+                'primeiro_char': responseText.charAt(0),
+                'ultimos_100_chars': responseText.slice(-100)
+            });
             
             // Tentar identificar o problema na resposta
             if (responseText.includes('PHP Parse error') || responseText.includes('PHP Fatal error')) {
                 throw new Error('Erro PHP no servidor. Verifique os logs do servidor.\n\nErro: ' + responseText.substring(0, 200));
             } else if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
                 throw new Error('Servidor retornou HTML ao invés de JSON. Possível erro de rota ou redirecionamento.');
+            } else if (responseText.trim().startsWith('Warning:')) {
+                throw new Error('Warning PHP está interferindo na resposta JSON.\n\nWarning: ' + responseText.substring(0, 300));
             } else {
                 throw new Error('Resposta inválida do servidor. Não é um JSON válido.\n\nResposta: ' + responseText.substring(0, 300));
             }
@@ -331,6 +362,7 @@ async function mapearSetor(setorNome, index) {
             
         } else {
             console.error('Erro retornado pela API:', result.erro);
+            console.error('Código do erro:', result.codigo_erro);
             
             // Erro
             if (status) status.innerHTML = '<span class="px-3 py-1 text-sm bg-red-100 text-red-600 rounded-full">❌ Erro</span>';
@@ -338,7 +370,17 @@ async function mapearSetor(setorNome, index) {
             btnMapear.disabled = false;
             
             const mensagemErro = result.erro || 'Erro desconhecido no servidor';
-            alert('Erro no mapeamento:\n\n' + mensagemErro);
+            const codigoErro = result.codigo_erro ? `\n\nCódigo: ${result.codigo_erro}` : '';
+            
+            // Sugestões baseadas no tipo de erro
+            let sugestao = '';
+            if (result.codigo_erro === 'DADOS_INCOMPLETOS') {
+                sugestao = '\n\nSolução: Os dados do diagnóstico estão incompletos. Recarregue a página ou refaça o diagnóstico.';
+            } else if (result.codigo_erro === 'API_ERROR') {
+                sugestao = '\n\nSolução: Erro na comunicação com a IA. Tente novamente em alguns segundos.';
+            }
+            
+            alert('Erro no mapeamento:\n\n' + mensagemErro + codigoErro + sugestao);
         }
         
     } catch (error) {
