@@ -172,6 +172,20 @@ $csrfToken = Session::get('csrf_token');
                 class="px-6 py-2 border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50">
             🧪 Teste JS
         </button>
+        
+        <!-- Botão para Executar Migração (Debug) -->
+        <button type="button" 
+                onclick="executarMigracaoTabelas()"
+                class="px-6 py-2 border border-purple-300 text-purple-700 rounded-lg hover:bg-purple-50">
+            🗃️ Verificar Tabelas
+        </button>
+        
+        <!-- Botão para Diagnóstico Completo -->
+        <button type="button" 
+                onclick="diagnosticoCompleto()"
+                class="px-6 py-2 border border-green-300 text-green-700 rounded-lg hover:bg-green-50">
+            🔍 Diagnóstico Completo
+        </button>
     </div>
     
     <button type="button" 
@@ -184,14 +198,25 @@ $csrfToken = Session::get('csrf_token');
 </div>
 
 <script>
-let estruturaId = <?= (int) $dados['estrutura_id'] ?>;
-let setoresMapeados = 0;
-let totalSetores = <?= count($dados['setores']) ?>;
+// Dados seguros via JSON
+const dadosIniciais = <?= json_encode([
+    'estruturaId' => (int) $dados['estrutura_id'],
+    'totalSetores' => count($dados['setores']),
+    'setores' => array_values($dados['setores']),
+    'setoresNomes' => array_column($dados['setores'], 'nome_setor'),
+    'appUrl' => APP_URL
+], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
 
-console.log('=== INICIALIZAÇÃO ===');
+// Variáveis globais seguras
+let estruturaId = dadosIniciais.estruturaId;
+let setoresMapeados = 0;
+let totalSetores = dadosIniciais.totalSetores;
+let appUrl = dadosIniciais.appUrl;
+
+console.log('=== INICIALIZAÇÃO SEGURA ===');
 console.log('Estrutura ID:', estruturaId);
 console.log('Total Setores:', totalSetores);
-console.log('Setores:', <?= json_encode(array_column($dados['setores'], 'nome_setor')) ?>);
+console.log('Setores:', dadosIniciais.setoresNomes);
 
 // Mapear serviços de um setor específico
 async function mapearSetor(setorNome, index) {
@@ -268,7 +293,7 @@ async function mapearSetor(setorNome, index) {
         console.log('csrf_token:', csrfToken ? 'Presente' : 'Ausente');
         
         console.log('=== FAZENDO REQUISIÇÃO ===');
-        const response = await fetch('<?= APP_URL ?>/sop/executar-mapeamento-setor', {
+        const response = await fetch(appUrl + '/sop/executar-mapeamento-setor', {
             method: 'POST',
             body: formData
         });
@@ -445,6 +470,92 @@ function verificarProgressoCompleto() {
     }
 }
 
+// Função de diagnóstico completo do sistema
+function diagnosticoCompleto() {
+    console.log('🔍 INICIANDO DIAGNÓSTICO COMPLETO DO SISTEMA');
+    
+    const diagnostico = {
+        timestamp: new Date().toISOString(),
+        url_atual: window.location.href,
+        user_agent: navigator.userAgent,
+        
+        // Variáveis JavaScript
+        variaveis: {
+            estruturaId: typeof estruturaId !== 'undefined' ? estruturaId : 'UNDEFINED',
+            totalSetores: typeof totalSetores !== 'undefined' ? totalSetores : 'UNDEFINED',
+            setoresMapeados: typeof setoresMapeados !== 'undefined' ? setoresMapeados : 'UNDEFINED',
+            appUrl: typeof appUrl !== 'undefined' ? appUrl : 'UNDEFINED'
+        },
+        
+        // Dados iniciais
+        dados_iniciais: typeof dadosIniciais !== 'undefined' ? dadosIniciais : 'UNDEFINED',
+        
+        // CSRF
+        csrf_meta_existe: !!document.querySelector('meta[name="csrf-token"]'),
+        csrf_token: document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
+        
+        // Elementos DOM
+        elementos: {},
+        
+        // Funções
+        funcoes: {
+            mapearSetor: typeof mapearSetor === 'function',
+            testarConexaoAPI: typeof testarConexaoAPI === 'function',
+            regenerarCSRF: typeof regenerarCSRF === 'function'
+        }
+    };
+    
+    // Verificar elementos DOM para cada setor
+    for (let i = 0; i < (diagnostico.variaveis.totalSetores || 0); i++) {
+        diagnostico.elementos[`setor_${i}`] = {
+            botao: !!document.getElementById(`btn-mapear-${i}`),
+            loading: !!document.getElementById(`loading-${i}`),
+            status: !!document.getElementById(`status-setor-${i}`),
+            resultado: !!document.getElementById(`resultado-${i}`),
+            onclick_attr: document.getElementById(`btn-mapear-${i}`)?.getAttribute('onclick')
+        };
+    }
+    
+    // Verificar console errors
+    if (window.console && console.error) {
+        console.log('📊 DIAGNÓSTICO COMPLETO:', diagnostico);
+    }
+    
+    // Mostrar relatório
+    const relatorio = `🔍 DIAGNÓSTICO COMPLETO DO SISTEMA:
+
+📍 LOCALIZAÇÃO:
+URL: ${diagnostico.url_atual}
+Timestamp: ${diagnostico.timestamp}
+
+🔧 VARIÁVEIS:
+estruturaId: ${diagnostico.variaveis.estruturaId}
+totalSetores: ${diagnostico.variaveis.totalSetores}
+setoresMapeados: ${diagnostico.variaveis.setoresMapeados}
+appUrl: ${diagnostico.variaveis.appUrl}
+
+🔐 CSRF:
+Meta tag existe: ${diagnostico.csrf_meta_existe ? 'SIM' : 'NÃO'}
+Token presente: ${diagnostico.csrf_token ? 'SIM (' + diagnostico.csrf_token.length + ' chars)' : 'NÃO'}
+
+⚙️ FUNÇÕES:
+mapearSetor: ${diagnostico.funcoes.mapearSetor ? 'EXISTE' : 'AUSENTE'}
+testarConexaoAPI: ${diagnostico.funcoes.testarConexaoAPI ? 'EXISTE' : 'AUSENTE'}
+regenerarCSRF: ${diagnostico.funcoes.regenerarCSRF ? 'EXISTE' : 'AUSENTE'}
+
+📋 ELEMENTOS DOM:
+${Object.keys(diagnostico.elementos).map(setor => {
+    const el = diagnostico.elementos[setor];
+    return `${setor}: Btn=${el.botao ? '✅' : '❌'} Loading=${el.loading ? '✅' : '❌'} Status=${el.status ? '✅' : '❌'} Result=${el.resultado ? '✅' : '❌'}`;
+}).join('\n')}
+
+Verifique o console do navegador para detalhes completos.`;
+
+    alert(relatorio);
+    
+    return diagnostico;
+}
+
 // Prosseguir para Etapa 2B
 function prosseguirEtapa2B() {
     if (setoresMapeados < totalSetores) {
@@ -452,7 +563,7 @@ function prosseguirEtapa2B() {
         return;
     }
     
-    window.location.href = `<?= APP_URL ?>/sop/detalhar-servicos?estrutura_id=${estruturaId}`;
+    window.location.href = `${appUrl}/sop/detalhar-servicos?estrutura_id=${estruturaId}`;
 }
 
 // Toast notifications
@@ -467,7 +578,7 @@ async function testarConexaoAPI() {
     
     try {
         // Testar informações básicas
-        console.log('URL da API:', '<?= APP_URL ?>/sop/executar-mapeamento-setor');
+        console.log('URL da API:', appUrl + '/sop/executar-mapeamento-setor');
         console.log('Estrutura ID:', estruturaId);
         console.log('Total setores:', totalSetores);
         
@@ -488,7 +599,7 @@ async function testarConexaoAPI() {
         formData.append('estrutura_id', '1'); // Valor de teste
         formData.append('setor_nome', 'TESTE'); // Valor de teste
         
-        const response = await fetch('<?= APP_URL ?>/sop/executar-mapeamento-setor', {
+        const response = await fetch(appUrl + '/sop/executar-mapeamento-setor', {
             method: 'POST',
             body: formData
         });
@@ -530,7 +641,7 @@ async function regenerarCSRF() {
     console.log('=== REGENERANDO TOKEN CSRF ===');
     
     try {
-        const response = await fetch('<?= APP_URL ?>/sop/regenerar-csrf', {
+        const response = await fetch(appUrl + '/sop/regenerar-csrf', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded'
@@ -670,7 +781,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Função para mapear todos automaticamente
 async function mapearTodosSetores() {
-    const setores = <?= json_encode(array_column($dados['setores'], 'nome_setor')) ?>;
+    const setores = dadosIniciais.setoresNomes;
     
     for (let i = 0; i < totalSetores; i++) {
         if (setores[i]) {
@@ -690,7 +801,7 @@ function testeBasicoJS() {
             estruturaId: typeof estruturaId !== 'undefined' ? estruturaId : 'UNDEFINED',
             totalSetores: typeof totalSetores !== 'undefined' ? totalSetores : 'UNDEFINED',
             setoresMapeados: typeof setoresMapeados !== 'undefined' ? setoresMapeados : 'UNDEFINED',
-            APP_URL: '<?= APP_URL ?>'
+            APP_URL: appUrl
         };
         
         console.log('📊 Variáveis:', vars);
@@ -738,6 +849,58 @@ Verifique o console para mais detalhes.`;
     } catch (error) {
         console.error('❌ ERRO no teste básico:', error);
         alert('❌ ERRO no teste básico: ' + error.message);
+    }
+}
+
+// Executar migração das tabelas da nova arquitetura
+async function executarMigracaoTabelas() {
+    console.log('🗃️ EXECUTANDO VERIFICAÇÃO DAS TABELAS');
+    
+    try {
+        // Obter CSRF token
+        const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+        
+        if (!csrfToken) {
+            alert('ERRO: Token CSRF não encontrado. Recarregue a página.');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('csrf_token', csrfToken);
+        
+        const response = await fetch(appUrl + '/sop/verificar-criar-tabelas', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            
+            if (result.sucesso) {
+                console.log('✅ Resultado da verificação:', result);
+                
+                let mensagem = '✅ VERIFICAÇÃO DE TABELAS CONCLUÍDA\n\n';
+                if (result.tabelas_criadas && result.tabelas_criadas.length > 0) {
+                    mensagem += `Tabelas criadas: ${result.tabelas_criadas.join(', ')}\n\n`;
+                }
+                if (result.tabelas_existentes && result.tabelas_existentes.length > 0) {
+                    mensagem += `Tabelas já existentes: ${result.tabelas_existentes.join(', ')}\n\n`;
+                }
+                mensagem += 'Agora você pode tentar usar os botões de mapeamento.';
+                
+                alert(mensagem);
+            } else {
+                throw new Error(result.erro || 'Erro desconhecido na verificação das tabelas');
+            }
+        } else {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+        
+    } catch (error) {
+        console.error('Erro na verificação das tabelas:', error);
+        alert(`❌ ERRO na verificação das tabelas:\n\n${error.message}\n\nVerifique o console para mais detalhes.`);
     }
 }
 </script>

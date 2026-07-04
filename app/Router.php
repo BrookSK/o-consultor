@@ -82,6 +82,7 @@ class Router
         $this->get('sop/mapear-servicos', 'SopController', 'mapearServicos');                     // Etapa 2A: View mapeamento
         $this->post('sop/executar-mapeamento-setor', 'SopController', 'executarMapeamentoSetor'); // Etapa 2A: AJAX por setor
         $this->post('sop/regenerar-csrf', 'SopController', 'regenerarTokenCSRF');               // Debug: Regenerar CSRF
+        $this->post('sop/verificar-criar-tabelas', 'SopController', 'verificarCriarTabelas');   // Debug: Verificar/criar tabelas
         $this->get('sop/detalhar-servicos', 'SopController', 'detalharServicos');                 // Etapa 2B: View detalhamento
         $this->post('sop/executar-detalhamento-servico', 'SopController', 'executarDetalhamentoServico'); // Etapa 2B: AJAX por serviço
         $this->get('sop/processar-sops', 'SopController', 'processarSOPs');                       // Etapa 3: View de processamento

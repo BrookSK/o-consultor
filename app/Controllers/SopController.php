@@ -6618,4 +6618,107 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         ]);
         exit;
     }
+
+    /**
+     * Verificar e criar tabelas da nova arquitetura via AJAX (para debug)
+     */
+    public function verificarCriarTabelas(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        
+        try {
+            $tabelasCriadas = [];
+            $tabelasExistentes = [];
+            
+            // Lista das tabelas necessárias
+            $tabelasNecessarias = [
+                'estruturas_temporarias',
+                'progresso_manual_completo', 
+                'servicos_mapeados',
+                'servicos_detalhados',
+                'sops_gerados_nova_arquitetura'
+            ];
+            
+            foreach ($tabelasNecessarias as $tabela) {
+                $existe = Database::queryOne("SHOW TABLES LIKE '{$tabela}'");
+                
+                if ($existe) {
+                    $tabelasExistentes[] = $tabela;
+                } else {
+                    // Tentar criar a tabela executando a migração
+                    $this->criarTabelaSeNecessario($tabela);
+                    $tabelasCriadas[] = $tabela;
+                }
+            }
+            
+            Logger::info('Verificação de tabelas concluída', [
+                'tabelas_criadas' => $tabelasCriadas,
+                'tabelas_existentes' => $tabelasExistentes
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => true,
+                'tabelas_criadas' => $tabelasCriadas,
+                'tabelas_existentes' => $tabelasExistentes,
+                'total_tabelas' => count($tabelasNecessarias),
+                'mensagem' => 'Verificação das tabelas concluída com sucesso.'
+            ]);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro na verificação de tabelas', [
+                'erro' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => false,
+                'erro' => 'Erro na verificação das tabelas: ' . $e->getMessage()
+            ]);
+        }
+        exit;
+    }
+
+    /**
+     * Criar uma tabela específica se necessário
+     */
+    private function criarTabelaSeNecessario(string $nomeTabela): void
+    {
+        // Executar a migração 026 que cria todas as tabelas necessárias
+        $migrationFile = __DIR__ . '/../../database/migrations/026_adicionar_tabelas_servicos.sql';
+        
+        if (!file_exists($migrationFile)) {
+            throw new Exception("Arquivo de migração não encontrado: {$migrationFile}");
+        }
+        
+        $sql = file_get_contents($migrationFile);
+        
+        if (!$sql) {
+            throw new Exception("Não foi possível ler o arquivo de migração");
+        }
+        
+        // Dividir em comandos individuais
+        $comandos = array_filter(
+            array_map('trim', explode(';', $sql)), 
+            function($cmd) { 
+                return !empty($cmd) && !preg_match('/^\s*--/', $cmd); 
+            }
+        );
+        
+        foreach ($comandos as $comando) {
+            if (!empty($comando)) {
+                try {
+                    Database::execute($comando);
+                } catch (Exception $e) {
+                    // Ignorar erros de "tabela já existe"
+                    if (strpos($e->getMessage(), 'already exists') === false && 
+                        strpos($e->getMessage(), 'já existe') === false) {
+                        throw $e;
+                    }
+                }
+            }
+        }
+    }
 }
