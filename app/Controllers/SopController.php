@@ -8554,18 +8554,29 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         Logger::info('Conteudo da IA recebido', [
             'tipo_conteudo' => gettype($conteudoIA),
             'eh_string' => is_string($conteudoIA),
-            'tamanho' => is_string($conteudoIA) ? strlen($conteudoIA) : 'não é string'
+            'eh_array' => is_array($conteudoIA),
+            'tamanho' => is_string($conteudoIA) ? strlen($conteudoIA) : (is_array($conteudoIA) ? count($conteudoIA) : 'outro tipo')
         ]);
         
-        if (!is_string($conteudoIA)) {
-            Logger::error('Conteudo da IA não é string', [
+        // CORRIGIR: Se conteúdo é array, converter para string JSON
+        if (is_array($conteudoIA)) {
+            Logger::info('Conteúdo recebido como array (JSON decodificado), convertendo para string', ['array_keys' => array_keys($conteudoIA)]);
+            $conteudoString = json_encode($conteudoIA, JSON_UNESCAPED_UNICODE);
+        } elseif (is_object($conteudoIA)) {
+            Logger::info('Conteúdo recebido como objeto, convertendo para string JSON');
+            $conteudoString = json_encode($conteudoIA, JSON_UNESCAPED_UNICODE);
+        } elseif (is_string($conteudoIA)) {
+            Logger::info('Conteúdo recebido como string', ['tamanho' => strlen($conteudoIA)]);
+            $conteudoString = $conteudoIA;
+        } else {
+            Logger::error('Conteúdo da IA em tipo não suportado', [
                 'tipo_real' => gettype($conteudoIA),
                 'valor' => $conteudoIA
             ]);
-            return ['sucesso' => false, 'erro' => 'Erro interno: resposta da IA em formato inválido (conteúdo não é string)'];
+            return ['sucesso' => false, 'erro' => 'Erro interno: resposta da IA em formato inválido (tipo: ' . gettype($conteudoIA) . ')'];
         }
         
-        $detalhamento = $this->processarRespostaDetalhamentoIA($conteudoIA, $servico);
+        $detalhamento = $this->processarRespostaDetalhamentoIA($conteudoString, $servico);
         
         return [
             'sucesso' => true,
@@ -8597,16 +8608,21 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         // Salvar SOP na nova arquitetura
         $conteudoIA = $resultadoIA['conteudo'];
         
-        // FORÇA VERIFICAÇÃO DE TIPO ANTES DE USAR
-        if (!is_string($conteudoIA)) {
-            Logger::error('ERRO CRÍTICO - conteudoIA do SOP não é string', [
+        // CONVERTER PARA STRING SE NECESSÁRIO
+        if (is_array($conteudoIA) || is_object($conteudoIA)) {
+            Logger::info('Convertendo resposta da IA de array/object para string JSON');
+            $conteudoString = json_encode($conteudoIA, JSON_UNESCAPED_UNICODE);
+        } elseif (is_string($conteudoIA)) {
+            $conteudoString = $conteudoIA;
+        } else {
+            Logger::error('ERRO CRÍTICO - conteudoIA do SOP não é string, array ou object', [
                 'tipo_real' => gettype($conteudoIA),
                 'valor' => $conteudoIA
             ]);
-            return ['sucesso' => false, 'erro' => 'Erro interno: resposta da IA em formato inválido'];
+            return ['sucesso' => false, 'erro' => 'Erro interno: resposta da IA em formato inválido (conteúdo não é string)'];
         }
         
-        $sopId = $this->salvarSopNaNovaArquitetura($servico, $detalhamento, $conteudoIA, $diagnostico);
+        $sopId = $this->salvarSopNaNovaArquitetura($servico, $detalhamento, $conteudoString, $diagnostico);
         
         if (!$sopId) {
             return ['sucesso' => false, 'erro' => 'Erro ao salvar SOP no banco de dados'];
@@ -8615,7 +8631,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         return [
             'sucesso' => true,
             'sop_id' => $sopId,
-            'conteudo_sop' => $conteudoIA
+            'conteudo_sop' => $conteudoString
         ];
     }
     

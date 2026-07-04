@@ -1999,7 +1999,7 @@ Retorne APENAS o JSON válido, sem explicações adicionais.";
      */
     public static function transcreverComWhisper(string $caminhoArquivo, string $tipoMime): ?string
     {
-        $apiKey = self::obterChaveAPI('openai');
+        $apiKey = self::config('openai_key');
         
         if (!$apiKey) {
             throw new Exception('Chave da API OpenAI não configurada');
