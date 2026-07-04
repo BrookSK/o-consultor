@@ -94,6 +94,300 @@ class SopController
         require VIEW_PATH . '/sop/index.php';
     }
     
+    /**
+     * Cria mapeamento empresarial completo baseado no diagnóstico
+     */
+    private function criarMapeamentoEmpresarial(array $empresa, ?array $diagnostico): array
+    {
+        // Extrair dados do diagnóstico se existir
+        $respostas = [];
+        if ($diagnostico && !empty($diagnostico['respostas'])) {
+            $respostas = json_decode($diagnostico['respostas'], true) ?? [];
+        }
+        
+        // 1. MAPEAMENTO DE DEPARTAMENTOS
+        $departamentosBasicos = $this->extrairDepartamentos($diagnostico);
+        $departamentosArray = $this->parsearDepartamentos($departamentosBasicos);
+        
+        // 2. MAPEAMENTO DETALHADO POR DEPARTAMENTO
+        $departamentosDetalhados = [];
+        foreach ($departamentosArray as $dept) {
+            $departamentosDetalhados[$dept] = $this->mapearDepartamento($dept, $empresa['segmento'], $respostas);
+        }
+        
+        // 3. PROCEDIMENTOS PADRÃO DO MERCADO
+        $procedimentosMercado = $this->obterProcedimentosMercado($empresa['segmento'], $departamentosArray);
+        
+        // 4. MAPEAMENTO DETALHADO UNIFICADO
+        $mapeamentoDetalhado = $this->criarMapeamentoDetalhado($departamentosDetalhados, $procedimentosMercado);
+        
+        return [
+            'colaboradores' => $this->extrairColaboradores($diagnostico),
+            'faturamento' => $this->extrairFaturamento($diagnostico),
+            'maturidade' => $empresa['score_maturidade'] ?? 2,
+            'departamentos_texto' => $departamentosBasicos,
+            'departamentos_array' => $departamentosArray,
+            'departamentos_detalhados' => $departamentosDetalhados,
+            'ferramentas' => $this->extrairFerramentas($diagnostico),
+            'problemas' => $this->extrairProblemas($diagnostico),
+            'objetivos' => $this->extrairObjetivos($diagnostico),
+            'procedimentos_mercado' => $procedimentosMercado,
+            'mapeamento_detalhado' => $mapeamentoDetalhado
+        ];
+    }
+    
+    /**
+     * Mapeia um departamento específico com suas funções e responsabilidades
+     */
+    private function mapearDepartamento(string $departamento, string $setor, array $respostas): array
+    {
+        $mapeamentos = [
+            'Comercial' => [
+                'funcoes_principais' => [
+                    'Prospecção e qualificação de leads',
+                    'Negociação e fechamento de vendas', 
+                    'Gestão do relacionamento com clientes',
+                    'Elaboração de propostas comerciais',
+                    'Controle de pipeline de vendas'
+                ],
+                'responsabilidades' => [
+                    'Atingir metas de vendas mensais',
+                    'Manter CRM atualizado',
+                    'Realizar follow-up com prospects',
+                    'Participar de reuniões comerciais',
+                    'Elaborar relatórios de vendas'
+                ],
+                'kpis_essenciais' => [
+                    'Taxa de conversão de leads',
+                    'Ticket médio de vendas',
+                    'Tempo médio de ciclo de vendas',
+                    'CAC (Custo de Aquisição de Clientes)'
+                ]
+            ],
+            'Financeiro' => [
+                'funcoes_principais' => [
+                    'Controle de fluxo de caixa',
+                    'Contas a pagar e receber',
+                    'Análise financeira e planejamento',
+                    'Controle de custos e despesas',
+                    'Relatórios gerenciais'
+                ],
+                'responsabilidades' => [
+                    'Manter fluxo de caixa atualizado diariamente',
+                    'Negociar prazos com fornecedores',
+                    'Controlar inadimplência',
+                    'Elaborar demonstrativos financeiros',
+                    'Apoiar tomada de decisões estratégicas'
+                ],
+                'kpis_essenciais' => [
+                    'Margem de lucro bruto',
+                    'Inadimplência (%)',
+                    'Prazo médio de recebimento',
+                    'Controle orçamentário'
+                ]
+            ],
+            'Operações' => [
+                'funcoes_principais' => [
+                    'Gestão da produção/entrega',
+                    'Controle de qualidade',
+                    'Gestão de estoque',
+                    'Otimização de processos',
+                    'Atendimento ao cliente'
+                ],
+                'responsabilidades' => [
+                    'Garantir qualidade dos produtos/serviços',
+                    'Otimizar custos operacionais',
+                    'Manter padrões de atendimento',
+                    'Gerenciar fornecedores',
+                    'Implementar melhorias contínuas'
+                ],
+                'kpis_essenciais' => [
+                    'Tempo médio de entrega',
+                    'Índice de qualidade',
+                    'Produtividade por colaborador',
+                    'Satisfação do cliente'
+                ]
+            ],
+            'TI' => [
+                'funcoes_principais' => [
+                    'Manutenção de infraestrutura',
+                    'Desenvolvimento de sistemas',
+                    'Suporte técnico interno',
+                    'Segurança da informação',
+                    'Automação de processos'
+                ],
+                'responsabilidades' => [
+                    'Manter sistemas funcionando',
+                    'Realizar backups regulares',
+                    'Implementar medidas de segurança',
+                    'Treinar usuários em ferramentas',
+                    'Avaliar novas tecnologias'
+                ],
+                'kpis_essenciais' => [
+                    'Uptime dos sistemas (%)',
+                    'Tempo médio de resolução',
+                    'Número de incidentes',
+                    'Satisfação dos usuários internos'
+                ]
+            ],
+            'RH' => [
+                'funcoes_principais' => [
+                    'Recrutamento e seleção',
+                    'Gestão de pessoas',
+                    'Treinamento e desenvolvimento',
+                    'Controle de ponto e folha',
+                    'Clima organizacional'
+                ],
+                'responsabilidades' => [
+                    'Manter equipe motivada',
+                    'Controlar turnover',
+                    'Garantir compliance trabalhista',
+                    'Desenvolver talentos internos',
+                    'Mediar conflitos'
+                ],
+                'kpis_essenciais' => [
+                    'Taxa de turnover',
+                    'Tempo médio de contratação',
+                    'Satisfação dos colaboradores',
+                    'Horas de treinamento per capita'
+                ]
+            ]
+        ];
+        
+        // Retornar mapeamento específico ou genérico
+        return isset($mapeamentos[$departamento]) ? $mapeamentos[$departamento] : [
+            'funcoes_principais' => ['Executar atividades do departamento', 'Apoiar objetivos estratégicos'],
+            'responsabilidades' => ['Cumprir metas estabelecidas', 'Manter processos organizados'],
+            'kpis_essenciais' => ['Produtividade', 'Qualidade dos entregáveis']
+        ];
+    }
+    
+    /**
+     * Obtém procedimentos padrão do mercado por setor
+     */
+    private function obterProcedimentosMercado(string $setor, array $departamentos): array
+    {
+        $procedimentosBase = [
+            'Tecnologia' => [
+                'Comercial' => [
+                    'Metodologia SPIN Selling para descoberta',
+                    'Pipeline em CRM com 5 estágios mínimos',
+                    'Follow-up estruturado com cadência definida',
+                    'Proposta técnica + comercial padronizada'
+                ],
+                'Operações' => [
+                    'Metodologia ágil (Scrum/Kanban)',
+                    'Controle de qualidade com code review',
+                    'Deploy automatizado com CI/CD',
+                    'Monitoramento de performance'
+                ],
+                'TI' => [
+                    'Backup 3-2-1 (3 cópias, 2 mídias, 1 offsite)',
+                    'Monitoramento 24/7 de infraestrutura',
+                    'Patch management mensal',
+                    'Política de segurança ISO 27001'
+                ]
+            ],
+            'Varejo' => [
+                'Comercial' => [
+                    'Técnicas de merchandising visual',
+                    'Gestão de relacionamento pós-venda',
+                    'Programa de fidelidade estruturado'
+                ],
+                'Operações' => [
+                    'Controle de estoque Just-in-Time',
+                    'Gestão de fornecedores qualificados',
+                    'Padrão de atendimento ao cliente'
+                ]
+            ]
+        ];
+        
+        $resultado = [];
+        foreach ($departamentos as $dept) {
+            if (isset($procedimentosBase[$setor][$dept])) {
+                $resultado[$dept] = $procedimentosBase[$setor][$dept];
+            } else {
+                $resultado[$dept] = ['Procedimentos padrão da indústria', 'Boas práticas do mercado'];
+            }
+        }
+        
+        return $resultado;
+    }
+    
+    /**
+     * Cria mapeamento detalhado unificado
+     */
+    private function criarMapeamentoDetalhado(array $departamentosDetalhados, array $procedimentosMercado): string
+    {
+        $mapeamento = "=== MAPEAMENTO EMPRESARIAL COMPLETO ===\n\n";
+        
+        foreach ($departamentosDetalhados as $dept => $detalhes) {
+            $mapeamento .= "DEPARTAMENTO: {$dept}\n";
+            $mapeamento .= "Funções Principais:\n";
+            foreach ($detalhes['funcoes_principais'] as $funcao) {
+                $mapeamento .= "• {$funcao}\n";
+            }
+            
+            $mapeamento .= "\nResponsabilidades:\n";
+            foreach ($detalhes['responsabilidades'] as $resp) {
+                $mapeamento .= "• {$resp}\n";
+            }
+            
+            $mapeamento .= "\nKPIs Essenciais:\n";
+            foreach ($detalhes['kpis_essenciais'] as $kpi) {
+                $mapeamento .= "• {$kpi}\n";
+            }
+            
+            if (isset($procedimentosMercado[$dept])) {
+                $mapeamento .= "\nProcedimentos Padrão do Mercado:\n";
+                foreach ($procedimentosMercado[$dept] as $proc) {
+                    $mapeamento .= "• {$proc}\n";
+                }
+            }
+            
+            $mapeamento .= "\n" . str_repeat("-", 50) . "\n\n";
+        }
+        
+        return $mapeamento;
+    }
+    
+    /**
+     * Converte string de departamentos em array
+     */
+    private function parsearDepartamentos(string $departamentos): array
+    {
+        // Limpar e separar departamentos
+        $deps = array_map('trim', explode(',', $departamentos));
+        $deps = array_filter($deps); // Remove vazios
+        
+        // Padronizar nomes
+        $padronizacao = [
+            'comercial' => 'Comercial',
+            'vendas' => 'Comercial', 
+            'financeiro' => 'Financeiro',
+            'ti' => 'TI',
+            'tecnologia' => 'TI',
+            'operacoes' => 'Operações',
+            'operações' => 'Operações',
+            'rh' => 'RH',
+            'recursos humanos' => 'RH',
+            'marketing' => 'Marketing',
+            'administrativo' => 'Administrativo'
+        ];
+        
+        $resultado = [];
+        foreach ($deps as $dep) {
+            $depLower = strtolower($dep);
+            if (isset($padronizacao[$depLower])) {
+                $resultado[] = $padronizacao[$depLower];
+            } else {
+                $resultado[] = ucfirst($dep);
+            }
+        }
+        
+        return array_unique($resultado);
+    }
+
     private function carregarDadosEmpresa(int $empresaId, ?int $diagnosticoEspecifico = null): array
     {
         $empresa = Empresa::buscarPorId($empresaId);
@@ -377,17 +671,22 @@ class SopController
             exit;
         }
 
+        // NOVO: Processo robusto de mapeamento
+        $mapeamentoCompleto = $this->criarMapeamentoEmpresarial($empresa, $diagnostico);
+        
         // Montar dados completos da empresa para o prompt
         $empresaDados = [
             'nome' => $empresa['nome'],
             'setor' => $empresa['segmento'] ?? 'Tecnologia',
-            'colaboradores' => $diagnostico ? $this->extrairColaboradores($diagnostico) : '10-25',
-            'faturamento' => $diagnostico ? $this->extrairFaturamento($diagnostico) : 'R$ 100-300 mil',
-            'maturidade' => $empresa['score_maturidade'] ?? 2,
-            'departamentos' => $diagnostico ? $this->extrairDepartamentos($diagnostico) : 'Comercial, TI, Operações, Financeiro',
-            'ferramentas' => $diagnostico ? $this->extrairFerramentas($diagnostico) : 'E-mail, WhatsApp, Excel',
-            'problemas' => $diagnostico ? $this->extrairProblemas($diagnostico) : 'Processos não documentados',
-            'objetivos' => $diagnostico ? $this->extrairObjetivos($diagnostico) : 'Crescer com processos organizados',
+            'colaboradores' => $mapeamentoCompleto['colaboradores'],
+            'faturamento' => $mapeamentoCompleto['faturamento'],
+            'maturidade' => $mapeamentoCompleto['maturidade'],
+            'departamentos' => $mapeamentoCompleto['departamentos_texto'],
+            'ferramentas' => $mapeamentoCompleto['ferramentas'],
+            'problemas' => $mapeamentoCompleto['problemas'],
+            'objetivos' => $mapeamentoCompleto['objetivos'],
+            'mapeamento_detalhado' => $mapeamentoCompleto['mapeamento_detalhado'],
+            'procedimentos_mercado' => $mapeamentoCompleto['procedimentos_mercado']
         ];
 
         $sopData = [
@@ -395,6 +694,7 @@ class SopController
             'nome' => $sopNome,
             'departamento' => $this->getDepartamentoPorId($sopCodigo),
             'subtopicos_texto' => $this->getSubtopicosPorId($sopCodigo),
+            'contexto_departamento' => $mapeamentoCompleto['departamentos_detalhados'][$this->getDepartamentoPorId($sopCodigo)] ?? null
         ];
 
         // Buscar documentos relevantes da empresa para enriquecer o SOP
@@ -421,7 +721,7 @@ class SopController
         }
 
         // Gerar prompt estruturado com contexto dos documentos
-        $prompt = ApiHelper::buildPromptSop($empresaDados, $sopData, $contextoDocumentos);
+        $prompt = ApiHelper::buildPromptSopDetalhado($empresaDados, $sopData, $contextoDocumentos);
 
         // Chamar IA (GPT ou Claude conforme config)
         $resultado = ApiHelper::chamarAnalise($prompt, true);
@@ -447,7 +747,7 @@ class SopController
                 echo json_encode([
                     'sucesso' => true,
                     'mensagem' => 'SOP gerado com sucesso!' . 
-                        (count($documentosRelevantes) > 0 ? " Utilizou {count($documentosRelevantes)} documento(s) da empresa." : ''),
+                        (count($documentosRelevantes) > 0 ? " Utilizou " . count($documentosRelevantes) . " documento(s) da empresa." : ''),
                     'redirect' => APP_URL . '/sop/revisar?id=' . $sopId,
                 ]);
             } else {
@@ -1600,23 +1900,35 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
      */
     private function getDepartamentosPorSetor(string $setor, int $empresaId): array
     {
+        Logger::info('Carregando departamentos por setor', ['setor' => $setor, 'empresa_id' => $empresaId]);
+        
         // Buscar SOPs existentes no banco (padrão do sistema)
         $sopsExistentes = Sop::buscarPorEmpresa($empresaId);
         $sopsMap = [];
         foreach ($sopsExistentes as $sop) {
+                $status = 'nao_gerado';
+                switch($sop['status']) {
+                    case 'ativo':
+                        $status = 'aprovado';
+                        break;
+                    case 'rascunho':
+                        $status = 'gerado';
+                        break;
+                    default:
+                        $status = 'nao_gerado';
+                        break;
+                }
+                
             $sopsMap[$sop['sop_codigo']] = [
                 'id' => $sop['sop_codigo'],
                 'nome' => $sop['titulo'],
-                'status' => match($sop['status']) {
-                    'ativo' => 'aprovado',
-                    'rascunho' => 'gerado',
-                    default => 'nao_gerado'
-                }
+                'status' => $status
             ];
         }
 
         // Templates por setor específico
         $templatesSOP = $this->getSOPsPorSetor($setor);
+        Logger::info('Templates SOP carregados', ['setor' => $setor, 'templates' => count($templatesSOP)]);
 
         // Buscar SOPs customizados da empresa
         $sopsCustomizados = [];
@@ -1640,6 +1952,8 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                 }
             }
         }
+        
+        Logger::info('Departamentos processados', ['departamentos' => count($templatesSOP), 'dados' => $templatesSOP]);
 
         // Integrar SOPs customizados nos departamentos
         foreach ($sopsCustomizados as $sopCustomizado) {

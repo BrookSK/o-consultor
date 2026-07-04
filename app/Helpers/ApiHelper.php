@@ -379,6 +379,95 @@ Responda APENAS em JSON válido. Não inclua texto fora do JSON.";
     }
 
     /**
+     * Constrói prompt detalhado para geração de SOP com mapeamento completo
+     */
+    public static function buildPromptSopDetalhado(array $empresa, array $sop, string $contextoDocumentos = ''): string
+    {
+        $setor = isset($empresa['setor']) ? $empresa['setor'] : (isset($empresa['segmento']) ? $empresa['segmento'] : 'Tecnologia');
+        $normas = self::getNormasPorSetor($setor);
+        $setorEmpresa = $setor;
+
+        return "Você é O Consultor, especialista em padronização operacional empresarial com profundo conhecimento em normas e padrões de mercado.
+
+DADOS DA EMPRESA:
+Nome: {$empresa['nome']}
+Setor: {$setorEmpresa}
+Porte: {$empresa['colaboradores']} colaboradores, faturamento {$empresa['faturamento']}, nível de maturidade {$empresa['maturidade']}/4
+Departamentos ativos: {$empresa['departamentos']}
+Ferramentas utilizadas: {$empresa['ferramentas']}
+Problemas identificados: {$empresa['problemas']}
+Objetivos estratégicos: {$empresa['objetivos']}
+
+PADRÃO DE MERCADO APLICÁVEL:
+{$normas}
+
+MAPEAMENTO EMPRESARIAL DETALHADO:
+{$empresa['mapeamento_detalhado']}
+
+PROCEDIMENTOS PADRÃO DO MERCADO:
+" . (isset($empresa['procedimentos_mercado']) ? print_r($empresa['procedimentos_mercado'], true) : 'Padrões da indústria') . "
+
+{$contextoDocumentos}
+
+SOP A GERAR: {$sop['id']} — {$sop['nome']}
+DEPARTAMENTO: {$sop['departamento']}
+
+CONTEXTO ESPECÍFICO DO DEPARTAMENTO:
+" . (isset($sop['contexto_departamento']) ? print_r($sop['contexto_departamento'], true) : 'Contexto padrão') . "
+
+SUBTÓPICOS OBRIGATÓRIOS PARA ESTE SOP:
+{$sop['subtopicos_texto']}
+
+INSTRUÇÕES DE QUALIDADE — OBRIGATÓRIAS:
+1. PROFUNDIDADE MÁXIMA: Cada procedimento deve ser TÃO DETALHADO que um colaborador inexperiente possa executar sem supervisão.
+2. ESPECIFICIDADE TOTAL: Use nomes reais das ferramentas da empresa, não genéricos.
+3. PROCEDIMENTOS ROBUSTOS: Mínimo 15 passos ÚNICOS por subtópico, cada um com validação específica.
+4. CONTEXTUALIZAÇÃO: Use o mapeamento empresarial para adaptar cada procedimento à realidade específica da empresa.
+5. PADRÕES DE MERCADO: Incorpore as melhores práticas do setor nos procedimentos.
+6. CONTINGÊNCIAS DETALHADAS: Cada nível deve ter 3+ cenários específicos com ações claras.
+7. KPIS PRECISOS: Metas numéricas baseadas no porte e maturidade da empresa.
+8. DOCUMENTAÇÃO EXISTENTE: Se há documentos da empresa, use-os como base e mencione o que já existe vs. o que precisa ser criado.
+9. PROCEDIMENTOS INTERCONECTADOS: Mostre como este SOP se conecta com outros departamentos.
+10. VALIDAÇÃO RIGOROSA: Cada passo deve ter critério claro de validação/aprovação.
+
+ESTRUTURA OBRIGATÓRIA - 13 COMPONENTES:
+1. objetivo (string 5-8 frases explicando propósito, benefícios e impacto)
+2. escopo (object: {aplica_se: string detalhado, nao_aplica: string específico})
+3. subtopicos (array: [{nome, descricao detalhada}])
+4. responsaveis (array: [{papel, cargo, requisitos}])
+5. prerequisitos (array de strings, mínimo 8, específicos e verificáveis)
+6. ferramentas (array de strings com nomes reais das ferramentas)
+7. procedimentos (array POR SUBTÓPICO: [{subtopico: \"A\", passos: [{passo, acao, responsavel, prazo, sistema, validacao, observacoes}]}] — mínimo 15 passos ÚNICOS por subtópico)
+8. checklist (array de strings, mínimo 20 itens verificáveis)
+9. evidencias (array de strings, mínimo 8, específicas e auditáveis)
+10. relatorios (array: [{oque, para_quem, frequencia, canal, template}])
+11. kpis (array: [{kpi, verde, amarela, vermelha, acao_vermelha, responsavel_medicao}])
+12. contencao (object: {n1: {situacao, acao, quem, escalar, prazo}, n2: {situacao, acao, quem, escalar, prazo}, n3: {situacao, acao, quem, comunicacao, documentacao, prazo}})
+13. versionamento (object: {versao: '1.0', data: '" . date('Y-m-d') . "', aprovador: 'Pendente', motivo_criacao: 'Implementação inicial'})
+
+FORMATO DO CAMPO 'procedimentos' (CRÍTICO):
+[
+  {
+    \"subtopico\": \"A\", 
+    \"passos\": [
+      {\"passo\": 1, \"acao\": \"Ação específica e clara\", \"responsavel\": \"Cargo/função\", \"prazo\": \"Tempo específico\", \"sistema\": \"Ferramenta específica\", \"validacao\": \"Critério de aprovação\", \"observacoes\": \"Dicas importantes\"},
+      {\"passo\": 2, \"acao\": \"...\", \"responsavel\": \"...\", \"prazo\": \"...\", \"sistema\": \"...\", \"validacao\": \"...\", \"observacoes\": \"...\"},
+      ...mínimo 15 passos por subtópico
+    ]
+  },
+  {\"subtopico\": \"B\", \"passos\": [...]}
+]
+
+IMPORTANTE: 
+- Use dados REAIS da empresa (ferramentas, departamentos, problemas)
+- Incorpore padrões do mercado do setor específico
+- Crie procedimentos que resolvam problemas identificados
+- Cada SOP deve ser um MANUAL COMPLETO, não um resumo
+
+Responda APENAS em JSON válido. Não inclua texto fora do JSON.";
+    }
+
+    /**
      * Gera prompt para análise do diagnóstico
      */
     public static function buildPromptDiagnostico(array $dadosForm): string
