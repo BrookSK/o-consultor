@@ -530,7 +530,11 @@ class SopController
                     if (strlen($codigo) >= 3) break;
                 }
             }
-        /**
+            return strlen($codigo) >= 3 ? $codigo : 'GEN';
+        }
+    }
+    
+    /**
      * Extrai colaboradores por setor específico
      */
     private function extrairColaboradoresPorSetor(array $respostas, string $setor): array
@@ -890,6 +894,11 @@ class SopController
             'nicho' => $nicho
         ];
     }
+    
+    /**
+     * Identifica processos principais por departamento baseado em empresas reais
+     */
+    private function identificarProcessosPrincipaisDetalhados(string $dept, array $respostas): array
     {
         // PROCESSOS ESPECÍFICOS POR DEPARTAMENTO - baseados em empresas reais
         $processosPorDepartamento = [
@@ -1451,6 +1460,11 @@ class SopController
 
         require VIEW_PATH . '/sop/manual-completo.php';
     }
+
+    /**
+     * Cria mapeamento empresarial completo baseado no diagnóstico
+     */
+    private function criarMapeamentoEmpresarial(array $empresa, ?array $diagnostico): array
     {
         // Extrair dados do diagnóstico se existir
         $respostas = [];
