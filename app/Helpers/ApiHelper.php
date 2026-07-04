@@ -700,8 +700,8 @@ Pense em TODOS os serviços/processos que o setor \"{$setor}\" pode executar, in
 
 **GRANULARIDADE MÁXIMA**: 
 Quebre processos grandes em sub-processos específicos. Por exemplo:
-- Ao invés de "Gestão de estoque" → "Controle de entrada de materiais", "Inventário cíclico mensal", "Análise de giro de produtos", "Gestão de produtos obsoletos"
-- Ao invés de "Treinamento" → "Onboarding de novos funcionários", "Treinamento técnico em sistemas", "Capacitação em vendas", "Desenvolvimento de liderança"
+- Ao invés de \"Gestão de estoque\" → \"Controle de entrada de materiais\", \"Inventário cíclico mensal\", \"Análise de giro de produtos\", \"Gestão de produtos obsoletos\"
+- Ao invés de \"Treinamento\" → \"Onboarding de novos funcionários\", \"Treinamento técnico em sistemas\", \"Capacitação em vendas\", \"Desenvolvimento de liderança\"
 
 =========================== EXEMPLOS ULTRA-AMPLOS POR SETOR ===========================
 
@@ -821,17 +821,17 @@ Forneça um JSON com esta estrutura:
 - ✅ **SEMPRE seja ultra-específico** - descreva exatamente o que é feito
 
 **EXEMPLOS DE ESPECIFICIDADE PARA QUALQUER SETOR:**
-- ❌ Genérico: "Gestão de contratos" 
-- ✅ Específico: "Elaboração de contratos de fornecedores", "Revisão jurídica de aditivos contratuais", "Controle de vencimentos de contratos"
+- ❌ Genérico: \"Gestão de contratos\" 
+- ✅ Específico: \"Elaboração de contratos de fornecedores\", \"Revisão jurídica de aditivos contratuais\", \"Controle de vencimentos de contratos\"
 
-- ❌ Genérico: "Controle financeiro"
-- ✅ Específico: "Conciliação bancária diária", "Análise de margem por produto", "Projeção de fluxo de caixa mensal"
+- ❌ Genérico: \"Controle financeiro\"
+- ✅ Específico: \"Conciliação bancária diária\", \"Análise de margem por produto\", \"Projeção de fluxo de caixa mensal\"
 
-- ❌ Genérico: "Atendimento ao cliente" 
-- ✅ Específico: "Suporte técnico via chat online", "Gestão de reclamações no SAC", "Follow-up pós-venda por telefone"
+- ❌ Genérico: \"Atendimento ao cliente\" 
+- ✅ Específico: \"Suporte técnico via chat online\", \"Gestão de reclamações no SAC\", \"Follow-up pós-venda por telefone\"
 
-- ❌ Genérico: "Recursos humanos"
-- ✅ Específico: "Onboarding de novos funcionários", "Avaliação de performance semestral", "Cálculo da folha de pagamento"
+- ❌ Genérico: \"Recursos humanos\"
+- ✅ Específico: \"Onboarding de novos funcionários\", \"Avaliação de performance semestral\", \"Cálculo da folha de pagamento\"
 
 **AMPLITUDE OBRIGATÓRIA PARA TODOS OS SETORES:**
 Independente do setor, SEMPRE inclua serviços de:
@@ -1269,13 +1269,13 @@ Gere em JSON:
 
         switch($tipo) {
             case 'carrossel':
-                $instrucoesTipo = 'Para CARROSSEL gere JSON com estrutura: {"slides": [{"numero": 1, "tipo": "capa", "texto": "título principal", "texto_secundario": "subtítulo opcional", "prompt_imagem": "descrição detalhada da imagem"}, {"numero": 2, "tipo": "conteudo", "texto": "conteúdo do slide", "prompt_imagem": "descrição da imagem"}], "legenda": "texto da legenda com call-to-action", "hashtags": "#tag1 #tag2 #tag3"}';
+                $instrucoesTipo = 'Para CARROSSEL gere JSON com estrutura: {\"slides\": [{\"numero\": 1, \"tipo\": \"capa\", \"texto\": \"título principal\", \"texto_secundario\": \"subtítulo opcional\", \"prompt_imagem\": \"descrição detalhada da imagem\"}, {\"numero\": 2, \"tipo\": \"conteudo\", \"texto\": \"conteúdo do slide\", \"prompt_imagem\": \"descrição da imagem\"}], \"legenda\": \"texto da legenda com call-to-action\", \"hashtags\": \"#tag1 #tag2 #tag3\"}';
                 break;
             case 'post':
-                $instrucoesTipo = 'Para POST gere JSON com estrutura: {"slides": [{"numero": 1, "tipo": "unico", "texto": "conteúdo principal", "prompt_imagem": "descrição da imagem"}], "legenda": "texto da legenda", "hashtags": "#tag1 #tag2"}';
+                $instrucoesTipo = 'Para POST gere JSON com estrutura: {\"slides\": [{\"numero\": 1, \"tipo\": \"unico\", \"texto\": \"conteúdo principal\", \"prompt_imagem\": \"descrição da imagem\"}], \"legenda\": \"texto da legenda\", \"hashtags\": \"#tag1 #tag2\"}';
                 break;
             case 'story':
-                $instrucoesTipo = 'Para STORY gere JSON com estrutura: {"slides": [{"numero": 1, "tipo": "story", "texto": "texto curto e impactante", "prompt_imagem": "descrição da imagem vertical"}], "legenda": "", "hashtags": ""}';
+                $instrucoesTipo = 'Para STORY gere JSON com estrutura: {\"slides\": [{\"numero\": 1, \"tipo\": \"story\", \"texto\": \"texto curto e impactante\", \"prompt_imagem\": \"descrição da imagem vertical\"}], \"legenda\": \"\", \"hashtags\": \"\"}';
                 break;
             default:
                 $instrucoesTipo = 'Para CARROSSEL gere JSON com múltiplos slides educativos.';
@@ -1354,13 +1354,13 @@ Responda APENAS em JSON válido, sem explicações.";
 
         switch($tipo) {
             case 'carrossel':
-                $instrucoesTipo = 'Para CARROSSEL gere JSON com estrutura: {"slides": [{"numero": 1, "tipo": "capa", "texto": "título principal", "texto_secundario": "subtítulo opcional", "prompt_imagem": "descrição detalhada da imagem"}, {"numero": 2, "tipo": "conteudo", "texto": "conteúdo do slide", "prompt_imagem": "descrição da imagem"}], "legenda": "texto da legenda com call-to-action", "hashtags": "#tag1 #tag2 #tag3"}';
+                $instrucoesTipo = 'Para CARROSSEL gere JSON com estrutura: {\"slides\": [{\"numero\": 1, \"tipo\": \"capa\", \"texto\": \"título principal\", \"texto_secundario\": \"subtítulo opcional\", \"prompt_imagem\": \"descrição detalhada da imagem\"}, {\"numero\": 2, \"tipo\": \"conteudo\", \"texto\": \"conteúdo do slide\", \"prompt_imagem\": \"descrição da imagem\"}], \"legenda\": \"texto da legenda com call-to-action\", \"hashtags\": \"#tag1 #tag2 #tag3\"}';
                 break;
             case 'post':
-                $instrucoesTipo = 'Para POST gere JSON com estrutura: {"slides": [{"numero": 1, "tipo": "unico", "texto": "conteúdo principal", "prompt_imagem": "descrição da imagem"}], "legenda": "texto da legenda", "hashtags": "#tag1 #tag2"}';
+                $instrucoesTipo = 'Para POST gere JSON com estrutura: {\"slides\": [{\"numero\": 1, \"tipo\": \"unico\", \"texto\": \"conteúdo principal\", \"prompt_imagem\": \"descrição da imagem\"}], \"legenda\": \"texto da legenda\", \"hashtags\": \"#tag1 #tag2\"}';
                 break;
             case 'story':
-                $instrucoesTipo = 'Para STORY gere JSON com estrutura: {"slides": [{"numero": 1, "tipo": "story", "texto": "texto curto e impactante", "prompt_imagem": "descrição da imagem vertical"}], "legenda": "", "hashtags": ""}';
+                $instrucoesTipo = 'Para STORY gere JSON com estrutura: {\"slides\": [{\"numero\": 1, \"tipo\": \"story\", \"texto\": \"texto curto e impactante\", \"prompt_imagem\": \"descrição da imagem vertical\"}], \"legenda\": \"\", \"hashtags\": \"\"}';
                 break;
             default:
                 $instrucoesTipo = 'Para CARROSSEL gere JSON com múltiplos slides educativos.';
