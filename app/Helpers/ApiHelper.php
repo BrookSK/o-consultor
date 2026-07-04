@@ -1771,8 +1771,6 @@ Responda APENAS em JSON:
     \"recursos_adicionais\": [\"recurso 1\", \"recurso 2\"]
 }";
     }
-}
-
 
     /**
      * Prompt para detalhar um serviço específico individualmente
@@ -2190,4 +2188,6 @@ Transformar a descrição falada em um SOP completo, estruturado e profissional,
 
 ## RESPOSTA
 Retorne APENAS o JSON válido, sem explicações adicionais.";
+    }
+}
     }
