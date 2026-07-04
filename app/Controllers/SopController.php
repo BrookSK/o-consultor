@@ -18,44 +18,83 @@ class SopController
         
         $dados = [];
 
-        // Para ADMIN_HOLDING, mostrar lista de empresas
-        if (Auth::perfil() === 'ADMIN_HOLDING') {
-            // Buscar todas as empresas
-            $empresas = Database::query(
-                "SELECT e.*, 
-                        COUNT(s.id) as total_sops,
-                        COUNT(CASE WHEN s.status = 'aprovado' THEN 1 END) as aprovados
-                 FROM empresas e
-                 LEFT JOIN sops s ON e.id = s.empresa_id
-                 GROUP BY e.id
-                 ORDER BY e.nome"
-            );
+        // Verificar se veio de um diagnóstico específico
+        $diagnosticoId = (int) ($_GET['diagnostico_id'] ?? 0);
+        
+        if ($diagnosticoId) {
+            // Buscar diagnóstico para obter a empresa
+            $diagnostico = Diagnostico::buscarPorId($diagnosticoId);
             
-            $dados['empresas_disponiveis'] = $empresas;
-            
-            // Se há uma empresa na sessão, carregá-la
-            if (isset($_SESSION['empresa_selecionada'])) {
-                $empresaId = $_SESSION['empresa_selecionada'];
-                $empresa = Empresa::buscarPorId($empresaId);
-                if ($empresa) {
-                    $dados['empresa_atual'] = $this->carregarDadosEmpresa($empresaId);
-                    $dados['departamentos'] = $this->getDepartamentosPorSetor($empresa['segmento'] ?? 'Tecnologia', $empresaId);
-                }
+            if (!$diagnostico) {
+                Flash::set('erro', 'Diagnóstico não encontrado.');
+                header('Location: ' . APP_URL . '/diagnostico');
+                exit;
             }
-        } else {
-            // Para outros perfis, usar empresa do usuário
-            $empresaId = Auth::garantirEmpresa();
-            $dados['empresa_atual'] = $this->carregarDadosEmpresa($empresaId);
+            
+            // Verificar permissão
+            if (Auth::perfil() !== 'ADMIN_HOLDING' && $diagnostico['usuario_id'] != Auth::id()) {
+                Flash::set('erro', 'Sem permissão para acessar este diagnóstico.');
+                header('Location: ' . APP_URL . '/diagnostico');
+                exit;
+            }
+            
+            // Usar empresa do diagnóstico
+            $empresaId = $diagnostico['empresa_id'];
+            $dados['empresa_atual'] = $this->carregarDadosEmpresa($empresaId, $diagnosticoId);
+            
             $empresa = Empresa::buscarPorId($empresaId);
             if ($empresa) {
                 $dados['departamentos'] = $this->getDepartamentosPorSetor($empresa['segmento'] ?? 'Tecnologia', $empresaId);
+            }
+            
+            Logger::info('Acessando SOPs via diagnóstico', [
+                'diagnostico_id' => $diagnosticoId,
+                'empresa_id' => $empresaId,
+                'empresa_nome' => $empresa['nome'] ?? 'N/A'
+            ]);
+            
+        } else {
+            // Fluxo original para quando não vem de diagnóstico
+            
+            // Para ADMIN_HOLDING, mostrar lista de empresas
+            if (Auth::perfil() === 'ADMIN_HOLDING') {
+                // Buscar todas as empresas
+                $empresas = Database::query(
+                    "SELECT e.*, 
+                            COUNT(s.id) as total_sops,
+                            COUNT(CASE WHEN s.status = 'aprovado' THEN 1 END) as aprovados
+                     FROM empresas e
+                     LEFT JOIN sops s ON e.id = s.empresa_id
+                     GROUP BY e.id
+                     ORDER BY e.nome"
+                );
+                
+                $dados['empresas_disponiveis'] = $empresas;
+                
+                // Se há uma empresa na sessão, carregá-la
+                if (isset($_SESSION['empresa_selecionada'])) {
+                    $empresaId = $_SESSION['empresa_selecionada'];
+                    $empresa = Empresa::buscarPorId($empresaId);
+                    if ($empresa) {
+                        $dados['empresa_atual'] = $this->carregarDadosEmpresa($empresaId);
+                        $dados['departamentos'] = $this->getDepartamentosPorSetor($empresa['segmento'] ?? 'Tecnologia', $empresaId);
+                    }
+                }
+            } else {
+                // Para outros perfis, usar empresa do usuário
+                $empresaId = Auth::garantirEmpresa();
+                $dados['empresa_atual'] = $this->carregarDadosEmpresa($empresaId);
+                $empresa = Empresa::buscarPorId($empresaId);
+                if ($empresa) {
+                    $dados['departamentos'] = $this->getDepartamentosPorSetor($empresa['segmento'] ?? 'Tecnologia', $empresaId);
+                }
             }
         }
 
         require VIEW_PATH . '/sop/index.php';
     }
     
-    private function carregarDadosEmpresa(int $empresaId): array
+    private function carregarDadosEmpresa(int $empresaId, ?int $diagnosticoEspecifico = null): array
     {
         $empresa = Empresa::buscarPorId($empresaId);
         if (!$empresa) {
@@ -65,7 +104,13 @@ class SopController
         }
 
         $stats = Sop::estatisticas($empresaId);
-        $diagnostico = Diagnostico::buscarUltimoPorEmpresa($empresaId);
+        
+        // Se foi passado um diagnóstico específico, usar ele; senão buscar o último
+        if ($diagnosticoEspecifico) {
+            $diagnostico = Diagnostico::buscarPorId($diagnosticoEspecifico);
+        } else {
+            $diagnostico = Diagnostico::buscarUltimoPorEmpresa($empresaId);
+        }
         
         return [
             'id' => $empresa['id'],
