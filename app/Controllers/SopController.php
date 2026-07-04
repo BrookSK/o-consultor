@@ -211,13 +211,35 @@ class SopController
     {
         $respostas = json_decode($diagnostico['respostas'], true);
         if (!$respostas) {
+            Logger::warning('Respostas do diagnóstico vazias ou inválidas', ['diagnostico_id' => $diagnostico['id']]);
             $respostas = [];
         }
         $departamentos = [];
         
-        // Extrair departamentos básicos
+        // Extrair departamentos básicos MELHORADO
         $departamentosTexto = $this->extrairDepartamentos($diagnostico);
         $departamentosArray = $this->parsearDepartamentos($departamentosTexto);
+        
+        Logger::info('Departamentos extraídos do diagnóstico', [
+            'diagnostico_id' => $diagnostico['id'],
+            'departamentos_texto' => $departamentosTexto,
+            'departamentos_array' => $departamentosArray,
+            'total_departamentos' => count($departamentosArray)
+        ]);
+        
+        // GARANTIR que temos PELO MENOS os departamentos essenciais baseados no setor
+        if (empty($departamentosArray) || count($departamentosArray) < 2) {
+            $setorEmpresa = $respostas['segmento'] ?? 'Tecnologia';
+            $departamentosMinimos = $this->getDepartamentosEssenciaisPorSetor($setorEmpresa);
+            $departamentosArray = array_merge($departamentosArray, $departamentosMinimos);
+            $departamentosArray = array_unique($departamentosArray);
+            
+            Logger::info('Departamentos mínimos adicionados por setor', [
+                'setor' => $setorEmpresa,
+                'departamentos_minimos' => $departamentosMinimos,
+                'departamentos_finais' => $departamentosArray
+            ]);
+        }
         
         // Para cada departamento, extrair informações específicas do diagnóstico
         foreach ($departamentosArray as $dept) {
@@ -231,9 +253,68 @@ class SopController
                 'processos_principais' => $this->identificarProcessosPrincipais($dept, $respostas),
                 'nivel_maturidade' => $this->calcularMaturidadePorDepartamento($respostas, $dept)
             ];
+            
+            Logger::info('Departamento detalhado criado', [
+                'departamento' => $dept,
+                'total_processos' => count($departamentos[$dept]['processos_principais']),
+                'processos' => $departamentos[$dept]['processos_principais']
+            ]);
         }
         
+        Logger::info('TODOS os departamentos processados', [
+            'total_departamentos' => count($departamentos),
+            'departamentos_nomes' => array_keys($departamentos),
+            'total_processos_geral' => array_sum(array_map(function($d) { return count($d['processos_principais']); }, $departamentos))
+        ]);
+        
         return $departamentos;
+    }
+    
+    /**
+     * Retorna departamentos essenciais por setor para garantir cobertura mínima
+     */
+    private function getDepartamentosEssenciaisPorSetor(string $setor): array
+    {
+        switch(strtolower($setor)) {
+            case 'tecnologia':
+            case 'tech':
+            case 'software':
+                return ['Comercial', 'TI', 'Operações', 'Financeiro', 'RH'];
+                
+            case 'saúde':
+            case 'saude':
+            case 'hospital':
+            case 'clinica':
+                return ['Atendimento', 'Clínico', 'Administrativo', 'Financeiro', 'RH'];
+                
+            case 'educação':
+            case 'educacao':
+            case 'escola':
+                return ['Pedagógico', 'Administrativo', 'Financeiro', 'Coordenação', 'RH'];
+                
+            case 'varejo':
+            case 'loja':
+            case 'comercio':
+                return ['Comercial', 'Operações', 'Estoque', 'Financeiro', 'RH'];
+                
+            case 'indústria':
+            case 'industria':
+            case 'fabrica':
+                return ['Produção', 'Comercial', 'Qualidade', 'Financeiro', 'RH', 'Compras'];
+                
+            case 'serviços':
+            case 'servicos':
+            case 'consultoria':
+                return ['Comercial', 'Operações', 'Atendimento', 'Financeiro', 'RH'];
+                
+            case 'logística':
+            case 'logistica':
+            case 'transporte':
+                return ['Operações', 'Comercial', 'Logística', 'Financeiro', 'RH'];
+                
+            default:
+                return ['Comercial', 'Operações', 'Administrativo', 'Financeiro', 'RH'];
+        }
     }
     
     /**
@@ -245,11 +326,12 @@ class SopController
         $sops = [];
         $contador = 1;
         
+        // GERAR MÚLTIPLOS SOPs POR DEPARTAMENTO - baseado nos processos reais
         foreach ($processos as $processo) {
             $codigoSOP = $this->gerarCodigoSOPEspecifico($empresa['segmento'], $departamento, $processo, $contador);
             
             $sops[] = [
-                'id' => $codigoSOP,
+                'id' => $codigoSOP,  // Código SOP (será substituído por ID do banco se existir)
                 'nome' => $processo,
                 'status' => 'nao_gerado',
                 'departamento' => $departamento,
@@ -261,10 +343,18 @@ class SopController
                     'maturidade' => $detalhes['nivel_maturidade']
                 ],
                 'customizado' => true,  // Marca como específico para a empresa
-                'origem' => 'diagnostico_especifico'
+                'origem' => 'diagnostico_especifico',
+                'setor_empresa' => $empresa['segmento'] ?? 'Geral'
             ];
             $contador++;
         }
+        
+        Logger::info('SOPs específicos criados para departamento', [
+            'departamento' => $departamento,
+            'total_sops' => count($sops),
+            'processos' => $processos,
+            'empresa_setor' => $empresa['segmento'] ?? 'Geral'
+        ]);
         
         return $sops;
     }
@@ -316,45 +406,186 @@ class SopController
     
     private function identificarProcessosPrincipais(string $dept, array $respostas): array
     {
+        // PROCESSOS ESPECÍFICOS POR DEPARTAMENTO - baseados em empresas reais
         $processosPorDepartamento = [
             'Comercial' => [
-                'Prospecção de Clientes',
-                'Qualificação de Leads', 
-                'Apresentação de Propostas',
-                'Negociação e Fechamento',
-                'Pós-venda e Relacionamento'
+                'Prospecção e Qualificação de Leads',
+                'Apresentação de Propostas Comerciais', 
+                'Negociação e Fechamento de Vendas',
+                'Onboarding de Novos Clientes',
+                'Gestão de Relacionamento Pós-Venda',
+                'Controle de Pipeline Comercial',
+                'Análise de Concorrência'
             ],
             'TI' => [
-                'Atendimento de Chamados',
-                'Backup e Segurança',
-                'Manutenção de Sistemas',
-                'Desenvolvimento de Soluções',
-                'Gestão de Infraestrutura'
+                'Atendimento de Chamados Técnicos',
+                'Gestão de Backup e Segurança',
+                'Manutenção de Sistemas e Infraestrutura',
+                'Desenvolvimento e Deploy de Soluções',
+                'Monitoramento de Performance',
+                'Gestão de Usuários e Acessos',
+                'Implementação de Novas Tecnologias'
             ],
             'Operações' => [
-                'Recebimento de Pedidos',
-                'Planejamento de Produção',
-                'Controle de Qualidade',
-                'Expedição de Produtos',
-                'Gestão de Estoque'
+                'Recebimento e Processamento de Pedidos',
+                'Planejamento e Execução da Produção',
+                'Controle de Qualidade e Conformidade',
+                'Gestão de Estoque e Suprimentos',
+                'Expedição e Logística de Entrega',
+                'Melhoria Contínua de Processos',
+                'Gestão de Fornecedores'
             ],
             'Financeiro' => [
-                'Controle de Fluxo de Caixa',
-                'Contas a Pagar',
-                'Contas a Receber',
+                'Controle de Fluxo de Caixa Diário',
+                'Gestão de Contas a Pagar',
+                'Gestão de Contas a Receber',
                 'Conciliação Bancária',
-                'Relatórios Gerenciais'
+                'Elaboração de Relatórios Gerenciais',
+                'Controle Orçamentário',
+                'Análise de Inadimplência'
             ],
             'RH' => [
-                'Processo Seletivo',
-                'Onboarding de Colaboradores',
-                'Gestão de Performance',
+                'Processo de Recrutamento e Seleção',
+                'Onboarding de Novos Colaboradores',
+                'Gestão de Performance e Avaliações',
                 'Treinamento e Desenvolvimento',
-                'Gestão de Benefícios'
+                'Controle de Ponto e Folha de Pagamento',
+                'Gestão de Benefícios',
+                'Clima Organizacional e Engajamento'
+            ],
+            'Marketing' => [
+                'Planejamento de Campanhas',
+                'Gestão de Mídias Sociais',
+                'Criação de Conteúdo',
+                'Análise de Métricas e ROI',
+                'Gestão de Eventos e Webinars',
+                'Relacionamento com Influenciadores',
+                'Automação de Marketing'
+            ],
+            'Jurídico' => [
+                'Análise e Elaboração de Contratos',
+                'Gestão de LGPD e Compliance',
+                'Acompanhamento de Processos Judiciais',
+                'Consultoria Jurídica Interna',
+                'Gestão de Propriedade Intelectual',
+                'Due Diligence em Parcerias',
+                'Política de Governança Corporativa'
+            ],
+            'Administrativo' => [
+                'Gestão de Documentos e Arquivos',
+                'Controle de Protocolo e Correspondência',
+                'Gestão de Contratos de Serviços',
+                'Organização de Reuniões e Agenda',
+                'Controle de Patrimônio',
+                'Gestão de Facilities',
+                'Suporte Administrativo Geral'
+            ],
+            'Compras' => [
+                'Cotação e Seleção de Fornecedores',
+                'Negociação de Contratos de Compras',
+                'Gestão de Pedidos de Compra',
+                'Controle de Qualidade de Fornecedores',
+                'Gestão de Relacionamento com Parceiros',
+                'Análise de Custos e Economia',
+                'Compliance em Procurement'
+            ],
+            'Logística' => [
+                'Planejamento de Rotas de Entrega',
+                'Gestão de Transportadoras',
+                'Controle de Estoque em Trânsito',
+                'Processo de Embalagem e Expedição',
+                'Gestão de Devoluções',
+                'Rastreamento de Entregas',
+                'Otimização de Custos Logísticos'
+            ],
+            'Qualidade' => [
+                'Implementação de Sistema de Qualidade',
+                'Auditoria Interna de Processos',
+                'Tratamento de Não Conformidades',
+                'Calibração de Equipamentos',
+                'Treinamento em Qualidade',
+                'Análise de Indicadores de Qualidade',
+                'Certificações e Normas'
+            ],
+            'Atendimento' => [
+                'Atendimento ao Cliente Multicanal',
+                'Gestão de Reclamações e SAC',
+                'Processo de Suporte Técnico',
+                'Follow-up de Satisfação',
+                'Gestão de Base de Conhecimento',
+                'Escalação de Casos Complexos',
+                'Métricas de Satisfação'
+            ],
+            'Vendas' => [
+                'Prospecção Ativa de Clientes',
+                'Demonstrações e Apresentações',
+                'Gestão de Propostas Comerciais',
+                'Follow-up de Oportunidades',
+                'Gestão de Territory e Contas',
+                'Relacionamento com Key Accounts',
+                'Análise de Performance de Vendas'
             ]
         ];
         
-        return isset($processosPorDepartamento[$dept]) ? $processosPorDepartamento[$dept] : ['Processo Operacional Padrão'];
+        // ADAPTAR processos baseado nas RESPOSTAS DO DIAGNÓSTICO
+        $departamento = $dept;
+        $processosBase = $processosPorDepartamento[$departamento] ?? [
+            'Processo Operacional Principal',
+            'Controle e Monitoramento',
+            'Melhoria Contínua',
+            'Relacionamento Interno',
+            'Gestão de Recursos'
+        ];
+        
+        // Analisar respostas para personalizar processos
+        if (!empty($respostas)) {
+            $processosPersonalizados = [];
+            
+            // Verificar ferramentas específicas mencionadas
+            if (isset($respostas['ferramentas']) && is_string($respostas['ferramentas'])) {
+                $ferramentas = strtolower($respostas['ferramentas']);
+                
+                // Adaptar processos baseado nas ferramentas
+                if (strpos($ferramentas, 'crm') !== false || strpos($ferramentas, 'salesforce') !== false) {
+                    $processosPersonalizados[] = 'Gestão de CRM e Pipeline';
+                }
+                if (strpos($ferramentas, 'erp') !== false || strpos($ferramentas, 'sap') !== false) {
+                    $processosPersonalizados[] = 'Operação de Sistema ERP';
+                }
+                if (strpos($ferramentas, 'whatsapp') !== false) {
+                    $processosPersonalizados[] = 'Atendimento via WhatsApp Business';
+                }
+                if (strpos($ferramentas, 'excel') !== false) {
+                    $processosPersonalizados[] = 'Controles Planilhados';
+                }
+            }
+            
+            // Verificar problemas específicos para criar processos corretivos
+            if (isset($respostas['pontos_melhoria']) && is_string($respostas['pontos_melhoria'])) {
+                $problemas = strtolower($respostas['pontos_melhoria']);
+                
+                if (strpos($problemas, 'comunicac') !== false) {
+                    $processosPersonalizados[] = 'Melhoria da Comunicação Interna';
+                }
+                if (strpos($problemas, 'document') !== false || strpos($problemas, 'padroniz') !== false) {
+                    $processosPersonalizados[] = 'Padronização e Documentação';
+                }
+                if (strpos($problemas, 'atraso') !== false || strpos($problemas, 'prazo') !== false) {
+                    $processosPersonalizados[] = 'Gestão de Prazos e Entregas';
+                }
+            }
+            
+            // Combinar processos base com personalizados
+            if (!empty($processosPersonalizados)) {
+                // Manter primeiros 3 processos base + adicionar personalizados
+                $processosFinais = array_slice($processosBase, 0, 3);
+                $processosFinais = array_merge($processosFinais, $processosPersonalizados);
+                return array_slice($processosFinais, 0, 7); // Máximo 7 processos
+            }
+        }
+        
+        // Retornar processos padrão para o departamento (máximo 5 para não sobrecarregar)
+        return array_slice($processosBase, 0, 5);
     }
     
     private function calcularMaturidadePorDepartamento(array $respostas, string $dept): int
@@ -366,30 +597,105 @@ class SopController
     
     private function gerarCodigoSOPEspecifico(string $setor, string $departamento, string $processo, int $contador): string
     {
+        // PREFIXOS POR SETOR mais específicos
         switch(strtolower($setor)) {
             case 'tecnologia':
+            case 'tech':
+            case 'software':
                 $prefixoSetor = 'TEC';
                 break;
             case 'saúde':
+            case 'saude':
+            case 'hospital':
+            case 'clinica':
                 $prefixoSetor = 'SAU';
                 break;
             case 'educação':
+            case 'educacao':
+            case 'escola':
+            case 'universidade':
                 $prefixoSetor = 'EDU';
                 break;
             case 'varejo':
+            case 'loja':
+            case 'comercio':
                 $prefixoSetor = 'VAR';
                 break;
             case 'indústria':
+            case 'industria':
+            case 'fabrica':
+            case 'manufatura':
                 $prefixoSetor = 'IND';
+                break;
+            case 'serviços':
+            case 'servicos':
+            case 'consultoria':
+                $prefixoSetor = 'SER';
+                break;
+            case 'financeiro':
+            case 'banco':
+            case 'fintech':
+                $prefixoSetor = 'FIN';
+                break;
+            case 'logística':
+            case 'logistica':
+            case 'transporte':
+                $prefixoSetor = 'LOG';
+                break;
+            case 'alimentação':
+            case 'alimentacao':
+            case 'restaurante':
+                $prefixoSetor = 'ALI';
                 break;
             default:
                 $prefixoSetor = 'GER';
                 break;
         }
         
-        $prefixoDept = strtoupper(substr($departamento, 0, 3));
+        // PREFIXOS POR DEPARTAMENTO mais específicos
+        $prefixoDept = match(strtolower($departamento)) {
+            'comercial', 'vendas' => 'COM',
+            'ti', 'tecnologia', 'tech' => 'TI',
+            'operações', 'operacoes', 'produção', 'producao' => 'OPS',
+            'financeiro', 'contabilidade' => 'FIN',
+            'rh', 'recursos humanos', 'pessoas' => 'RH',
+            'marketing', 'mkt' => 'MKT',
+            'jurídico', 'juridico', 'legal' => 'JUR',
+            'administrativo', 'admin' => 'ADM',
+            'compras', 'procurement' => 'CPR',
+            'logística', 'logistica' => 'LOG',
+            'qualidade', 'qa', 'qc' => 'QUA',
+            'atendimento', 'sac', 'suporte' => 'ATE',
+            default => strtoupper(substr($departamento, 0, 3))
+        };
         
-        return sprintf('SOP-%s-%s-%03d', $prefixoSetor, $prefixoDept, $contador);
+        // CÓDIGO baseado no TIPO DE PROCESSO (mais inteligente)
+        $sufixoProcesso = 'GER'; // Padrão geral
+        
+        $processoLower = strtolower($processo);
+        if (strpos($processoLower, 'prospec') !== false || strpos($processoLower, 'lead') !== false) {
+            $sufixoProcesso = 'PRO'; // Prospecção
+        } elseif (strpos($processoLower, 'atend') !== false || strpos($processoLower, 'chamado') !== false) {
+            $sufixoProcesso = 'ATE'; // Atendimento
+        } elseif (strpos($processoLower, 'backup') !== false || strpos($processoLower, 'segur') !== false) {
+            $sufixoProcesso = 'SEC'; // Segurança
+        } elseif (strpos($processoLower, 'financ') !== false || strpos($processoLower, 'fluxo') !== false) {
+            $sufixoProcesso = 'FLX'; // Fluxo
+        } elseif (strpos($processoLower, 'recruit') !== false || strpos($processoLower, 'seleç') !== false) {
+            $sufixoProcesso = 'REC'; // Recrutamento
+        } elseif (strpos($processoLower, 'onboard') !== false) {
+            $sufixoProcesso = 'ONB'; // Onboarding
+        } elseif (strpos($processoLower, 'qualidad') !== false || strpos($processoLower, 'control') !== false) {
+            $sufixoProcesso = 'QUA'; // Qualidade
+        } elseif (strpos($processoLower, 'entrega') !== false || strpos($processoLower, 'expedi') !== false) {
+            $sufixoProcesso = 'ENT'; // Entrega
+        } elseif (strpos($processoLower, 'estoque') !== false) {
+            $sufixoProcesso = 'EST'; // Estoque
+        } elseif (strpos($processoLower, 'treina') !== false || strpos($processoLower, 'capaci') !== false) {
+            $sufixoProcesso = 'TRE'; // Treinamento
+        }
+        
+        return sprintf('SOP-%s-%s-%s-%03d', $prefixoSetor, $prefixoDept, $sufixoProcesso, $contador);
     }
     
     private function getIconePorDepartamento(string $dept): string

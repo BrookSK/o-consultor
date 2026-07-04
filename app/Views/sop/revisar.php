@@ -123,12 +123,12 @@
             <tbody class="divide-y divide-gray-100">
                 <?php foreach ($sop['procedimento_subtopico_1'] as $p): ?>
                 <tr class="hover:bg-gray-50">
-                    <td class="px-2 py-2 text-center font-bold text-primary"><?= $p['passo'] ?></td>
-                    <td class="px-2 py-2 text-gray-700"><?= htmlspecialchars($p['acao']) ?></td>
-                    <td class="px-2 py-2 text-gray-600"><?= htmlspecialchars($p['responsavel']) ?></td>
-                    <td class="px-2 py-2 text-gray-600"><?= htmlspecialchars($p['prazo']) ?></td>
-                    <td class="px-2 py-2 text-gray-600"><?= htmlspecialchars($p['sistema']) ?></td>
-                    <td class="px-2 py-2 text-gray-500"><?= htmlspecialchars($p['validacao']) ?></td>
+                    <td class="px-2 py-2 text-center font-bold text-primary"><?= $p['passo'] ?? '' ?></td>
+                    <td class="px-2 py-2 text-gray-700"><?= htmlspecialchars($p['acao'] ?? '') ?></td>
+                    <td class="px-2 py-2 text-gray-600"><?= htmlspecialchars($p['responsavel'] ?? '') ?></td>
+                    <td class="px-2 py-2 text-gray-600"><?= htmlspecialchars($p['prazo'] ?? 'Imediato') ?></td>
+                    <td class="px-2 py-2 text-gray-600"><?= htmlspecialchars($p['sistema'] ?? 'Manual') ?></td>
+                    <td class="px-2 py-2 text-gray-500"><?= htmlspecialchars($p['validacao'] ?? 'Verificação visual') ?></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>

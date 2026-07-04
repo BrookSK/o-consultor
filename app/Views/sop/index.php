@@ -284,18 +284,57 @@ $diagnosticoId = isset($_GET['diagnostico_id']) ? (int) $_GET['diagnostico_id'] 
 <script>
 // Selecionar empresa (para ADMIN_HOLDING)
 function selecionarEmpresa(empresaId) {
+    // Limpar seleções anteriores
+    document.querySelectorAll('[id^="empresa-"]').forEach(el => {
+        el.classList.remove('border-primary', 'bg-primary/10');
+        el.classList.add('border-gray-200');
+    });
+    
+    document.querySelectorAll('[id^="selected-"]').forEach(el => {
+        el.style.opacity = '0';
+    });
+    
+    // Marcar empresa selecionada
+    const empresaEl = document.getElementById('empresa-' + empresaId);
+    const selectedEl = document.getElementById('selected-' + empresaId);
+    
+    if (empresaEl && selectedEl) {
+        empresaEl.classList.remove('border-gray-200');
+        empresaEl.classList.add('border-primary', 'bg-primary/10');
+        selectedEl.style.opacity = '1';
+    }
+    
+    console.log('Selecionando empresa:', empresaId);
+    
+    // CORREÇÃO: Usar FormData corretamente
     const formData = new FormData();
     formData.append('empresa_id', empresaId);
     formData.append('csrf_token', '<?= Csrf::token() ?>');
     
     fetch('<?= APP_URL ?>/admin/selecionar-empresa', {
         method: 'POST',
-        body: formData
-    }).then(() => {
-        window.location.reload();
-    }).catch(error => {
-        console.error('Erro:', error);
-        alert('Erro ao selecionar empresa');
+        body: formData // Usar FormData ao invés de JSON
+    })
+    .then(response => {
+        console.log('Response status:', response.status);
+        return response.json();
+    })
+    .then(data => {
+        console.log('Response data:', data);
+        if (data.sucesso) {
+            console.log('Empresa selecionada com sucesso, recarregando...');
+            // Recarregar página para mostrar próxima hierarquia (SOPs)
+            setTimeout(() => {
+                window.location.reload();
+            }, 500);
+        } else {
+            console.error('Erro ao selecionar empresa:', data);
+            alert('Erro ao selecionar empresa: ' + (data.erro || 'Erro desconhecido'));
+        }
+    })
+    .catch(error => {
+        console.error('Erro na requisição:', error);
+        alert('Erro de comunicação com o servidor');
     });
 }
 
