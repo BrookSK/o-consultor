@@ -1211,7 +1211,7 @@ Responda APENAS com o JSON válido seguindo exatamente a estrutura dos 15 compon
 Dados do diagnóstico:
 {$json}
 
-Responda em JSON com a estrutura:
+Responda APENAS em formato JSON válido com a estrutura:
 {
   \"score\": number,
   \"justificativa\": string,

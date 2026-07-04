@@ -8930,59 +8930,55 @@ Você precisa detalhar PROFUNDAMENTE o serviço '{$nomeServico}' no setor '{$nom
 # TAREFA
 Crie um SOP (Standard Operating Procedure) COMPLETO e PROFISSIONAL para este serviço.
 
-## ESTRUTURA OBRIGATÓRIA DO SOP:
+## ESTRUTURA OBRIGATÓRIA DO SOP EM JSON:
 
-### CABEÇALHO
-- Título: SOP {$codigoServico} - {$nomeServico}
-- Empresa: {$nomeEmpresa}
-- Setor: {$nomeSetor}
-- Data de criação: " . date('d/m/Y') . "
-- Versão: 1.0
+```json
+{
+  \"cabecalho\": {
+    \"titulo\": \"SOP {$codigoServico} - {$nomeServico}\",
+    \"empresa\": \"{$nomeEmpresa}\",
+    \"setor\": \"{$nomeSetor}\",
+    \"data_criacao\": \"" . date('d/m/Y') . "\",
+    \"versao\": \"1.0\"
+  },
+  \"objetivo\": \"Descreva claramente o objetivo do procedimento\",
+  \"escopo\": \"Defina onde e quando este procedimento se aplica\",
+  \"responsabilidades\": {
+    \"responsavel\": \"Quem executa\",
+    \"aprovador\": \"Quem aprova\",
+    \"consultado\": \"Quem consulta\",
+    \"informado\": \"Quem é informado\"
+  },
+  \"materiais_recursos\": [\"recurso1\", \"recurso2\"],
+  \"procedimento_detalhado\": [
+    {\"passo\": 1, \"acao\": \"Primeira ação\", \"responsavel\": \"Cargo\", \"tempo\": \"5min\"},
+    {\"passo\": 2, \"acao\": \"Segunda ação\", \"responsavel\": \"Cargo\", \"tempo\": \"10min\"}
+  ],
+  \"controles_verificacoes\": [
+    {\"ponto_controle\": \"O que verificar\", \"criterio\": \"Como verificar\"}
+  ],
+  \"registros_documentacao\": [\"O que registrar\", \"Onde registrar\"],
+  \"tratamento_excecoes\": [
+    {\"situacao\": \"Situação excepcional\", \"acao\": \"Como tratar\"}
+  ],
+  \"indicadores_desempenho\": [
+    {\"kpi\": \"Nome do KPI\", \"meta\": \"Meta esperada\", \"medicao\": \"Como medir\"}
+  ],
+  \"anexos\": [\"Formulário 1\", \"Checklist 2\"]
+}
+```
 
-### 1. OBJETIVO
-[Descreva claramente o objetivo do procedimento]
-
-### 2. ESCOPO
-[Defina onde e quando este procedimento se aplica]
-
-### 3. RESPONSABILIDADES
-[Liste quem faz o que - use matriz RACI se necessário]
-
-### 4. MATERIAIS E RECURSOS NECESSÁRIOS
-[Liste tudo que é necessário para executar o procedimento]
-
-### 5. PROCEDIMENTO DETALHADO
-[Passo a passo numerado, claro e objetivo]
-5.1. [Primeiro passo]
-5.2. [Segundo passo]
-[...]
-
-### 6. CONTROLES E VERIFICAÇÕES
-[Pontos de controle e verificação de qualidade]
-
-### 7. REGISTROS E DOCUMENTAÇÃO
-[O que deve ser registrado e onde]
-
-### 8. TRATAMENTO DE EXCEÇÕES
-[Como lidar com situações não padrão]
-
-### 9. INDICADORES DE DESEMPENHO
-[KPIs para acompanhar a eficácia]
-
-### 10. ANEXOS
-[Formulários, templates, checklists necessários]
-
-**REQUISITOS**:
-- Linguagem clara e objetiva
+**REQUISITOS IMPORTANTES**:
+- Use o detalhamento fornecido como base
+- Linguagem clara e objetiva  
 - Passos numerados e detalhados
 - Considere o contexto REAL da empresa
 - Incluir pontos de controle de qualidade
 - Definir responsabilidades claras
-- Prever situações de exceção
-- FORMATO MARKDOWN PROFISSIONAL
+- Prever situações de exceção baseadas no detalhamento
 - Foco na aplicabilidade prática
 
-Gere o SOP COMPLETO seguindo esta estrutura:";
+Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais";
     }
     
     /**
