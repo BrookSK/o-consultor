@@ -8421,18 +8421,35 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
      */
     public function debugApiResponse(): void
     {
-        $prompt = "Teste simples";
-        $resultado = ApiHelper::chamarAnalise($prompt);
-        
         header('Content-Type: application/json');
+        
+        // Teste 1: Verificar configurações
+        $gptAtivo = Configuracao::apiAtiva('openai');
+        $claudeAtivo = Configuracao::apiAtiva('anthropic');
+        $gptKey = Configuracao::get('openai_key', '');
+        $claudeKey = Configuracao::get('anthropic_key', '');
+        
+        // Teste 2: Chamada simples
+        $prompt = "Responda apenas: 'teste bem sucedido'";
+        $resultado = ApiHelper::chamarAnalise($prompt, false);
+        
         echo json_encode([
             'timestamp' => date('Y-m-d H:i:s'),
-            'tipo_resposta' => gettype($resultado),
-            'eh_array' => is_array($resultado),
-            'tem_sucesso' => isset($resultado['sucesso']),
-            'tem_conteudo' => isset($resultado['conteudo']),
-            'tipo_conteudo' => isset($resultado['conteudo']) ? gettype($resultado['conteudo']) : 'inexistente',
-            'resultado_completo' => $resultado
+            'configuracoes' => [
+                'gpt_ativo' => $gptAtivo,
+                'claude_ativo' => $claudeAtivo,
+                'gpt_key_configurada' => !empty($gptKey),
+                'claude_key_configurada' => !empty($claudeKey),
+                'gpt_key_primeiros_chars' => $gptKey ? substr($gptKey, 0, 10) . '...' : 'vazia',
+                'claude_key_primeiros_chars' => $claudeKey ? substr($claudeKey, 0, 10) . '...' : 'vazia'
+            ],
+            'teste_chamada' => [
+                'prompt_enviado' => $prompt,
+                'tipo_resposta' => gettype($resultado),
+                'eh_array' => is_array($resultado),
+                'chaves_resposta' => is_array($resultado) ? array_keys($resultado) : 'não é array',
+                'resultado_completo' => $resultado
+            ]
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         exit;
     }
@@ -8455,21 +8472,97 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         
         $prompt = $this->criarPromptDetalhamentoServico($servico, $contextoSetor, $respostasDiagnostico);
         
+        // Log do prompt sendo enviado
+        Logger::info('Enviando prompt para IA', [
+            'servico_id' => $servico['id'],
+            'servico_nome' => $servico['nome_servico'],
+            'tamanho_prompt' => strlen($prompt)
+        ]);
+        
         $resultadoIA = ApiHelper::chamarAnalise($prompt);
         
+        // Log da resposta recebida
+        Logger::info('Resposta da IA recebida', [
+            'tipo' => gettype($resultadoIA),
+            'eh_array' => is_array($resultadoIA),
+            'chaves' => is_array($resultadoIA) ? array_keys($resultadoIA) : 'não é array',
+            'sucesso' => isset($resultadoIA['sucesso']) ? $resultadoIA['sucesso'] : 'chave inexistente',
+            'tem_conteudo' => isset($resultadoIA['conteudo']),
+            'erro' => isset($resultadoIA['erro']) ? $resultadoIA['erro'] : 'sem erro'
+        ]);
+        
         if (!$resultadoIA || !is_array($resultadoIA)) {
-            return ['sucesso' => false, 'erro' => 'Erro na IA: resposta inválida'];
+            Logger::error('Resposta da IA inválida', [
+                'resposta_completa' => $resultadoIA,
+                'tipo' => gettype($resultadoIA)
+            ]);
+            return ['sucesso' => false, 'erro' => 'Erro na IA: resposta inválida (tipo: ' . gettype($resultadoIA) . ')'];
         }
         
         if (!$resultadoIA['sucesso'] || empty($resultadoIA['conteudo'])) {
             $erro = $resultadoIA['erro'] ?? 'não foi possível detalhar o serviço';
+            Logger::error('IA retornou erro ou conteudo vazio', [
+                'sucesso' => $resultadoIA['sucesso'] ?? 'indefinido',
+                'conteudo_vazio' => empty($resultadoIA['conteudo']),
+                'erro_ia' => $erro
+            ]);
+            
+            // FALLBACK: Se IA não está funcionando, criar resposta demo para teste
+            if (strpos($erro, 'não configurada') !== false || strpos($erro, 'Nenhuma API') !== false) {
+                Logger::info('Usando resposta demo devido a API não configurada');
+                
+                $respostaDemo = json_encode([
+                    'servico_nome' => $servico['nome_servico'],
+                    'setor' => $contextoSetor['nome'] ?? 'Administrativo',
+                    'descricao_detalhada' => 'Detalhamento automático gerado em modo demonstração para o serviço ' . $servico['nome_servico'],
+                    'procedimento_padrao' => [
+                        '1. Receber solicitação do serviço',
+                        '2. Verificar documentação necessária', 
+                        '3. Processar conforme procedimento padrão',
+                        '4. Finalizar e registrar conclusão'
+                    ],
+                    'problemas_n1' => [
+                        ['problema' => 'Documentação incompleta', 'solucao' => 'Solicitar documentos em falta']
+                    ],
+                    'problemas_n2' => [
+                        ['problema' => 'Processo complexo', 'solucao' => 'Escalar para supervisão']
+                    ],
+                    'problemas_n3' => [
+                        ['problema' => 'Situação excepcional', 'solucao' => 'Escalar para gerência']
+                    ],
+                    'recursos_necessarios' => ['Sistema interno', 'Documentação padrão'],
+                    'tempo_estimado' => '30 minutos',
+                    'observacoes' => 'Detalhamento gerado automaticamente em modo demonstração'
+                ], JSON_UNESCAPED_UNICODE);
+                
+                $detalhamento = $this->processarRespostaDetalhamentoIA($respostaDemo, $servico);
+                
+                return [
+                    'sucesso' => true,
+                    'detalhamento' => $detalhamento,
+                    'resposta_ia' => $respostaDemo,
+                    'modo_demo' => true,
+                    'mensagem' => 'Processado em modo demonstração. Configure as APIs de IA para funcionalidade completa.'
+                ];
+            }
+            
             return ['sucesso' => false, 'erro' => 'Erro na IA: ' . $erro];
         }
         
         $conteudoIA = $resultadoIA['conteudo'];
         
+        Logger::info('Conteudo da IA recebido', [
+            'tipo_conteudo' => gettype($conteudoIA),
+            'eh_string' => is_string($conteudoIA),
+            'tamanho' => is_string($conteudoIA) ? strlen($conteudoIA) : 'não é string'
+        ]);
+        
         if (!is_string($conteudoIA)) {
-            return ['sucesso' => false, 'erro' => 'Erro interno: resposta da IA em formato inválido'];
+            Logger::error('Conteudo da IA não é string', [
+                'tipo_real' => gettype($conteudoIA),
+                'valor' => $conteudoIA
+            ]);
+            return ['sucesso' => false, 'erro' => 'Erro interno: resposta da IA em formato inválido (conteúdo não é string)'];
         }
         
         $detalhamento = $this->processarRespostaDetalhamentoIA($conteudoIA, $servico);
