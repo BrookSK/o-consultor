@@ -2169,6 +2169,10 @@ class SopController
     public function executarMapeamentoSetor(): void
     {
         Auth::proteger();
+        
+        // Verificar e criar tabelas necessárias se não existirem
+        $this->verificarTabelasNovaArquitetura();
+        
         Csrf::verificar();
 
         $estruturaId = (int) (isset($_POST['estrutura_id']) ? $_POST['estrutura_id'] : 0);
@@ -2186,6 +2190,13 @@ class SopController
             header('Content-Type: application/json');
             echo json_encode(['sucesso' => false, 'erro' => 'Estrutura não encontrada.']);
             exit;
+        }
+
+        // Inicializar progresso se não existir
+        try {
+            $this->inicializarProgressoManual($estruturaId, $estruturaData);
+        } catch (Exception $e) {
+            Logger::error('Erro ao inicializar progresso no mapeamento', ['erro' => $e->getMessage()]);
         }
 
         $diagnostico = Diagnostico::buscarPorId($estruturaData['diagnostico_id']);
@@ -5922,17 +5933,101 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
     }
 
     /**
-     * Verificar se as tabelas da nova arquitetura existem
+     * Verificar e criar tabelas da nova arquitetura se necessário
      */
     private function verificarTabelasNovaArquitetura(): void
     {
         try {
-            // Tentar uma consulta simples em cada tabela
+            // Tentar uma consulta simples em cada tabela para ver se existem
             Database::queryOne("SELECT 1 FROM servicos_mapeados LIMIT 1");
             Database::queryOne("SELECT 1 FROM servicos_detalhados LIMIT 1");
             Database::queryOne("SELECT 1 FROM progresso_manual LIMIT 1");
         } catch (Exception $e) {
-            throw new Exception('As tabelas da nova arquitetura não foram criadas. Execute a migração 026_adicionar_tabelas_servicos.sql primeiro.');
+            // Se as tabelas não existem, criá-las
+            Logger::info('Criando tabelas da nova arquitetura automaticamente');
+            $this->criarTabelasNovaArquitetura();
         }
+    }
+
+    /**
+     * Criar tabelas da nova arquitetura automaticamente
+     */
+    private function criarTabelasNovaArquitetura(): void
+    {
+        // Tabela para serviços mapeados (Etapa 2A)
+        Database::execute("
+            CREATE TABLE IF NOT EXISTS `servicos_mapeados` (
+              `id` int(11) NOT NULL AUTO_INCREMENT,
+              `estrutura_id` int(11) NOT NULL COMMENT 'FK para estruturas_temporarias',
+              `setor_nome` varchar(100) NOT NULL,
+              `setor_tipo` enum('base', 'especifico_do_nicho') DEFAULT 'base',
+              `servicos_json` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Lista de todos os serviços possíveis do setor',
+              `total_servicos` int(11) DEFAULT 0 COMMENT 'Quantidade de serviços identificados',
+              `status` enum('mapeando', 'concluido', 'erro') DEFAULT 'mapeando',
+              `criado_em` datetime NOT NULL,
+              `processado_em` datetime DEFAULT NULL,
+              PRIMARY KEY (`id`),
+              KEY `idx_estrutura_id` (`estrutura_id`),
+              KEY `idx_setor_nome` (`setor_nome`),
+              KEY `idx_status` (`status`),
+              KEY `idx_criado_em` (`criado_em`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ");
+
+        // Tabela para serviços detalhados (Etapa 2B)
+        Database::execute("
+            CREATE TABLE IF NOT EXISTS `servicos_detalhados` (
+              `id` int(11) NOT NULL AUTO_INCREMENT,
+              `servico_mapeado_id` int(11) NOT NULL COMMENT 'FK para servicos_mapeados',
+              `estrutura_id` int(11) NOT NULL COMMENT 'FK para estruturas_temporarias',
+              `setor_nome` varchar(100) NOT NULL,
+              `servico_nome` varchar(200) NOT NULL,
+              `servico_codigo` varchar(50) NOT NULL COMMENT 'Código único do serviço',
+              `criticidade` tinyint(1) DEFAULT 2 COMMENT '1=crítico, 2=importante, 3=complementar',
+              `detalhamento_json` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Detalhamento completo com problemas N1-N2-N3',
+              `problemas_mapeados` int(11) DEFAULT 0 COMMENT 'Quantidade de problemas N1-N2-N3 identificados',
+              `status` enum('detalhando', 'concluido', 'erro') DEFAULT 'detalhando',
+              `criado_em` datetime NOT NULL,
+              `processado_em` datetime DEFAULT NULL,
+              PRIMARY KEY (`id`),
+              KEY `idx_servico_mapeado_id` (`servico_mapeado_id`),
+              KEY `idx_estrutura_id` (`estrutura_id`),
+              KEY `idx_setor_nome` (`setor_nome`),
+              KEY `idx_servico_codigo` (`servico_codigo`),
+              KEY `idx_criticidade` (`criticidade`),
+              KEY `idx_status` (`status`),
+              KEY `idx_criado_em` (`criado_em`),
+              UNIQUE KEY `unique_servico_por_estrutura` (`estrutura_id`, `servico_codigo`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ");
+
+        // Tabela para progresso das etapas
+        Database::execute("
+            CREATE TABLE IF NOT EXISTS `progresso_manual` (
+              `id` int(11) NOT NULL AUTO_INCREMENT,
+              `estrutura_id` int(11) NOT NULL,
+              `diagnostico_id` int(11) NOT NULL,
+              `empresa_id` int(11) NOT NULL,
+              `etapa_atual` enum('etapa1', 'etapa2a', 'etapa2b', 'etapa3', 'concluido') DEFAULT 'etapa1',
+              `total_setores` int(11) DEFAULT 0,
+              `setores_mapeados` int(11) DEFAULT 0,
+              `total_servicos` int(11) DEFAULT 0,
+              `servicos_detalhados` int(11) DEFAULT 0,
+              `total_sops` int(11) DEFAULT 0,
+              `sops_gerados` int(11) DEFAULT 0,
+              `progresso_percentual` decimal(5,2) DEFAULT 0.00,
+              `iniciado_em` datetime NOT NULL,
+              `atualizado_em` datetime DEFAULT NULL,
+              `concluido_em` datetime DEFAULT NULL,
+              PRIMARY KEY (`id`),
+              UNIQUE KEY `unique_estrutura` (`estrutura_id`),
+              KEY `idx_diagnostico_id` (`diagnostico_id`),
+              KEY `idx_empresa_id` (`empresa_id`),
+              KEY `idx_etapa_atual` (`etapa_atual`),
+              KEY `idx_progresso` (`progresso_percentual`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ");
+
+        Logger::info('Tabelas da nova arquitetura criadas automaticamente');
     }
 }
