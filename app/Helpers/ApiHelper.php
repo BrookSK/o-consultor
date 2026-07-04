@@ -2189,7 +2189,7 @@ Transformar a descrição falada em um SOP completo, estruturado e profissional,
 ## RESPOSTA
 Retorne APENAS o JSON válido, sem explicações adicionais.";
     }
-}
+
     /**
      * Transcrever áudio usando OpenAI Whisper
      */
@@ -2270,3 +2270,4 @@ Retorne APENAS o JSON válido, sem explicações adicionais.";
             return null;
         }
     }
+}
