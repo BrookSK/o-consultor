@@ -566,45 +566,11 @@ Próximos passos para otimizar este processo
 Responda em Markdown bem estruturado, português do Brasil, formato profissional.";
     }
 
-## 8. NÍVEL N3 — Casos Críticos e Escalonamento (situações raras/complexas, ~5% dos casos)
-Cenários de alto risco, legal, financeiro ou reputacional ligados a este SOP. Para cada cenário:
-- Descrição do cenário crítico
-- Critério objetivo de quando classificar como N3 (não deixe subjetivo)
-- Para quem escalar (cargo/setor) e por qual canal
-- O que o executor deve fazer ENQUANTO aguarda a escalada (não deixar o cliente/processo parado)
-- Prazo máximo de resposta esperado após escalar
-
-**Checklist N3 (antes de escalar):**
-- [ ] item verificável 1
-- [ ] item verificável 2
-
-## 9. Erros comuns e como evitá-los
-Liste erros reais e específicos que pessoas novas cometem nesse tipo de procedimento neste nicho, e a forma correta de evitar cada um.
-
-## 10. Scripts e modelos prontos (se aplicável)
-Se o SOP envolve comunicação com cliente, fornecedor ou equipe (e-mail, mensagem, ligação, atendimento presencial), forneça modelo de texto pronto para uso, adaptado ao tom da empresa e ao nicho.
-
-## 11. Indicadores de sucesso (KPIs)
-Como medir se este procedimento está sendo bem executado (métrica, meta, frequência de acompanhamento, responsável pela métrica).
-
-## 12. Perguntas frequentes (FAQ para quem está aprendendo)
-Simule de 5 a 10 perguntas reais que uma pessoa nova faria sobre este procedimento, e responda de forma direta.
-
-## 13. Frequência de execução e revisão
-Com que frequência esse SOP é executado, e de quanto em quanto tempo ele deve ser revisado/atualizado.
-
-=========================== REGRAS DE QUALIDADE ===========================
-- Proibido generalizar. Cada passo deve refletir a realidade do nicho \"{$contextosEmpresa['nicho']}\" e do modelo de negócio informado.
-- Proibido deixar etapas incompletas do tipo \"faça o necessário\" — sempre especifique o que é o necessário.
-- Se alguma informação depender de dado que a empresa não informou (ex: nome de um sistema específico), use um placeholder claro como \"[nome do sistema usado pela empresa]\" em vez de inventar uma ferramenta.
-- Escreva em português do Brasil, tom técnico, direto e didático — like um manual de treinamento real, não um texto teórico.
-- Priorize profundidade e assertividade sobre brevidade. Este documento deve ser suficiente para substituir a necessidade de perguntar a um colega mais experiente.
-
-Responda em formato Markdown bem estruturado.";
-    }
+    // ===== NOVA ARQUITETURA DETALHADA - ETAPA 2A =====
 
     /**
-     * CHAMADA 3 — Montagem Final do Manual (organiza tudo em documento final)
+     * ETAPA 2A: Lista TODOS os serviços possíveis para um setor específico
+     * Uma chamada por setor identificado na Etapa 1
      */
     public static function buildPromptMontagemFinal(array $diagnosticoJson, array $estruturaJson, string $todosOsSops): string
     {
