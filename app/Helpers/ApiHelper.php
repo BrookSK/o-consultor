@@ -448,14 +448,26 @@ Responda APENAS com o JSON válido. Não inclua texto adicional fora do JSON.";
     }
 
     /**
-     * CHAMADA 2 — Gerador de SOP Profundo (uma chamada por SOP)
-     * Esta chamada roda em loop para cada SOP identificado na Chamada 1
+     * CHAMADA 3 — Gerador de SOP Profundo com NOVA ARQUITETURA N1-N2-N3
+     * Esta chamada usa o detalhamento da Etapa 2B para gerar SOPs completos
      */
-    public static function buildPromptSOPProfundo(array $contextosEmpresa, array $dadosSOP): string
+    public static function buildPromptSOPProfundo(array $contextosEmpresa, array $dadosSOP, array $detalhamentoCompleto = []): string
     {
-        return "Você é um especialista em documentação operacional e treinamento de equipes, com profundo conhecimento prático do nicho \"{$contextosEmpresa['nicho']}\" ({$contextosEmpresa['macro_categoria']}). Sua tarefa é criar UM ÚNICO SOP (Procedimento Operacional Padrão) extremamente detalhado, de forma que qualquer pessoa nova na empresa consiga executá-lo e resolver qualquer variação da situação SEM precisar perguntar para outra pessoa.
+        // Se houver detalhamento da Etapa 2B, incluir no contexto
+        $contextoDetalhamento = '';
+        if (!empty($detalhamentoCompleto)) {
+            $contextoDetalhamento = "
+=========================== DETALHAMENTO COMPLETO (Etapa 2B) ===========================
+ATENÇÃO: Use este detalhamento como base OBRIGATÓRIA para construir o SOP. Todos os problemas e soluções N1-N2-N3 listados abaixo DEVEM estar no SOP final.
 
-=========================== CONTEXTO DA EMPRESA (não repita isso na resposta, apenas use como base) ===========================
+" . json_encode($detalhamentoCompleto, JSON_UNESCAPED_UNICODE) . "
+
+";
+        }
+
+        return "Você é um especialista em documentação operacional e treinamento de equipes, com profundo conhecimento prático do nicho \"{$contextosEmpresa['nicho']}\" ({$contextosEmpresa['macro_categoria']}). Sua tarefa é criar UM ÚNICO SOP (Procedimento Operacional Padrão) extremamente detalhado e PRÁTICO, que qualquer pessoa nova na empresa consiga executar SOZINHA, incluindo cenários problemáticos e de crise.
+
+=========================== CONTEXTO DA EMPRESA ===========================
 Empresa: {$contextosEmpresa['nome']}
 Nicho: {$contextosEmpresa['nicho']} | Macro-categoria: {$contextosEmpresa['macro_categoria']}
 Porte: {$contextosEmpresa['porte']} | Estágio: {$contextosEmpresa['estagio']}
@@ -465,58 +477,94 @@ Público-alvo: {$contextosEmpresa['publico_alvo']}
 Ferramentas/sistemas usados: {$contextosEmpresa['ferramentas_atuais']}
 Nível de maturidade organizacional: {$contextosEmpresa['nivel_maturidade']}
 
-=========================== SETOR E SOP A DETALHAR ===========================
+{$contextoDetalhamento}=========================== SOP A CRIAR ===========================
 Setor: {$dadosSOP['nome_setor']}
-Responsável sugerido: {$dadosSOP['responsavel_sugerido']}
-SOP a documentar: {$dadosSOP['nome_sop']}
-Objetivo resumido: {$dadosSOP['objetivo_resumido']}
-Gatilho de entrada: {$dadosSOP['gatilho_de_entrada']}
+Responsável: {$dadosSOP['responsavel_sugerido']}
+SOP: {$dadosSOP['nome_sop']}
+Objetivo: {$dadosSOP['objetivo_resumido']}
+Gatilho: {$dadosSOP['gatilho_de_entrada']}
 Criticidade: {$dadosSOP['criticidade']}
 
-=========================== ESTRUTURA OBRIGATÓRIA — NÍVEIS N1, N2, N3 + CHECKLISTS ===========================
-Gere o SOP com TODAS as seções abaixo, sem pular nenhuma, com profundidade real (não genérica, não superficial). Sempre que possível, use exemplos concretos ligados ao nicho e aos produtos/serviços da empresa, e não exemplos abstratos.
+=========================== ESTRUTURA OBRIGATÓRIA - 15 SEÇÕES COMPLETAS ===========================
+Crie o SOP com TODAS as seções, sendo extremamente específico e prático:
 
 # SOP: {$dadosSOP['nome_sop']}
+**Código:** {$dadosSOP['id_sop']} | **Versão:** 1.0 | **Data:** " . date('d/m/Y') . "
 **Setor:** {$dadosSOP['nome_setor']} | **Criticidade:** {$dadosSOP['criticidade']} | **Responsável:** {$dadosSOP['responsavel_sugerido']}
 
-## 1. Objetivo
-O que este procedimento garante, por que ele existe, o que acontece se ele NÃO for seguido (risco real e concreto).
+## 1. CABEÇALHO E IDENTIFICAÇÃO
+- Código do SOP, versão, datas de criação/revisão
+- Dono do processo, aprovador, revisores
+- Histórico de mudanças (incluir versão 1.0 inicial)
 
-## 2. Quando executar (gatilhos)
-Todos os eventos/situações que disparam esse procedimento — não apenas o gatilho principal, mas variações (ex: entrada manual, entrada automática via sistema, solicitação de cliente, alerta interno).
+## 2. OBJETIVO
+Por que este SOP existe, o que garante, riscos de não seguir
 
-## 3. Papéis e responsabilidades
-Quem executa, quem aprova (se houver alçada), quem é informado, e o que fazer se a pessoa responsável estiver ausente (plano de contingência de responsabilidade).
+## 3. ESCOPO  
+O que este SOP cobre (inclui) e o que NÃO cobre (exclui)
 
-## 4. Glossário rápido
-Termos técnicos do nicho usados neste SOP, explicados em linguagem simples, para alguém sem experiência prévia entender de imediato.
+## 4. GLOSSÁRIO
+Termos técnicos específicos usados neste processo
 
-## 5. Ferramentas, sistemas e documentos necessários
-Liste cada ferramenta/sistema/planilha/documento necessário, para que serve especificamente neste procedimento, e onde encontrá-lo.
+## 5. MATRIZ RACI
+R=Responsável, A=Aprovador, C=Consultado, I=Informado para cada etapa crítica
 
-## 6. NÍVEL N1 — Execução Padrão (situação comum, 80% dos casos)
-Passo a passo numerado, extremamente específico (sem \"verifique se está tudo certo\" — diga O QUE verificar e COMO). Inclua:
-- Pré-requisitos antes de começar
-- Passos numerados de execução
-- O que preencher/registrar em cada etapa e onde
-- Tempo médio esperado por etapa
-- Resultado esperado ao final (como saber que deu certo)
+## 6. PRÉ-REQUISITOS
+O que deve estar pronto/disponível antes de iniciar
 
-**Checklist N1 (execução padrão):**
-- [ ] item verificável 1
-- [ ] item verificável 2
-- [ ] item verificável 3
-(gerar todos os itens necessários, não um número fixo)
+## 7. PROCEDIMENTO PADRÃO (CENÁRIO IDEAL)
+Passo-a-passo detalhado quando tudo funciona perfeitamente:
+- Etapa 1: [ação específica] - Responsável: X - Tempo: Y min
+- Etapa 2: [ação específica] - Responsável: X - Tempo: Y min
+- Continue até completar todo o fluxo normal
 
-## 7. NÍVEL N2 — Situações Intermediárias e Exceções (variações comuns, ~15% dos casos)
-Liste as exceções/variações mais prováveis neste procedimento específico (não genéricas) e, para cada uma, um mini fluxo de decisão:
-- Situação de exceção 1: [descrição] → Como identificar → O que fazer → Como registrar → Quando essa exceção deixa de ser N2 e vira N3
-- Situação de exceção 2: [...]
-- (cobrir o maior número real de variações que esse SOP específico pode ter)
+## 8. PONTOS DE CONTROLE E VALIDAÇÃO
+Verificações obrigatórias durante o processo
 
-**Checklist N2 (tratamento de exceção):**
-- [ ] item verificável 1
-- [ ] item verificável 2
+## 9. MAPA DE PROBLEMAS E CONTENÇÕES N1-N2-N3
+**PROBLEMA 1: [Nome específico do problema]**
+- **Sinais de alerta:** Como identificar
+- **N1 (0-30min):** Ação imediata pelo próprio executor
+- **N2 (30min-4h):** Escalação com supervisor/líder
+- **N3 (4h+):** Medidas extremas, direção, contingência
+
+**PROBLEMA 2: [Próximo problema específico]**
+- **Sinais de alerta:** 
+- **N1:** 
+- **N2:** 
+- **N3:** 
+
+(Continue para TODOS os problemas possíveis - mínimo 5-8 problemas diferentes)
+
+## 10. FERRAMENTAS E SISTEMAS
+Lista detalhada com acesso, configurações específicas
+
+## 11. KPIs E MÉTRICAS
+Como medir se o processo está funcionando bem
+
+## 12. RISCOS E NÃO-CONFORMIDADES
+O que pode dar errado e como prevenir
+
+## 13. DOCUMENTAÇÃO E EVIDÊNCIAS
+O que deve ser registrado/arquivado obrigatoriamente
+
+## 14. MELHORIAS RECOMENDADAS
+Próximos passos para otimizar este processo
+
+## 15. ANEXOS
+- **Checklist Rápido:** 10-15 itens verificáveis
+- **Fluxograma Textual:** Fluxo de decisão passo-a-passo
+- **Templates:** Modelos de documentos necessários
+
+=========================== INSTRUÇÕES CRÍTICAS ===========================
+1. **REALISMO:** Use situações que REALMENTE acontecem no dia-a-dia
+2. **PROBLEMAS N1-N2-N3:** Cada problema deve ter 3 níveis distintos de resposta
+3. **ESPECIFICIDADE:** Nada genérico - tudo adaptado ao nicho da empresa
+4. **EXECUTABILIDADE:** Qualquer pessoa deve conseguir seguir sozinha
+5. **COMPLETUDE:** Todas as 15 seções obrigatórias devem estar presentes
+
+Responda em Markdown bem estruturado, português do Brasil, formato profissional.";
+    }
 
 ## 8. NÍVEL N3 — Casos Críticos e Escalonamento (situações raras/complexas, ~5% dos casos)
 Cenários de alto risco, legal, financeiro ou reputacional ligados a este SOP. Para cada cenário:
@@ -597,6 +645,167 @@ Conteúdo completo de todos os SOPs gerados (Chamada 2): {$todosOsSops}
 Regras: não altere o conteúdo técnico dos SOPs já gerados, apenas formate e conecte. Português do Brasil, Markdown com headers.
 
 Responda em formato Markdown completo e bem estruturado.";
+    }
+
+    // ===== NOVA ARQUITETURA DETALHADA - ETAPA 2A =====
+
+    /**
+     * ETAPA 2A: Lista TODOS os serviços possíveis para um setor específico
+     * Uma chamada por setor identificado na Etapa 1
+     */
+    public static function buildPromptListagemServicos(string $setor, array $dadosEmpresa): string
+    {
+        return "Você é um consultor especialista no setor \"{$setor}\" para empresas do nicho \"{$dadosEmpresa['nicho']}\" ({$dadosEmpresa['macro_categoria']}). Sua tarefa é listar TODOS os tipos de serviços/processos possíveis que este setor pode executar numa empresa deste perfil.
+
+=========================== CONTEXTO DA EMPRESA ===========================
+Nome: {$dadosEmpresa['nome']}
+Nicho: {$dadosEmpresa['nicho']}
+Porte: {$dadosEmpresa['porte']} funcionários
+Modelo de negócio: {$dadosEmpresa['modelo_negocio']}
+Produtos/serviços: {$dadosEmpresa['produtos_servicos']}
+Público-alvo: {$dadosEmpresa['publico_alvo']}
+Desafios principais: {$dadosEmpresa['dores_desafios']}
+Ferramentas atuais: {$dadosEmpresa['ferramentas_atuais']}
+
+=========================== O QUE FAZER ===========================
+Pense em TODOS os serviços/processos que o setor \"{$setor}\" pode executar, incluindo:
+
+1. **Processos rotineiros** (dia-a-dia normal)
+2. **Processos críticos** (que geram risco se não feitos)
+3. **Processos de exceção** (situações não-padrão)
+4. **Processos de crise** (problemas, falhas, emergências)
+5. **Processos sazonais** (específicos de determinadas épocas)
+6. **Processos de crescimento** (quando empresa expande)
+
+Para cada serviço, considere:
+- Situações ideais (tudo funciona)
+- Situações problemáticas (resistência, falhas técnicas, emergências)
+- Diferentes níveis de complexidade
+- Integrações com outros setores
+
+Seja exaustivo e específico para o nicho \"{$dadosEmpresa['nicho']}\". Não seja genérico.
+
+=========================== FORMATO DE SAÍDA (APENAS JSON) ===========================
+{
+  \"setor\": \"{$setor}\",
+  \"funcao_principal\": \"string (papel do setor na empresa)\",
+  \"servicos\": [
+    {
+      \"nome\": \"string (nome específico do serviço)\",
+      \"codigo\": \"string (slug único, ex: manutencao-preventiva-servidores)\",
+      \"categoria\": \"rotineiro | critico | excecao | crise | sazonal | crescimento\",
+      \"criticidade\": 1,
+      \"descricao_resumida\": \"string (1-2 frases do que é)\",
+      \"gatilho_entrada\": \"string (o que dispara este processo)\",
+      \"cenarios_problematicos\": [\"string\", \"string\", \"string\"],
+      \"integracao_setores\": [\"string\", \"string\"]
+    }
+  ]
+}
+
+Responda APENAS com o JSON válido. Seja específico para o nicho e porte da empresa. Liste pelo menos 15-25 serviços diferentes.";
+    }
+
+    /**
+     * ETAPA 2B: Detalha completamente UM serviço específico
+     * Uma chamada por serviço listado na Etapa 2A
+     */
+    public static function buildPromptDetalhamentoServico(string $servicoNome, array $contextosEmpresa, array $dadosServico): string
+    {
+        return "Você é um especialista operacional no processo \"{$servicoNome}\" para empresas do nicho \"{$contextosEmpresa['nicho']}\". Sua tarefa é detalhar COMPLETAMENTE este processo, incluindo todos os passos possíveis e TODOS os problemas que podem ocorrer, com suas respectivas soluções em 3 níveis (N1-N2-N3).
+
+=========================== CONTEXTO DA EMPRESA ===========================
+Nome: {$contextosEmpresa['nome']}
+Nicho: {$contextosEmpresa['nicho']}
+Setor: {$dadosServico['setor']}
+Porte: {$contextosEmpresa['porte']} funcionários
+Ferramentas disponíveis: {$contextosEmpresa['ferramentas_atuais']}
+
+=========================== DADOS DO SERVIÇO ===========================
+Nome: {$servicoNome}
+Código: {$dadosServico['codigo']}
+Categoria: {$dadosServico['categoria']}
+Criticidade: {$dadosServico['criticidade']}
+Gatilho: {$dadosServico['gatilho_entrada']}
+Cenários problemáticos conhecidos: " . implode(', ', $dadosServico['cenarios_problematicos']) . "
+
+=========================== O QUE DETALHAR ===========================
+
+1. **PROCEDIMENTO PADRÃO COMPLETO**
+   - Todos os pré-requisitos
+   - Passo-a-passo detalhado (cenário ideal)
+   - Pontos de validação obrigatórios
+   - Responsáveis por cada etapa
+   - Tempo estimado por passo
+   - Ferramentas/sistemas necessários
+
+2. **MAPA COMPLETO DE PROBLEMAS POSSÍVEIS**
+   Identifique TODOS os problemas que podem ocorrer:
+   - Problemas técnicos (sistemas, equipamentos, conectividade)
+   - Problemas humanos (resistência, falta de cooperação, erros)
+   - Problemas de processo (dependências, prazos, recursos)
+   - Problemas externos (fornecedores, clientes, mercado)
+   - Emergências e crises
+
+3. **CONTENÇÃO N1-N2-N3 PARA CADA PROBLEMA**
+   Para cada problema identificado:
+   - **N1 (Solução Rápida):** Ação imediata, 15-30min, própria equipe
+   - **N2 (Escalação Moderada):** Envolver supervisão, 1-4h, recursos adicionais
+   - **N3 (Medidas Extremas):** Direção, consultores externos, plano de contingência
+
+=========================== FORMATO DE SAÍDA (APENAS JSON) ===========================
+{
+  \"servico\": \"{$servicoNome}\",
+  \"procedimento_padrao\": {
+    \"pre_requisitos\": [\"string\", \"string\"],
+    \"passos\": [
+      {
+        \"numero\": 1,
+        \"acao\": \"string (ação específica)\",
+        \"responsavel\": \"string (cargo/papel)\",
+        \"tempo_estimado\": \"string\",
+        \"ferramentas\": [\"string\"],
+        \"validacao\": \"string (como verificar se deu certo)\",
+        \"proxima_etapa\": \"string\"
+      }
+    ],
+    \"criterios_sucesso\": [\"string\", \"string\"],
+    \"evidencias_obrigatorias\": [\"string\", \"string\"]
+  },
+  \"problemas_possiveis\": [
+    {
+      \"problema\": \"string (nome do problema)\",
+      \"categoria\": \"tecnico | humano | processo | externo | emergencia\",
+      \"sinais_alerta\": [\"string\", \"string\"],
+      \"impacto_se_nao_resolver\": \"string\",
+      \"contencao_n1\": {
+        \"acao\": \"string (o que fazer)\",
+        \"responsavel\": \"string\",
+        \"tempo_maximo\": \"string\",
+        \"recursos_necessarios\": [\"string\"]
+      },
+      \"contencao_n2\": {
+        \"acao\": \"string (escalação moderada)\",
+        \"responsavel\": \"string\",
+        \"tempo_maximo\": \"string\",
+        \"recursos_necessarios\": [\"string\"]
+      },
+      \"contencao_n3\": {
+        \"acao\": \"string (medidas extremas)\",
+        \"responsavel\": \"string\",
+        \"tempo_maximo\": \"string\",
+        \"recursos_necessarios\": [\"string\"],
+        \"comunicacao_externa\": \"string (quem avisar)\"
+      }
+    }
+  ],
+  \"checklist_preventivo\": [\"string\", \"string\"],
+  \"kpis_processo\": [
+    {\"nome\": \"string\", \"meta_verde\": \"string\", \"meta_amarela\": \"string\", \"meta_vermelha\": \"string\"}
+  ]
+}
+
+Responda APENAS com o JSON válido. Seja extremamente detalhado e prático. Pense em situações reais que acontecem no dia-a-dia empresarial.";
     }
 
     /**

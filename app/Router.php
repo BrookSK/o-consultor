@@ -77,12 +77,16 @@ class Router
         $this->post('sop/remover', 'SopController', 'removerSOP');
         $this->post('sop/gerar', 'SopController', 'gerar');
         
-        // NOVA ARQUITETURA: Manual Completo em 3 Etapas
-        $this->post('sop/gerar-manual-completo', 'SopController', 'gerarManualCompleto');     // Etapa 1: Diagnóstico e Estrutura
-        $this->get('sop/processar-sops', 'SopController', 'processarSOPs');                  // Etapa 2: View de processamento
-        $this->post('sop/gerar-sop-individual', 'SopController', 'gerarSOPIndividual');     // Etapa 2: AJAX individual
-        $this->post('sop/montar-manual-final', 'SopController', 'montarManualFinal');       // Etapa 3: Montagem final
-        $this->get('sop/manual-completo', 'SopController', 'exibirManualCompleto');         // Exibir manual final
+        // NOVA ARQUITETURA: Manual Completo em 4 Etapas Detalhadas
+        $this->post('sop/gerar-manual-completo', 'SopController', 'gerarManualCompleto');         // Etapa 1: Diagnóstico e Estrutura
+        $this->get('sop/mapear-servicos', 'SopController', 'mapearServicos');                     // Etapa 2A: View mapeamento
+        $this->post('sop/executar-mapeamento-setor', 'SopController', 'executarMapeamentoSetor'); // Etapa 2A: AJAX por setor
+        $this->get('sop/detalhar-servicos', 'SopController', 'detalharServicos');                 // Etapa 2B: View detalhamento
+        $this->post('sop/executar-detalhamento-servico', 'SopController', 'executarDetalhamentoServico'); // Etapa 2B: AJAX por serviço
+        $this->get('sop/processar-sops', 'SopController', 'processarSOPs');                       // Etapa 3: View de processamento
+        $this->post('sop/gerar-sop-individual', 'SopController', 'gerarSOPIndividual');           // Etapa 3: AJAX individual
+        $this->post('sop/montar-manual-final', 'SopController', 'montarManualFinal');             // Etapa 4: Montagem final
+        $this->get('sop/manual-completo', 'SopController', 'exibirManualCompleto');               // Exibir manual final
         
         $this->get('sop/ver', 'SopController', 'ver');
         $this->get('sop/revisar', 'SopController', 'revisar');

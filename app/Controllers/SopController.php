@@ -2079,8 +2079,238 @@ class SopController
             'sucesso' => true,
             'etapa' => 1,
             'estrutura_id' => $estruturaId,
-            'total_sops' => $this->contarTotalSOPs($diagnosticoEstrutura['setores'] ?? []),
-            'redirect' => APP_URL . '/sop/processar-sops?estrutura_id=' . $estruturaId
+            'total_setores' => count($diagnosticoEstrutura['setores'] ?? []),
+            'redirect' => APP_URL . '/sop/mapear-servicos?estrutura_id=' . $estruturaId
+        ]);
+        exit;
+    }
+
+    // ===== NOVA ARQUITETURA DETALHADA - ETAPA 2A =====
+
+    /**
+     * ETAPA 2A: Mapear todos os serviços possíveis por setor
+     * Interface para mostrar progresso e executar mapeamento
+     */
+    public function mapearServicos(): void
+    {
+        Auth::proteger();
+        
+        $estruturaId = (int) (isset($_GET['estrutura_id']) ? $_GET['estrutura_id'] : 0);
+        if (!$estruturaId) {
+            Flash::set('erro', 'Estrutura não encontrada.');
+            header('Location: ' . APP_URL . '/sop');
+            exit;
+        }
+
+        // Buscar estrutura salva
+        $estruturaData = $this->buscarEstruturaTemporaria($estruturaId);
+        if (!$estruturaData) {
+            Flash::set('erro', 'Dados da estrutura não encontrados.');
+            header('Location: ' . APP_URL . '/sop');
+            exit;
+        }
+
+        // Inicializar progresso se não existir
+        $this->inicializarProgressoManual($estruturaId, $estruturaData);
+
+        $diagnosticoEstrutura = $estruturaData['estrutura'];
+        $diagnostico = Diagnostico::buscarPorId($estruturaData['diagnostico_id']);
+        $empresa = Empresa::buscarPorId($diagnostico['empresa_id']);
+        
+        $dados = [
+            'estrutura_id' => $estruturaId,
+            'empresa' => $empresa,
+            'diagnostico' => $diagnostico,
+            'setores' => $diagnosticoEstrutura['setores'] ?? [],
+            'progresso' => $this->buscarProgressoManual($estruturaId)
+        ];
+
+        require VIEW_PATH . '/sop/mapear-servicos.php';
+    }
+
+    /**
+     * ETAPA 2A: Executar mapeamento de um setor específico via AJAX
+     */
+    public function executarMapeamentoSetor(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+
+        $estruturaId = (int) (isset($_POST['estrutura_id']) ? $_POST['estrutura_id'] : 0);
+        $setorNome = isset($_POST['setor_nome']) ? trim($_POST['setor_nome']) : '';
+        
+        if (!$estruturaId || !$setorNome) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Dados incompletos.']);
+            exit;
+        }
+
+        // Buscar dados necessários
+        $estruturaData = $this->buscarEstruturaTemporaria($estruturaId);
+        if (!$estruturaData) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Estrutura não encontrada.']);
+            exit;
+        }
+
+        $diagnostico = Diagnostico::buscarPorId($estruturaData['diagnostico_id']);
+        $empresa = Empresa::buscarPorId($diagnostico['empresa_id']);
+        
+        // Preparar dados para o prompt
+        $respostas = json_decode($diagnostico['respostas'], true) ?? [];
+        $dadosEmpresa = $this->extrairDadosEmpresaCompletos($empresa, $diagnostico, $respostas);
+
+        Logger::info('Iniciando mapeamento de setor', [
+            'estrutura_id' => $estruturaId,
+            'setor' => $setorNome,
+            'empresa' => $dadosEmpresa['nome']
+        ]);
+
+        // CHAMADA API: Mapear todos os serviços do setor
+        $prompt = ApiHelper::buildPromptListagemServicos($setorNome, $dadosEmpresa);
+        $resultado = ApiHelper::chamarAnalise($prompt, true);
+
+        if (!$resultado['sucesso'] || !is_array($resultado['conteudo'])) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro no mapeamento: ' . ($resultado['erro'] ?? 'Resposta inválida')]);
+            exit;
+        }
+
+        $servicosMapeados = $resultado['conteudo'];
+        
+        // Salvar no banco
+        $servicoMapeadoId = $this->salvarServicosMapeados($estruturaId, $setorNome, $servicosMapeados);
+        
+        // Atualizar progresso
+        $this->atualizarProgressoEtapa2A($estruturaId);
+        
+        Logger::info('Mapeamento de setor concluído', [
+            'setor' => $setorNome,
+            'total_servicos' => count($servicosMapeados['servicos'] ?? []),
+            'servico_mapeado_id' => $servicoMapeadoId
+        ]);
+
+        header('Content-Type: application/json');
+        echo json_encode([
+            'sucesso' => true,
+            'setor' => $setorNome,
+            'total_servicos' => count($servicosMapeados['servicos'] ?? []),
+            'servicos' => $servicosMapeados['servicos'] ?? []
+        ]);
+        exit;
+    }
+
+    // ===== NOVA ARQUITETURA DETALHADA - ETAPA 2B =====
+
+    /**
+     * ETAPA 2B: Detalhar todos os serviços individualmente
+     * Interface para mostrar progresso e executar detalhamento
+     */
+    public function detalharServicos(): void
+    {
+        Auth::proteger();
+        
+        $estruturaId = (int) (isset($_GET['estrutura_id']) ? $_GET['estrutura_id'] : 0);
+        if (!$estruturaId) {
+            Flash::set('erro', 'Estrutura não encontrada.');
+            header('Location: ' . APP_URL . '/sop');
+            exit;
+        }
+
+        // Verificar se Etapa 2A foi concluída
+        if (!$this->verificarEtapa2AConcluida($estruturaId)) {
+            Flash::set('erro', 'É necessário completar o mapeamento de serviços primeiro.');
+            header('Location: ' . APP_URL . '/sop/mapear-servicos?estrutura_id=' . $estruturaId);
+            exit;
+        }
+
+        // Buscar todos os serviços mapeados
+        $servicosMapeados = $this->buscarServicosMapeados($estruturaId);
+        $estruturaData = $this->buscarEstruturaTemporaria($estruturaId);
+        $diagnostico = Diagnostico::buscarPorId($estruturaData['diagnostico_id']);
+        $empresa = Empresa::buscarPorId($diagnostico['empresa_id']);
+        
+        $dados = [
+            'estrutura_id' => $estruturaId,
+            'empresa' => $empresa,
+            'diagnostico' => $diagnostico,
+            'servicos_mapeados' => $servicosMapeados,
+            'progresso' => $this->buscarProgressoManual($estruturaId)
+        ];
+
+        require VIEW_PATH . '/sop/detalhar-servicos.php';
+    }
+
+    /**
+     * ETAPA 2B: Executar detalhamento de um serviço específico via AJAX
+     */
+    public function executarDetalhamentoServico(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+
+        $estruturaId = (int) (isset($_POST['estrutura_id']) ? $_POST['estrutura_id'] : 0);
+        $servicoNome = isset($_POST['servico_nome']) ? trim($_POST['servico_nome']) : '';
+        $servicoCodigo = isset($_POST['servico_codigo']) ? trim($_POST['servico_codigo']) : '';
+        $setorNome = isset($_POST['setor_nome']) ? trim($_POST['setor_nome']) : '';
+        
+        if (!$estruturaId || !$servicoNome || !$servicoCodigo) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Dados incompletos.']);
+            exit;
+        }
+
+        // Buscar dados do serviço mapeado
+        $servicoMapeado = $this->buscarDadosServicoMapeado($estruturaId, $servicoCodigo, $setorNome);
+        if (!$servicoMapeado) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Serviço não encontrado.']);
+            exit;
+        }
+
+        // Buscar contextos da empresa
+        $estruturaData = $this->buscarEstruturaTemporaria($estruturaId);
+        $diagnostico = Diagnostico::buscarPorId($estruturaData['diagnostico_id']);
+        $empresa = Empresa::buscarPorId($diagnostico['empresa_id']);
+        $respostas = json_decode($diagnostico['respostas'], true) ?? [];
+        $contextosEmpresa = $this->extrairDadosEmpresaCompletos($empresa, $diagnostico, $respostas);
+
+        Logger::info('Iniciando detalhamento de serviço', [
+            'servico' => $servicoNome,
+            'codigo' => $servicoCodigo,
+            'setor' => $setorNome
+        ]);
+
+        // CHAMADA API: Detalhar completamente o serviço
+        $prompt = ApiHelper::buildPromptDetalhamentoServico($servicoNome, $contextosEmpresa, $servicoMapeado);
+        $resultado = ApiHelper::chamarAnalise($prompt, true);
+
+        if (!$resultado['sucesso'] || !is_array($resultado['conteudo'])) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro no detalhamento: ' . ($resultado['erro'] ?? 'Resposta inválida')]);
+            exit;
+        }
+
+        $detalhamentoCompleto = $resultado['conteudo'];
+        
+        // Salvar detalhamento no banco
+        $servicoDetalhadoId = $this->salvarServicoDetalhado($estruturaId, $servicoMapeado, $detalhamentoCompleto);
+        
+        // Atualizar progresso
+        $this->atualizarProgressoEtapa2B($estruturaId);
+        
+        Logger::info('Detalhamento de serviço concluído', [
+            'servico' => $servicoNome,
+            'problemas_mapeados' => count($detalhamentoCompleto['problemas_possiveis'] ?? []),
+            'servico_detalhado_id' => $servicoDetalhadoId
+        ]);
+
+        header('Content-Type: application/json');
+        echo json_encode([
+            'sucesso' => true,
+            'servico' => $servicoNome,
+            'problemas_mapeados' => count($detalhamentoCompleto['problemas_possiveis'] ?? []),
+            'detalhamento_id' => $servicoDetalhadoId
         ]);
         exit;
     }
@@ -5324,5 +5554,218 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         $inicio = $index * $itemsPorSubtopico;
         
         return array_slice($evidencias, $inicio, $itemsPorSubtopico);
+    }
+
+    // ===== MÉTODOS AUXILIARES PARA NOVA ARQUITETURA DETALHADA =====
+
+    /**
+     * Salvar serviços mapeados no banco (Etapa 2A)
+     */
+    private function salvarServicosMapeados(int $estruturaId, string $setorNome, array $servicosMapeados): int
+    {
+        $totalServicos = count($servicosMapeados['servicos'] ?? []);
+        
+        $sucesso = Database::execute(
+            "INSERT INTO servicos_mapeados (estrutura_id, setor_nome, setor_tipo, servicos_json, total_servicos, status, criado_em, processado_em) 
+             VALUES (?, ?, ?, ?, ?, 'concluido', NOW(), NOW())",
+            [
+                $estruturaId,
+                $setorNome,
+                'base', // TODO: Determinar tipo baseado no setor
+                json_encode($servicosMapeados, JSON_UNESCAPED_UNICODE),
+                $totalServicos
+            ]
+        );
+        
+        if (!$sucesso) {
+            throw new Exception('Erro ao salvar serviços mapeados');
+        }
+        
+        return (int) Database::lastInsertId();
+    }
+
+    /**
+     * Buscar serviços mapeados de todos os setores
+     */
+    private function buscarServicosMapeados(int $estruturaId): array
+    {
+        return Database::query(
+            "SELECT * FROM servicos_mapeados WHERE estrutura_id = ? ORDER BY setor_nome",
+            [$estruturaId]
+        );
+    }
+
+    /**
+     * Salvar detalhamento de serviço no banco (Etapa 2B)
+     */
+    private function salvarServicoDetalhado(int $estruturaId, array $servicoMapeado, array $detalhamentoCompleto): int
+    {
+        $problemasMapeados = count($detalhamentoCompleto['problemas_possiveis'] ?? []);
+        $servicoNome = $detalhamentoCompleto['servico'] ?? 'Serviço';
+        $servicoCodigo = $this->gerarCodigoServico($servicoMapeado['setor_nome'], $servicoNome);
+        
+        $sucesso = Database::execute(
+            "INSERT INTO servicos_detalhados (servico_mapeado_id, estrutura_id, setor_nome, servico_nome, servico_codigo, 
+                                             criticidade, detalhamento_json, problemas_mapeados, status, criado_em, processado_em) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'concluido', NOW(), NOW())",
+            [
+                $servicoMapeado['id'],
+                $estruturaId,
+                $servicoMapeado['setor_nome'],
+                $servicoNome,
+                $servicoCodigo,
+                2, // TODO: Extrair criticidade do detalhamento
+                json_encode($detalhamentoCompleto, JSON_UNESCAPED_UNICODE),
+                $problemasMapeados
+            ]
+        );
+        
+        if (!$sucesso) {
+            throw new Exception('Erro ao salvar detalhamento de serviço');
+        }
+        
+        return (int) Database::lastInsertId();
+    }
+
+    /**
+     * Buscar dados específicos de um serviço mapeado
+     */
+    private function buscarDadosServicoMapeado(int $estruturaId, string $servicoCodigo, string $setorNome): ?array
+    {
+        // Primeiro tentar buscar por código específico se já existe
+        $servico = Database::queryOne(
+            "SELECT sm.*, sj.servicos as servicos_json_parsed 
+             FROM servicos_mapeados sm 
+             LEFT JOIN (SELECT id, JSON_EXTRACT(servicos_json, '$.servicos') as servicos FROM servicos_mapeados) sj ON sm.id = sj.id
+             WHERE sm.estrutura_id = ? AND sm.setor_nome = ?",
+            [$estruturaId, $setorNome]
+        );
+        
+        if (!$servico) {
+            return null;
+        }
+        
+        // Parsear JSON dos serviços e encontrar o específico
+        $servicosArray = json_decode($servico['servicos_json'], true);
+        if (isset($servicosArray['servicos'])) {
+            foreach ($servicosArray['servicos'] as $s) {
+                if ($s['codigo'] === $servicoCodigo) {
+                    return array_merge($servico, $s, ['setor' => $setorNome]);
+                }
+            }
+        }
+        
+        return null;
+    }
+
+    /**
+     * Gerar código único para um serviço
+     */
+    private function gerarCodigoServico(string $setorNome, string $servicoNome): string
+    {
+        $setorSlug = strtolower(str_replace([' ', '/', '\\', '-'], '_', $setorNome));
+        $servicoSlug = strtolower(str_replace([' ', '/', '\\', '-'], '_', $servicoNome));
+        
+        return $setorSlug . '_' . $servicoSlug;
+    }
+
+    /**
+     * Inicializar progresso do manual se não existir
+     */
+    private function inicializarProgressoManual(int $estruturaId, array $estruturaData): void
+    {
+        $existente = Database::queryOne(
+            "SELECT id FROM progresso_manual WHERE estrutura_id = ?",
+            [$estruturaId]
+        );
+        
+        if (!$existente) {
+            $totalSetores = count($estruturaData['estrutura']['setores'] ?? []);
+            
+            Database::execute(
+                "INSERT INTO progresso_manual (estrutura_id, diagnostico_id, empresa_id, etapa_atual, total_setores, iniciado_em) 
+                 VALUES (?, ?, ?, 'etapa2a', ?, NOW())",
+                [
+                    $estruturaId,
+                    $estruturaData['diagnostico_id'],
+                    $estruturaData['estrutura']['empresa_id'] ?? 0, // TODO: Extrair corretamente
+                    $totalSetores
+                ]
+            );
+        }
+    }
+
+    /**
+     * Buscar progresso atual do manual
+     */
+    private function buscarProgressoManual(int $estruturaId): ?array
+    {
+        return Database::queryOne(
+            "SELECT * FROM progresso_manual WHERE estrutura_id = ?",
+            [$estruturaId]
+        );
+    }
+
+    /**
+     * Atualizar progresso da Etapa 2A
+     */
+    private function atualizarProgressoEtapa2A(int $estruturaId): void
+    {
+        // Contar setores mapeados
+        $setoresMapeados = Database::queryOne(
+            "SELECT COUNT(*) as total FROM servicos_mapeados WHERE estrutura_id = ? AND status = 'concluido'",
+            [$estruturaId]
+        )['total'] ?? 0;
+        
+        // Buscar total de setores
+        $progresso = $this->buscarProgressoManual($estruturaId);
+        $totalSetores = $progresso['total_setores'] ?? 1;
+        
+        // Calcular percentual (Etapa 2A = 25% do total)
+        $percentualEtapa2A = ($setoresMapeados / $totalSetores) * 25;
+        
+        Database::execute(
+            "UPDATE progresso_manual SET setores_mapeados = ?, progresso_percentual = ?, atualizado_em = NOW() 
+             WHERE estrutura_id = ?",
+            [$setoresMapeados, $percentualEtapa2A, $estruturaId]
+        );
+    }
+
+    /**
+     * Verificar se Etapa 2A foi concluída
+     */
+    private function verificarEtapa2AConcluida(int $estruturaId): bool
+    {
+        $progresso = $this->buscarProgressoManual($estruturaId);
+        if (!$progresso) return false;
+        
+        return ($progresso['setores_mapeados'] >= $progresso['total_setores']);
+    }
+
+    /**
+     * Atualizar progresso da Etapa 2B
+     */
+    private function atualizarProgressoEtapa2B(int $estruturaId): void
+    {
+        // Contar serviços detalhados
+        $servicosDetalhados = Database::queryOne(
+            "SELECT COUNT(*) as total FROM servicos_detalhados WHERE estrutura_id = ? AND status = 'concluido'",
+            [$estruturaId]
+        )['total'] ?? 0;
+        
+        // Contar total de serviços mapeados
+        $totalServicos = Database::queryOne(
+            "SELECT SUM(total_servicos) as total FROM servicos_mapeados WHERE estrutura_id = ?",
+            [$estruturaId]
+        )['total'] ?? 1;
+        
+        // Calcular percentual (Etapa 2B = 50% do total, começa em 25%)
+        $percentualEtapa2B = 25 + (($servicosDetalhados / $totalServicos) * 50);
+        
+        Database::execute(
+            "UPDATE progresso_manual SET servicos_detalhados = ?, total_servicos = ?, progresso_percentual = ?, atualizado_em = NOW() 
+             WHERE estrutura_id = ?",
+            [$servicosDetalhados, $totalServicos, $percentualEtapa2B, $estruturaId]
+        );
     }
 }
