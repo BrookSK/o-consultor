@@ -8296,7 +8296,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             
             if ($etapa === 'detalhar' && $servico['status'] === 'mapeado') {
                 // ETAPA 1: Detalhar serviço
-                $resultado = $this->executarDetalhamentoServicoCompleto($servico, $diagnostico);
+                $resultado = $this->executarDetalhamentoServicoCompletoV2($servico, $diagnostico);
                 
                 if ($resultado['sucesso']) {
                     // Atualizar status para 'detalhado'
@@ -8345,7 +8345,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                 // FLUXO COMPLETO: Detalhar + Gerar SOP em uma operação
                 
                 // Primeiro, detalhar
-                $detalhamentoResultado = $this->executarDetalhamentoServicoCompleto($servico, $diagnostico);
+                $detalhamentoResultado = $this->executarDetalhamentoServicoCompletoV2($servico, $diagnostico);
                 
                 if (!$detalhamentoResultado['sucesso']) {
                     echo json_encode($detalhamentoResultado);
@@ -8417,7 +8417,92 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
     }
     
     /**
-     * Executar detalhamento completo de um serviço usando IA
+     * FUNÇÃO TEMPORÁRIA DE DEBUG - REMOVER APÓS CORREÇÃO
+     */
+    public function debugApiResponse(): void
+    {
+        $prompt = "Teste simples";
+        $resultado = ApiHelper::chamarAnalise($prompt);
+        
+        header('Content-Type: application/json');
+        echo json_encode([
+            'tipo_resposta' => gettype($resultado),
+            'eh_array' => is_array($resultado),
+            'tem_sucesso' => isset($resultado['sucesso']),
+            'tem_conteudo' => isset($resultado['conteudo']),
+            'tipo_conteudo' => isset($resultado['conteudo']) ? gettype($resultado['conteudo']) : 'inexistente',
+            'resultado_completo' => $resultado
+        ], JSON_PRETTY_PRINT);
+        exit;
+    }
+
+    /**
+     * Executar detalhamento completo de um serviço usando IA - VERSÃO CORRIGIDA
+     */
+    private function executarDetalhamentoServicoCompletoV2(array $servico, array $diagnostico): array
+    {
+        $contextoSetor = json_decode($servico['contexto_especifico'], true);
+        $respostasDiagnostico = json_decode($diagnostico['respostas'], true);
+        
+        $prompt = $this->criarPromptDetalhamentoServico($servico, $contextoSetor, $respostasDiagnostico);
+        
+        // Chamar IA para detalhamento
+        Logger::info('DEBUG - Chamando IA para detalhamento V2', [
+            'servico_id' => $servico['id'] ?? 'N/A',
+            'servico_nome' => $servico['nome_servico'] ?? 'N/A'
+        ]);
+        
+        $resultadoIA = ApiHelper::chamarAnalise($prompt);
+        
+        Logger::info('DEBUG - Resposta da IA recebida V2', [
+            'tipo_resposta' => gettype($resultadoIA),
+            'eh_array' => is_array($resultadoIA),
+            'tem_sucesso' => isset($resultadoIA['sucesso']),
+            'tem_conteudo' => isset($resultadoIA['conteudo'])
+        ]);
+        
+        // Verificar se houve sucesso na chamada da IA
+        if (!$resultadoIA || !is_array($resultadoIA)) {
+            Logger::error('DEBUG - Resposta da IA inválida V2', ['resposta' => $resultadoIA]);
+            return ['sucesso' => false, 'erro' => 'Erro na IA: resposta inválida'];
+        }
+        
+        if (!$resultadoIA['sucesso'] || empty($resultadoIA['conteudo'])) {
+            $erro = $resultadoIA['erro'] ?? 'não foi possível detalhar o serviço';
+            Logger::error('DEBUG - IA retornou erro V2', ['erro' => $erro]);
+            return ['sucesso' => false, 'erro' => 'Erro na IA: ' . $erro];
+        }
+        
+        // Processar resposta da IA e extrair detalhamento estruturado
+        $conteudoIA = $resultadoIA['conteudo'];
+        
+        Logger::info('DEBUG - Processando resposta da IA V2', [
+            'tipo_conteudo' => gettype($conteudoIA),
+            'eh_string' => is_string($conteudoIA),
+            'tamanho_conteudo' => is_string($conteudoIA) ? strlen($conteudoIA) : 'não é string'
+        ]);
+        
+        // FORÇA VERIFICAÇÃO DE TIPO ANTES DE CHAMAR A FUNÇÃO
+        if (!is_string($conteudoIA)) {
+            Logger::error('ERRO CRÍTICO - conteudoIA não é string V2', [
+                'tipo_real' => gettype($conteudoIA),
+                'valor' => $conteudoIA
+            ]);
+            return ['sucesso' => false, 'erro' => 'Erro interno: resposta da IA em formato inválido (tipo: ' . gettype($conteudoIA) . ')'];
+        }
+        
+        $detalhamento = $this->processarRespostaDetalhamentoIA($conteudoIA, $servico);
+        
+        return [
+            'sucesso' => true,
+            'detalhamento' => $detalhamento,
+            'resposta_ia' => $conteudoIA
+        ];
+    }
+
+    /**
+     * Executar detalhamento completo de um serviço usando IA - VERSÃO ANTIGA (MANTER PARA COMPATIBILIDADE)
+     */
      */
     private function executarDetalhamentoServicoCompleto(array $servico, array $diagnostico): array
     {
@@ -8461,6 +8546,15 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             'tamanho_conteudo' => is_string($conteudoIA) ? strlen($conteudoIA) : 'não é string'
         ]);
         
+        // FORÇA VERIFICAÇÃO DE TIPO ANTES DE CHAMAR A FUNÇÃO
+        if (!is_string($conteudoIA)) {
+            Logger::error('ERRO CRÍTICO - conteudoIA não é string', [
+                'tipo_real' => gettype($conteudoIA),
+                'valor' => $conteudoIA
+            ]);
+            return ['sucesso' => false, 'erro' => 'Erro interno: resposta da IA em formato inválido'];
+        }
+        
         $detalhamento = $this->processarRespostaDetalhamentoIA($conteudoIA, $servico);
         
         return [
@@ -8492,6 +8586,16 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         
         // Salvar SOP na nova arquitetura
         $conteudoIA = $resultadoIA['conteudo'];
+        
+        // FORÇA VERIFICAÇÃO DE TIPO ANTES DE USAR
+        if (!is_string($conteudoIA)) {
+            Logger::error('ERRO CRÍTICO - conteudoIA do SOP não é string', [
+                'tipo_real' => gettype($conteudoIA),
+                'valor' => $conteudoIA
+            ]);
+            return ['sucesso' => false, 'erro' => 'Erro interno: resposta da IA em formato inválido'];
+        }
+        
         $sopId = $this->salvarSopNaNovaArquitetura($servico, $detalhamento, $conteudoIA, $diagnostico);
         
         if (!$sopId) {
