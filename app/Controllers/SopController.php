@@ -2201,11 +2201,11 @@ class SopController
      */
     public function executarMapeamentoSetor(): void
     {
-        // LOG BÁSICO IMEDIATO
-        error_log("🔥🔥🔥 MÉTODO EXECUTAR MAPEAMENTO SETOR CHAMADO 🔥🔥🔥");
-        error_log("REQUEST_METHOD: " . $_SERVER['REQUEST_METHOD']);
-        error_log("REQUEST_URI: " . $_SERVER['REQUEST_URI']);
-        error_log("POST DATA: " . print_r($_POST, true));
+        Logger::info('Método executarMapeamentoSetor chamado', [
+            'method' => $_SERVER['REQUEST_METHOD'],
+            'uri' => $_SERVER['REQUEST_URI'],
+            'post_data' => $_POST
+        ]);
         
         $inicioProcesso = microtime(true);
         
@@ -2683,84 +2683,6 @@ class SopController
         $contextosEmpresa = $this->extrairContextosEmpresa($empresa, $diagnostico, $respostas, $diagnosticoEstrutura);
 
         require VIEW_PATH . '/sop/processar-sops.php';
-    }
-
-    /**
-     * NOVA ARQUITETURA: Gera um SOP individual via AJAX
-     * Chamada individual da Etapa 2
-     */
-    public function gerarSOPIndividual(): void
-    {
-        Auth::proteger();
-        Csrf::verificar();
-
-        $estruturaId = (int) (isset($_POST['estrutura_id']) ? $_POST['estrutura_id'] : 0);
-        $sopIndex = (int) (isset($_POST['sop_index']) ? $_POST['sop_index'] : 0);
-        
-        if (!$estruturaId) {
-            header('Content-Type: application/json');
-            echo json_encode(['sucesso' => false, 'erro' => 'Estrutura não informada.']);
-            exit;
-        }
-
-        // Buscar dados da estrutura
-        $estruturaData = $this->buscarEstruturaTemporaria($estruturaId);
-        if (!$estruturaData) {
-            header('Content-Type: application/json');
-            echo json_encode(['sucesso' => false, 'erro' => 'Estrutura não encontrada.']);
-            exit;
-        }
-
-        $diagnosticoEstrutura = $estruturaData['estrutura'];
-        $diagnostico = Diagnostico::buscarPorId($estruturaData['diagnostico_id']);
-        $empresa = Empresa::buscarPorId($diagnostico['empresa_id']);
-
-        // Encontrar SOP específico
-        $sopData = $this->encontrarSOPPorIndex($diagnosticoEstrutura['setores'], $sopIndex);
-        if (!$sopData) {
-            header('Content-Type: application/json');
-            echo json_encode(['sucesso' => false, 'erro' => 'SOP não encontrado.']);
-            exit;
-        }
-
-        // Preparar contextos
-        $respostas = json_decode($diagnostico['respostas'], true) ?? [];
-        $contextosEmpresa = $this->extrairContextosEmpresa($empresa, $diagnostico, $respostas, $diagnosticoEstrutura);
-
-        Logger::info('Gerando SOP individual - NOVA ARQUITETURA', [
-            'sop_nome' => $sopData['nome_sop'],
-            'sop_id' => $sopData['id_sop'],
-            'setor' => $sopData['nome_setor'],
-            'criticidade' => $sopData['criticidade']
-        ]);
-
-        // CHAMADA 2: Geração profunda do SOP
-        $prompt2 = ApiHelper::buildPromptSOPProfundo($contextosEmpresa, $sopData);
-        $resultado2 = ApiHelper::chamarAnalise($prompt2, false); // Resposta em Markdown, não JSON
-
-        if (!$resultado2['sucesso']) {
-            header('Content-Type: application/json');
-            echo json_encode(['sucesso' => false, 'erro' => 'Erro na geração do SOP: ' . ($resultado2['erro'] ?? 'Erro desconhecido')]);
-            exit;
-        }
-
-        // Salvar SOP gerado
-        $sopId = $this->salvarSOPGerado($empresa['id'], $diagnostico['id'], $sopData, $resultado2['conteudo']);
-
-        Logger::info('SOP individual gerado com sucesso', [
-            'sop_id_banco' => $sopId,
-            'sop_codigo' => $sopData['id_sop'],
-            'tamanho_conteudo' => strlen($resultado2['conteudo'])
-        ]);
-
-        header('Content-Type: application/json');
-        echo json_encode([
-            'sucesso' => true,
-            'sop_id' => $sopId,
-            'sop_nome' => $sopData['nome_sop'],
-            'tamanho' => strlen($resultado2['conteudo'])
-        ]);
-        exit;
     }
 
     /**
