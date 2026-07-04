@@ -1,10 +1,21 @@
 <?php $tituloPagina = 'Manual Operacional'; ?>
 <?php ob_start(); ?>
 
+<?php 
+// Capturar diagnostico_id da URL se existir
+$diagnosticoId = isset($_GET['diagnostico_id']) ? (int) $_GET['diagnostico_id'] : null;
+?>
+
 <nav class="mb-6">
     <ol class="flex items-center text-sm text-gray-500 gap-2">
         <li><a href="<?= APP_URL ?>/dashboard" class="hover:text-primary">Dashboard</a></li>
         <li>/</li>
+        <?php if ($diagnosticoId): ?>
+        <li><a href="<?= APP_URL ?>/diagnostico" class="hover:text-primary">Diagnósticos</a></li>
+        <li>/</li>
+        <li><a href="<?= APP_URL ?>/diagnostico/resultado/<?= $diagnosticoId ?>" class="hover:text-primary">Resultado</a></li>
+        <li>/</li>
+        <?php endif; ?>
         <li class="font-medium text-primary">Manual Operacional</li>
     </ol>
 </nav>
@@ -13,7 +24,20 @@
 <div class="flex flex-col lg:flex-row items-start justify-between gap-4 mb-6">
     <div>
         <h1 class="text-2xl font-bold text-gray-800">Manual Operacional</h1>
-        <p class="text-gray-500 mt-1">Sistema inteligente de SOPs organizacionais</p>
+        <p class="text-gray-500 mt-1">
+            <?php if ($diagnosticoId): ?>
+                Baseado no diagnóstico específico da empresa - Geração direcionada e contextualizada
+            <?php else: ?>
+                Sistema inteligente de SOPs organizacionais
+            <?php endif; ?>
+        </p>
+        <?php if ($diagnosticoId): ?>
+        <div class="mt-2">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                🎯 Baseado no Diagnóstico #<?= $diagnosticoId ?>
+            </span>
+        </div>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -300,6 +324,11 @@ async function gerarSop(sopId, sopNome) {
     formData.append('csrf_token', '<?= Csrf::token() ?>');
     formData.append('sop_id', sopId);
     formData.append('sop_nome', sopNome);
+    
+    // Incluir diagnostico_id se disponível
+    if (DIAGNOSTICO_ID) {
+        formData.append('diagnostico_id', DIAGNOSTICO_ID);
+    }
 
     try {
         const response = await fetch('<?= APP_URL ?>/sop/gerar', { method: 'POST', body: formData });
@@ -342,6 +371,11 @@ document.addEventListener('DOMContentLoaded', function() {
 async function salvarNovoSOP() {
     const form = document.getElementById('formNovoSOP');
     const formData = new FormData(form);
+    
+    // Incluir diagnostico_id se disponível
+    if (DIAGNOSTICO_ID) {
+        formData.append('diagnostico_id', DIAGNOSTICO_ID);
+    }
     
     // Validações
     const codigo = formData.get('sop_codigo').trim();
@@ -388,6 +422,9 @@ function exportarTodosSops() {
 </script>
 
 <script>
+// Variáveis globais
+const DIAGNOSTICO_ID = <?= $diagnosticoId ? $diagnosticoId : 'null' ?>;
+
 // Função para selecionar empresa e navegar para próxima hierarquia
 function selecionarEmpresa(empresaId) {
     // Limpar seleções anteriores

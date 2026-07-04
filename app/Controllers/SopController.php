@@ -641,6 +641,7 @@ class SopController
 
         $sopCodigo = htmlspecialchars(trim($_POST['sop_id'] ?? ''));
         $sopNome = htmlspecialchars(trim($_POST['sop_nome'] ?? ''));
+        $diagnosticoIdPost = (int) ($_POST['diagnostico_id'] ?? 0);
         $empresaId = Auth::garantirEmpresa();
 
         if (empty($sopCodigo) || !$empresaId) {
@@ -663,7 +664,19 @@ class SopController
 
         // Buscar dados da empresa e diagnóstico
         $empresa = Empresa::buscarPorId($empresaId);
-        $diagnostico = Diagnostico::buscarUltimoPorEmpresa($empresaId);
+        
+        // Priorizar diagnóstico específico se foi passado via POST
+        $diagnostico = null;
+        if ($diagnosticoIdPost > 0) {
+            $diagnostico = Diagnostico::buscarPorId($diagnosticoIdPost);
+            Logger::info('Usando diagnóstico específico para geração de SOP', [
+                'diagnostico_id' => $diagnosticoIdPost,
+                'sop_codigo' => $sopCodigo,
+                'empresa_id' => $empresaId
+            ]);
+        } else {
+            $diagnostico = Diagnostico::buscarUltimoPorEmpresa($empresaId);
+        }
         
         if (!$empresa) {
             header('Content-Type: application/json');
@@ -722,11 +735,30 @@ class SopController
 
         // Gerar prompt estruturado com contexto dos documentos
         $prompt = ApiHelper::buildPromptSopDetalhado($empresaDados, $sopData, $contextoDocumentos);
+        
+        // Log para acompanhar uso da nova estrutura
+        Logger::info('Gerando SOP com novo prompt padrão-ouro', [
+            'sop_codigo' => $sopCodigo,
+            'empresa' => $empresa['nome'],
+            'setor' => $empresa['segmento'] ?? 'Tecnologia',
+            'prompt_size' => strlen($prompt),
+            'contexto_documentos' => !empty($contextoDocumentos),
+            'departamentos' => $mapeamentoCompleto['departamentos_array'] ?? []
+        ]);
 
         // Chamar IA (GPT ou Claude conforme config)
         $resultado = ApiHelper::chamarAnalise($prompt, true);
 
         if ($resultado['sucesso'] && is_array($resultado['conteudo'])) {
+            // Log da estrutura retornada pela IA
+            $novaEstrutura = isset($resultado['conteudo']['cabecalho']);
+            Logger::info('Resposta da IA recebida', [
+                'sop_codigo' => $sopCodigo,
+                'nova_estrutura_detectada' => $novaEstrutura,
+                'secoes_retornadas' => array_keys($resultado['conteudo']),
+                'total_secoes' => count($resultado['conteudo'])
+            ]);
+            
             // Sucesso: criar SOP no banco
             $sopId = $this->criarSopNoBanco($sopCodigo, $sopNome, $empresaId, $diagnostico['id'] ?? null, $resultado['conteudo']);
             
@@ -741,7 +773,8 @@ class SopController
                 Logger::acao('SOP gerado via IA', [
                     'sop_codigo' => $sopCodigo, 
                     'sop_id' => $sopId,
-                    'documentos_utilizados' => count($documentosRelevantes)
+                    'documentos_utilizados' => count($documentosRelevantes),
+                    'diagnostico_origem' => $diagnostico['id'] ?? 'ultimo_disponivel'
                 ]);
                 header('Content-Type: application/json');
                 echo json_encode([
@@ -1795,64 +1828,432 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
      */
     private function criarSopNoBanco(string $sopCodigo, string $sopNome, int $empresaId, ?int $diagnosticoId, array $conteudoIA): int|false
     {
+        // Detectar se é nova estrutura padrão-ouro (15 seções)
+        $novaEstrutura = isset($conteudoIA['cabecalho']);
+        
+        if ($novaEstrutura) {
+            // Nova estrutura padrão-ouro
+            $titulo = $conteudoIA['cabecalho']['nome'] ?? $sopNome;
+            $versao = $conteudoIA['cabecalho']['versao'] ?? '1.0';
+            $conteudoResumo = 'SOP gerado via IA com estrutura padrão-ouro (15 seções completas)';
+        } else {
+            // Estrutura antiga (compatibilidade)
+            $titulo = $sopNome;
+            $versao = '1.0';
+            $conteudoResumo = 'SOP gerado via IA com 13 componentes completos';
+        }
+        
         return Sop::criar([
             'empresa_id'        => $empresaId,
             'diagnostico_id'    => $diagnosticoId,
             'sop_codigo'        => $sopCodigo,
-            'titulo'            => $sopNome,
+            'titulo'            => $titulo,
             'departamento'      => $this->getDepartamentoPorId($sopCodigo),
-            'conteudo'          => 'SOP gerado via IA com 13 componentes completos',
+            'conteudo'          => $conteudoResumo,
             'conteudo_completo' => $conteudoIA,
-            'versao'            => '1.0',
+            'versao'            => $versao,
             'status'            => 'rascunho',
             'gerado_por_ia'     => 1,
         ]);
     }
 
     /**
-     * Cria SOP básico quando IA falha
+     * Cria SOP básico quando IA falha (com nova estrutura padrão-ouro)
      */
     private function criarSopBasico(string $sopCodigo, string $sopNome, int $empresaId, ?int $diagnosticoId): int|false
     {
+        // Criar estrutura básica padrão-ouro quando IA falha
         $basicData = [
-            'objetivo' => 'Definir procedimento para ' . $sopNome,
-            'escopo' => ['aplica_se' => 'A definir', 'nao_aplica' => 'A definir'],
-            'subtopicos' => ['A definir procedimentos específicos'],
-            'kpis' => [],
-            'contencao' => ['n1' => [], 'n2' => [], 'n3' => []]
+            'cabecalho' => [
+                'codigo' => $sopCodigo,
+                'nome' => $sopNome,
+                'versao' => '1.0',
+                'data_criacao' => date('Y-m-d'),
+                'data_revisao' => date('Y-m-d', strtotime('+1 year')),
+                'dono_processo' => 'A definir',
+                'aprovador' => 'A definir'
+            ],
+            'objetivo' => 'Definir procedimento específico para ' . $sopNome,
+            'escopo' => [
+                'cobre' => 'A ser detalhado conforme necessidades da empresa',
+                'nao_cobre' => 'Outros processos não relacionados a este procedimento'
+            ],
+            'glossario' => [
+                ['termo' => 'Procedimento', 'definicao' => 'Sequência de passos para executar uma tarefa']
+            ],
+            'raci' => [
+                'responsavel' => 'A definir',
+                'aprovador' => 'A definir',
+                'consultado' => 'A definir',
+                'informado' => 'A definir'
+            ],
+            'pre_requisitos' => [
+                'Definir acessos necessários',
+                'Identificar informações obrigatórias',
+                'Configurar ferramentas necessárias'
+            ],
+            'passo_a_passo' => [
+                [
+                    'passo' => 1,
+                    'acao' => 'Definir passos específicos do procedimento',
+                    'sistema' => 'A definir',
+                    'responsavel' => 'A definir',
+                    'tempo_estimado' => 'A definir',
+                    'criterio_conclusao' => 'A definir critério específico'
+                ]
+            ],
+            'pontos_controle' => [
+                [
+                    'checkpoint' => 'Verificação inicial',
+                    'criterio_aceite' => 'A definir critério específico',
+                    'acao_se_falhar' => 'A definir ação corretiva'
+                ]
+            ],
+            'tratamento_excecoes' => [
+                [
+                    'cenario' => 'Erro genérico no processo',
+                    'solucao' => 'A definir solução específica',
+                    'escalar_para' => 'Supervisor'
+                ]
+            ],
+            'ferramentas_sistemas' => [
+                'Definir sistemas específicos utilizados'
+            ],
+            'kpis_processo' => [
+                'tempo_medio_esperado' => 'A definir',
+                'taxa_erro_aceitavel' => 'A definir',
+                'sla_interno' => 'A definir',
+                'meta_qualidade' => 'A definir'
+            ],
+            'riscos_nao_conformidades' => [
+                [
+                    'risco' => 'Não execução do procedimento',
+                    'impacto' => 'A definir impacto no negócio',
+                    'prevencao' => 'A definir medidas preventivas'
+                ]
+            ],
+            'melhorias_recomendadas' => [
+                'Detalhar procedimento específico baseado na realidade da empresa',
+                'Definir métricas e controles adequados',
+                'Estabelecer ferramentas e responsáveis específicos'
+            ],
+            'anexos' => [
+                'checklist_rapido' => [
+                    '☐ Verificar pré-requisitos',
+                    '☐ Executar procedimento',
+                    '☐ Validar resultado'
+                ],
+                'fluxograma_textual' => [
+                    '1. Início → Verificar pré-requisitos',
+                    '2. Executar → Seguir procedimento',
+                    '3. Finalizar → Documentar resultado'
+                ]
+            ],
+            'historico_revisoes' => [
+                [
+                    'versao' => '1.0',
+                    'data' => date('Y-m-d'),
+                    'mudanca' => 'Criação inicial (IA indisponível - estrutura básica)',
+                    'responsavel' => 'Sistema O Consultor'
+                ]
+            ]
         ];
+        
         return $this->criarSopNoBanco($sopCodigo, $sopNome, $empresaId, $diagnosticoId, $basicData);
     }
 
     /**
-     * Formata SOP do banco para a view (mantém compatibilidade)
+     * Formata SOP do banco para a view (compatível com nova estrutura de 15 seções)
      */
     private function formatarSopParaView(array $sop, array $conteudo): array
     {
         $empresa = Empresa::buscarPorId($sop['empresa_id']);
         
+        // Compatibilidade com ambas as estruturas (antiga e nova padrão-ouro)
+        $novaEstrutura = isset($conteudo['cabecalho']);
+        
+        if ($novaEstrutura) {
+            // Nova estrutura padrão-ouro (15 seções)
+            return [
+                'id' => $sop['sop_codigo'] ?? $sop['id'],
+                'nome' => $conteudo['cabecalho']['nome'] ?? $sop['titulo'],
+                'versao' => $conteudo['cabecalho']['versao'] ?? $sop['versao'],
+                'empresa' => $empresa['nome'] ?? 'Empresa',
+                'setor' => $empresa['segmento'] ?? 'Tecnologia',
+                'norma' => ApiHelper::getNormasPorSetor($empresa['segmento'] ?? 'Tecnologia'),
+                
+                // Mapeamento da nova estrutura para view existente
+                'objetivo' => $conteudo['objetivo'] ?? '',
+                'escopo_aplica' => $conteudo['escopo']['cobre'] ?? '',
+                'escopo_nao_aplica' => $conteudo['escopo']['nao_cobre'] ?? '',
+                'glossario' => $conteudo['glossario'] ?? [],
+                'raci' => $conteudo['raci'] ?? [],
+                'subtopicos' => $this->extrairSubtopicosDaNovaEstrutura($conteudo),
+                'responsaveis' => $this->extrairResponsaveisDaNovaEstrutura($conteudo),
+                'prerequisitos' => $conteudo['pre_requisitos'] ?? [],
+                'ferramentas' => $conteudo['ferramentas_sistemas'] ?? [],
+                'procedimento_subtopico_1' => $conteudo['passo_a_passo'] ?? [],
+                'pontos_controle' => $conteudo['pontos_controle'] ?? [],
+                'tratamento_excecoes' => $conteudo['tratamento_excecoes'] ?? [],
+                'checklist' => $conteudo['anexos']['checklist_rapido'] ?? [],
+                'fluxograma_textual' => $conteudo['anexos']['fluxograma_textual'] ?? [],
+                'evidencias' => $this->extrairEvidenciasDaNovaEstrutura($conteudo),
+                'relatorios' => $this->extrairRelatoriosDaNovaEstrutura($conteudo),
+                'kpis' => $this->extrairKpisDaNovaEstrutura($conteudo),
+                'riscos' => $conteudo['riscos_nao_conformidades'] ?? [],
+                'melhorias_recomendadas' => $conteudo['melhorias_recomendadas'] ?? [],
+                'contencao_n1' => $this->extrairContencaoN1($conteudo),
+                'contencao_n2' => $this->extrairContencaoN2($conteudo),
+                'contencao_n3' => $this->extrairContencaoN3($conteudo),
+                'historico_revisoes' => $conteudo['historico_revisoes'] ?? [],
+                
+                // Campos específicos da nova estrutura
+                'cabecalho' => $conteudo['cabecalho'] ?? [],
+                'nova_estrutura' => true
+            ];
+        } else {
+            // Estrutura antiga (compatibilidade)
+            return [
+                'id' => $sop['sop_codigo'] ?? $sop['id'],
+                'nome' => $sop['titulo'],
+                'versao' => $sop['versao'],
+                'empresa' => $empresa['nome'] ?? 'Empresa',
+                'setor' => $empresa['segmento'] ?? 'Tecnologia',
+                'norma' => ApiHelper::getNormasPorSetor($empresa['segmento'] ?? 'Tecnologia'),
+                'objetivo' => $conteudo['objetivo'] ?? '',
+                'escopo_aplica' => $conteudo['escopo']['aplica_se'] ?? '',
+                'escopo_nao_aplica' => $conteudo['escopo']['nao_aplica'] ?? '',
+                'subtopicos' => $conteudo['subtopicos'] ?? [],
+                'responsaveis' => $conteudo['responsaveis'] ?? [],
+                'prerequisitos' => $conteudo['prerequisitos'] ?? [],
+                'ferramentas' => $conteudo['ferramentas'] ?? [],
+                'procedimento_subtopico_1' => $conteudo['procedimentos'][0]['passos'] ?? [],
+                'checklist' => $conteudo['checklist'] ?? [],
+                'evidencias' => $conteudo['evidencias'] ?? [],
+                'relatorios' => $conteudo['relatorios'] ?? [],
+                'kpis' => $conteudo['kpis'] ?? [],
+                'contencao_n1' => $conteudo['contencao']['n1'] ?? [],
+                'contencao_n2' => $conteudo['contencao']['n2'] ?? [],
+                'contencao_n3' => $conteudo['contencao']['n3'] ?? [],
+                'nova_estrutura' => false
+            ];
+        }
+    }
+    
+    /**
+     * Extrai subtópicos da nova estrutura para compatibilidade com view
+     */
+    private function extrairSubtopicosDaNovaEstrutura(array $conteudo): array
+    {
+        // Na nova estrutura, os subtópicos estão implícitos no passo_a_passo
+        // Vamos criar subtópicos baseados na estrutura de passos
+        if (empty($conteudo['passo_a_passo'])) {
+            return [['nome' => 'Procedimento Principal', 'descricao' => 'Executar conforme passo a passo']];
+        }
+        
+        // Agrupar passos em subtópicos lógicos (por exemplo, a cada 5-7 passos)
+        $totalPassos = count($conteudo['passo_a_passo']);
+        $subtopicos = [];
+        
+        if ($totalPassos <= 7) {
+            $subtopicos[] = ['nome' => 'Procedimento Completo', 'descricao' => 'Executar todos os passos sequencialmente'];
+        } else {
+            $metade = ceil($totalPassos / 2);
+            $subtopicos[] = ['nome' => 'Primeira Fase', 'descricao' => "Passos 1 a {$metade}"];
+            $subtopicos[] = ['nome' => 'Segunda Fase', 'descricao' => "Passos " . ($metade + 1) . " a {$totalPassos}"];
+        }
+        
+        return $subtopicos;
+    }
+    
+    /**
+     * Extrai responsáveis da nova estrutura RACI
+     */
+    private function extrairResponsaveisDaNovaEstrutura(array $conteudo): array
+    {
+        if (empty($conteudo['raci'])) {
+            return [['papel' => 'Executor', 'cargo' => 'A definir']];
+        }
+        
+        $responsaveis = [];
+        $raci = $conteudo['raci'];
+        
+        if (!empty($raci['responsavel'])) {
+            $responsaveis[] = ['papel' => 'Responsável (R)', 'cargo' => $raci['responsavel']];
+        }
+        if (!empty($raci['aprovador'])) {
+            $responsaveis[] = ['papel' => 'Aprovador (A)', 'cargo' => $raci['aprovador']];
+        }
+        if (!empty($raci['consultado'])) {
+            $responsaveis[] = ['papel' => 'Consultado (C)', 'cargo' => $raci['consultado']];
+        }
+        if (!empty($raci['informado'])) {
+            $responsaveis[] = ['papel' => 'Informado (I)', 'cargo' => $raci['informado']];
+        }
+        
+        return !empty($responsaveis) ? $responsaveis : [['papel' => 'Executor', 'cargo' => 'A definir']];
+    }
+    
+    /**
+     * Converte evidências implícitas da nova estrutura
+     */
+    private function extrairEvidenciasDaNovaEstrutura(array $conteudo): array
+    {
+        $evidencias = [];
+        
+        // Extrair evidências dos checkpoints
+        if (!empty($conteudo['pontos_controle'])) {
+            foreach ($conteudo['pontos_controle'] as $checkpoint) {
+                $evidencias[] = "Evidência de " . $checkpoint['checkpoint'];
+            }
+        }
+        
+        // Adicionar evidências padrão
+        $evidencias[] = "Registro de execução dos passos";
+        $evidencias[] = "Validação dos critérios de conclusão";
+        $evidencias[] = "Documentação de exceções tratadas";
+        
+        return $evidencias;
+    }
+    
+    /**
+     * Converte relatórios implícitos da nova estrutura
+     */
+    private function extrairRelatoriosDaNovaEstrutura(array $conteudo): array
+    {
+        $relatorios = [];
+        
+        // Baseado nos KPIs definidos
+        if (!empty($conteudo['kpis_processo'])) {
+            $kpis = $conteudo['kpis_processo'];
+            if (!empty($kpis['tempo_medio_esperado'])) {
+                $relatorios[] = ['oque' => 'Tempo de execução', 'para_quem' => 'Gestor do processo', 'frequencia' => 'Semanal', 'canal' => 'E-mail'];
+            }
+            if (!empty($kpis['taxa_erro_aceitavel'])) {
+                $relatorios[] = ['oque' => 'Taxa de erros', 'para_quem' => 'Coordenação', 'frequencia' => 'Mensal', 'canal' => 'Dashboard'];
+            }
+        }
+        
+        // Relatórios padrão
+        if (empty($relatorios)) {
+            $relatorios[] = ['oque' => 'Status de execução', 'para_quem' => 'Responsável do processo', 'frequencia' => 'Conforme execução', 'canal' => 'Sistema'];
+        }
+        
+        return $relatorios;
+    }
+    
+    /**
+     * Converte KPIs da nova estrutura
+     */
+    private function extrairKpisDaNovaEstrutura(array $conteudo): array
+    {
+        if (empty($conteudo['kpis_processo'])) {
+            return [['kpi' => 'Taxa de sucesso', 'verde' => '95%', 'amarela' => '80%', 'vermelha' => '<80%', 'acao_vermelha' => 'Revisar processo']];
+        }
+        
+        $kpisProcesso = $conteudo['kpis_processo'];
+        $kpis = [];
+        
+        if (!empty($kpisProcesso['tempo_medio_esperado'])) {
+            $tempo = $kpisProcesso['tempo_medio_esperado'];
+            $kpis[] = [
+                'kpi' => 'Tempo de execução',
+                'verde' => "≤ {$tempo}",
+                'amarela' => "≤ " . $this->calcularAumento($tempo, 20),
+                'vermelha' => "> " . $this->calcularAumento($tempo, 50),
+                'acao_vermelha' => 'Analisar gargalos e otimizar processo'
+            ];
+        }
+        
+        if (!empty($kpisProcesso['taxa_erro_aceitavel'])) {
+            $taxa = $kpisProcesso['taxa_erro_aceitavel'];
+            $kpis[] = [
+                'kpi' => 'Taxa de erro',
+                'verde' => "≤ {$taxa}",
+                'amarela' => "≤ " . $this->calcularAumento($taxa, 50),
+                'vermelha' => "> " . $this->calcularAumento($taxa, 100),
+                'acao_vermelha' => 'Revisão urgente do procedimento'
+            ];
+        }
+        
+        // KPI padrão se não houver específicos
+        if (empty($kpis)) {
+            $kpis[] = [
+                'kpi' => 'Conformidade do processo',
+                'verde' => '≥95%',
+                'amarela' => '80-94%',
+                'vermelha' => '<80%',
+                'acao_vermelha' => 'Retreinamento da equipe'
+            ];
+        }
+        
+        return $kpis;
+    }
+    
+    /**
+     * Calcula aumento percentual para KPIs
+     */
+    private function calcularAumento(string $valor, int $percentual): string
+    {
+        // Extrair número do valor (ex: "30 minutos" -> 30)
+        preg_match('/(\d+(?:\.\d+)?)/', $valor, $matches);
+        if (!empty($matches[1])) {
+            $numero = floatval($matches[1]);
+            $novoNumero = $numero * (1 + $percentual / 100);
+            return str_replace($matches[1], number_format($novoNumero, 0), $valor);
+        }
+        return $valor;
+    }
+    
+    /**
+     * Extrai informações de contenção N1 (compatibilidade)
+     */
+    private function extrairContencaoN1(array $conteudo): array
+    {
+        // Na nova estrutura não há contenção separada, mas podemos inferir das exceções
+        if (!empty($conteudo['tratamento_excecoes'])) {
+            $primeiraExcecao = $conteudo['tratamento_excecoes'][0];
+            return [
+                'situacao' => $primeiraExcecao['cenario'] ?? 'Erro operacional',
+                'acao' => $primeiraExcecao['solucao'] ?? 'Seguir procedimento de correção',
+                'quem' => $primeiraExcecao['escalar_para'] ?? 'Responsável direto',
+                'escalar' => 'Supervisor imediato'
+            ];
+        }
+        
         return [
-            'id' => $sop['sop_codigo'] ?? $sop['id'],
-            'nome' => $sop['titulo'],
-            'versao' => $sop['versao'],
-            'empresa' => $empresa['nome'] ?? 'Empresa',
-            'setor' => $empresa['segmento'] ?? 'Tecnologia',
-            'norma' => ApiHelper::getNormasPorSetor($empresa['segmento'] ?? 'Tecnologia'),
-            'objetivo' => $conteudo['objetivo'] ?? '',
-            'escopo_aplica' => $conteudo['escopo']['aplica_se'] ?? '',
-            'escopo_nao_aplica' => $conteudo['escopo']['nao_aplica'] ?? '',
-            'subtopicos' => $conteudo['subtopicos'] ?? [],
-            'responsaveis' => $conteudo['responsaveis'] ?? [],
-            'prerequisitos' => $conteudo['prerequisitos'] ?? [],
-            'ferramentas' => $conteudo['ferramentas'] ?? [],
-            'procedimento_subtopico_1' => $conteudo['procedimentos'][0]['passos'] ?? [],
-            'checklist' => $conteudo['checklist'] ?? [],
-            'evidencias' => $conteudo['evidencias'] ?? [],
-            'relatorios' => $conteudo['relatorios'] ?? [],
-            'kpis' => $conteudo['kpis'] ?? [],
-            'contencao_n1' => $conteudo['contencao']['n1'] ?? [],
-            'contencao_n2' => $conteudo['contencao']['n2'] ?? [],
-            'contencao_n3' => $conteudo['contencao']['n3'] ?? [],
+            'situacao' => 'Erro operacional padrão',
+            'acao' => 'Verificar procedimento e corrigir',
+            'quem' => 'Executor do processo',
+            'escalar' => 'Supervisor direto'
+        ];
+    }
+    
+    /**
+     * Extrai informações de contenção N2 (compatibilidade)
+     */
+    private function extrairContencaoN2(array $conteudo): array
+    {
+        return [
+            'situacao' => 'Falha recorrente ou crítica',
+            'acao' => 'Revisar processo completo',
+            'quem' => 'Gestor do departamento',
+            'escalar' => 'Gerência executiva'
+        ];
+    }
+    
+    /**
+     * Extrai informações de contenção N3 (compatibilidade)
+     */
+    private function extrairContencaoN3(array $conteudo): array
+    {
+        return [
+            'situacao' => 'Falha sistêmica com impacto no cliente',
+            'acao' => 'Interromper processo e ativar plano de contingência',
+            'quem' => 'Diretor responsável',
+            'escalar' => 'CEO/Presidência',
+            'comunicacao' => 'Comunicação imediata aos stakeholders',
+            'documentacao' => 'Relatório detalhado de causa raiz obrigatório'
         ];
     }
 
@@ -1871,19 +2272,73 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         return $respostas['bloco2']['faturamento'] ?? 'R$ 100-500 mil';
     }
 
-    private function extrairDepartamentos(array $diagnostico): string
+    private function extrairDepartamentos(?array $diagnostico): string
     {
+        if (!$diagnostico || empty($diagnostico['respostas'])) {
+            return 'Comercial, TI, Operações, Financeiro';
+        }
+        
         $respostas = json_decode($diagnostico['respostas'], true);
-        return $respostas['bloco2']['departamentos'] ?? 'Comercial, TI, Operações, Financeiro';
+        return isset($respostas['departamentos']) ? implode(', ', $respostas['departamentos']) : 'Comercial, TI, Operações, Financeiro';
     }
 
-    private function extrairFerramentas(array $diagnostico): string
+    private function extrairFerramentas(?array $diagnostico): string
     {
+        if (!$diagnostico || empty($diagnostico['respostas'])) {
+            return 'E-mail, WhatsApp, Excel';
+        }
+        
         $respostas = json_decode($diagnostico['respostas'], true);
-        return $respostas['bloco2']['ferramentas'] ?? 'E-mail, WhatsApp, Excel';
+        return isset($respostas['ferramentas']) ? $respostas['ferramentas'] : 'E-mail, WhatsApp, Excel';
     }
 
-    private function extrairProblemas(array $diagnostico): string
+    private function extrairProblemas(?array $diagnostico): string
+    {
+        if (!$diagnostico || empty($diagnostico['respostas'])) {
+            return 'Processos não documentados, falta de padronização';
+        }
+        
+        $respostas = json_decode($diagnostico['respostas'], true);
+        return isset($respostas['pontos_melhoria']) ? $respostas['pontos_melhoria'] : 'Processos não documentados, falta de padronização';
+    }
+    
+    private function extrairObjetivos(?array $diagnostico): string
+    {
+        if (!$diagnostico || empty($diagnostico['respostas'])) {
+            return 'Crescer com processos organizados e estruturados';
+        }
+        
+        $respostas = json_decode($diagnostico['respostas'], true);
+        return isset($respostas['objetivo_12_meses']) ? $respostas['objetivo_12_meses'] : 'Crescer com processos organizados e estruturados';
+    }
+    
+    private function extrairColaboradores(?array $diagnostico): string
+    {
+        if (!$diagnostico || empty($diagnostico['respostas'])) {
+            return '10-25';
+        }
+        
+        $respostas = json_decode($diagnostico['respostas'], true);
+        $internos = (int) ($respostas['colaboradores_internos'] ?? 10);
+        $externos = (int) ($respostas['colaboradores_externos'] ?? 5);
+        $total = $internos + $externos;
+        
+        if ($total <= 10) return '1-10';
+        if ($total <= 25) return '11-25';  
+        if ($total <= 50) return '26-50';
+        if ($total <= 100) return '51-100';
+        return '100+';
+    }
+    
+    private function extrairFaturamento(?array $diagnostico): string
+    {
+        if (!$diagnostico || empty($diagnostico['respostas'])) {
+            return 'R$ 100-500 mil';
+        }
+        
+        $respostas = json_decode($diagnostico['respostas'], true);
+        return isset($respostas['faturamento_mensal']) ? $respostas['faturamento_mensal'] : 'R$ 100-500 mil';
+    }
     {
         $respostas = json_decode($diagnostico['respostas'], true);
         return $respostas['bloco4']['problemas'] ?? 'Processos não documentados';
