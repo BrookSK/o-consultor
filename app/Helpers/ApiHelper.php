@@ -2190,4 +2190,3 @@ Transformar a descrição falada em um SOP completo, estruturado e profissional,
 Retorne APENAS o JSON válido, sem explicações adicionais.";
     }
 }
-    }
