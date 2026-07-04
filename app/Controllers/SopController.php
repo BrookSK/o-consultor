@@ -3488,11 +3488,16 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
      */
     private function gerarHtmlParaPdf(array $sop): string
     {
-        $html = "
-        <html>
-        <body style='font-family: Arial, sans-serif; font-size: 12px; line-height: 1.4;'>
-            <h1 style='color: #333; border-bottom: 2px solid #0066cc; padding-bottom: 10px;'>
-            /**
+        $html = '<html>
+        <body style="font-family: Arial, sans-serif; font-size: 12px; line-height: 1.4;">
+            <h1 style="color: #333; border-bottom: 2px solid #0066cc; padding-bottom: 10px;">' . 
+            ($sop['sop_codigo'] ?? 'SOP') . ' - ' . ($sop['titulo'] ?? 'Procedimento') . '</h1>
+        </body>
+        </html>';
+        return $html;
+    }
+
+    /**
      * Retorna setores ESPECÍFICOS por nicho da empresa
      */
     private function getSetoresEspecificosPorNicho(string $nicho): array
@@ -4078,31 +4083,33 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
      */
     private function gerarHtmlSOP(array $sop): string
     {
-        $html = "<html><head><title>SOP - {$sop['sop_codigo']}</title></head><body>";
-        $html .= "<h1>{$sop['sop_codigo']} - {$sop['titulo']}</h1>";
-        $html .= "<p><strong>Empresa:</strong> {$sop['empresa']}</p>";
-        $html .= "<p><strong>Setor:</strong> {$sop['setor']}</p>";
-        $html .= "<p><strong>Versão:</strong> {$sop['versao']}</p>";
-        $html .= "<p><strong>Norma:</strong> {$sop['norma']}</p>";
-        $html .= "<h2>Objetivo</h2>";
-        $html .= "<p>{$sop['objetivo']}</p>";
-        $html .= "<h2>Escopo</h2>";
-        $html .= "<p><strong>Aplica-se a:</strong> {$sop['escopo_aplica']}</p>";
-        $html .= "<p><strong>Não se aplica a:</strong> {$sop['escopo_nao_aplica']}</p>";
+        $html = '<html><head><title>SOP - ' . $sop['sop_codigo'] . '</title></head><body>';
+        $html .= '<h1>' . $sop['sop_codigo'] . ' - ' . $sop['titulo'] . '</h1>';
+        $html .= '<p><strong>Empresa:</strong> ' . $sop['empresa'] . '</p>';
+        $html .= '<p><strong>Setor:</strong> ' . $sop['setor'] . '</p>';
+        $html .= '<p><strong>Versão:</strong> ' . $sop['versao'] . '</p>';
+        $html .= '<p><strong>Norma:</strong> ' . $sop['norma'] . '</p>';
+        $html .= '<h2>Objetivo</h2>';
+        $html .= '<p>' . $sop['objetivo'] . '</p>';
+        $html .= '<h2>Escopo</h2>';
+        $html .= '<p><strong>Aplica-se a:</strong> ' . $sop['escopo_aplica'] . '</p>';
+        $html .= '<p><strong>Não se aplica a:</strong> ' . $sop['escopo_nao_aplica'] . '</p>';
 
         // Subtópicos
-        foreach ($sop['subtopicos_completos'] as $subtopico) {
-            $html .= "<h2>Subtópico {$subtopico['letra']}: {$subtopico['nome']}</h2>";
-            $html .= "<p>{$subtopico['descricao']}</p>";
-            
-            $html .= "<h3>Procedimentos:</h3><ol>";
-            foreach ($subtopico['procedimentos'] as $proc) {
-                $html .= "<li>{$proc['acao']} <em>({$proc['responsavel']} - {$proc['prazo']})</em></li>";
+        if (isset($sop['subtopicos_completos'])) {
+            foreach ($sop['subtopicos_completos'] as $subtopico) {
+                $html .= '<h2>Subtópico ' . $subtopico['letra'] . ': ' . $subtopico['nome'] . '</h2>';
+                $html .= '<p>' . $subtopico['descricao'] . '</p>';
+                
+                $html .= '<h3>Procedimentos:</h3><ol>';
+                foreach ($subtopico['procedimentos'] as $proc) {
+                    $html .= '<li>' . $proc['acao'] . ' <em>(' . $proc['responsavel'] . ' - ' . $proc['prazo'] . ')</em></li>';
+                }
+                $html .= '</ol>';
             }
-            $html .= "</ol>";
         }
 
-        $html .= "</body></html>";
+        $html .= '</body></html>';
         return $html;
     }
 
