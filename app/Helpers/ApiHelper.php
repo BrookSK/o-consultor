@@ -453,12 +453,20 @@ Gere em JSON:
     {
         $contextoNoticia = $noticiaBase ? "\n\nBASEADO NA NOTÍCIA:\n{$noticiaBase}" : '';
 
-        $instrucoesTipo = match($tipo) {
-            'carrossel' => 'Para CARROSSEL gere JSON com estrutura: {"slides": [{"numero": 1, "tipo": "capa", "texto": "título principal", "texto_secundario": "subtítulo opcional", "prompt_imagem": "descrição detalhada da imagem"}, {"numero": 2, "tipo": "conteudo", "texto": "conteúdo do slide", "prompt_imagem": "descrição da imagem"}], "legenda": "texto da legenda com call-to-action", "hashtags": "#tag1 #tag2 #tag3"}',
-            'post' => 'Para POST gere JSON com estrutura: {"slides": [{"numero": 1, "tipo": "unico", "texto": "conteúdo principal", "prompt_imagem": "descrição da imagem"}], "legenda": "texto da legenda", "hashtags": "#tag1 #tag2"}',
-            'story' => 'Para STORY gere JSON com estrutura: {"slides": [{"numero": 1, "tipo": "story", "texto": "texto curto e impactante", "prompt_imagem": "descrição da imagem vertical"}], "legenda": "", "hashtags": ""}',
-            default => 'Para CARROSSEL gere JSON com múltiplos slides educativos.'
-        };
+        switch($tipo) {
+            case 'carrossel':
+                $instrucoesTipo = 'Para CARROSSEL gere JSON com estrutura: {"slides": [{"numero": 1, "tipo": "capa", "texto": "título principal", "texto_secundario": "subtítulo opcional", "prompt_imagem": "descrição detalhada da imagem"}, {"numero": 2, "tipo": "conteudo", "texto": "conteúdo do slide", "prompt_imagem": "descrição da imagem"}], "legenda": "texto da legenda com call-to-action", "hashtags": "#tag1 #tag2 #tag3"}';
+                break;
+            case 'post':
+                $instrucoesTipo = 'Para POST gere JSON com estrutura: {"slides": [{"numero": 1, "tipo": "unico", "texto": "conteúdo principal", "prompt_imagem": "descrição da imagem"}], "legenda": "texto da legenda", "hashtags": "#tag1 #tag2"}';
+                break;
+            case 'story':
+                $instrucoesTipo = 'Para STORY gere JSON com estrutura: {"slides": [{"numero": 1, "tipo": "story", "texto": "texto curto e impactante", "prompt_imagem": "descrição da imagem vertical"}], "legenda": "", "hashtags": ""}';
+                break;
+            default:
+                $instrucoesTipo = 'Para CARROSSEL gere JSON com múltiplos slides educativos.';
+                break;
+        }
 
         return "Você é especialista em marketing digital B2B. Crie conteúdo seguindo exatamente o Brand Book da marca.
 
@@ -530,12 +538,20 @@ Responda APENAS em JSON válido, sem explicações.";
             $contextoPersonalizado .= "\n⚡ INSTRUÇÃO: Use essas informações para tornar o conteúdo mais relevante e específico para a realidade da empresa.";
         }
 
-        $instrucoesTipo = match($tipo) {
-            'carrossel' => 'Para CARROSSEL gere JSON com estrutura: {"slides": [{"numero": 1, "tipo": "capa", "texto": "título principal", "texto_secundario": "subtítulo opcional", "prompt_imagem": "descrição detalhada da imagem"}, {"numero": 2, "tipo": "conteudo", "texto": "conteúdo do slide", "prompt_imagem": "descrição da imagem"}], "legenda": "texto da legenda com call-to-action", "hashtags": "#tag1 #tag2 #tag3"}',
-            'post' => 'Para POST gere JSON com estrutura: {"slides": [{"numero": 1, "tipo": "unico", "texto": "conteúdo principal", "prompt_imagem": "descrição da imagem"}], "legenda": "texto da legenda", "hashtags": "#tag1 #tag2"}',
-            'story' => 'Para STORY gere JSON com estrutura: {"slides": [{"numero": 1, "tipo": "story", "texto": "texto curto e impactante", "prompt_imagem": "descrição da imagem vertical"}], "legenda": "", "hashtags": ""}',
-            default => 'Para CARROSSEL gere JSON com múltiplos slides educativos.'
-        ];
+        switch($tipo) {
+            case 'carrossel':
+                $instrucoesTipo = 'Para CARROSSEL gere JSON com estrutura: {"slides": [{"numero": 1, "tipo": "capa", "texto": "título principal", "texto_secundario": "subtítulo opcional", "prompt_imagem": "descrição detalhada da imagem"}, {"numero": 2, "tipo": "conteudo", "texto": "conteúdo do slide", "prompt_imagem": "descrição da imagem"}], "legenda": "texto da legenda com call-to-action", "hashtags": "#tag1 #tag2 #tag3"}';
+                break;
+            case 'post':
+                $instrucoesTipo = 'Para POST gere JSON com estrutura: {"slides": [{"numero": 1, "tipo": "unico", "texto": "conteúdo principal", "prompt_imagem": "descrição da imagem"}], "legenda": "texto da legenda", "hashtags": "#tag1 #tag2"}';
+                break;
+            case 'story':
+                $instrucoesTipo = 'Para STORY gere JSON com estrutura: {"slides": [{"numero": 1, "tipo": "story", "texto": "texto curto e impactante", "prompt_imagem": "descrição da imagem vertical"}], "legenda": "", "hashtags": ""}';
+                break;
+            default:
+                $instrucoesTipo = 'Para CARROSSEL gere JSON com múltiplos slides educativos.';
+                break;
+        }
 
         return "Você é especialista em marketing digital B2B. Crie conteúdo seguindo exatamente o Brand Book da marca.
 

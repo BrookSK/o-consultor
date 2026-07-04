@@ -22,7 +22,7 @@ class DiagnosticoController
         if (Auth::perfil() === 'ADMIN_HOLDING') {
             // Admin vê todos os diagnósticos
             $diagnosticos = Database::query(
-                "SELECT d.*, e.nome as empresa_nome, u.nome as responsavel_nome 
+                "SELECT d.*, e.nome as empresa_nome, e.segmento as setor, u.nome as responsavel_nome 
                  FROM diagnosticos d 
                  LEFT JOIN empresas e ON d.empresa_id = e.id 
                  LEFT JOIN usuarios u ON d.usuario_id = u.id 
@@ -35,24 +35,40 @@ class DiagnosticoController
         
         // Mapear status para labels
         foreach ($diagnosticos as &$diag) {
-            $diag['status_label'] = match($diag['status']) {
-                'concluido' => 'Concluído',
-                'em_andamento' => 'Em andamento',
-                default => 'Rascunho'
-            };
+            switch($diag['status']) {
+                case 'concluido':
+                    $diag['status_label'] = 'Concluído';
+                    break;
+                case 'em_andamento':
+                    $diag['status_label'] = 'Em andamento';
+                    break;
+                default:
+                    $diag['status_label'] = 'Rascunho';
+                    break;
+            }
+            
+            // Mapear campos para compatibilidade com a view
+            $diag['empresa'] = isset($diag['empresa_nome']) ? $diag['empresa_nome'] : 'N/A';
+            $diag['responsavel'] = isset($diag['responsavel_nome']) ? $diag['responsavel_nome'] : 'N/A';
+            $diag['setor'] = isset($diag['setor']) ? $diag['setor'] : 'N/A';
             
             // Calcular score se não existir
             if ($diag['pontuacao'] == 0 && $diag['status'] === 'concluido' && !empty($diag['respostas'])) {
-                $respostas = json_decode($diag['respostas'], true) ?? [];
-                $diag['pontuacao'] = $this->calcularScore($respostas);
+                $respostas = json_decode($diag['respostas'], true);
+                if ($respostas) {
+                    $diag['pontuacao'] = $this->calcularScore($respostas);
+                }
             }
             
-            $diag['score'] = match(true) {
-                $diag['pontuacao'] >= 80 => 4,
-                $diag['pontuacao'] >= 60 => 3,
-                $diag['pontuacao'] >= 40 => 2,
-                default => 1
-            };
+            if ($diag['pontuacao'] >= 80) {
+                $diag['score'] = 4;
+            } elseif ($diag['pontuacao'] >= 60) {
+                $diag['score'] = 3;
+            } elseif ($diag['pontuacao'] >= 40) {
+                $diag['score'] = 2;
+            } else {
+                $diag['score'] = 1;
+            }
         }
 
         $dados = [

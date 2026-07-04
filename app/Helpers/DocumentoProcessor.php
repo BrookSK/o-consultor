@@ -469,15 +469,23 @@ Exemplo de resposta:
      */
     private static function getUploadErrorMessage(int $errorCode): string
     {
-        return match ($errorCode) {
-            UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'Arquivo muito grande',
-            UPLOAD_ERR_PARTIAL => 'Upload incompleto',
-            UPLOAD_ERR_NO_FILE => 'Nenhum arquivo enviado',
-            UPLOAD_ERR_NO_TMP_DIR => 'Diretório temporário não encontrado',
-            UPLOAD_ERR_CANT_WRITE => 'Falha ao escrever arquivo',
-            UPLOAD_ERR_EXTENSION => 'Upload bloqueado por extensão',
-            default => 'Erro desconhecido no upload'
-        };
+        switch ($errorCode) {
+            case UPLOAD_ERR_INI_SIZE:
+            case UPLOAD_ERR_FORM_SIZE:
+                return 'Arquivo muito grande';
+            case UPLOAD_ERR_PARTIAL:
+                return 'Upload incompleto';
+            case UPLOAD_ERR_NO_FILE:
+                return 'Nenhum arquivo enviado';
+            case UPLOAD_ERR_NO_TMP_DIR:
+                return 'Diretório temporário não encontrado';
+            case UPLOAD_ERR_CANT_WRITE:
+                return 'Falha ao escrever arquivo';
+            case UPLOAD_ERR_EXTENSION:
+                return 'Upload bloqueado por extensão';
+            default:
+                return 'Erro desconhecido no upload';
+        }
     }
     
     /**

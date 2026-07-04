@@ -80,33 +80,41 @@
             </thead>
             <tbody class="divide-y divide-gray-100">
                 <?php foreach ($dados['diagnosticos'] as $diag):
-                    $scoreCor = match($diag['score']) {
-                        4 => 'bg-[#1E3A5F] text-white',
-                        3 => 'bg-green-100 text-green-800',
-                        2 => 'bg-yellow-100 text-yellow-800',
-                        default => 'bg-red-100 text-red-800',
-                    };
-                    $scoreLabel = match($diag['score']) {
-                        4 => 'Excelência',
-                        3 => 'Crescimento',
-                        2 => 'Desenvolvimento',
-                        default => 'Inicial',
-                    };
-                    $statusBadge = match($diag['status']) {
-                        'concluido' => 'bg-green-100 text-green-700',
-                        default => 'bg-blue-100 text-blue-700',
-                    };
-                    $statusLabel = match($diag['status']) {
-                        'concluido' => 'Concluído',
-                        default => 'Em andamento',
-                    };
+                    // Determinar cores e labels baseadas no score
+                    switch($diag['score']) {
+                        case 4:
+                            $scoreCor = 'bg-[#1E3A5F] text-white';
+                            $scoreLabel = 'Excelência';
+                            break;
+                        case 3:
+                            $scoreCor = 'bg-green-100 text-green-800';
+                            $scoreLabel = 'Crescimento';
+                            break;
+                        case 2:
+                            $scoreCor = 'bg-yellow-100 text-yellow-800';
+                            $scoreLabel = 'Desenvolvimento';
+                            break;
+                        default:
+                            $scoreCor = 'bg-red-100 text-red-800';
+                            $scoreLabel = 'Inicial';
+                            break;
+                    }
+                    
+                    // Determinar badge e label do status
+                    if ($diag['status'] === 'concluido') {
+                        $statusBadge = 'bg-green-100 text-green-700';
+                        $statusLabel = 'Concluído';
+                    } else {
+                        $statusBadge = 'bg-blue-100 text-blue-700';
+                        $statusLabel = 'Em andamento';
+                    }
                 ?>
                 <tr class="hover:bg-gray-50 transition">
                     <td class="px-6 py-4">
-                        <p class="font-medium text-gray-800"><?= htmlspecialchars($diag['empresa']) ?></p>
+                        <p class="font-medium text-gray-800"><?= htmlspecialchars(isset($diag['empresa']) ? $diag['empresa'] : 'N/A') ?></p>
                     </td>
-                    <td class="px-6 py-4 text-gray-600"><?= htmlspecialchars($diag['setor']) ?></td>
-                    <td class="px-6 py-4 text-gray-600"><?= htmlspecialchars($diag['responsavel']) ?></td>
+                    <td class="px-6 py-4 text-gray-600"><?= htmlspecialchars(isset($diag['setor']) ? $diag['setor'] : 'N/A') ?></td>
+                    <td class="px-6 py-4 text-gray-600"><?= htmlspecialchars(isset($diag['responsavel']) ? $diag['responsavel'] : 'N/A') ?></td>
                     <td class="px-6 py-4">
                         <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold <?= $scoreCor ?>">
                             <span class="flex gap-0.5">
