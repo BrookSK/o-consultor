@@ -2260,16 +2260,32 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
     /**
      * Extrai dados do diagnóstico para o prompt
      */
-    private function extrairColaboradores(array $diagnostico): string
+    private function extrairColaboradores(?array $diagnostico): string
     {
+        if (!$diagnostico || empty($diagnostico['respostas'])) {
+            return '10-25';
+        }
+        
         $respostas = json_decode($diagnostico['respostas'], true);
-        return $respostas['bloco2']['colaboradores'] ?? '10-25';
+        $internos = (int) ($respostas['colaboradores_internos'] ?? 10);
+        $externos = (int) ($respostas['colaboradores_externos'] ?? 5);
+        $total = $internos + $externos;
+        
+        if ($total <= 10) return '1-10';
+        if ($total <= 25) return '11-25';  
+        if ($total <= 50) return '26-50';
+        if ($total <= 100) return '51-100';
+        return '100+';
     }
-
-    private function extrairFaturamento(array $diagnostico): string
+    
+    private function extrairFaturamento(?array $diagnostico): string
     {
+        if (!$diagnostico || empty($diagnostico['respostas'])) {
+            return 'R$ 100-500 mil';
+        }
+        
         $respostas = json_decode($diagnostico['respostas'], true);
-        return $respostas['bloco2']['faturamento'] ?? 'R$ 100-500 mil';
+        return isset($respostas['faturamento_mensal']) ? $respostas['faturamento_mensal'] : 'R$ 100-500 mil';
     }
 
     private function extrairDepartamentos(?array $diagnostico): string
@@ -2310,44 +2326,6 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         
         $respostas = json_decode($diagnostico['respostas'], true);
         return isset($respostas['objetivo_12_meses']) ? $respostas['objetivo_12_meses'] : 'Crescer com processos organizados e estruturados';
-    }
-    
-    private function extrairColaboradores(?array $diagnostico): string
-    {
-        if (!$diagnostico || empty($diagnostico['respostas'])) {
-            return '10-25';
-        }
-        
-        $respostas = json_decode($diagnostico['respostas'], true);
-        $internos = (int) ($respostas['colaboradores_internos'] ?? 10);
-        $externos = (int) ($respostas['colaboradores_externos'] ?? 5);
-        $total = $internos + $externos;
-        
-        if ($total <= 10) return '1-10';
-        if ($total <= 25) return '11-25';  
-        if ($total <= 50) return '26-50';
-        if ($total <= 100) return '51-100';
-        return '100+';
-    }
-    
-    private function extrairFaturamento(?array $diagnostico): string
-    {
-        if (!$diagnostico || empty($diagnostico['respostas'])) {
-            return 'R$ 100-500 mil';
-        }
-        
-        $respostas = json_decode($diagnostico['respostas'], true);
-        return isset($respostas['faturamento_mensal']) ? $respostas['faturamento_mensal'] : 'R$ 100-500 mil';
-    }
-    {
-        $respostas = json_decode($diagnostico['respostas'], true);
-        return $respostas['bloco4']['problemas'] ?? 'Processos não documentados';
-    }
-
-    private function extrairObjetivos(array $diagnostico): string
-    {
-        $respostas = json_decode($diagnostico['respostas'], true);
-        return $respostas['bloco5']['objetivos'] ?? 'Crescer com processos organizados';
     }
 
     /**
