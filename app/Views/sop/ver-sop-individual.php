@@ -159,10 +159,10 @@ $temErroJson = isset($data['erro_json']);
         <div class="bg-white border border-gray-200 rounded-lg p-6">
             <h3 class="text-lg font-semibold text-gray-800 mb-3">⚡ Pré-requisitos</h3>
             <ul class="space-y-2 text-sm">
-                <?php foreach ($data['pre_requisitos'] as $requisito): ?>
+                <?php foreach ((array) $data['pre_requisitos'] as $requisito): ?>
                 <li class="flex items-start space-x-2">
                     <span class="text-green-600 mt-1">✓</span>
-                    <span class="text-gray-700"><?= htmlspecialchars($requisito) ?></span>
+                    <span class="text-gray-700"><?= htmlspecialchars(is_array($requisito) ? implode(' — ', $requisito) : (string) $requisito) ?></span>
                 </li>
                 <?php endforeach; ?>
             </ul>
@@ -173,13 +173,15 @@ $temErroJson = isset($data['erro_json']);
         <?php if (!empty($data['recursos_necessarios'])): ?>
         <div class="bg-white border border-gray-200 rounded-lg p-6">
             <h3 class="text-lg font-semibold text-gray-800 mb-3">🛠️ Recursos Necessários</h3>
-            <?php foreach ($data['recursos_necessarios'] as $tipo => $recursos): ?>
+            <?php foreach ((array) $data['recursos_necessarios'] as $tipo => $recursos): ?>
             <?php if (!empty($recursos)): ?>
             <div class="mb-3">
-                <h4 class="font-medium text-gray-700 mb-1"><?= ucfirst($tipo) ?></h4>
+                <?php if (!is_int($tipo)): ?>
+                <h4 class="font-medium text-gray-700 mb-1"><?= ucfirst(str_replace('_', ' ', (string) $tipo)) ?></h4>
+                <?php endif; ?>
                 <ul class="text-sm text-gray-600 space-y-1">
-                    <?php foreach ($recursos as $recurso): ?>
-                    <li>• <?= htmlspecialchars($recurso) ?></li>
+                    <?php foreach ((array) $recursos as $recurso): ?>
+                    <li>• <?= htmlspecialchars(is_array($recurso) ? implode(' — ', $recurso) : (string) $recurso) ?></li>
                     <?php endforeach; ?>
                 </ul>
             </div>
@@ -367,12 +369,12 @@ $temErroJson = isset($data['erro_json']);
     <div class="bg-white border border-gray-200 rounded-lg p-6 mb-6">
         <h2 class="text-lg font-semibold text-gray-800 mb-4">🎯 Scripts de Comunicação</h2>
         <div class="space-y-4">
-            <?php foreach ($data['scripts_comunicacao'] as $tipo => $script): ?>
+            <?php foreach ((array) $data['scripts_comunicacao'] as $tipo => $script): ?>
             <?php if (!empty($script)): ?>
             <div class="border border-green-200 rounded-lg p-4 bg-green-50">
-                <h4 class="font-medium text-green-900 mb-3"><?= ucwords(str_replace('_', ' ', $tipo)) ?></h4>
+                <h4 class="font-medium text-green-900 mb-3"><?= ucwords(str_replace('_', ' ', (string) $tipo)) ?></h4>
                 <div class="text-sm text-green-800 font-mono bg-white p-3 rounded border leading-relaxed">
-                    <?= nl2br(htmlspecialchars($script)) ?>
+                    <?= nl2br(htmlspecialchars(is_array($script) ? implode("\n", array_map(fn($v) => is_array($v) ? json_encode($v, JSON_UNESCAPED_UNICODE) : (string) $v, $script)) : (string) $script)) ?>
                 </div>
             </div>
             <?php endif; ?>
@@ -386,15 +388,17 @@ $temErroJson = isset($data['erro_json']);
     <div class="bg-white border border-gray-200 rounded-lg p-6 mb-6">
         <h2 class="text-lg font-semibold text-gray-800 mb-4">☑️ Checklists</h2>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <?php foreach ($data['checklists'] as $momento => $itens): ?>
+            <?php foreach ((array) $data['checklists'] as $momento => $itens): ?>
             <?php if (!empty($itens)): ?>
             <div>
-                <h4 class="font-medium text-gray-700 mb-3"><?= ucwords(str_replace('_', ' ', $momento)) ?></h4>
+                <?php if (!is_int($momento)): ?>
+                <h4 class="font-medium text-gray-700 mb-3"><?= ucwords(str_replace('_', ' ', (string) $momento)) ?></h4>
+                <?php endif; ?>
                 <ul class="space-y-2">
-                    <?php foreach ($itens as $item): ?>
+                    <?php foreach ((array) $itens as $item): ?>
                     <li class="flex items-start space-x-2">
                         <input type="checkbox" class="mt-1 rounded border-gray-300">
-                        <span class="text-sm text-gray-700"><?= htmlspecialchars($item) ?></span>
+                        <span class="text-sm text-gray-700"><?= htmlspecialchars(is_array($item) ? implode(' — ', $item) : (string) $item) ?></span>
                     </li>
                     <?php endforeach; ?>
                 </ul>
@@ -429,8 +433,8 @@ $temErroJson = isset($data['erro_json']);
                             <p class="font-medium text-red-700 mb-1">🔍 Como Identificar:</p>
                             <?php if (!empty($cenario['sinais_identificacao'])): ?>
                             <ul class="text-red-600 space-y-1">
-                                <?php foreach ($cenario['sinais_identificacao'] as $sinal): ?>
-                                <li>• <?= htmlspecialchars($sinal) ?></li>
+                                <?php foreach ((array) $cenario['sinais_identificacao'] as $sinal): ?>
+                                <li>• <?= htmlspecialchars(is_array($sinal) ? implode(' — ', $sinal) : (string) $sinal) ?></li>
                                 <?php endforeach; ?>
                             </ul>
                             <?php endif; ?>
@@ -473,11 +477,11 @@ $temErroJson = isset($data['erro_json']);
         <div>
             <h3 class="text-md font-semibold text-red-700 mb-3">📋 Scripts para Situações Difíceis</h3>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <?php foreach ($data['gestao_situacoes_fora_controle']['scripts_situacoes_dificeis'] as $situacao => $script): ?>
+                <?php foreach ((array) $data['gestao_situacoes_fora_controle']['scripts_situacoes_dificeis'] as $situacao => $script): ?>
                 <div class="bg-white border border-red-200 rounded-lg p-4">
-                    <h4 class="font-medium text-red-800 mb-2"><?= ucwords(str_replace('_', ' ', $situacao)) ?></h4>
+                    <h4 class="font-medium text-red-800 mb-2"><?= ucwords(str_replace('_', ' ', (string) $situacao)) ?></h4>
                     <div class="bg-red-50 p-3 rounded border font-mono text-sm text-red-700">
-                        <?= nl2br(htmlspecialchars($script)) ?>
+                        <?= nl2br(htmlspecialchars(is_array($script) ? implode("\n", array_map(fn($v) => is_array($v) ? json_encode($v, JSON_UNESCAPED_UNICODE) : (string) $v, $script)) : (string) $script)) ?>
                     </div>
                 </div>
                 <?php endforeach; ?>

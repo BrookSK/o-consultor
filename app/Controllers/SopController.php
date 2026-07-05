@@ -9814,13 +9814,15 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             ];
 
             // ===== FASE 1: RESUMO =====
+            Logger::info('BG FASE 1 INICIANDO', ['sop_id' => $sopId]);
             $this->atualizarProgressoSop($sopId, $conteudo, 1, 'Gerando resumo e estrutura inicial...');
             $promptResumo = $this->criarPromptResumoSop($sopData, $detalhamento, $empresa, $diagnostico);
-            $resp = ApiHelper::chamarOpenAI($promptResumo, 'gpt-4o', true, 3000);
+            $resp = ApiHelper::chamarOpenAI($promptResumo, 'gpt-4o-mini', true, 3000);
             if (empty($resp['sucesso'])) {
                 $this->marcarSopErro($sopId, 'Fase 1 (Resumo): ' . ($resp['erro'] ?? 'Erro na IA'));
                 return;
             }
+            Logger::info('BG FASE 1 CONCLUIDA', ['sop_id' => $sopId]);
             $resumo = $resp['conteudo'];
             $conteudo['objetivo'] = $resumo['objetivo'] ?? 'Objetivo não especificado';
             $conteudo['escopo'] = $resumo['escopo'] ?? 'Escopo não especificado';
@@ -9832,12 +9834,16 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             $this->atualizarProgressoSop($sopId, $conteudo, 1, 'Resumo concluído. Gerando procedimentos...');
 
             // ===== FASE 2: PROCEDIMENTOS OPERACIONAIS =====
+            // gpt-4o-mini é mais rápido, garantindo que a geração termine antes do
+            // timeout do PHP-FPM. Produz conteúdo detalhado o suficiente.
+            Logger::info('BG FASE 2 INICIANDO', ['sop_id' => $sopId]);
             $promptProc = $this->criarPromptProcedimentosOperacionais($sopData, $detalhamento, $empresa, $diagnostico);
-            $resp = ApiHelper::chamarOpenAI($promptProc, 'gpt-4o', true, 8000);
+            $resp = ApiHelper::chamarOpenAI($promptProc, 'gpt-4o-mini', true, 12000);
             if (empty($resp['sucesso'])) {
                 $this->marcarSopErro($sopId, 'Fase 2 (Procedimentos): ' . ($resp['erro'] ?? 'Erro na IA'));
                 return;
             }
+            Logger::info('BG FASE 2 CONCLUIDA', ['sop_id' => $sopId]);
             $proc = $resp['conteudo'];
             $conteudo['procedimentos'] = $proc['procedimentos_operacionais_detalhados'] ?? ($proc['procedimentos'] ?? []);
             $conteudo['checklists'] = $proc['checklists_operacionais'] ?? [];
@@ -9853,12 +9859,14 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             $this->atualizarProgressoSop($sopId, $conteudo, 2, 'Procedimentos concluídos. Gerando situações críticas...');
 
             // ===== FASE 3: SITUAÇÕES CRÍTICAS =====
+            Logger::info('BG FASE 3 INICIANDO', ['sop_id' => $sopId]);
             $promptCrit = $this->criarPromptSituacoesCriticas($sopData, $detalhamento, $empresa, $diagnostico);
-            $resp = ApiHelper::chamarOpenAI($promptCrit, 'gpt-4o', true, 8000);
+            $resp = ApiHelper::chamarOpenAI($promptCrit, 'gpt-4o-mini', true, 12000);
             if (empty($resp['sucesso'])) {
                 $this->marcarSopErro($sopId, 'Fase 3 (Situações Críticas): ' . ($resp['erro'] ?? 'Erro na IA'));
                 return;
             }
+            Logger::info('BG FASE 3 CONCLUIDA', ['sop_id' => $sopId]);
             $crit = $resp['conteudo'];
             $conteudo['gestao_situacoes_fora_controle'] = [
                 'cenarios_criticos_obrigatorios' => $crit['gestao_situacoes_criticas']['cenarios_criticos_detalhados'] ?? [],
