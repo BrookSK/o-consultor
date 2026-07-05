@@ -4197,7 +4197,6 @@ class SopController
 
         require VIEW_PATH . '/sop/listar-por-diagnostico.php';
     }
-    }
 
     /**
      * Buscar estrutura da nova arquitetura por diagnóstico
