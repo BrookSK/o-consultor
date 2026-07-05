@@ -7912,6 +7912,12 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                 throw new Exception('ID do SOP não informado');
             }
             
+            Logger::info('Iniciando regeneração de SOP', [
+                'sop_id' => $sopId,
+                'empresa_id' => Auth::empresa(),
+                'usuario' => Auth::usuario()['nome']
+            ]);
+            
             // Buscar dados do SOP atual
             $sop = Database::queryOne(
                 "SELECT s.*, ss.codigo_servico, ss.nome_servico, ss.detalhamento_completo, se.nome_setor 
@@ -7923,7 +7929,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             );
             
             if (!$sop) {
-                throw new Exception('SOP não encontrado');
+                throw new Exception('SOP não encontrado ou não está associado a um serviço');
             }
             
             // Obter dados da empresa
@@ -7939,24 +7945,40 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             // Decodificar detalhamento do serviço
             $detalhamento = json_decode($sop['detalhamento_completo'], true);
             if (!$detalhamento) {
-                throw new Exception('Detalhamento do serviço não encontrado ou corrompido');
+                throw new Exception('Detalhamento do serviço não encontrado ou corrompido. Reprocesse o serviço primeiro.');
             }
+            
+            Logger::info('Dados preparados para regeneração', [
+                'servico' => $sop['nome_servico'],
+                'setor' => $sop['nome_setor'],
+                'tem_detalhamento' => !empty($detalhamento)
+            ]);
             
             // Gerar novo conteúdo SOP usando IA
             $novoConteudo = $this->gerarConteudoSopCompleto($detalhamento, $empresa, $sop);
             
             if (!$novoConteudo) {
-                throw new Exception('Erro na geração do conteúdo pela IA');
+                throw new Exception('Erro na geração do conteúdo pela IA. Verifique as configurações de API.');
             }
+            
+            // Incrementar versão
+            $versaoAtual = $sop['versao'] ?? '1.0';
+            $partesVersao = explode('.', $versaoAtual);
+            $novaVersao = $partesVersao[0] . '.' . ((int)($partesVersao[1] ?? 0) + 1);
             
             // Atualizar SOP no banco
             Database::execute(
-                "UPDATE sops SET conteudo = :conteudo, atualizado_em = NOW(), versao = CONCAT(SUBSTRING_INDEX(versao, '.', 1), '.', CAST(SUBSTRING_INDEX(versao, '.', -1) AS UNSIGNED) + 1) WHERE id = :id",
-                ['conteudo' => $novoConteudo, 'id' => $sopId]
+                "UPDATE sops SET conteudo = :conteudo, atualizado_em = NOW(), versao = :versao WHERE id = :id",
+                [
+                    'conteudo' => $novoConteudo, 
+                    'versao' => $novaVersao,
+                    'id' => $sopId
+                ]
             );
             
             Logger::info('SOP regenerado com sucesso', [
                 'sop_id' => $sopId,
+                'nova_versao' => $novaVersao,
                 'empresa_id' => Auth::empresa(),
                 'usuario' => Auth::usuario()['nome']
             ]);
@@ -7964,14 +7986,16 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             header('Content-Type: application/json');
             echo json_encode([
                 'sucesso' => true,
-                'mensagem' => 'SOP regenerado com sucesso'
+                'mensagem' => "SOP regenerado com sucesso! Nova versão: {$novaVersao}",
+                'nova_versao' => $novaVersao
             ]);
             
         } catch (Exception $e) {
             Logger::error('Erro ao regenerar SOP', [
                 'erro' => $e->getMessage(),
                 'sop_id' => $sopId ?? 0,
-                'empresa_id' => Auth::empresa()
+                'empresa_id' => Auth::empresa(),
+                'trace' => $e->getTraceAsString()
             ]);
             
             header('Content-Type: application/json');
@@ -8007,18 +8031,18 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             
             $prompt = $this->criarPromptGeracaoSopDetalhado($servicoData, $detalhamento, $diagnostico);
             
-            $resposta = ApiHelper::chamarOpenAI($prompt, [
-                'model' => 'gpt-4',
-                'temperature' => 0.3,
-                'max_tokens' => 4000,
-                'response_format' => ['type' => 'json_object']
-            ]);
+            $resposta = ApiHelper::chamarOpenAI($prompt, 'gpt-4', true);
             
-            if (!$resposta || !isset($resposta['conteudo'])) {
-                throw new Exception('Resposta inválida da IA');
+            if (!$resposta['sucesso']) {
+                throw new Exception('Erro na API OpenAI: ' . ($resposta['erro'] ?? 'Erro desconhecido'));
             }
             
-            return $resposta['conteudo'];
+            if (!$resposta['conteudo']) {
+                throw new Exception('Resposta da IA vazia');
+            }
+            
+            // Retornar o JSON como string para salvar no banco
+            return json_encode($resposta['conteudo'], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
             
         } catch (Exception $e) {
             Logger::error('Erro na geração de conteúdo SOP', [
