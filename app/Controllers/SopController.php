@@ -9755,7 +9755,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             Database::execute("DELETE FROM fila_geracao_sop WHERE servico_id = :id", ['id' => $servicoId]);
             Database::execute(
                 "INSERT INTO fila_geracao_sop (sop_id, servico_id, empresa_id, status, fase_atual, total_fases, mensagem, criado_em, atualizado_em)
-                 VALUES (:sop_id, :servico_id, :empresa_id, 'pendente', 0, 3, 'Aguardando processamento...', NOW(), NOW())",
+                 VALUES (:sop_id, :servico_id, :empresa_id, 'pendente', 0, 4, 'Aguardando processamento...', NOW(), NOW())",
                 [
                     'sop_id' => $sopId,
                     'servico_id' => $servicoId,
@@ -10016,10 +10016,10 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                 return $resultado;
             }
 
-            if ($proximaFase >= 3) {
+            if ($proximaFase >= 4) {
                 // Concluído
                 Database::execute(
-                    "UPDATE fila_geracao_sop SET status = 'concluido', fase_atual = 3, mensagem = 'Concluído', concluido_em = NOW(), atualizado_em = NOW() WHERE id = :id",
+                    "UPDATE fila_geracao_sop SET status = 'concluido', fase_atual = 4, mensagem = 'Concluído', concluido_em = NOW(), atualizado_em = NOW() WHERE id = :id",
                     ['id' => $filaId]
                 );
             } else {
@@ -10111,40 +10111,49 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             return ['sucesso' => true, 'fase' => 1, 'mensagem' => 'Resumo concluído.'];
         }
 
-        // ===== FASE 2: PROCEDIMENTOS =====
+        // ===== FASE 2: PROCEDIMENTOS - PARTE 1 (fases iniciais) =====
         if ($fase === 2) {
-            Logger::info('FILA FASE 2 INICIANDO', ['sop_id' => $sopId]);
-            $prompt = $this->criarPromptProcedimentosOperacionais($sopData, $detalhamento, $empresa, $diagnostico);
-            // Tokens dimensionados para responder em < 55s (caber no proxy).
-            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 5000, 55);
+            Logger::info('FILA FASE 2 (proc parte 1) INICIANDO', ['sop_id' => $sopId]);
+            $prompt = $this->criarPromptProcedimentosParte($sopData, $detalhamento, $empresa, $diagnostico, 1);
+            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 4000, 55);
             if (empty($resp['sucesso'])) {
                 return ['sucesso' => false, 'erro' => 'Fase 2 (Procedimentos): ' . ($resp['erro'] ?? 'Erro na IA')];
             }
             $p = $resp['conteudo'];
+            // Iniciar o array de procedimentos com as primeiras fases
             $conteudo['procedimentos'] = $p['procedimentos_operacionais_detalhados'] ?? ($p['procedimentos'] ?? []);
-            $conteudo['checklists'] = $p['checklists_operacionais'] ?? [];
-            $conteudo['scripts_comunicacao'] = $p['scripts_comunicacao_operacionais'] ?? [];
-            $conteudo['indicadores_performance'] = $p['indicadores_performance_operacionais'] ?? [];
-            $conteudo['anexos_referencias'] = $p['documentacao_operacional'] ?? [];
-            if (!empty($p['recursos_operacionais_necessarios'])) {
-                $conteudo['recursos_necessarios'] = $p['recursos_operacionais_necessarios'];
-            }
-            if (!empty($p['pre_requisitos_operacionais'])) {
-                $conteudo['pre_requisitos'] = $p['pre_requisitos_operacionais'];
-            }
             $conteudo['fase_atual'] = 2;
-            $conteudo['mensagem_progresso'] = 'Procedimentos concluídos. Gerando situações críticas...';
+            $conteudo['mensagem_progresso'] = 'Procedimentos (parte 1) concluídos. Gerando parte 2...';
             $this->salvarConteudoSop($sopId, $conteudo, 'rascunho');
-            return ['sucesso' => true, 'fase' => 2, 'mensagem' => 'Procedimentos concluídos.'];
+            return ['sucesso' => true, 'fase' => 2, 'mensagem' => 'Procedimentos parte 1 concluídos.'];
         }
 
-        // ===== FASE 3: SITUAÇÕES CRÍTICAS =====
+        // ===== FASE 3: PROCEDIMENTOS - PARTE 2 (fases finais) =====
         if ($fase === 3) {
-            Logger::info('FILA FASE 3 INICIANDO', ['sop_id' => $sopId]);
-            $prompt = $this->criarPromptSituacoesCriticas($sopData, $detalhamento, $empresa, $diagnostico);
-            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 5000, 55);
+            Logger::info('FILA FASE 3 (proc parte 2) INICIANDO', ['sop_id' => $sopId]);
+            $prompt = $this->criarPromptProcedimentosParte($sopData, $detalhamento, $empresa, $diagnostico, 2);
+            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 4000, 55);
             if (empty($resp['sucesso'])) {
-                return ['sucesso' => false, 'erro' => 'Fase 3 (Situações Críticas): ' . ($resp['erro'] ?? 'Erro na IA')];
+                return ['sucesso' => false, 'erro' => 'Fase 3 (Procedimentos parte 2): ' . ($resp['erro'] ?? 'Erro na IA')];
+            }
+            $p = $resp['conteudo'];
+            // Acrescentar as fases finais ao array de procedimentos existente
+            $novasFases = $p['procedimentos_operacionais_detalhados'] ?? ($p['procedimentos'] ?? []);
+            $existentes = $conteudo['procedimentos'] ?? [];
+            $conteudo['procedimentos'] = array_merge($existentes, $novasFases);
+            $conteudo['fase_atual'] = 3;
+            $conteudo['mensagem_progresso'] = 'Procedimentos concluídos. Gerando situações críticas...';
+            $this->salvarConteudoSop($sopId, $conteudo, 'rascunho');
+            return ['sucesso' => true, 'fase' => 3, 'mensagem' => 'Procedimentos parte 2 concluídos.'];
+        }
+
+        // ===== FASE 4: SITUAÇÕES CRÍTICAS (finaliza) =====
+        if ($fase === 4) {
+            Logger::info('FILA FASE 4 (situações críticas) INICIANDO', ['sop_id' => $sopId]);
+            $prompt = $this->criarPromptSituacoesCriticas($sopData, $detalhamento, $empresa, $diagnostico);
+            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 4500, 55);
+            if (empty($resp['sucesso'])) {
+                return ['sucesso' => false, 'erro' => 'Fase 4 (Situações Críticas): ' . ($resp['erro'] ?? 'Erro na IA')];
             }
             $c = $resp['conteudo'];
             $conteudo['gestao_situacoes_fora_controle'] = [
@@ -10154,7 +10163,8 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             $conteudo['matriz_riscos_servico'] = $c['matriz_riscos_servico'] ?? [];
             $conteudo['treinamento_gestao_crises'] = $c['treinamento_gestao_crises'] ?? [];
             $conteudo['status_geracao'] = 'concluido';
-            $conteudo['fase_atual'] = 3;
+            $conteudo['fase_atual'] = 4;
+            $conteudo['total_fases'] = 4;
             $conteudo['mensagem_progresso'] = 'SOP completo gerado com sucesso!';
             $this->salvarConteudoSop($sopId, $conteudo, 'ativo');
 
@@ -10167,7 +10177,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                 "UPDATE setores_empresa SET total_sops = (SELECT COUNT(*) FROM servicos_setor WHERE setor_id = :s1 AND tem_sop = 1) WHERE id = :s2",
                 ['s1' => $servico['setor_id'], 's2' => $servico['setor_id']]
             );
-            return ['sucesso' => true, 'fase' => 3, 'concluido' => true, 'mensagem' => 'SOP completo gerado com sucesso!'];
+            return ['sucesso' => true, 'fase' => 4, 'concluido' => true, 'mensagem' => 'SOP completo gerado com sucesso!'];
         }
 
         return ['sucesso' => false, 'erro' => 'Fase inválida: ' . $fase];
@@ -10477,6 +10487,63 @@ Use SEMPRE terminologia genérica. NUNCA mencione marcas comerciais (ex: use 'fe
 ```
 
 Responda APENAS com o JSON válido, sem explicações adicionais.";
+    }
+
+    /**
+     * Prompt de procedimentos operacionais POR PARTE (leve, cabe em <55s).
+     * $parte 1 = fases iniciais (Preparação, Execução Inicial)
+     * $parte 2 = fases finais (Execução Principal, Controle, Finalização)
+     */
+    private function criarPromptProcedimentosParte(array $servico, array $detalhamento, array $empresa, array $diagnostico, int $parte): string
+    {
+        $nomeEmpresa = json_decode($diagnostico['respostas'], true)['nome_empresa'] ?? $empresa['nome'] ?? 'Empresa';
+        $nomeServico = $servico['nome_servico'];
+        $nomeSetor = $servico['nome_setor'];
+
+        if ($parte === 1) {
+            $foco = "Gere as 2 PRIMEIRAS FASES operacionais: '1. Preparação Operacional Inicial' e '2. Execução Inicial'.";
+        } else {
+            $foco = "Gere as 2 FASES FINAIS operacionais: '3. Execução Principal e Controle' e '4. Finalização e Pós-execução'.";
+        }
+
+        return "Você é especialista em processos. Gere PROCEDIMENTOS OPERACIONAIS DETALHADOS para um SOP.
+
+# CONTEXTO
+- Empresa: {$nomeEmpresa}
+- Setor: {$nomeSetor}
+- Serviço: {$nomeServico}
+
+# TAREFA (PARTE {$parte} DE 2)
+{$foco}
+
+Cada fase deve ter de 3 a 5 passos. Cada passo deve ser detalhado e prático (100-180 palavras no detalhamento).
+Use terminologia genérica. NUNCA mencione marcas comerciais.
+
+# FORMATO (JSON):
+```json
+{
+  \"procedimentos_operacionais_detalhados\": [
+    {
+      \"fase\": \"Nome da fase operacional\",
+      \"descricao_operacional\": \"Descrição da importância desta fase (2 frases)\",
+      \"passos_operacionais_detalhados\": [
+        {
+          \"passo\": 1,
+          \"acao_operacional\": \"Título da ação específica\",
+          \"detalhamento_operacional_completo\": \"Como executar passo a passo (100-180 palavras): ferramentas, validações, registros, scripts de comunicação quando aplicável.\",
+          \"responsavel_operacional\": \"Cargo responsável\",
+          \"tempo_operacional_estimado\": \"Tempo estimado\",
+          \"criterios_qualidade_operacionais\": \"Critérios de qualidade mensuráveis\",
+          \"scripts_operacionais_completos\": \"Scripts word-by-word quando houver comunicação, senão vazio\",
+          \"ferramentas_operacionais\": \"Ferramentas e sistemas usados\"
+        }
+      ]
+    }
+  ]
+}
+```
+
+Responda APENAS com o JSON válido.";
     }
 
     /**
