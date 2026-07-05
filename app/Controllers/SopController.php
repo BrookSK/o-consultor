@@ -9045,4 +9045,157 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         
         exit;
     }
+    
+    /**
+     * Interface principal de gerenciamento hierárquico
+     */
+    public function gerenciarHierarquia(): void
+    {
+        Auth::proteger();
+        
+        $diagnosticoId = (int) ($_GET['diagnostico_id'] ?? 0);
+        $estruturaId = (int) ($_GET['estrutura_id'] ?? 0);
+        
+        if (!$diagnosticoId || !$estruturaId) {
+            Flash::set('erro', 'Parâmetros obrigatórios não informados.');
+            header('Location: ' . APP_URL . '/sop');
+            exit;
+        }
+        
+        try {
+            // Buscar dados da estrutura
+            $estruturaData = $this->buscarEstruturaTemporaria($estruturaId);
+            
+            if (!$estruturaData) {
+                // Se não encontrou a estrutura, pode ser que o processo não foi iniciado ainda
+                // Vamos redirecionar para a página inicial do SOP para iniciar o processo
+                Flash::set('info', 'Estrutura não encontrada. Inicie o processo de geração de SOPs primeiro.');
+                header('Location: ' . APP_URL . '/sop?diagnostico_id=' . $diagnosticoId);
+                exit;
+            }
+            
+            // Buscar diagnóstico
+            $diagnostico = Diagnostico::buscarPorId($diagnosticoId);
+            
+            if (!$diagnostico) {
+                Flash::set('erro', 'Diagnóstico não encontrado.');
+                header('Location: ' . APP_URL . '/sop');
+                exit;
+            }
+            
+            // Verificar permissão
+            if (Auth::perfil() !== 'ADMIN_HOLDING' && $diagnostico['usuario_id'] != Auth::id()) {
+                Flash::set('erro', 'Sem permissão para acessar este diagnóstico.');
+                header('Location: ' . APP_URL . '/sop');
+                exit;
+            }
+            
+            $dados = [
+                'diagnostico' => $diagnostico,
+                'estrutura_id' => $estruturaId,
+                'estrutura' => $estruturaData['estrutura'] ?? [],
+                'progresso' => $this->buscarProgressoHierarquia($estruturaId) ?? [],
+                'csrf_token' => Csrf::gerar()
+            ];
+            
+            require_once 'app/Views/sop/gerenciar-hierarquia.php';
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao carregar gerenciamento hierárquico', [
+                'erro' => $e->getMessage(),
+                'diagnostico_id' => $diagnosticoId,
+                'estrutura_id' => $estruturaId
+            ]);
+            
+            Flash::set('erro', 'Erro interno: ' . $e->getMessage());
+            header('Location: ' . APP_URL . '/sop');
+            exit;
+        }
+    }
+    
+    /**
+     * Ver detalhes completos de um serviço
+     */
+    public function verDetalhesServico(): void
+    {
+        Auth::proteger();
+        
+        $servicoId = (int) ($_GET['servico_id'] ?? 0);
+        
+        if (!$servicoId) {
+            Flash::set('erro', 'ID do serviço não informado.');
+            header('Location: ' . APP_URL . '/sop');
+            exit;
+        }
+        
+        try {
+            // Buscar dados do serviço primeiro em servicos_detalhados
+            $servico = Database::queryOne(
+                "SELECT * FROM servicos_detalhados WHERE id = :id AND empresa_id = :empresa_id",
+                [
+                    'id' => $servicoId,
+                    'empresa_id' => Auth::empresa()
+                ]
+            );
+            
+            // Se não encontrar em servicos_detalhados, tentar em servicos_mapeados
+            if (!$servico) {
+                $servico = Database::queryOne(
+                    "SELECT *, id as servico_id FROM servicos_mapeados WHERE id = :id AND empresa_id = :empresa_id",
+                    [
+                        'id' => $servicoId,
+                        'empresa_id' => Auth::empresa()
+                    ]
+                );
+            }
+            
+            if (!$servico) {
+                Flash::set('erro', 'Serviço não encontrado. Verifique se o serviço existe e se você tem permissão para acessá-lo.');
+                header('Location: ' . APP_URL . '/sop');
+                exit;
+            }
+            
+            // Decodificar o detalhamento se estiver em JSON
+            if (!empty($servico['detalhamento'])) {
+                $detalhamento = json_decode($servico['detalhamento'], true);
+                if ($detalhamento) {
+                    $servico['detalhamento_array'] = $detalhamento;
+                }
+            }
+            
+            // Buscar SOP relacionado se existir
+            $sop = Database::queryOne(
+                "SELECT * FROM sops WHERE servico_id = :servico_id AND empresa_id = :empresa_id",
+                [
+                    'servico_id' => $servicoId,
+                    'empresa_id' => Auth::empresa()
+                ]
+            );
+            
+            if ($sop && !empty($sop['conteudo'])) {
+                $sopConteudo = json_decode($sop['conteudo'], true);
+                if ($sopConteudo) {
+                    $sop['conteudo_array'] = $sopConteudo;
+                }
+            }
+            
+            $dados = [
+                'servico' => $servico,
+                'sop' => $sop,
+                'csrf_token' => Csrf::gerar()
+            ];
+            
+            require_once 'app/Views/sop/ver-detalhes-servico.php';
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao carregar detalhes do serviço', [
+                'erro' => $e->getMessage(),
+                'servico_id' => $servicoId
+            ]);
+            
+            Flash::set('erro', 'Erro interno: ' . $e->getMessage());
+            header('Location: ' . APP_URL . '/sop');
+            exit;
+        }
+    }
 }
