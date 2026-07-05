@@ -10150,8 +10150,9 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         // ===== FASE 4: SITUAÇÕES CRÍTICAS (finaliza) =====
         if ($fase === 4) {
             Logger::info('FILA FASE 4 (situações críticas) INICIANDO', ['sop_id' => $sopId]);
-            $prompt = $this->criarPromptSituacoesCriticas($sopData, $detalhamento, $empresa, $diagnostico);
-            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 4500, 55);
+            // Prompt enxuto para caber em < 55s
+            $prompt = $this->criarPromptSituacoesCriticasLeve($sopData, $detalhamento, $empresa, $diagnostico);
+            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 4000, 55);
             if (empty($resp['sucesso'])) {
                 return ['sucesso' => false, 'erro' => 'Fase 4 (Situações Críticas): ' . ($resp['erro'] ?? 'Erro na IA')];
             }
@@ -10538,6 +10539,62 @@ Use terminologia genérica. NUNCA mencione marcas comerciais.
           \"ferramentas_operacionais\": \"Ferramentas e sistemas usados\"
         }
       ]
+    }
+  ]
+}
+```
+
+Responda APENAS com o JSON válido.";
+    }
+
+    /**
+     * Prompt ENXUTO de situações críticas (leve, cabe em <55s).
+     * Gera cenários críticos e scripts para situações difíceis.
+     */
+    private function criarPromptSituacoesCriticasLeve(array $servico, array $detalhamento, array $empresa, array $diagnostico): string
+    {
+        $nomeEmpresa = json_decode($diagnostico['respostas'], true)['nome_empresa'] ?? $empresa['nome'] ?? 'Empresa';
+        $nomeServico = $servico['nome_servico'];
+        $nomeSetor = $servico['nome_setor'];
+
+        return "Você é especialista em gestão de crises operacionais. Gere a seção de SITUAÇÕES CRÍTICAS e PROBLEMAS DE ROTINA para um SOP.
+
+# CONTEXTO
+- Empresa: {$nomeEmpresa}
+- Setor: {$nomeSetor}
+- Serviço: {$nomeServico}
+
+# TAREFA
+Gere de 4 a 6 cenários críticos/problemas reais que podem ocorrer neste serviço, e como lidar com cada um.
+Inclua também de 3 a 4 scripts práticos para situações difíceis (cliente irritado, erro grave, prazo estourado, etc.).
+Seja prático e direto. Use terminologia genérica. NUNCA mencione marcas comerciais.
+
+# FORMATO (JSON):
+```json
+{
+  \"gestao_situacoes_criticas\": {
+    \"cenarios_criticos_detalhados\": [
+      {
+        \"tipo_crise\": \"CATEGORIA (ex: OPERACIONAL, CLIENTE, PRAZO)\",
+        \"situacao_especifica\": \"Descrição clara do problema/cenário crítico\",
+        \"sinais_identificacao\": [\"Sinal 1 de que o problema está ocorrendo\", \"Sinal 2\"],
+        \"acao_imediata_contencao\": \"O que fazer imediatamente para conter (2-3 frases práticas)\",
+        \"tecnicas_desescalacao\": \"Técnicas para acalmar/resolver a situação\",
+        \"quando_escalar\": \"Critério claro de quando e para quem escalar\"
+      }
+    ],
+    \"scripts_situacoes_especificas\": {
+      \"cliente_insatisfeito\": \"Script word-by-word para lidar com cliente insatisfeito neste serviço\",
+      \"erro_no_processo\": \"Script para comunicar e corrigir um erro no processo\",
+      \"prazo_comprometido\": \"Script para comunicar atraso e negociar novo prazo\"
+    }
+  },
+  \"matriz_riscos_servico\": [
+    {
+      \"risco_identificado\": \"Risco específico deste serviço\",
+      \"probabilidade\": \"Alta/Média/Baixa\",
+      \"impacto\": \"Alto/Médio/Baixo\",
+      \"acoes_preventivas\": [\"Ação preventiva 1\", \"Ação preventiva 2\"]
     }
   ]
 }
