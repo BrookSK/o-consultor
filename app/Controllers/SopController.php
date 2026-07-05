@@ -8533,6 +8533,15 @@ Este SOP deve ser um **MANUAL TÉCNICO COMPLETO DE CAPACITAÇÃO PROFISSIONAL**.
 - Concorrente copiando estratégias ou produtos
 - Mudança regulatória que impacta o negócio
 
+**NÍVEL DE DETALHAMENTO OBRIGATÓRIO PARA SITUAÇÕES CRÍTICAS:**
+- **Mínimo 200 palavras** por cenário crítico
+- **Scripts word-by-word** para comunicação em crise (frases exatas)
+- **Passo-a-passo minucioso** de contenção e resolução
+- **Múltiplas abordagens** para diferentes níveis de gravidade
+- **Técnicas psicológicas específicas** de desescalação
+- **Protocolos de escalação** com tempos e responsáveis definidos
+- **Procedimentos pós-crise** detalhados para evitar reincidência
+
 ## ESTRUTURA OBRIGATÓRIA DO SOP ULTRA TÉCNICO EM JSON:
 
 ```json
@@ -8581,8 +8590,8 @@ Este SOP deve ser um **MANUAL TÉCNICO COMPLETO DE CAPACITAÇÃO PROFISSIONAL**.
           \"scripts_e_templates_completos\": \"Para interações: scripts psicológicos completos, modelos de abordagem profissional, técnicas de persuasão. Para processos técnicos: comandos específicos, códigos detalhados, procedimentos passo-a-passo\",
           \"metodologias_especializadas\": \"Técnicas profissionais específicas, frameworks reconhecidos, abordagens científicas aplicáveis\",
           \"cenarios_e_variacoes\": \"Como lidar tecnicamente com variações, exceções, problemas críticos e situações de alta complexidade\",
-          \"situacoes_criticas_especificas\": \"OBRIGATÓRIO: Detalhar como lidar com situações que fogem do controle normal específicas deste processo (cliente irritado, sistema indisponível, cobrança difícil, fornecedor atrasado, etc.) com scripts exatos e protocolos de emergência\",
-          \"protocolos_emergencia\": \"Procedimentos técnicos específicos para quando a situação sai completamente do controle, incluindo escalação e comunicação de crise\",
+          \"situacoes_criticas_especificas\": \"OBRIGATÓRIO DETALHAMENTO EXTENSO (mínimo 300 palavras): Detalhar minuciosamente como lidar com situações que fogem do controle normal específicas deste processo. Para cada situação crítica incluir: 1) Como identificar os sinais, 2) Script word-by-word da primeira abordagem, 3) Técnicas de desescalação passo-a-passo, 4) Múltiplas estratégias conforme gravidade, 5) Quando e como escalar, 6) Procedimentos pós-resolução. Exemplos obrigatórios: cliente irritado/agressivo, sistema indisponível, cobrança difícil, fornecedor atrasado, erro grave cometido, etc.\",
+          \"protocolos_emergencia\": \"OBRIGATÓRIO DETALHAMENTO ULTRA ESPECÍFICO (mínimo 200 palavras): Procedimentos técnicos minuciosos para quando a situação sai COMPLETAMENTE do controle. Incluir: escalação imediata, comunicação de crise, contenção de danos, recuperação do processo, documentação obrigatória. Scripts exatos de comunicação interna e externa durante a emergência\",
           \"validacoes_tecnicas\": \"Checklist técnico de validações obrigatórias e critérios de aceitação\",
           \"observacoes_profissionais\": \"Insights de especialistas, armadilhas comuns, dicas avançadas e melhores práticas técnicas\"
         }
@@ -8667,24 +8676,24 @@ Este SOP deve ser um **MANUAL TÉCNICO COMPLETO DE CAPACITAÇÃO PROFISSIONAL**.
     \"cenarios_criticos_obrigatorios\": [
       {
         \"tipo_crise\": \"Categoria da situação crítica (atendimento, técnico, financeiro, operacional)\",
-        \"situacao_especifica\": \"Descrição detalhada da situação que fugiu do controle normal\",
-        \"sinais_identificacao\": [\"Como identificar que a situação saiu do controle\", \"Indicadores de escalada da crise\"],
-        \"acao_imediata_contencao\": \"Primeira ação para conter a situação e evitar agravamento\",
-        \"script_comunicacao_crise\": \"Script exato para comunicar com o cliente/envolvido durante a crise\",
-        \"tecnicas_desescalacao\": \"Técnicas psicológicas e comunicacionais para reduzir tensão\",
-        \"quando_escalar\": \"Critérios claros para escalação e para quem\",
-        \"procedimento_pos_crise\": \"Como proceder após resolução para evitar reincidência\",
-        \"documentacao_obrigatoria\": \"Que registros fazer sobre o incidente\",
-        \"tempo_resposta_maximo\": \"Prazo máximo para resolução ou escalação\"
+        \"situacao_especifica\": \"Descrição detalhada da situação que fugiu do controle normal (mínimo 100 palavras)\",
+        \"sinais_identificacao\": [\"MÍNIMO 5 sinais específicos de como identificar que a situação saiu do controle\", \"Indicadores comportamentais, técnicos ou contextuais observáveis\"],
+        \"acao_imediata_contencao\": \"DETALHAMENTO PASSO-A-PASSO (mínimo 150 palavras): Primeira ação minuciosa para conter a situação e evitar agravamento, incluindo postura, tom de voz, frases exatas\",
+        \"script_comunicacao_crise\": \"SCRIPT WORD-BY-WORD (mínimo 200 palavras): Frases EXATAS para comunicar com o cliente/envolvido durante a crise. Incluir abertura, desenvolvimento, fechamento. Prever diferentes níveis de gravidade\",
+        \"tecnicas_desescalacao\": \"TÉCNICAS PSICOLÓGICAS DETALHADAS (mínimo 150 palavras): Métodos específicos para reduzir tensão - linguagem corporal, tom de voz, técnicas de espelhamento, validação emocional, redirecionamento de foco\",
+        \"quando_escalar\": \"CRITÉRIOS ESPECÍFICOS E MENSURÁVEIS para escalação: sinais comportamentais, tempo decorrido, nível de ameaça, impacto no negócio, etc.\",
+        \"procedimento_pos_crise\": \"PROCEDIMENTOS DETALHADOS (mínimo 100 palavras) após resolução: follow-up, documentação, análise de causa raiz, melhorias preventivas\",
+        \"documentacao_obrigatoria\": \"Lista específica de registros obrigatórios: formulários, relatórios, comunicações, evidências\",
+        \"tempo_resposta_maximo\": \"Prazos específicos para cada etapa: contenção inicial, escalação, resolução final\"
       }
     ],
     \"scripts_situacoes_dificeis\": {
-      \"cliente_muito_irritado\": \"Script completo para lidar com cliente agressivo ou extremamente insatisfeito\",
-      \"cobranca_resistente\": \"Abordagem e scripts para cobrança de cliente que resiste ao pagamento\",
-      \"sistema_indisponivel\": \"Como comunicar e lidar com clientes quando sistemas estão fora do ar\",
-      \"erro_grave_cometido\": \"Como comunicar e resolver quando a empresa cometeu erro significativo\",
-      \"prazo_perdido\": \"Scripts para comunicar atrasos e negociar nova data\",
-      \"qualidade_questionada\": \"Como responder quando cliente questiona qualidade do produto/serviço\"
+      \"cliente_muito_irritado\": \"SCRIPT ULTRA DETALHADO (mínimo 300 palavras): Frases word-by-word para lidar com cliente agressivo. Incluir: abertura empática, validação emocional, investigação do problema, propostas de solução, fechamento. Prever diferentes níveis de irritação\",
+      \"cobranca_resistente\": \"SCRIPT DETALHADO (mínimo 250 palavras): Abordagem passo-a-passo para cobrança de cliente resistente. Técnicas de negociação, argumentação, propostas de acordo, pressão psicológica positiva\",
+      \"sistema_indisponivel\": \"PROTOCOLO COMPLETO (mínimo 200 palavras): Como comunicar indisponibilidade, gerenciar expectativas, oferecer alternativas, manter relacionamento durante a crise técnica\",
+      \"erro_grave_cometido\": \"METODOLOGIA DE RECUPERAÇÃO (mínimo 250 palavras): Como assumir responsabilidade, comunicar transparência, propor reparação, recuperar confiança do cliente\",
+      \"prazo_perdido\": \"ESTRATÉGIAS DE COMUNICAÇÃO (mínimo 200 palavras): Como comunicar atrasos, justificar sem desculpas, negociar nova data, manter credibilidade\",
+      \"qualidade_questionada\": \"TÉCNICAS DE DEFESA (mínimo 200 palavras): Como responder questionamentos mantendo autoridade técnica, apresentar evidências, reconhecer limitações quando necessário\"
     }
   },
   \"checklists_tecnicos_detalhados\": {
@@ -8787,13 +8796,21 @@ Este SOP deve ser um **MANUAL TÉCNICO COMPLETO DE CAPACITAÇÃO PROFISSIONAL**.
 - **Protocolos de emergência** com tempo de resposta e escalação definidos
 - **Linguagem técnica instrutiva** que capacita profissionalmente, não apenas lista tarefas
 
-### 🚨 **OBRIGATORIEDADE DE MAPEAMENTO DE CRISES**:
-- **TODA situação que pode sair do controle** deve ter protocolo específico
-- **Scripts exatos** para comunicação em situações difíceis
-- **Técnicas de desescalação** para conflitos e tensões
-- **Critérios claros** de quando e como escalar situações críticas
-- **Procedimentos pós-crise** para evitar reincidência
-- **Documentação obrigatória** de todos os incidentes críticos
+### 🚨 **OBRIGATORIEDADE ABSOLUTA DE MAPEAMENTO DE CRISES**:
+- **TODA situação que pode sair do controle** deve ter protocolo específico com MÍNIMO 200 palavras
+- **Scripts word-by-word** para comunicação em situações difíceis (frases exatas, não resumos)
+- **Técnicas de desescalação** detalhadas com metodologia passo-a-passo
+- **Critérios específicos e mensuráveis** de quando e como escalar situações críticas
+- **Procedimentos pós-crise** minuciosos para evitar reincidência
+- **Documentação obrigatória** detalhada de todos os incidentes críticos
+- **Múltiplos cenários de gravidade** para cada tipo de situação crítica
+
+### ⚡ **REQUISITOS DE DETALHAMENTO PARA SITUAÇÕES CRÍTICAS**:
+- **Situações Críticas Específicas**: Mínimo 300 palavras por cenário
+- **Scripts de Comunicação**: Frases word-by-word, não resumos
+- **Protocolos de Emergência**: Passo-a-passo minucioso com tempos específicos
+- **Técnicas de Desescalação**: Metodologias psicológicas detalhadas
+- **Cenários de Múltipla Gravidade**: Leve, moderada, severa para cada situação
 
 ### 🎪 **CONTEXTO TÉCNICO EMPRESARIAL**:
 - Considerar o setor técnico de atuação: {$nomeEmpresa}
@@ -8804,6 +8821,14 @@ Este SOP deve ser um **MANUAL TÉCNICO COMPLETO DE CAPACITAÇÃO PROFISSIONAL**.
 **CRÍTICO**: Este SOP será usado como **MANUAL DE CAPACITAÇÃO TÉCNICA PROFISSIONAL COMPLETO**. Deve desenvolver um profissional altamente competente e técnico, capaz de executar o serviço com excelência reconhecida no mercado, mesmo partindo de conhecimento básico na função.
 
 **SITUAÇÕES CRÍTICAS**: O SOP DEVE preparar o profissional para **TODAS as situações que podem fugir do controle normal**, incluindo clientes irritados, sistemas indisponíveis, cobranças difíceis, fornecedores atrasados, erros graves, crises de qualidade e qualquer cenário adverso específico do setor. Cada situação crítica deve ter protocolo detalhado, scripts exatos e procedimentos de emergência.
+
+**PADRÃO DE DETALHAMENTO OBRIGATÓRIO PARA SITUAÇÕES CRÍTICAS:**
+- **Scripts word-by-word**: Frases exatas, não resumos (ex: "Senhor João, entendo perfeitamente sua frustração e vou resolver isso agora mesmo...")
+- **Detalhamento comportamental**: Como se posicionar, tom de voz, linguagem corporal
+- **Múltiplos cenários**: Situação leve, moderada e severa para cada tipo de crise
+- **Técnicas psicológicas**: Validação emocional, espelhamento, redirecionamento específico
+- **Critérios mensuráveis**: Quando escalar (ex: "se cliente usar palavrões mais de 3 vezes...")
+- **Passo-a-passo temporal**: "Nos primeiros 30 segundos...", "Após 2 minutos...", etc.
 
 **TERMINOLOGIA**: Use SEMPRE terminologia genérica. NUNCA mencione marcas, produtos específicos ou nomes comerciais. Use categorias funcionais e termos técnicos genéricos.
 
