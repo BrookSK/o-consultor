@@ -259,10 +259,25 @@ function acessarServico(servicoId, status, sopId) {
             </div>
         </div>
     </div>
-    <?php endif; ?>
 </div>
 
-<!-- FLUXO LINEAR: Setores > Serviços > SOPs -->
+<script>
+// Função para acessar serviço de forma inteligente baseado no status
+function acessarServico(servicoId, status, sopId) {
+    console.log('Acessando serviço:', servicoId, status, sopId);
+    
+    if (status === 'sop_gerado' && sopId) {
+        // Se tem SOP, ir direto para visualizar
+        window.open('<?= APP_URL ?>/sop/ver-sop-individual?id=' + sopId, '_blank');
+    } else {
+        // Se não tem SOP, ir para detalhes do serviço
+        window.open('<?= APP_URL ?>/sop/ver-detalhes-servico?servico_id=' + servicoId, '_blank');
+    }
+}
+</script>
+
+<?php $conteudo = ob_get_clean(); ?>
+<?php require VIEW_PATH . '/layouts/layout.php'; ?>
 <?php if (isset($dados['usar_fluxo_linear']) && $dados['usar_fluxo_linear']): ?>
 <div class="space-y-6">
     <?php foreach ($dados['setores_organizados'] as $setorData): ?>
