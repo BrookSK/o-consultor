@@ -4280,7 +4280,6 @@ class SopController
             'usar_fluxo_linear' => true
         ];
     }
-    }
 
     /**
      * Buscar estrutura da nova arquitetura por diagnóstico
