@@ -40,7 +40,7 @@ class ApiHelper
      * Chama a API da OpenAI (GPT-4o, GPT-4o-mini, etc.)
      * Chave e modelo são lidos do banco via tela de configurações.
      */
-    public static function chamarOpenAI(string $prompt, ?string $model = null, bool $jsonMode = true, ?int $maxTokensOverride = null): array
+    public static function chamarOpenAI(string $prompt, ?string $model = null, bool $jsonMode = true, ?int $maxTokensOverride = null, ?int $timeoutOverride = null): array
     {
         $apiKey = self::config('openai_key');
         $model = $model ? $model : self::config('openai_modelo', 'gpt-4o');
@@ -67,7 +67,8 @@ class ApiHelper
                 'Content-Type: application/json',
             ],
             $body,
-            'OpenAI'
+            'OpenAI',
+            $timeoutOverride
         );
 
         if (!$resultado['sucesso']) {
@@ -1466,10 +1467,11 @@ Responda APENAS com um array JSON de URLs válidas. Sem explicações.";
     /**
      * Executa chamada cURL com retry automático em caso de timeout
      */
-    private static function executarCurl(string $url, array $headers, array $body, string $provedor): array
+    private static function executarCurl(string $url, array $headers, array $body, string $provedor, ?int $timeoutOverride = null): array
     {
-        $timeout = self::getTimeout();
-        $maxTentativas = self::getMaxTentativas();
+        $timeout = $timeoutOverride ?? self::getTimeout();
+        // Se um timeout curto foi forçado, não fazer retry (evita somar tempo além do proxy)
+        $maxTentativas = $timeoutOverride !== null ? 1 : self::getMaxTentativas();
 
         for ($tentativa = 1; $tentativa <= $maxTentativas; $tentativa++) {
             $ch = curl_init($url);

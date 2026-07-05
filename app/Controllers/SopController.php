@@ -9677,16 +9677,9 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         Auth::proteger();
         Csrf::verificar();
 
-        // Cada requisição executa UMA fase. Como cada fase faz apenas uma
-        // chamada à IA, cabe dentro do timeout do proxy. O navegador chama
-        // esta rota repetidamente (fase 1, 2, 3) até concluir.
-        @set_time_limit(120);
-
         header('Content-Type: application/json');
 
         $servicoId = (int) ($_POST['servico_id'] ?? 0);
-        $fase = (int) ($_POST['fase'] ?? 1);
-        $sopId = (int) ($_POST['sop_id'] ?? 0);
 
         if (!$servicoId) {
             echo json_encode(['sucesso' => false, 'erro' => 'ID do serviço não informado.']);
@@ -9716,226 +9709,348 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         }
 
         try {
-            $diagnostico = Diagnostico::buscarPorId((int) $servico['diagnostico_id']);
-            $empresa = Empresa::buscarPorId((int) $servico['empresa_id']);
-            if (!$diagnostico || !$empresa) {
-                echo json_encode(['sucesso' => false, 'erro' => 'Diagnóstico ou empresa não encontrados.']);
-                exit;
-            }
-
-            // Detalhamento
-            $detalhamento = [];
-            if (!empty($servico['detalhamento_completo'])) {
-                $detalhamento = json_decode($servico['detalhamento_completo'], true) ?? [];
-            }
-            if (empty($detalhamento)) {
-                $detalhamento = [
-                    'servico' => $servico['nome_servico'],
-                    'setor' => $servico['nome_setor'],
-                    'objetivo_principal' => 'Executar ' . $servico['nome_servico'] . ' de forma eficiente e padronizada',
-                    'processos_principais' => ['Preparação', 'Execução', 'Finalização'],
-                    'recursos_necessarios' => ['Sistemas internos', 'Documentação padrão']
-                ];
-            }
-
-            $sopData = [
-                'nome_servico' => $servico['nome_servico'],
-                'nome_setor' => $servico['nome_setor'],
-                'codigo_servico' => $servico['codigo_servico']
+            // Criar/reaproveitar o registro do SOP em estado "na fila"
+            $conteudoInicial = [
+                'sop_titulo' => $servico['codigo_servico'] . ' - ' . $servico['nome_servico'],
+                'status_geracao' => 'na_fila',
+                'fase_atual' => 0,
+                'total_fases' => 3,
+                'mensagem_progresso' => 'Aguardando processamento...',
+                'data_criacao' => date('d/m/Y H:i:s')
             ];
 
-            // ============ FASE 1: RESUMO (cria/reinicia o SOP) ============
-            if ($fase === 1) {
-                Logger::info('FASE 1 (sync) INICIANDO', ['servico_id' => $servicoId]);
-
-                $promptResumo = $this->criarPromptResumoSop($sopData, $detalhamento, $empresa, $diagnostico);
-                $resp = ApiHelper::chamarOpenAI($promptResumo, 'gpt-4o-mini', true, 3000);
-
-                if (empty($resp['sucesso'])) {
-                    echo json_encode(['sucesso' => false, 'erro' => 'Fase 1 (Resumo): ' . ($resp['erro'] ?? 'Erro na IA')]);
-                    exit;
-                }
-                $resumo = $resp['conteudo'];
-
-                $conteudo = [
-                    'sop_titulo' => $sopData['codigo_servico'] . ' - ' . $sopData['nome_servico'],
-                    'status_geracao' => 'processando',
-                    'fase_atual' => 1,
-                    'total_fases' => 3,
-                    'objetivo' => $resumo['objetivo'] ?? 'Objetivo não especificado',
-                    'escopo' => $resumo['escopo'] ?? 'Escopo não especificado',
-                    'resumo_executivo' => $resumo['resumo_executivo'] ?? '',
-                    'responsaveis' => $resumo['responsaveis'] ?? [],
-                    'competencias_requeridas' => $resumo['competencias_requeridas'] ?? [],
-                    'pre_requisitos' => $resumo['pre_requisitos'] ?? [],
-                    'recursos_necessarios' => $resumo['recursos_necessarios'] ?? [],
-                    'procedimentos' => [],
-                    'gestao_situacoes_fora_controle' => [],
-                    'versao' => '3.0 - Geração faseada',
-                    'data_criacao' => date('d/m/Y H:i:s')
-                ];
-
-                // Criar ou reaproveitar o SOP
-                if (!empty($servico['sop_id'])) {
-                    Database::execute(
-                        "UPDATE sops SET conteudo = :conteudo, status = 'rascunho', atualizado_em = NOW() WHERE id = :id",
-                        ['conteudo' => json_encode($conteudo, JSON_UNESCAPED_UNICODE), 'id' => $servico['sop_id']]
-                    );
-                    $novoSopId = (int) $servico['sop_id'];
-                } else {
-                    Database::execute(
-                        "INSERT INTO sops (empresa_id, diagnostico_id, titulo, sop_codigo, departamento, conteudo, versao, status, gerado_por_ia, criado_em, atualizado_em)
-                         VALUES (:empresa_id, :diagnostico_id, :titulo, :sop_codigo, :departamento, :conteudo, '1.0', 'rascunho', 1, NOW(), NOW())",
-                        [
-                            'empresa_id' => $servico['empresa_id'],
-                            'diagnostico_id' => $servico['diagnostico_id'],
-                            'titulo' => $servico['nome_servico'],
-                            'sop_codigo' => $servico['codigo_servico'],
-                            'departamento' => $servico['nome_setor'],
-                            'conteudo' => json_encode($conteudo, JSON_UNESCAPED_UNICODE)
-                        ]
-                    );
-                    $novoSopId = (int) Database::lastInsertId();
-                }
-
+            if (!empty($servico['sop_id'])) {
                 Database::execute(
-                    "UPDATE servicos_setor SET sop_id = :sop_id, tem_sop = 1, atualizado_em = NOW() WHERE id = :id",
-                    ['sop_id' => $novoSopId, 'id' => $servicoId]
+                    "UPDATE sops SET conteudo = :conteudo, status = 'rascunho', atualizado_em = NOW() WHERE id = :id",
+                    ['conteudo' => json_encode($conteudoInicial, JSON_UNESCAPED_UNICODE), 'id' => $servico['sop_id']]
                 );
-
-                Logger::info('FASE 1 (sync) CONCLUÍDA', ['sop_id' => $novoSopId]);
-                echo json_encode([
-                    'sucesso' => true,
-                    'fase_concluida' => 1,
-                    'proxima_fase' => 2,
-                    'sop_id' => $novoSopId,
-                    'mensagem' => 'Resumo gerado. Gerando procedimentos operacionais...'
-                ]);
-                exit;
-            }
-
-            // Fases 2 e 3 exigem sop_id existente
-            if (!$sopId) {
-                echo json_encode(['sucesso' => false, 'erro' => 'SOP não inicializado (sop_id ausente).']);
-                exit;
-            }
-            $sopExistente = Database::queryOne("SELECT conteudo FROM sops WHERE id = :id", ['id' => $sopId]);
-            if (!$sopExistente) {
-                echo json_encode(['sucesso' => false, 'erro' => 'SOP não encontrado.']);
-                exit;
-            }
-            $conteudo = json_decode($sopExistente['conteudo'], true) ?? [];
-
-            // ============ FASE 2: PROCEDIMENTOS OPERACIONAIS ============
-            if ($fase === 2) {
-                Logger::info('FASE 2 (sync) INICIANDO', ['sop_id' => $sopId]);
-
-                $promptProc = $this->criarPromptProcedimentosOperacionais($sopData, $detalhamento, $empresa, $diagnostico);
-                $resp = ApiHelper::chamarOpenAI($promptProc, 'gpt-4o-mini', true, 10000);
-
-                if (empty($resp['sucesso'])) {
-                    echo json_encode(['sucesso' => false, 'erro' => 'Fase 2 (Procedimentos): ' . ($resp['erro'] ?? 'Erro na IA')]);
-                    exit;
-                }
-                $proc = $resp['conteudo'];
-
-                $conteudo['procedimentos'] = $proc['procedimentos_operacionais_detalhados'] ?? ($proc['procedimentos'] ?? []);
-                $conteudo['checklists'] = $proc['checklists_operacionais'] ?? [];
-                $conteudo['scripts_comunicacao'] = $proc['scripts_comunicacao_operacionais'] ?? [];
-                $conteudo['indicadores_performance'] = $proc['indicadores_performance_operacionais'] ?? [];
-                $conteudo['anexos_referencias'] = $proc['documentacao_operacional'] ?? [];
-                if (!empty($proc['recursos_operacionais_necessarios'])) {
-                    $conteudo['recursos_necessarios'] = $proc['recursos_operacionais_necessarios'];
-                }
-                if (!empty($proc['pre_requisitos_operacionais'])) {
-                    $conteudo['pre_requisitos'] = $proc['pre_requisitos_operacionais'];
-                }
-                $conteudo['fase_atual'] = 2;
-
+                $sopId = (int) $servico['sop_id'];
+            } else {
                 Database::execute(
-                    "UPDATE sops SET conteudo = :conteudo, atualizado_em = NOW() WHERE id = :id",
-                    ['conteudo' => json_encode($conteudo, JSON_UNESCAPED_UNICODE), 'id' => $sopId]
+                    "INSERT INTO sops (empresa_id, diagnostico_id, titulo, sop_codigo, departamento, conteudo, versao, status, gerado_por_ia, criado_em, atualizado_em)
+                     VALUES (:empresa_id, :diagnostico_id, :titulo, :sop_codigo, :departamento, :conteudo, '1.0', 'rascunho', 1, NOW(), NOW())",
+                    [
+                        'empresa_id' => $servico['empresa_id'],
+                        'diagnostico_id' => $servico['diagnostico_id'],
+                        'titulo' => $servico['nome_servico'],
+                        'sop_codigo' => $servico['codigo_servico'],
+                        'departamento' => $servico['nome_setor'],
+                        'conteudo' => json_encode($conteudoInicial, JSON_UNESCAPED_UNICODE)
+                    ]
                 );
+                $sopId = (int) Database::lastInsertId();
+            }
 
-                Logger::info('FASE 2 (sync) CONCLUÍDA', ['sop_id' => $sopId]);
-                echo json_encode([
-                    'sucesso' => true,
-                    'fase_concluida' => 2,
-                    'proxima_fase' => 3,
+            Database::execute(
+                "UPDATE servicos_setor SET sop_id = :sop_id, tem_sop = 1, atualizado_em = NOW() WHERE id = :id",
+                ['sop_id' => $sopId, 'id' => $servicoId]
+            );
+
+            // Remover pedidos antigos deste serviço e enfileirar um novo
+            Database::execute("DELETE FROM fila_geracao_sop WHERE servico_id = :id", ['id' => $servicoId]);
+            Database::execute(
+                "INSERT INTO fila_geracao_sop (sop_id, servico_id, empresa_id, status, fase_atual, total_fases, mensagem, criado_em, atualizado_em)
+                 VALUES (:sop_id, :servico_id, :empresa_id, 'pendente', 0, 3, 'Aguardando processamento...', NOW(), NOW())",
+                [
                     'sop_id' => $sopId,
-                    'mensagem' => 'Procedimentos gerados. Gerando situações críticas...'
-                ]);
-                exit;
-            }
+                    'servico_id' => $servicoId,
+                    'empresa_id' => $servico['empresa_id']
+                ]
+            );
 
-            // ============ FASE 3: SITUAÇÕES CRÍTICAS (finaliza) ============
-            if ($fase === 3) {
-                Logger::info('FASE 3 (sync) INICIANDO', ['sop_id' => $sopId]);
+            Logger::info('SOP ENFILEIRADO', ['sop_id' => $sopId, 'servico_id' => $servicoId]);
 
-                $promptCrit = $this->criarPromptSituacoesCriticas($sopData, $detalhamento, $empresa, $diagnostico);
-                $resp = ApiHelper::chamarOpenAI($promptCrit, 'gpt-4o-mini', true, 10000);
+            // Tentar disparar o processamento imediatamente em background (best-effort).
+            // Se não funcionar, o cron pegará o pedido na fila.
+            $this->tentarDispararProcessamentoFila();
 
-                if (empty($resp['sucesso'])) {
-                    echo json_encode(['sucesso' => false, 'erro' => 'Fase 3 (Situações Críticas): ' . ($resp['erro'] ?? 'Erro na IA')]);
-                    exit;
-                }
-                $crit = $resp['conteudo'];
-
-                $conteudo['gestao_situacoes_fora_controle'] = [
-                    'cenarios_criticos_obrigatorios' => $crit['gestao_situacoes_criticas']['cenarios_criticos_detalhados'] ?? [],
-                    'scripts_situacoes_dificeis' => $crit['gestao_situacoes_criticas']['scripts_situacoes_especificas'] ?? []
-                ];
-                $conteudo['matriz_riscos_servico'] = $crit['matriz_riscos_servico'] ?? [];
-                $conteudo['treinamento_gestao_crises'] = $crit['treinamento_gestao_crises'] ?? [];
-                $conteudo['status_geracao'] = 'concluido';
-                $conteudo['fase_atual'] = 3;
-                $conteudo['mensagem_progresso'] = 'SOP completo gerado com sucesso!';
-
-                Database::execute(
-                    "UPDATE sops SET conteudo = :conteudo, status = 'ativo', atualizado_em = NOW() WHERE id = :id",
-                    ['conteudo' => json_encode($conteudo, JSON_UNESCAPED_UNICODE), 'id' => $sopId]
-                );
-
-                Database::execute(
-                    "UPDATE servicos_setor 
-                     SET sop_id = :sop_id, tem_sop = 1, status = 'sop_gerado', sop_gerado_em = NOW(), atualizado_em = NOW()
-                     WHERE id = :id",
-                    ['sop_id' => $sopId, 'id' => $servicoId]
-                );
-
-                Database::execute(
-                    "UPDATE setores_empresa 
-                     SET total_sops = (SELECT COUNT(*) FROM servicos_setor WHERE setor_id = :setor_id_sub AND tem_sop = 1)
-                     WHERE id = :setor_id",
-                    ['setor_id_sub' => $servico['setor_id'], 'setor_id' => $servico['setor_id']]
-                );
-
-                Logger::info('FASE 3 (sync) CONCLUÍDA - SOP FINALIZADO', ['sop_id' => $sopId]);
-                echo json_encode([
-                    'sucesso' => true,
-                    'fase_concluida' => 3,
-                    'proxima_fase' => null,
-                    'sop_id' => $sopId,
-                    'concluido' => true,
-                    'mensagem' => 'SOP completo gerado com sucesso!',
-                    'redirect' => APP_URL . '/sop/ver-sop-individual?id=' . $sopId
-                ]);
-                exit;
-            }
-
-            echo json_encode(['sucesso' => false, 'erro' => 'Fase inválida.']);
+            echo json_encode([
+                'sucesso' => true,
+                'sop_id' => $sopId,
+                'mensagem' => 'Geração adicionada à fila. Processando...'
+            ]);
             exit;
 
         } catch (Exception $e) {
-            Logger::error('ERRO ao processar fase do SOP', [
+            Logger::error('ERRO ao enfileirar geração de SOP', [
                 'erro' => $e->getMessage(),
                 'servico_id' => $servicoId,
-                'fase' => $fase,
                 'trace' => $e->getTraceAsString()
             ]);
             echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
             exit;
         }
+    }
+
+    /**
+     * Endpoint HTTP para processar UMA fase da fila (fallback quando não há cron).
+     * O navegador chama isto repetidamente. Cada chamada faz apenas uma chamada
+     * de IA, cabendo dentro do timeout do proxy.
+     */
+    public function processarFilaHttp(): void
+    {
+        Auth::proteger();
+        @set_time_limit(120);
+        header('Content-Type: application/json');
+
+        $resultado = $this->processarProximoDaFila();
+        echo json_encode($resultado);
+        exit;
+    }
+
+    /**
+     * Tenta disparar o processamento da fila em background (best-effort).
+     * Não bloqueia nem falha se não conseguir; o cron é o mecanismo garantido.
+     */
+    private function tentarDispararProcessamentoFila(): void
+    {
+        if (!function_exists('exec')) {
+            return;
+        }
+        $disabled = explode(',', str_replace(' ', '', (string) ini_get('disable_functions')));
+        if (in_array('exec', $disabled, true)) {
+            return;
+        }
+
+        $phpBin = PHP_BINDIR . '/php';
+        if (!@is_executable($phpBin)) {
+            $phpBin = 'php';
+        }
+        $script = ROOT_PATH . '/worker/processar_fila.php';
+        if (!file_exists($script)) {
+            return;
+        }
+
+        $cmd = escapeshellcmd($phpBin) . ' ' . escapeshellarg($script)
+            . ' > /dev/null 2>&1 &';
+        @exec($cmd);
+    }
+
+    /**
+     * Processa UM pedido da fila (uma fase por chamada, ou tudo se chamado via CLI).
+     * Pode ser chamado pelo cron (worker/processar_fila.php) ou por requisição interna.
+     * Retorna array com o status atualizado.
+     */
+    public function processarProximoDaFila(): array
+    {
+        // Buscar o próximo pedido pendente ou em processamento
+        $pedido = Database::queryOne(
+            "SELECT * FROM fila_geracao_sop 
+             WHERE status IN ('pendente','processando') 
+             ORDER BY criado_em ASC LIMIT 1"
+        );
+
+        if (!$pedido) {
+            return ['sucesso' => true, 'vazio' => true, 'mensagem' => 'Fila vazia.'];
+        }
+
+        $filaId = (int) $pedido['id'];
+        $sopId = (int) $pedido['sop_id'];
+        $servicoId = (int) $pedido['servico_id'];
+        $faseAtual = (int) $pedido['fase_atual'];
+        $proximaFase = $faseAtual + 1;
+
+        // Buscar serviço
+        $servico = Database::queryOne(
+            "SELECT ss.*, se.nome_setor, se.tipo_setor, eo.nicho, eo.diagnostico_id
+             FROM servicos_setor ss
+             LEFT JOIN setores_empresa se ON ss.setor_id = se.id
+             LEFT JOIN estruturas_organizacionais eo ON se.estrutura_id = eo.id
+             WHERE ss.id = :id",
+            ['id' => $servicoId]
+        );
+
+        if (!$servico) {
+            Database::execute(
+                "UPDATE fila_geracao_sop SET status = 'erro', mensagem = 'Serviço não encontrado', atualizado_em = NOW() WHERE id = :id",
+                ['id' => $filaId]
+            );
+            return ['sucesso' => false, 'erro' => 'Serviço não encontrado.'];
+        }
+
+        // Marcar como processando
+        Database::execute(
+            "UPDATE fila_geracao_sop SET status = 'processando', iniciado_em = COALESCE(iniciado_em, NOW()), atualizado_em = NOW() WHERE id = :id",
+            ['id' => $filaId]
+        );
+
+        try {
+            $resultado = $this->executarFaseSop($sopId, $servicoId, $servico, $proximaFase);
+
+            if (!$resultado['sucesso']) {
+                Database::execute(
+                    "UPDATE fila_geracao_sop SET status = 'erro', mensagem = :msg, tentativas = tentativas + 1, atualizado_em = NOW() WHERE id = :id",
+                    ['msg' => substr($resultado['erro'] ?? 'Erro', 0, 490), 'id' => $filaId]
+                );
+                $this->marcarSopErro($sopId, $resultado['erro'] ?? 'Erro na geração');
+                return $resultado;
+            }
+
+            if ($proximaFase >= 3) {
+                // Concluído
+                Database::execute(
+                    "UPDATE fila_geracao_sop SET status = 'concluido', fase_atual = 3, mensagem = 'Concluído', concluido_em = NOW(), atualizado_em = NOW() WHERE id = :id",
+                    ['id' => $filaId]
+                );
+            } else {
+                // Avançar fase
+                Database::execute(
+                    "UPDATE fila_geracao_sop SET status = 'pendente', fase_atual = :fase, mensagem = :msg, atualizado_em = NOW() WHERE id = :id",
+                    ['fase' => $proximaFase, 'msg' => $resultado['mensagem'] ?? '', 'id' => $filaId]
+                );
+            }
+
+            return $resultado;
+
+        } catch (Exception $e) {
+            Logger::error('ERRO ao processar fase da fila', [
+                'erro' => $e->getMessage(),
+                'fila_id' => $filaId,
+                'fase' => $proximaFase,
+                'trace' => $e->getTraceAsString()
+            ]);
+            Database::execute(
+                "UPDATE fila_geracao_sop SET status = 'erro', mensagem = :msg, tentativas = tentativas + 1, atualizado_em = NOW() WHERE id = :id",
+                ['msg' => substr($e->getMessage(), 0, 490), 'id' => $filaId]
+            );
+            $this->marcarSopErro($sopId, 'Erro interno: ' . $e->getMessage());
+            return ['sucesso' => false, 'erro' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Executa UMA fase específica da geração do SOP.
+     * Retorna ['sucesso'=>bool, 'mensagem'=>string, 'erro'=>string|null].
+     */
+    private function executarFaseSop(int $sopId, int $servicoId, array $servico, int $fase): array
+    {
+        $diagnostico = Diagnostico::buscarPorId((int) $servico['diagnostico_id']);
+        $empresa = Empresa::buscarPorId((int) $servico['empresa_id']);
+        if (!$diagnostico || !$empresa) {
+            return ['sucesso' => false, 'erro' => 'Diagnóstico ou empresa não encontrados.'];
+        }
+
+        $detalhamento = [];
+        if (!empty($servico['detalhamento_completo'])) {
+            $detalhamento = json_decode($servico['detalhamento_completo'], true) ?? [];
+        }
+        if (empty($detalhamento)) {
+            $detalhamento = [
+                'servico' => $servico['nome_servico'],
+                'setor' => $servico['nome_setor'],
+                'objetivo_principal' => 'Executar ' . $servico['nome_servico'] . ' de forma eficiente e padronizada',
+                'processos_principais' => ['Preparação', 'Execução', 'Finalização'],
+                'recursos_necessarios' => ['Sistemas internos', 'Documentação padrão']
+            ];
+        }
+
+        $sopData = [
+            'nome_servico' => $servico['nome_servico'],
+            'nome_setor' => $servico['nome_setor'],
+            'codigo_servico' => $servico['codigo_servico']
+        ];
+
+        // Carregar conteúdo atual do SOP
+        $sopRow = Database::queryOne("SELECT conteudo FROM sops WHERE id = :id", ['id' => $sopId]);
+        $conteudo = $sopRow ? (json_decode($sopRow['conteudo'], true) ?? []) : [];
+
+        // ===== FASE 1: RESUMO =====
+        if ($fase === 1) {
+            Logger::info('FILA FASE 1 INICIANDO', ['sop_id' => $sopId]);
+            $prompt = $this->criarPromptResumoSop($sopData, $detalhamento, $empresa, $diagnostico);
+            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o', true, 3000);
+            if (empty($resp['sucesso'])) {
+                return ['sucesso' => false, 'erro' => 'Fase 1 (Resumo): ' . ($resp['erro'] ?? 'Erro na IA')];
+            }
+            $r = $resp['conteudo'];
+            $conteudo = array_merge($conteudo, [
+                'sop_titulo' => $sopData['codigo_servico'] . ' - ' . $sopData['nome_servico'],
+                'status_geracao' => 'processando',
+                'fase_atual' => 1,
+                'total_fases' => 3,
+                'objetivo' => $r['objetivo'] ?? 'Objetivo não especificado',
+                'escopo' => $r['escopo'] ?? 'Escopo não especificado',
+                'resumo_executivo' => $r['resumo_executivo'] ?? '',
+                'responsaveis' => $r['responsaveis'] ?? [],
+                'competencias_requeridas' => $r['competencias_requeridas'] ?? [],
+                'pre_requisitos' => $r['pre_requisitos'] ?? [],
+                'recursos_necessarios' => $r['recursos_necessarios'] ?? [],
+                'mensagem_progresso' => 'Resumo concluído. Gerando procedimentos...'
+            ]);
+            $this->salvarConteudoSop($sopId, $conteudo, 'rascunho');
+            return ['sucesso' => true, 'fase' => 1, 'mensagem' => 'Resumo concluído.'];
+        }
+
+        // ===== FASE 2: PROCEDIMENTOS =====
+        if ($fase === 2) {
+            Logger::info('FILA FASE 2 INICIANDO', ['sop_id' => $sopId]);
+            $prompt = $this->criarPromptProcedimentosOperacionais($sopData, $detalhamento, $empresa, $diagnostico);
+            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o', true, 8000);
+            if (empty($resp['sucesso'])) {
+                return ['sucesso' => false, 'erro' => 'Fase 2 (Procedimentos): ' . ($resp['erro'] ?? 'Erro na IA')];
+            }
+            $p = $resp['conteudo'];
+            $conteudo['procedimentos'] = $p['procedimentos_operacionais_detalhados'] ?? ($p['procedimentos'] ?? []);
+            $conteudo['checklists'] = $p['checklists_operacionais'] ?? [];
+            $conteudo['scripts_comunicacao'] = $p['scripts_comunicacao_operacionais'] ?? [];
+            $conteudo['indicadores_performance'] = $p['indicadores_performance_operacionais'] ?? [];
+            $conteudo['anexos_referencias'] = $p['documentacao_operacional'] ?? [];
+            if (!empty($p['recursos_operacionais_necessarios'])) {
+                $conteudo['recursos_necessarios'] = $p['recursos_operacionais_necessarios'];
+            }
+            if (!empty($p['pre_requisitos_operacionais'])) {
+                $conteudo['pre_requisitos'] = $p['pre_requisitos_operacionais'];
+            }
+            $conteudo['fase_atual'] = 2;
+            $conteudo['mensagem_progresso'] = 'Procedimentos concluídos. Gerando situações críticas...';
+            $this->salvarConteudoSop($sopId, $conteudo, 'rascunho');
+            return ['sucesso' => true, 'fase' => 2, 'mensagem' => 'Procedimentos concluídos.'];
+        }
+
+        // ===== FASE 3: SITUAÇÕES CRÍTICAS =====
+        if ($fase === 3) {
+            Logger::info('FILA FASE 3 INICIANDO', ['sop_id' => $sopId]);
+            $prompt = $this->criarPromptSituacoesCriticas($sopData, $detalhamento, $empresa, $diagnostico);
+            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o', true, 8000);
+            if (empty($resp['sucesso'])) {
+                return ['sucesso' => false, 'erro' => 'Fase 3 (Situações Críticas): ' . ($resp['erro'] ?? 'Erro na IA')];
+            }
+            $c = $resp['conteudo'];
+            $conteudo['gestao_situacoes_fora_controle'] = [
+                'cenarios_criticos_obrigatorios' => $c['gestao_situacoes_criticas']['cenarios_criticos_detalhados'] ?? [],
+                'scripts_situacoes_dificeis' => $c['gestao_situacoes_criticas']['scripts_situacoes_especificas'] ?? []
+            ];
+            $conteudo['matriz_riscos_servico'] = $c['matriz_riscos_servico'] ?? [];
+            $conteudo['treinamento_gestao_crises'] = $c['treinamento_gestao_crises'] ?? [];
+            $conteudo['status_geracao'] = 'concluido';
+            $conteudo['fase_atual'] = 3;
+            $conteudo['mensagem_progresso'] = 'SOP completo gerado com sucesso!';
+            $this->salvarConteudoSop($sopId, $conteudo, 'ativo');
+
+            // Marcar serviço como concluído
+            Database::execute(
+                "UPDATE servicos_setor SET sop_id = :sop_id, tem_sop = 1, status = 'sop_gerado', sop_gerado_em = NOW(), atualizado_em = NOW() WHERE id = :id",
+                ['sop_id' => $sopId, 'id' => $servicoId]
+            );
+            Database::execute(
+                "UPDATE setores_empresa SET total_sops = (SELECT COUNT(*) FROM servicos_setor WHERE setor_id = :s1 AND tem_sop = 1) WHERE id = :s2",
+                ['s1' => $servico['setor_id'], 's2' => $servico['setor_id']]
+            );
+            return ['sucesso' => true, 'fase' => 3, 'concluido' => true, 'mensagem' => 'SOP completo gerado com sucesso!'];
+        }
+
+        return ['sucesso' => false, 'erro' => 'Fase inválida: ' . $fase];
+    }
+
+    /**
+     * Salva o conteúdo do SOP no banco.
+     */
+    private function salvarConteudoSop(int $sopId, array $conteudo, string $status): void
+    {
+        Database::execute(
+            "UPDATE sops SET conteudo = :conteudo, status = :status, atualizado_em = NOW() WHERE id = :id",
+            ['conteudo' => json_encode($conteudo, JSON_UNESCAPED_UNICODE), 'status' => $status, 'id' => $sopId]
+        );
     }
 
     /**
@@ -10136,14 +10251,36 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         $conteudo = json_decode($sop['conteudo'], true) ?? [];
         $statusGeracao = $conteudo['status_geracao'] ?? 'concluido';
         $segundosDesdeUpdate = (int) ($sop['segundos_desde_update'] ?? 0);
+        $mensagem = $conteudo['mensagem_progresso'] ?? '';
+
+        // Consultar a fila para status mais preciso
+        $pedidoFila = Database::queryOne(
+            "SELECT status, fase_atual, mensagem FROM fila_geracao_sop WHERE sop_id = :id ORDER BY id DESC LIMIT 1",
+            ['id' => $sopId]
+        );
+        if ($pedidoFila) {
+            if ($pedidoFila['status'] === 'erro') {
+                $statusGeracao = 'erro';
+                $mensagem = $pedidoFila['mensagem'] ?: $mensagem;
+            } elseif ($pedidoFila['status'] === 'concluido') {
+                $statusGeracao = 'concluido';
+            } elseif (in_array($pedidoFila['status'], ['pendente', 'processando'], true)) {
+                if ($statusGeracao !== 'concluido') {
+                    $statusGeracao = 'processando';
+                    if (!empty($pedidoFila['mensagem'])) {
+                        $mensagem = $pedidoFila['mensagem'];
+                    }
+                }
+            }
+        }
 
         echo json_encode([
             'sucesso' => true,
             'sop_id' => $sopId,
             'status_geracao' => $statusGeracao,
-            'fase_atual' => $conteudo['fase_atual'] ?? 0,
+            'fase_atual' => $conteudo['fase_atual'] ?? ($pedidoFila['fase_atual'] ?? 0),
             'total_fases' => $conteudo['total_fases'] ?? 3,
-            'mensagem' => $conteudo['mensagem_progresso'] ?? '',
+            'mensagem' => $mensagem,
             'segundos_sem_atualizar' => $segundosDesdeUpdate,
             'redirect' => ($statusGeracao === 'concluido') ? (APP_URL . '/sop/ver-sop-individual?id=' . $sopId) : null
         ]);

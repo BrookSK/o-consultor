@@ -463,67 +463,74 @@ async function processarServico(servicoId, etapa) {
         3: 'Gerando situações críticas (3/3)...'
     };
 
-    // Chama uma fase específica da geração
-    async function chamarFase(fase, sopId) {
-        const response = await fetch(URL_INICIAR, {
+    const URL_PROCESSAR = '<?= APP_URL ?>/sop/processar-fila';
+
+    try {
+        // 1. Enfileirar o pedido (resposta instantânea, não trava)
+        mostrarLoading('Gerando SOP Completo', 'Adicionando à fila de processamento...');
+        atualizarProgresso(1, 'Adicionando à fila...');
+
+        const respInicio = await fetch(URL_INICIAR, {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams({
                 servico_id: servicoId,
-                fase: fase,
-                sop_id: sopId || 0,
                 csrf_token: CSRF
             })
         });
-        return await response.json();
-    }
 
-    try {
-        // FASE 1: Resumo
-        mostrarLoading('Gerando SOP Completo', 'Gerando resumo e estrutura...');
-        atualizarProgresso(1, 'Gerando resumo e estrutura...');
-
-        let data = await chamarFase(1, 0);
-        if (!data.sucesso) {
+        const dataInicio = await respInicio.json();
+        if (!dataInicio.sucesso) {
             esconderLoading();
-            alert('Erro na Fase 1: ' + (data.erro || 'Erro desconhecido'));
-            return;
-        }
-        const sopId = data.sop_id;
-
-        // FASE 2: Procedimentos operacionais
-        atualizarProgresso(2, 'Gerando procedimentos operacionais...');
-        data = await chamarFase(2, sopId);
-        if (!data.sucesso) {
-            esconderLoading();
-            alert('Erro na Fase 2: ' + (data.erro || 'Erro desconhecido') + '\n\nO resumo foi salvo. Tente regenerar para completar.');
+            alert('Erro ao enfileirar: ' + (dataInicio.erro || 'Erro desconhecido'));
             return;
         }
 
-        // FASE 3: Situações críticas
-        atualizarProgresso(3, 'Gerando situações críticas e gestão de crises...');
-        data = await chamarFase(3, sopId);
-        if (!data.sucesso) {
-            esconderLoading();
-            alert('Erro na Fase 3: ' + (data.erro || 'Erro desconhecido') + '\n\nOs procedimentos foram salvos. Tente regenerar para completar.');
-            return;
+        const sopId = dataInicio.sop_id;
+        let concluido = false;
+
+        // 2. Processar as fases: cada chamada processa UMA fase e retorna.
+        // Chamamos em loop até concluir. Como cada chamada faz só uma
+        // requisição de IA, cabe no timeout do proxy.
+        const fasesTexto = {
+            1: 'Gerando resumo e estrutura...',
+            2: 'Gerando procedimentos operacionais...',
+            3: 'Gerando situações críticas e gestão de crises...'
+        };
+
+        for (let i = 0; i < 4 && !concluido; i++) {
+            // Atualiza o feedback visual antes de cada fase
+            const respStatus = await fetch(URL_STATUS + '?sop_id=' + sopId + '&_=' + Date.now());
+            const status = await respStatus.json();
+            const faseInfo = (status.fase_atual || 0) + 1;
+            atualizarProgresso(faseInfo <= 3 ? faseInfo : 3, fasesTexto[faseInfo] || 'Processando...');
+
+            // Processar a próxima fase
+            const respProc = await fetch(URL_PROCESSAR + '?_=' + Date.now());
+            const proc = await respProc.json();
+
+            if (!proc.sucesso) {
+                esconderLoading();
+                alert('Erro na geração: ' + (proc.erro || 'Erro desconhecido'));
+                return;
+            }
+
+            if (proc.vazio || proc.concluido || (proc.fase && proc.fase >= 3)) {
+                concluido = true;
+            }
         }
 
-        // Concluído
+        // 3. Confirmar conclusão
         atualizarProgresso(3, 'SOP completo gerado com sucesso!');
         setTimeout(() => {
             esconderLoading();
-            if (data.redirect) {
-                window.location.href = data.redirect;
-            } else {
-                window.location.reload();
-            }
+            window.location.href = '<?= APP_URL ?>/sop/ver-sop-individual?id=' + sopId;
         }, 800);
 
     } catch (error) {
         esconderLoading();
         console.error('Erro:', error);
-        alert('Erro de comunicação com o servidor. A geração pode ter demorado demais. Tente novamente.');
+        alert('Erro de comunicação com o servidor. Se uma fase demorou demais, tente regenerar.');
     }
 }
 
