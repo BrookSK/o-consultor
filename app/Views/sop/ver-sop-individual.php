@@ -10,6 +10,31 @@ if (empty($sop) || empty($data)) {
 
 // Se há erro de JSON, mostrar aviso
 $temErroJson = isset($data['erro_json']);
+
+/**
+ * Converte qualquer valor (string, array, objeto) em texto seguro para exibição.
+ * Evita erro fatal de htmlspecialchars() ao receber array.
+ */
+if (!function_exists('sopTexto')) {
+    function sopTexto($valor): string {
+        if ($valor === null) return '';
+        if (is_string($valor)) return $valor;
+        if (is_numeric($valor) || is_bool($valor)) return (string) $valor;
+        if (is_array($valor)) {
+            $partes = [];
+            foreach ($valor as $k => $v) {
+                $item = is_array($v) ? sopTexto($v) : (string) $v;
+                // Se a chave for texto (associativo), prefixa com o rótulo
+                if (!is_int($k)) {
+                    $item = ucfirst(str_replace('_', ' ', (string) $k)) . ': ' . $item;
+                }
+                $partes[] = $item;
+            }
+            return implode("\n", $partes);
+        }
+        return '';
+    }
+}
 ?>
 <?php ob_start(); ?>
 
@@ -199,11 +224,12 @@ $temErroJson = isset($data['erro_json']);
         <?php foreach ($data['procedimentos'] as $faseIndex => $fase): ?>
         <div class="mb-8 <?= $faseIndex > 0 ? 'border-t pt-6' : '' ?>">
             <h3 class="text-lg font-medium text-gray-800 mb-3 bg-gray-100 p-3 rounded-lg">
-                🔸 <?= htmlspecialchars($fase['fase'] ?? "Fase " . ($faseIndex + 1)) ?>
+                🔸 <?= htmlspecialchars(sopTexto($fase['fase'] ?? "Fase " . ($faseIndex + 1))) ?>
             </h3>
             
-            <?php if (!empty($fase['descricao'])): ?>
-            <p class="text-gray-600 text-sm mb-4"><?= htmlspecialchars($fase['descricao']) ?></p>
+            <?php $descFase = $fase['descricao_operacional'] ?? $fase['descricao'] ?? ''; ?>
+            <?php if (!empty($descFase)): ?>
+            <p class="text-gray-600 text-sm mb-4"><?= nl2br(htmlspecialchars(sopTexto($descFase))) ?></p>
             <?php endif; ?>
             
             <?php 
@@ -218,7 +244,7 @@ $temErroJson = isset($data['erro_json']);
                         <?= $passo['passo'] ?? '' ?>
                     </div>
                     <div class="flex-1">
-                        <h4 class="font-medium text-gray-800 mb-2 editavel" data-field="procedimentos[<?= $faseIndex ?>].passos[<?= key($passosDaFase) ?>].acao" contenteditable="false"><?= htmlspecialchars($passo['acao_operacional'] ?? $passo['acao'] ?? '') ?></h4>
+                        <h4 class="font-medium text-gray-800 mb-2 editavel" data-field="procedimentos[<?= $faseIndex ?>].passos[<?= key($passosDaFase) ?>].acao" contenteditable="false"><?= htmlspecialchars(sopTexto($passo['acao_operacional'] ?? $passo['acao'] ?? '')) ?></h4>
                         
                         <?php 
                         // Detalhamento (novo e antigo formato)
@@ -227,7 +253,7 @@ $temErroJson = isset($data['erro_json']);
                         ?>
                         <div class="mb-3 p-3 bg-blue-50 border-l-4 border-blue-400 rounded">
                             <h5 class="text-sm font-semibold text-blue-800 mb-1">📋 Detalhamento Operacional:</h5>
-                            <p class="text-sm text-blue-700 leading-relaxed"><?= nl2br(htmlspecialchars($detalhamento)) ?></p>
+                            <p class="text-sm text-blue-700 leading-relaxed"><?= nl2br(htmlspecialchars(sopTexto($detalhamento))) ?></p>
                         </div>
                         <?php endif; ?>
                         
@@ -238,7 +264,7 @@ $temErroJson = isset($data['erro_json']);
                         ?>
                         <div class="mb-3 p-3 bg-green-50 border-l-4 border-green-400 rounded">
                             <h5 class="text-sm font-semibold text-green-800 mb-1">🎯 Scripts Operacionais:</h5>
-                            <p class="text-sm text-green-700 leading-relaxed font-mono"><?= nl2br(htmlspecialchars($scripts)) ?></p>
+                            <p class="text-sm text-green-700 leading-relaxed font-mono"><?= nl2br(htmlspecialchars(sopTexto($scripts))) ?></p>
                         </div>
                         <?php endif; ?>
                         
@@ -249,7 +275,7 @@ $temErroJson = isset($data['erro_json']);
                         ?>
                         <div class="mb-3 p-3 bg-purple-50 border-l-4 border-purple-400 rounded">
                             <h5 class="text-sm font-semibold text-purple-800 mb-1">⚡ Metodologias Operacionais:</h5>
-                            <p class="text-sm text-purple-700 leading-relaxed"><?= nl2br(htmlspecialchars($metodologias)) ?></p>
+                            <p class="text-sm text-purple-700 leading-relaxed"><?= nl2br(htmlspecialchars(sopTexto($metodologias))) ?></p>
                         </div>
                         <?php endif; ?>
                         
@@ -260,7 +286,7 @@ $temErroJson = isset($data['erro_json']);
                         ?>
                         <div class="mb-3 p-3 bg-orange-50 border-l-4 border-orange-400 rounded">
                             <h5 class="text-sm font-semibold text-orange-800 mb-1">✅ Validações Operacionais:</h5>
-                            <p class="text-sm text-orange-700 leading-relaxed"><?= nl2br(htmlspecialchars($validacoes)) ?></p>
+                            <p class="text-sm text-orange-700 leading-relaxed"><?= nl2br(htmlspecialchars(sopTexto($validacoes))) ?></p>
                         </div>
                         <?php endif; ?>
                         
@@ -271,14 +297,14 @@ $temErroJson = isset($data['erro_json']);
                         ?>
                         <div class="mb-3 p-3 bg-indigo-50 border-l-4 border-indigo-400 rounded">
                             <h5 class="text-sm font-semibold text-indigo-800 mb-1">🛠️ Ferramentas Operacionais:</h5>
-                            <p class="text-sm text-indigo-700 leading-relaxed"><?= nl2br(htmlspecialchars($ferramentas)) ?></p>
+                            <p class="text-sm text-indigo-700 leading-relaxed"><?= nl2br(htmlspecialchars(sopTexto($ferramentas))) ?></p>
                         </div>
                         <?php endif; ?>
                         
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-                            <div><span class="text-gray-500">Responsável:</span> <span class="text-gray-700"><?= htmlspecialchars($passo['responsavel_operacional'] ?? $passo['responsavel'] ?? '') ?></span></div>
-                            <div><span class="text-gray-500">Tempo:</span> <span class="text-gray-700"><?= htmlspecialchars($passo['tempo_operacional_estimado'] ?? $passo['tempo_estimado'] ?? '') ?></span></div>
-                            <div><span class="text-gray-500">Qualidade:</span> <span class="text-gray-700"><?= htmlspecialchars($passo['criterios_qualidade_operacionais'] ?? $passo['criterio_qualidade'] ?? '') ?></span></div>
+                            <div><span class="text-gray-500">Responsável:</span> <span class="text-gray-700"><?= htmlspecialchars(sopTexto($passo['responsavel_operacional'] ?? $passo['responsavel'] ?? '')) ?></span></div>
+                            <div><span class="text-gray-500">Tempo:</span> <span class="text-gray-700"><?= htmlspecialchars(sopTexto($passo['tempo_operacional_estimado'] ?? $passo['tempo_estimado'] ?? '')) ?></span></div>
+                            <div><span class="text-gray-500">Qualidade:</span> <span class="text-gray-700"><?= htmlspecialchars(sopTexto($passo['criterios_qualidade_operacionais'] ?? $passo['criterio_qualidade'] ?? '')) ?></span></div>
                         </div>
                         
                         <?php 
@@ -286,7 +312,7 @@ $temErroJson = isset($data['erro_json']);
                         if (!empty($observacoes)): 
                         ?>
                         <div class="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
-                            <span class="text-yellow-700">💡 <strong>Observações Operacionais:</strong> <?= htmlspecialchars($observacoes) ?></span>
+                            <span class="text-yellow-700">💡 <strong>Observações Operacionais:</strong> <?= htmlspecialchars(sopTexto($observacoes)) ?></span>
                         </div>
                         <?php endif; ?>
                     </div>
