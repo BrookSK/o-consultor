@@ -9665,22 +9665,31 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
     }
     
     /**
-     * Processar serviço completo: detalhar + gerar SOP em uma etapa
-     * Trabalha com a tabela servicos_setor
+     * Processar serviço em 3 FASES separadas (evita timeout do servidor).
+     * O frontend chama esta rota 3 vezes em sequência:
+     *   fase=1 -> Resumo (cria o SOP e retorna sop_id)
+     *   fase=2 -> Processo operacional completo (atualiza o SOP)
+     *   fase=3 -> Situações críticas (finaliza o SOP)
+     * Trabalha com a tabela servicos_setor.
      */
     public function processarServicoCompleto(): void
     {
         Auth::proteger();
         Csrf::verificar();
 
+        // Aumentar limite de tempo do PHP para as chamadas de IA
+        @set_time_limit(180);
+
         header('Content-Type: application/json');
 
         $servicoId = (int) ($_POST['servico_id'] ?? 0);
-        $etapa = trim($_POST['etapa'] ?? 'processo_completo');
+        $fase = (int) ($_POST['fase'] ?? 1);
+        $sopId = (int) ($_POST['sop_id'] ?? 0);
 
-        Logger::info('PROCESSANDO SERVIÇO COMPLETO', [
+        Logger::info('PROCESSANDO SERVIÇO - FASE', [
             'servico_id' => $servicoId,
-            'etapa' => $etapa
+            'fase' => $fase,
+            'sop_id' => $sopId
         ]);
 
         if (!$servicoId) {
@@ -9690,7 +9699,6 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
 
         try {
             // Buscar serviço com dados do setor e estrutura
-            // NOTA: não filtrar por empresa - ADMIN_HOLDING tem Auth::empresa() = null
             $servico = Database::queryOne(
                 "SELECT 
                     ss.*,
@@ -9730,7 +9738,6 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             if (!empty($servico['detalhamento_completo'])) {
                 $detalhamento = json_decode($servico['detalhamento_completo'], true) ?? [];
             }
-
             if (empty($detalhamento)) {
                 $detalhamento = [
                     'servico' => $servico['nome_servico'],
@@ -9741,122 +9748,247 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                 ];
             }
 
-            // Dados do serviço para o gerador de SOP
             $sopData = [
                 'nome_servico' => $servico['nome_servico'],
                 'nome_setor' => $servico['nome_setor'],
                 'codigo_servico' => $servico['codigo_servico']
             ];
 
-            // Gerar conteúdo do SOP em duas fases, capturando o erro real da IA
-            Logger::info('GERANDO CONTEÚDO DO SOP EM DUAS FASES', [
-                'servico' => $servico['nome_servico']
-            ]);
+            // ==================== FASE 1: RESUMO ====================
+            if ($fase === 1) {
+                $promptResumo = $this->criarPromptResumoSop($sopData, $detalhamento, $empresa, $diagnostico);
+                $resp = ApiHelper::chamarOpenAI($promptResumo, 'gpt-4o', true);
 
-            // FASE 1: Procedimentos operacionais
-            $promptProcedimentos = $this->criarPromptProcedimentosOperacionais($sopData, $detalhamento, $empresa, $diagnostico);
-            $respProc = ApiHelper::chamarOpenAI($promptProcedimentos, 'gpt-4o', true);
+                if (empty($resp['sucesso'])) {
+                    $erroReal = $resp['erro'] ?? 'Erro desconhecido na IA (Fase 1 - Resumo).';
+                    Logger::error('FALHA FASE 1 - Resumo', ['erro' => $erroReal]);
+                    echo json_encode(['sucesso' => false, 'erro' => 'Fase 1 (Resumo): ' . $erroReal]);
+                    exit;
+                }
 
-            if (empty($respProc['sucesso'])) {
-                $erroReal = $respProc['erro'] ?? 'Erro desconhecido na comunicação com a IA (Fase 1).';
-                Logger::error('FALHA FASE 1 - Procedimentos', ['erro' => $erroReal]);
-                echo json_encode(['sucesso' => false, 'erro' => 'Fase 1 (Procedimentos): ' . $erroReal]);
+                $resumo = $resp['conteudo'];
+
+                $conteudoInicial = [
+                    'sop_titulo' => $sopData['codigo_servico'] . ' - ' . $sopData['nome_servico'],
+                    'objetivo' => $resumo['objetivo'] ?? 'Objetivo não especificado',
+                    'escopo' => $resumo['escopo'] ?? 'Escopo não especificado',
+                    'resumo_executivo' => $resumo['resumo_executivo'] ?? '',
+                    'responsaveis' => $resumo['responsaveis'] ?? [],
+                    'competencias_requeridas' => $resumo['competencias_requeridas'] ?? [],
+                    'pre_requisitos' => $resumo['pre_requisitos'] ?? [],
+                    'recursos_necessarios' => $resumo['recursos_necessarios'] ?? [],
+                    'procedimentos' => [],
+                    'gestao_situacoes_fora_controle' => [],
+                    'versao' => '3.0 - Geração em 3 fases',
+                    'data_criacao' => date('d/m/Y H:i:s')
+                ];
+
+                // Se já existe SOP para este serviço, atualizar; senão criar
+                if (!empty($servico['sop_id'])) {
+                    Database::execute(
+                        "UPDATE sops SET conteudo = :conteudo, status = 'rascunho', atualizado_em = NOW() WHERE id = :id",
+                        ['conteudo' => json_encode($conteudoInicial, JSON_UNESCAPED_UNICODE), 'id' => $servico['sop_id']]
+                    );
+                    $novoSopId = (int) $servico['sop_id'];
+                } else {
+                    Database::execute(
+                        "INSERT INTO sops (empresa_id, diagnostico_id, titulo, sop_codigo, departamento, conteudo, versao, status, gerado_por_ia, criado_em, atualizado_em)
+                         VALUES (:empresa_id, :diagnostico_id, :titulo, :sop_codigo, :departamento, :conteudo, '1.0', 'rascunho', 1, NOW(), NOW())",
+                        [
+                            'empresa_id' => $servico['empresa_id'],
+                            'diagnostico_id' => $servico['diagnostico_id'],
+                            'titulo' => $servico['nome_servico'],
+                            'sop_codigo' => $servico['codigo_servico'],
+                            'departamento' => $servico['nome_setor'],
+                            'conteudo' => json_encode($conteudoInicial, JSON_UNESCAPED_UNICODE)
+                        ]
+                    );
+                    $novoSopId = (int) Database::lastInsertId();
+                }
+
+                // Vincular ao serviço
+                Database::execute(
+                    "UPDATE servicos_setor SET sop_id = :sop_id, tem_sop = 1, atualizado_em = NOW() WHERE id = :id",
+                    ['sop_id' => $novoSopId, 'id' => $servicoId]
+                );
+
+                Logger::info('FASE 1 CONCLUÍDA - Resumo salvo', ['sop_id' => $novoSopId]);
+
+                echo json_encode([
+                    'sucesso' => true,
+                    'fase' => 1,
+                    'sop_id' => $novoSopId,
+                    'mensagem' => 'Resumo gerado. Gerando procedimentos operacionais...'
+                ]);
                 exit;
             }
-            $procedimentosOperacionais = $respProc['conteudo'];
 
-            // FASE 2: Situações críticas
-            $promptCriticas = $this->criarPromptSituacoesCriticas($sopData, $detalhamento, $empresa, $diagnostico);
-            $respCrit = ApiHelper::chamarOpenAI($promptCriticas, 'gpt-4o', true);
-
-            if (empty($respCrit['sucesso'])) {
-                $erroReal = $respCrit['erro'] ?? 'Erro desconhecido na comunicação com a IA (Fase 2).';
-                Logger::error('FALHA FASE 2 - Situações Críticas', ['erro' => $erroReal]);
-                echo json_encode(['sucesso' => false, 'erro' => 'Fase 2 (Situações Críticas): ' . $erroReal]);
+            // Fases 2 e 3 precisam do sop_id
+            if (!$sopId) {
+                echo json_encode(['sucesso' => false, 'erro' => 'SOP não inicializado (sop_id ausente).']);
                 exit;
             }
-            $situacoesCriticas = $respCrit['conteudo'];
 
-            // Combinar as duas fases em um SOP completo
-            $sopCompletoArray = [
-                'sop_titulo' => $sopData['codigo_servico'] . ' - ' . $sopData['nome_servico'],
-                'objetivo' => $procedimentosOperacionais['objetivo'] ?? 'Objetivo não especificado',
-                'escopo' => $procedimentosOperacionais['escopo'] ?? 'Escopo não especificado',
-                'responsaveis' => $procedimentosOperacionais['responsaveis'] ?? [],
-                'competencias_requeridas' => $procedimentosOperacionais['competencias_operacionais_requeridas'] ?? [],
-                'pre_requisitos' => $procedimentosOperacionais['pre_requisitos_operacionais'] ?? [],
-                'recursos_necessarios' => $procedimentosOperacionais['recursos_operacionais_necessarios'] ?? [],
-                'procedimentos' => $procedimentosOperacionais['procedimentos_operacionais_detalhados'] ?? [],
-                'checklists' => $procedimentosOperacionais['checklists_operacionais'] ?? [],
-                'scripts_comunicacao' => $procedimentosOperacionais['scripts_comunicacao_operacionais'] ?? [],
-                'indicadores_performance' => $procedimentosOperacionais['indicadores_performance_operacionais'] ?? [],
-                'gestao_situacoes_fora_controle' => [
-                    'cenarios_criticos_obrigatorios' => $situacoesCriticas['gestao_situacoes_criticas']['cenarios_criticos_detalhados'] ?? [],
-                    'scripts_situacoes_dificeis' => $situacoesCriticas['gestao_situacoes_criticas']['scripts_situacoes_especificas'] ?? []
-                ],
-                'matriz_riscos_servico' => $situacoesCriticas['matriz_riscos_servico'] ?? [],
-                'treinamento_gestao_crises' => $situacoesCriticas['treinamento_gestao_crises'] ?? [],
-                'anexos_referencias' => $procedimentosOperacionais['documentacao_operacional'] ?? [],
-                'versao' => '2.0 - Duas Fases (Operacional + Críticas)',
-                'data_criacao' => date('d/m/Y H:i:s')
-            ];
+            $sopExistente = Database::queryOne("SELECT * FROM sops WHERE id = :id", ['id' => $sopId]);
+            if (!$sopExistente) {
+                echo json_encode(['sucesso' => false, 'erro' => 'SOP não encontrado para atualização.']);
+                exit;
+            }
+            $conteudoAtual = json_decode($sopExistente['conteudo'], true) ?? [];
 
-            $conteudoSop = json_encode($sopCompletoArray, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+            // ==================== FASE 2: PROCEDIMENTOS OPERACIONAIS ====================
+            if ($fase === 2) {
+                $promptProc = $this->criarPromptProcedimentosOperacionais($sopData, $detalhamento, $empresa, $diagnostico);
+                $resp = ApiHelper::chamarOpenAI($promptProc, 'gpt-4o', true);
 
-            // Salvar SOP na tabela sops (usar empresa do serviço, não Auth::empresa que pode ser null p/ admin)
-            Database::execute(
-                "INSERT INTO sops (empresa_id, diagnostico_id, titulo, sop_codigo, departamento, conteudo, versao, status, gerado_por_ia, criado_em, atualizado_em)
-                 VALUES (:empresa_id, :diagnostico_id, :titulo, :sop_codigo, :departamento, :conteudo, '1.0', 'ativo', 1, NOW(), NOW())",
-                [
-                    'empresa_id' => $servico['empresa_id'],
-                    'diagnostico_id' => $servico['diagnostico_id'],
-                    'titulo' => $servico['nome_servico'],
-                    'sop_codigo' => $servico['codigo_servico'],
-                    'departamento' => $servico['nome_setor'],
-                    'conteudo' => $conteudoSop
-                ]
-            );
+                if (empty($resp['sucesso'])) {
+                    $erroReal = $resp['erro'] ?? 'Erro desconhecido na IA (Fase 2 - Procedimentos).';
+                    Logger::error('FALHA FASE 2 - Procedimentos', ['erro' => $erroReal]);
+                    echo json_encode(['sucesso' => false, 'erro' => 'Fase 2 (Procedimentos): ' . $erroReal]);
+                    exit;
+                }
 
-            $sopId = (int) Database::lastInsertId();
+                $proc = $resp['conteudo'];
 
-            // Atualizar o serviço com o sop_id e status
-            Database::execute(
-                "UPDATE servicos_setor 
-                 SET sop_id = :sop_id, tem_sop = 1, status = 'sop_gerado', sop_gerado_em = NOW(), atualizado_em = NOW()
-                 WHERE id = :id",
-                ['sop_id' => $sopId, 'id' => $servicoId]
-            );
+                // Mesclar procedimentos ao conteúdo existente
+                $conteudoAtual['procedimentos'] = $proc['procedimentos_operacionais_detalhados'] ?? ($proc['procedimentos'] ?? []);
+                $conteudoAtual['checklists'] = $proc['checklists_operacionais'] ?? [];
+                $conteudoAtual['scripts_comunicacao'] = $proc['scripts_comunicacao_operacionais'] ?? [];
+                $conteudoAtual['indicadores_performance'] = $proc['indicadores_performance_operacionais'] ?? [];
+                $conteudoAtual['anexos_referencias'] = $proc['documentacao_operacional'] ?? [];
+                // Enriquecer campos que podem ter vindo melhores nesta fase
+                if (!empty($proc['recursos_operacionais_necessarios'])) {
+                    $conteudoAtual['recursos_necessarios'] = $proc['recursos_operacionais_necessarios'];
+                }
+                if (!empty($proc['pre_requisitos_operacionais'])) {
+                    $conteudoAtual['pre_requisitos'] = $proc['pre_requisitos_operacionais'];
+                }
 
-            // Atualizar contador de SOPs no setor
-            Database::execute(
-                "UPDATE setores_empresa 
-                 SET total_sops = (SELECT COUNT(*) FROM servicos_setor WHERE setor_id = :setor_id AND tem_sop = 1)
-                 WHERE id = :setor_id",
-                ['setor_id' => $servico['setor_id']]
-            );
+                Database::execute(
+                    "UPDATE sops SET conteudo = :conteudo, atualizado_em = NOW() WHERE id = :id",
+                    ['conteudo' => json_encode($conteudoAtual, JSON_UNESCAPED_UNICODE), 'id' => $sopId]
+                );
 
-            Logger::info('SOP GERADO E SALVO COM SUCESSO', [
-                'sop_id' => $sopId,
-                'servico_id' => $servicoId
-            ]);
+                Logger::info('FASE 2 CONCLUÍDA - Procedimentos salvos', ['sop_id' => $sopId]);
 
-            echo json_encode([
-                'sucesso' => true,
-                'mensagem' => 'SOP gerado com sucesso!',
-                'sop_id' => $sopId,
-                'redirect' => APP_URL . '/sop/ver-sop-individual?id=' . $sopId
-            ]);
+                echo json_encode([
+                    'sucesso' => true,
+                    'fase' => 2,
+                    'sop_id' => $sopId,
+                    'mensagem' => 'Procedimentos gerados. Gerando situações críticas...'
+                ]);
+                exit;
+            }
+
+            // ==================== FASE 3: SITUAÇÕES CRÍTICAS ====================
+            if ($fase === 3) {
+                $promptCrit = $this->criarPromptSituacoesCriticas($sopData, $detalhamento, $empresa, $diagnostico);
+                $resp = ApiHelper::chamarOpenAI($promptCrit, 'gpt-4o', true);
+
+                if (empty($resp['sucesso'])) {
+                    $erroReal = $resp['erro'] ?? 'Erro desconhecido na IA (Fase 3 - Situações Críticas).';
+                    Logger::error('FALHA FASE 3 - Situações Críticas', ['erro' => $erroReal]);
+                    echo json_encode(['sucesso' => false, 'erro' => 'Fase 3 (Situações Críticas): ' . $erroReal]);
+                    exit;
+                }
+
+                $crit = $resp['conteudo'];
+
+                $conteudoAtual['gestao_situacoes_fora_controle'] = [
+                    'cenarios_criticos_obrigatorios' => $crit['gestao_situacoes_criticas']['cenarios_criticos_detalhados'] ?? [],
+                    'scripts_situacoes_dificeis' => $crit['gestao_situacoes_criticas']['scripts_situacoes_especificas'] ?? []
+                ];
+                $conteudoAtual['matriz_riscos_servico'] = $crit['matriz_riscos_servico'] ?? [];
+                $conteudoAtual['treinamento_gestao_crises'] = $crit['treinamento_gestao_crises'] ?? [];
+
+                // Finalizar SOP
+                Database::execute(
+                    "UPDATE sops SET conteudo = :conteudo, status = 'ativo', atualizado_em = NOW() WHERE id = :id",
+                    ['conteudo' => json_encode($conteudoAtual, JSON_UNESCAPED_UNICODE), 'id' => $sopId]
+                );
+
+                // Marcar serviço como concluído
+                Database::execute(
+                    "UPDATE servicos_setor 
+                     SET sop_id = :sop_id, tem_sop = 1, status = 'sop_gerado', sop_gerado_em = NOW(), atualizado_em = NOW()
+                     WHERE id = :id",
+                    ['sop_id' => $sopId, 'id' => $servicoId]
+                );
+
+                // Atualizar contador de SOPs no setor
+                Database::execute(
+                    "UPDATE setores_empresa 
+                     SET total_sops = (SELECT COUNT(*) FROM servicos_setor WHERE setor_id = :setor_id AND tem_sop = 1)
+                     WHERE id = :setor_id",
+                    ['setor_id' => $servico['setor_id']]
+                );
+
+                Logger::info('FASE 3 CONCLUÍDA - SOP FINALIZADO', ['sop_id' => $sopId]);
+
+                echo json_encode([
+                    'sucesso' => true,
+                    'fase' => 3,
+                    'sop_id' => $sopId,
+                    'mensagem' => 'SOP completo gerado com sucesso!',
+                    'redirect' => APP_URL . '/sop/ver-sop-individual?id=' . $sopId
+                ]);
+                exit;
+            }
+
+            echo json_encode(['sucesso' => false, 'erro' => 'Fase inválida.']);
 
         } catch (Exception $e) {
-            Logger::error('ERRO ao processar serviço completo', [
+            Logger::error('ERRO ao processar serviço', [
                 'erro' => $e->getMessage(),
                 'servico_id' => $servicoId,
+                'fase' => $fase,
                 'trace' => $e->getTraceAsString()
             ]);
             echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
         }
 
         exit;
+    }
+
+    /**
+     * Criar prompt curto para o RESUMO do SOP (Fase 1 - rápido)
+     */
+    private function criarPromptResumoSop(array $servico, array $detalhamento, array $empresa, array $diagnostico): string
+    {
+        $nomeEmpresa = json_decode($diagnostico['respostas'], true)['nome_empresa'] ?? $empresa['nome'] ?? 'Empresa';
+        $nomeServico = $servico['nome_servico'];
+        $nomeSetor = $servico['nome_setor'];
+
+        return "Você é um especialista em processos empresariais. Gere o RESUMO INICIAL de um SOP (Procedimento Operacional Padrão).
+
+# CONTEXTO
+- Empresa: {$nomeEmpresa}
+- Setor: {$nomeSetor}
+- Serviço: {$nomeServico}
+
+# TAREFA
+Gere APENAS o cabeçalho/resumo deste SOP. Seja objetivo e profissional. NÃO gere os procedimentos passo a passo (isso será feito depois).
+
+Use SEMPRE terminologia genérica. NUNCA mencione marcas comerciais (ex: use 'ferramenta de gestão' em vez de nome de produto).
+
+# FORMATO DA RESPOSTA (JSON):
+```json
+{
+  \"objetivo\": \"Objetivo claro e específico deste serviço (2-3 frases)\",
+  \"escopo\": \"O que está incluído e o que não está no escopo deste procedimento\",
+  \"resumo_executivo\": \"Resumo executivo de 3-4 frases explicando a importância e visão geral do serviço\",
+  \"responsaveis\": {
+    \"executor_principal\": \"Cargo do executor principal\",
+    \"supervisor\": \"Cargo do supervisor\",
+    \"aprovador\": \"Cargo do aprovador final\"
+  },
+  \"competencias_requeridas\": [\"Competência 1\", \"Competência 2\", \"Competência 3\"],
+  \"pre_requisitos\": [\"Pré-requisito 1\", \"Pré-requisito 2\"],
+  \"recursos_necessarios\": [\"Recurso 1\", \"Recurso 2\", \"Recurso 3\"]
+}
+```
+
+Responda APENAS com o JSON válido, sem explicações adicionais.";
     }
 
     /**

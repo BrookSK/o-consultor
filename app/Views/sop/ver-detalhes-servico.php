@@ -428,37 +428,63 @@ async function salvarEdicao() {
     }
 }
 
-// Processar serviço (gerar SOP completo)
+// Processar serviço em 3 FASES sequenciais (evita timeout do servidor)
 async function processarServico(servicoId, etapa) {
-    mostrarLoading('Gerando SOP Completo', 'Isso pode levar alguns minutos. Aguarde...');
-    
-    try {
-        const response = await fetch('<?= APP_URL ?>/sop/processar-servico-completo', {
+    const CSRF = '<?= Csrf::token() ?>';
+    const URL = '<?= APP_URL ?>/sop/processar-servico-completo';
+
+    // Função auxiliar que chama uma fase
+    async function chamarFase(fase, sopId) {
+        const response = await fetch(URL, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams({
                 servico_id: servicoId,
-                etapa: etapa,
-                csrf_token: '<?= Csrf::token() ?>'
+                fase: fase,
+                sop_id: sopId || 0,
+                csrf_token: CSRF
             })
         });
-        
-        const data = await response.json();
-        
-        if (data.sucesso) {
+        return await response.json();
+    }
+
+    try {
+        // FASE 1: Resumo
+        mostrarLoading('Gerando SOP (1/3)', 'Criando resumo e estrutura inicial...');
+        let data = await chamarFase(1, 0);
+        if (!data.sucesso) {
             esconderLoading();
-            // Redirecionar direto para o SOP gerado
-            if (data.redirect) {
-                window.location.href = data.redirect;
-            } else {
-                window.location.reload();
-            }
-        } else {
-            esconderLoading();
-            alert('Erro no processamento: ' + (data.erro || 'Erro desconhecido'));
+            alert('Erro na Fase 1: ' + (data.erro || 'Erro desconhecido'));
+            return;
         }
+        const sopId = data.sop_id;
+
+        // FASE 2: Procedimentos operacionais
+        mostrarLoading('Gerando SOP (2/3)', 'Criando processo operacional completo...');
+        data = await chamarFase(2, sopId);
+        if (!data.sucesso) {
+            esconderLoading();
+            alert('Erro na Fase 2: ' + (data.erro || 'Erro desconhecido') + '\n\nO resumo foi salvo. Tente regenerar para completar.');
+            return;
+        }
+
+        // FASE 3: Situações críticas
+        mostrarLoading('Gerando SOP (3/3)', 'Criando situações críticas e gestão de crises...');
+        data = await chamarFase(3, sopId);
+        if (!data.sucesso) {
+            esconderLoading();
+            alert('Erro na Fase 3: ' + (data.erro || 'Erro desconhecido') + '\n\nOs procedimentos foram salvos. Tente regenerar para completar.');
+            return;
+        }
+
+        esconderLoading();
+        // Redirecionar para o SOP gerado
+        if (data.redirect) {
+            window.location.href = data.redirect;
+        } else {
+            window.location.reload();
+        }
+
     } catch (error) {
         esconderLoading();
         console.error('Erro:', error);
