@@ -8756,149 +8756,113 @@ Esta é a **SEGUNDA FASE** da geração do SOP. O foco é criar **PROTOCOLOS ULT
 Responda APENAS com o JSON válido das situações críticas, sem explicações adicionais.";
     }
 
-# INFORMAÇÕES DO SERVIÇO
-- **Código**: {$codigoServico}
-- **Serviço**: {$nomeServico}
-- **Setor**: {$nomeSetor}
-- **Empresa**: {$nomeEmpresa}
+    /**
+     * Buscar progresso da hierarquia
+     */
+    private function buscarProgressoHierarquia(int $estruturaId): ?array
+    {
+        return Database::queryOne(
+            "SELECT * FROM progresso_hierarquico WHERE estrutura_id = ?",
+            [$estruturaId]
+        );
+    }
+    
+    /**
+     * Criar prompt para detalhamento de serviço
+     */
+    private function criarPromptDetalhamentoServico(array $servico, array $contextoSetor, array $respostasDiagnostico): string
+    {
+        $nomeEmpresa = $respostasDiagnostico['nome_empresa'] ?? 'Empresa';
+        $segmento = $respostasDiagnostico['segmento'] ?? 'Geral';
+        $nomeSetor = $servico['nome_setor'];
+        $nomeServico = $servico['nome_servico'];
+        
+        return "DETALHAMENTO PROFISSIONAL DE SERVIÇO EMPRESARIAL
 
-# DETALHAMENTO COMPLETO DO SERVIÇO
-" . json_encode($detalhamento, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . "
+# CONTEXTO DA EMPRESA
+- **Nome**: {$nomeEmpresa}
+- **Segmento**: {$segmento}
+- **Setor em análise**: {$nomeSetor}
+- **Serviço para detalhar**: {$nomeServico}
 
-# INSTRUÇÕES CRÍTICAS PARA CRIAÇÃO DO SOP ULTRA TÉCNICO
+# INFORMAÇÕES DO DIAGNÓSTICO
+" . $this->extrairInformacoesRelevantes($respostasDiagnostico) . "
 
-Este SOP deve ser um **MANUAL TÉCNICO COMPLETO DE CAPACITAÇÃO PROFISSIONAL**. É o documento de treinamento definitivo que transforma um iniciante em um profissional competente nesta função específica.
+# CONTEXTO DO SETOR
+" . json_encode($contextoSetor, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . "
 
-## PRINCÍPIOS OBRIGATÓRIOS ULTRA RIGOROSOS:
+# TAREFA
+Você precisa detalhar PROFUNDAMENTE o serviço '{$nomeServico}' no setor '{$nomeSetor}' desta empresa específica.
 
-### 1. **MÁXIMO DETALHAMENTO TÉCNICO E INSTRUTIVO**
-- Cada passo deve explicar não apenas O QUE fazer, mas **EXATAMENTE COMO EXECUTAR** com precisão técnica
-- Incluir **metodologias profissionais**, **técnicas especializadas** e **abordagens comprovadas**
-- Fornecer **scripts completos**, **templates práticos** e **modelos de execução detalhados**
-- Prever **todos os cenários possíveis** e suas respectivas **soluções técnicas específicas**
-- Dar **exemplos técnicos reais** aplicáveis ao contexto empresarial
-
-### 2. **DIFERENCIAÇÃO RIGOROSA POR NÍVEL DE COMPLEXIDADE**
-- **Passos administrativos simples**: Descrição objetiva com validações técnicas
-- **Processos técnicos médios**: Detalhamento com metodologias e ferramentas específicas
-- **Processos altamente complexos**: Detalhamento EXTENSO com técnicas avançadas, múltiplas abordagens e scripts completos
-- **Interações interpessoais**: Modelos de comunicação profissional, scripts psicológicos e técnicas de relacionamento
-- **Análises especializadas**: Metodologias técnicas, frameworks de análise e ferramentas específicas
-
-### 3. **FOCO EM EXCELÊNCIA PROFISSIONAL TÉCNICA**
-- O SOP deve capacitar para **execução de nível especialista**
-- Incluir **metodologias reconhecidas**, **frameworks profissionais** e **melhores práticas de mercado**
-- Explicar **fundamentação técnica** e **embasamento científico** quando aplicável
-- Preparar para **situações críticas** e **cenários de alta pressão**
-- Desenvolver **competências técnicas avançadas** e **expertise especializada**
-
-### 4. **USO OBRIGATÓRIO DE TERMINOLOGIA GENÉRICA**
-- **NUNCA mencionar marcas comerciais ou nomes de produtos específicos**
-- Usar sempre **termos genéricos** e **categorias funcionais**:
-  - ❌ \"Configure no servidor da Amazon\" → ✅ \"Configure no servidor de hospedagem em nuvem\"
-  - ❌ \"Use o ChatGPT para análise\" → ✅ \"Use a ferramenta de inteligência artificial para análise\"
-  - ❌ \"Abra o Microsoft Excel\" → ✅ \"Abra a planilha eletrônica\"
-  - ❌ \"Envie pelo WhatsApp\" → ✅ \"Envie pela ferramenta de mensageria instantânea\"
-  - ❌ \"Use o Salesforce\" → ✅ \"Use o sistema de CRM (gestão de relacionamento com clientes)\"
-  - ❌ \"Configure no AWS\" → ✅ \"Configure na plataforma de computação em nuvem\"
-
-### 5. **OBRIGATORIEDADE DE CENÁRIOS CRÍTICOS E SITUAÇÕES FORA DE CONTROLE**
-- **SEMPRE prever e detalhar situações que podem fugir do controle normal**
-- Incluir **scripts específicos** e **protocolos de emergência** para cada cenário crítico:
-
-**SITUAÇÕES CRÍTICAS OBRIGATÓRIAS POR CONTEXTO:**
-
-🔥 **ATENDIMENTO E RELACIONAMENTO:**
-- Cliente extremamente irritado ou agressivo
-- Cliente ameaçando cancelar o serviço
-- Reclamação pública em redes sociais
-- Cliente exigindo falar com supervisor imediatamente
-- Situação de constrangimento ou mal-entendido
-- Cliente questionando competência da empresa
-
-💰 **FINANCEIRO E COBRANÇA:**
-- Cliente inadimplente há meses resistindo ao pagamento
-- Negociação de dívida em situação crítica
-- Cliente alegando não ter recebido o produto/serviço
-- Disputa de valores e contestação de cobrança
-- Cliente pedindo desconto emergencial
-- Situação de execução judicial ou protesto
-
-⚙️ **TÉCNICO E OPERACIONAL:**
-- Sistema principal caído durante horário crítico
-- Falha massiva que afeta múltiplos clientes
-- Perda de dados ou backup corrompido
-- Ataque de segurança ou vazamento de informações
-- Fornecedor principal paralisando entregas
-- Equipamento crítico quebrado sem backup imediato
-
-📋 **PROCESSOS E QUALIDADE:**
-- Erro grave que afetou cliente importante
-- Não conformidade descoberta em auditoria
-- Reclamação formal de órgão regulador
-- Processo trabalhista ou denúncia
-- Acidente de trabalho ou questão de segurança
-- Perda de certificação ou licença importante
-
-🚨 **GESTÃO DE CRISES:**
-- Situação viral negativa nas redes sociais
-- Greve ou paralisação de colaboradores
-- Desastre natural afetando operações
-- Saída súbita de colaborador chave
-- Concorrente copiando estratégias ou produtos
-- Mudança regulatória que impacta o negócio
-
-**NÍVEL DE DETALHAMENTO OBRIGATÓRIO PARA SITUAÇÕES CRÍTICAS:**
-- **Mínimo 200 palavras** por cenário crítico
-- **Scripts word-by-word** para comunicação em crise (frases exatas)
-- **Passo-a-passo minucioso** de contenção e resolução
-- **Múltiplas abordagens** para diferentes níveis de gravidade
-- **Técnicas psicológicas específicas** de desescalação
-- **Protocolos de escalação** com tempos e responsáveis definidos
-- **Procedimentos pós-crise** detalhados para evitar reincidência
-
-## ESTRUTURA OBRIGATÓRIA DO SOP ULTRA TÉCNICO EM JSON:
-
-**ATENÇÃO: ESTE SOP DEVE SER UM MANUAL COMPLETO DE TREINAMENTO. CADA SEÇÃO DEVE TER DETALHAMENTO EXTENSO. NÃO ACEITAR RESPOSTAS SUPERFICIAIS OU COM POUCAS PALAVRAS.**
-
-**EXEMPLO DE DETALHAMENTO CORRETO OBRIGATÓRIO:**
-- Objetivo: 4+ frases explicando propósito, resultados esperados, impacto no negócio
-- Detalhamento de Passo: 150+ palavras explicando exatamente como executar, que ferramentas usar, que validações fazer
-- Script de Comunicação: Frases completas word-by-word, não resumos
-- Situação Crítica: 300+ palavras com identificação, script, técnicas, escalação
-
-**SE A RESPOSTA FOR SUPERFICIAL (poucos passos, frases curtas, falta de detalhes), SERÁ REJEITADA**
-
+## ESTRUTURA OBRIGATÓRIA DA RESPOSTA (JSON):
 ```json
 {
-  \"sop_titulo\": \"SOP {$codigoServico} - {$nomeServico}\",
-  \"objetivo\": \"OBRIGATÓRIO MÍNIMO 4 FRASES DETALHADAS: Objetivo técnico completo explicando propósito específico, resultados mensuráveis esperados, impacto direto no negócio e benefícios para o cliente. Exemplo: Este SOP tem como objetivo padronizar o processo de atendimento ao cliente, garantindo resolução de 95% dos chamados em até 24 horas, reduzindo retrabalho em 30% e aumentando a satisfação do cliente para NPS superior a 8. O processo visa estabelecer comunicação eficaz, diagnóstico preciso dos problemas e soluções definitivas que agreguem valor ao relacionamento comercial.\",
-  \"escopo\": \"OBRIGATÓRIO MÍNIMO 4 FRASES DETALHADAS: Definição técnica completa do escopo incluindo o que está incluído, o que está excluído, limitações específicas, interfaces com outros processos, aplicabilidade por contexto e condições de execução. Exemplo: Este procedimento aplica-se a todos os atendimentos realizados pelos canais oficiais da empresa, incluindo telefone, email, chat e presencial, abrangendo clientes pessoa física e jurídica com contratos ativos. Não se aplica a atendimentos de prospecção comercial, cobrança judicial ou suporte técnico especializado nível 3. O escopo limita-se a problemas de complexidade baixa e média, com tempo de resolução estimado em até 4 horas de trabalho técnico.\",
-  \"responsaveis\": {
-    \"executor_principal\": \"Cargo específico com competências técnicas requeridas\",
-    \"supervisor_tecnico\": \"Cargo de quem supervisiona tecnicamente e valida qualidade\",
-    \"aprovador_final\": \"Cargo de quem aprova o resultado e autoriza prosseguimento\",
-    \"escalacao_critica\": \"Cargo para escalação em situações críticas ou exceções\"
-  },
-  \"competencias_requeridas\": [
-    \"Competência técnica específica com nível requerido\",
-    \"Conhecimento especializado detalhado com aplicação\",
-    \"Habilidade interpessoal com contexto de uso\",
-    \"Certificação ou qualificação técnica se aplicável\"
+  \"servico\": \"{$nomeServico}\",
+  \"setor\": \"{$nomeSetor}\",
+  \"objetivo_principal\": \"[Qual o objetivo principal deste serviço?]\",
+  \"responsabilidades\": [
+    \"[Lista das principais responsabilidades]\",
+    \"[Cada responsabilidade em um item]\"
   ],
-  \"pre_requisitos_tecnicos\": [
-    \"Pré-requisito técnico específico com validação obrigatória\",
-    \"Conhecimento técnico necessário com profundidade requerida\",
-    \"Acesso/permissão específica com justificativa de segurança\",
-    \"Ferramenta/sistema com versão e configuração mínima\"
+  \"processos_detalhados\": [
+    {
+      \"nome_processo\": \"[Nome do processo]\",
+      \"descricao\": \"[Descrição detalhada]\",
+      \"etapas\": [
+        \"[Etapa 1: descrição]\",
+        \"[Etapa 2: descrição]\",
+        \"[Etapa N: descrição]\"
+      ],
+      \"recursos_necessarios\": [\"[Lista de recursos]\"],
+      \"tempo_estimado\": \"[Tempo estimado]\",
+      \"frequencia\": \"[diária/semanal/mensal/sob_demanda]\"
+    }
   ],
-  \"recursos_necessarios\": {
-    \"sistemas_tecnicos\": [\"Sistema específico com função detalhada e requisitos técnicos\", \"Plataforma de categoria X para finalidade Y específica\"],
-    \"equipamentos_especializados\": [\"Equipamento técnico com especificações mínimas\", \"Ferramenta profissional categoria X para atividade Y\"],
-    \"documentos_tecnicos\": [\"Formulário técnico específico com campos obrigatórios\", \"Template profissional X para situação Y com variáveis\"],
-    \"materiais_fisicos\": [\"Material físico com especificação técnica\", \"Insumo categoria X com características Y\"],
-    \"ferramentas_software\": [\"Categoria de software específica com funcionalidades requeridas\", \"Ferramenta de categoria X para processo Y\"]
-  },
+  \"integracao_setores\": [
+    {
+      \"setor\": \"[Nome do setor]\",
+      \"tipo_integracao\": \"[entrada/saída/bidirecional]\",
+      \"descricao\": \"[Como interagem]\"
+    }
+  ],
+  \"recursos_principais\": [
+    {
+      \"tipo\": \"[sistema/ferramenta/pessoa/documento]\",
+      \"nome\": \"[Nome do recurso]\",
+      \"funcao\": \"[Para que é usado]\"
+    }
+  ],
+  \"problemas_comuns\": [
+    {
+      \"problema\": \"[Descrição do problema]\",
+      \"impacto\": \"[Alto/Médio/Baixo]\",
+      \"solucao_nivel1\": \"[Solução imediata/operacional]\",
+      \"solucao_nivel2\": \"[Solução tática/supervisão]\",
+      \"solucao_nivel3\": \"[Solução estratégica/direção]\"
+    }
+  ],
+  \"indicadores_desempenho\": [
+    {
+      \"kpi\": \"[Nome do KPI]\",
+      \"unidade_medida\": \"[%/unidades/tempo/valor]\",
+      \"meta_sugerida\": \"[Valor meta]\",
+      \"frequencia_medicao\": \"[Frequência]\"
+    }
+  ],
+  \"nivel_criticidade\": \"[Alta/Média/Baixa]\",
+  \"complexidade\": \"[Simples/Média/Alta]\",
+  \"observacoes_especiais\": \"[Observações específicas desta empresa]\"
+}
+```
+
+**IMPORTANTE**:
+- Baseie-se nas informações REAIS da empresa
+- Seja ESPECÍFICO para o segmento {$segmento}
+- Considere o porte e características desta empresa
+- Forneça soluções PRÁTICAS e aplicáveis
+- Use linguagem profissional mas acessível
+- RESPONDA APENAS COM O JSON VÁLIDO, SEM EXPLICAÇÕES ADICIONAIS";
+    }
   \"procedimentos_ultra_detalhados\": [
     {
       \"fase\": \"NOME DA FASE (ex: Preparação Técnica e Planejamento Estratégico)\",
