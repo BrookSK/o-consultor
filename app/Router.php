@@ -87,6 +87,7 @@ class Router
         $this->post('sop/gerar-sop-individual', 'SopController', 'gerarSopIndividual');         // Novo: Gerar SOP específico
         $this->get('sop/ver-detalhamento-servico', 'SopController', 'verDetalhamentoServico'); // Novo: Ver detalhamento
         $this->get('sop/ver-sop-individual', 'SopController', 'verSopIndividual');             // Novo: Ver SOP individual
+        $this->get('sop/debug-dados', 'SopController', 'debugSopDados');                      // Debug: Ver dados brutos do SOP
         $this->post('sop/adicionar-servico-manual', 'SopController', 'adicionarServicoManual'); // Novo: Adicionar serviço manual
         $this->get('sop/listar-servicos-manuais', 'SopController', 'listarServicosManuais');   // Novo: Listar serviços manuais
         $this->post('sop/excluir-servico-manual', 'SopController', 'excluirServicoManual');    // Novo: Excluir serviço manual

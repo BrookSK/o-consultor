@@ -1,9 +1,27 @@
 <?php 
 $tituloPagina = $dados['titulo_pagina'] ?? 'SOP Individual'; 
-$sop = $dados['sop'];
-$data = $dados['sop_data'];
+$sop = $dados['sop'] ?? [];
+$data = $dados['sop_data'] ?? [];
+
+// Debug: Verificar se temos dados válidos
+if (empty($sop) || empty($data)) {
+    error_log("ERRO SOP VIEW: Dados faltando - SOP: " . (empty($sop) ? 'VAZIO' : 'OK') . " DATA: " . (empty($data) ? 'VAZIO' : 'OK'));
+}
+
+// Se há erro de JSON, mostrar aviso
+$temErroJson = isset($data['erro_json']);
 ?>
 <?php ob_start(); ?>
+
+<?php if ($temErroJson): ?>
+<div class="max-w-6xl mx-auto mb-6">
+    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+        <h3 class="text-lg font-semibold text-yellow-800 mb-2">⚠️ Aviso sobre o Conteúdo</h3>
+        <p class="text-yellow-700 text-sm"><?= htmlspecialchars($data['erro_json']) ?></p>
+        <p class="text-yellow-600 text-xs mt-2">Os dados serão exibidos com informações mínimas até que o conteúdo seja reprocessado.</p>
+    </div>
+</div>
+<?php endif; ?>
 
 <div class="max-w-6xl mx-auto">
     <!-- Cabeçalho -->
@@ -41,7 +59,7 @@ $data = $dados['sop_data'];
         </div>
     </div>
     
-    <?php if ($data): ?>
+    <?php if ($data && !empty($data)): ?>
     
     <!-- Modal de Transcrição por Voz -->
     <div id="modal-transcricao" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center">
@@ -349,8 +367,8 @@ $data = $dados['sop_data'];
 let modoEdicao = false;
 let mediaRecorder = null;
 let audioChunks = [];
-let sopData = <?= json_encode($data, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
-let sopId = <?= (int) $sop['id'] ?>;
+let sopData = <?= json_encode($data, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?: '{}' ?>;
+let sopId = <?= (int) ($sop['id'] ?? 0) ?>;
 
 // Alternar modo de edição
 function alternarModoEdicao() {

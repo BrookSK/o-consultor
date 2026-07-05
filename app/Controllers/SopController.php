@@ -7558,13 +7558,87 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             exit;
         }
         
+        // Debug: verificar se o conteúdo é um JSON válido
+        $conteudoDecodificado = json_decode($sop['conteudo'], true);
+        $erroJson = json_last_error();
+        
+        Logger::info('Debug conteúdo SOP', [
+            'sop_id' => $sopId,
+            'conteudo_raw' => substr($sop['conteudo'], 0, 200) . '...',
+            'conteudo_decodificado' => $conteudoDecodificado ? 'SUCESSO' : 'FALHOU',
+            'json_error' => $erroJson,
+            'json_error_msg' => json_last_error_msg(),
+            'conteudo_length' => strlen($sop['conteudo']),
+            'conteudo_type' => gettype($sop['conteudo'])
+        ]);
+        
+        // Se o JSON falhou, criar estrutura mínima para evitar erros na view
+        if (!$conteudoDecodificado) {
+            $conteudoDecodificado = [
+                'sop_titulo' => $sop['titulo'] ?? 'SOP sem título',
+                'objetivo' => 'Conteúdo sendo processado...',
+                'escopo' => 'Aguarde processamento completo.',
+                'procedimentos' => [],
+                'erro_json' => 'Conteúdo não está em formato JSON válido: ' . json_last_error_msg()
+            ];
+        }
+        
         $dados = [
             'sop' => $sop,
-            'sop_data' => json_decode($sop['conteudo'], true) ?: ['conteudo' => $sop['conteudo']],
-            'titulo_pagina' => 'SOP: ' . $sop['nome_servico']
+            'sop_data' => $conteudoDecodificado,
+            'titulo_pagina' => 'SOP: ' . ($sop['nome_servico'] ?? $sop['titulo'] ?? 'SOP Individual')
         ];
         
+        // Verificar se todos os dados necessários estão presentes
+        Logger::info('Dados preparados para view', [
+            'sop_keys' => array_keys($sop),
+            'sop_data_keys' => array_keys($conteudoDecodificado),
+            'titulo_pagina' => $dados['titulo_pagina']
+        ]);
+        
         require VIEW_PATH . '/sop/ver-sop-individual.php';
+    }
+    
+    /**
+     * Debug: Ver dados brutos do SOP (apenas para debug)
+     */
+    public function debugSopDados(): void
+    {
+        Auth::proteger();
+        
+        $sopId = (int) ($_GET['id'] ?? 0);
+        if (!$sopId) {
+            die('ID não informado');
+        }
+        
+        $sop = Database::queryOne(
+            "SELECT * FROM sops WHERE id = :id AND empresa_id = :empresa_id LIMIT 1",
+            ['id' => $sopId, 'empresa_id' => Auth::empresa()]
+        );
+        
+        if (!$sop) {
+            die('SOP não encontrado');
+        }
+        
+        header('Content-Type: text/plain; charset=utf-8');
+        echo "=== DEBUG SOP #$sopId ===\n\n";
+        echo "Campos disponíveis:\n";
+        foreach ($sop as $campo => $valor) {
+            echo "- $campo: " . (is_string($valor) ? strlen($valor) . ' chars' : gettype($valor)) . "\n";
+        }
+        
+        echo "\n\nConteúdo bruto (primeiros 500 chars):\n";
+        echo substr($sop['conteudo'], 0, 500) . (strlen($sop['conteudo']) > 500 ? '...' : '');
+        
+        echo "\n\n=== Tentativa de decodificação JSON ===\n";
+        $decoded = json_decode($sop['conteudo'], true);
+        if ($decoded) {
+            echo "JSON VÁLIDO - Chaves principais:\n";
+            echo implode(', ', array_keys($decoded));
+        } else {
+            echo "JSON INVÁLIDO - Erro: " . json_last_error_msg();
+            echo "\nConteúdo não é JSON, tratando como texto puro.";
+        }
     }
 
     /**
