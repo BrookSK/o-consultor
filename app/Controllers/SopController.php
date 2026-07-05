@@ -9757,7 +9757,8 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             // ==================== FASE 1: RESUMO ====================
             if ($fase === 1) {
                 $promptResumo = $this->criarPromptResumoSop($sopData, $detalhamento, $empresa, $diagnostico);
-                $resp = ApiHelper::chamarOpenAI($promptResumo, 'gpt-4o', true);
+                // Resumo é curto: limitar tokens para responder rápido (< 60s do proxy)
+                $resp = ApiHelper::chamarOpenAI($promptResumo, 'gpt-4o-mini', true, 2000);
 
                 if (empty($resp['sucesso'])) {
                     $erroReal = $resp['erro'] ?? 'Erro desconhecido na IA (Fase 1 - Resumo).';
@@ -9839,7 +9840,8 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             // ==================== FASE 2: PROCEDIMENTOS OPERACIONAIS ====================
             if ($fase === 2) {
                 $promptProc = $this->criarPromptProcedimentosOperacionais($sopData, $detalhamento, $empresa, $diagnostico);
-                $resp = ApiHelper::chamarOpenAI($promptProc, 'gpt-4o', true);
+                // Usar gpt-4o-mini (mais rápido) com limite de tokens para caber no timeout do proxy
+                $resp = ApiHelper::chamarOpenAI($promptProc, 'gpt-4o-mini', true, 6000);
 
                 if (empty($resp['sucesso'])) {
                     $erroReal = $resp['erro'] ?? 'Erro desconhecido na IA (Fase 2 - Procedimentos).';
@@ -9883,7 +9885,8 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             // ==================== FASE 3: SITUAÇÕES CRÍTICAS ====================
             if ($fase === 3) {
                 $promptCrit = $this->criarPromptSituacoesCriticas($sopData, $detalhamento, $empresa, $diagnostico);
-                $resp = ApiHelper::chamarOpenAI($promptCrit, 'gpt-4o', true);
+                // Usar gpt-4o-mini (mais rápido) com limite de tokens para caber no timeout do proxy
+                $resp = ApiHelper::chamarOpenAI($promptCrit, 'gpt-4o-mini', true, 6000);
 
                 if (empty($resp['sucesso'])) {
                     $erroReal = $resp['erro'] ?? 'Erro desconhecido na IA (Fase 3 - Situações Críticas).';

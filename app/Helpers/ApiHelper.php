@@ -40,11 +40,11 @@ class ApiHelper
      * Chama a API da OpenAI (GPT-4o, GPT-4o-mini, etc.)
      * Chave e modelo são lidos do banco via tela de configurações.
      */
-    public static function chamarOpenAI(string $prompt, ?string $model = null, bool $jsonMode = true): array
+    public static function chamarOpenAI(string $prompt, ?string $model = null, bool $jsonMode = true, ?int $maxTokensOverride = null): array
     {
         $apiKey = self::config('openai_key');
         $model = $model ? $model : self::config('openai_modelo', 'gpt-4o');
-        $maxTokens = (int) self::config('openai_max_tokens', '8192');
+        $maxTokens = $maxTokensOverride ?? (int) self::config('openai_max_tokens', '8192');
 
         if (empty($apiKey)) {
             return ['sucesso' => false, 'conteudo' => null, 'erro' => 'Chave OpenAI não configurada. Acesse Admin > Configurações > APIs.'];
