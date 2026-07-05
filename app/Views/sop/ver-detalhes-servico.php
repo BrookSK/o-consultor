@@ -542,7 +542,7 @@ async function processarServico(servicoId, etapa) {
                     alert('Erro na geração: ' + (proc.erro || 'Erro desconhecido'));
                     return;
                 }
-                if (proc && (proc.concluido || (proc.fase && proc.fase >= 3))) {
+                if (proc && (proc.concluido || (proc.fase && proc.fase >= 4))) {
                     concluido = true;
                     break;
                 }

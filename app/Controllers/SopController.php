@@ -9719,7 +9719,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                 'sop_titulo' => $servico['codigo_servico'] . ' - ' . $servico['nome_servico'],
                 'status_geracao' => 'na_fila',
                 'fase_atual' => 0,
-                'total_fases' => 3,
+                'total_fases' => 4,
                 'mensagem_progresso' => 'Aguardando processamento...',
                 'data_criacao' => date('d/m/Y H:i:s')
             ];
@@ -10097,7 +10097,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                 'sop_titulo' => $sopData['codigo_servico'] . ' - ' . $sopData['nome_servico'],
                 'status_geracao' => 'processando',
                 'fase_atual' => 1,
-                'total_fases' => 3,
+                'total_fases' => 4,
                 'objetivo' => $r['objetivo'] ?? 'Objetivo não especificado',
                 'escopo' => $r['escopo'] ?? 'Escopo não especificado',
                 'resumo_executivo' => $r['resumo_executivo'] ?? '',
@@ -10439,7 +10439,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             'sop_id' => $sopId,
             'status_geracao' => $statusGeracao,
             'fase_atual' => $faseFila ?: ($conteudo['fase_atual'] ?? 0),
-            'total_fases' => $conteudo['total_fases'] ?? 3,
+            'total_fases' => $conteudo['total_fases'] ?? 4,
             'mensagem' => $mensagem,
             'processando' => $processandoAgora,
             'segundos_sem_atualizar' => $segundosDesdeUpdate,
