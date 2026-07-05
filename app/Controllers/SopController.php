@@ -9885,9 +9885,9 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
 
             Database::execute(
                 "UPDATE setores_empresa 
-                 SET total_sops = (SELECT COUNT(*) FROM servicos_setor WHERE setor_id = :setor_id AND tem_sop = 1)
+                 SET total_sops = (SELECT COUNT(*) FROM servicos_setor WHERE setor_id = :setor_id_sub AND tem_sop = 1)
                  WHERE id = :setor_id",
-                ['setor_id' => $servico['setor_id']]
+                ['setor_id_sub' => $servico['setor_id'], 'setor_id' => $servico['setor_id']]
             );
 
             Logger::info('SOP BACKGROUND FINALIZADO', ['sop_id' => $sopId, 'servico_id' => $servicoId]);
