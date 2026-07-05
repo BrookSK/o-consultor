@@ -33,8 +33,8 @@ $data = $dados['sop_data'];
         </div>
         
         <div class="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
-            <div><span class="text-gray-500">Serviço:</span> <span class="font-medium"><?= htmlspecialchars($sop['servico_nome']) ?></span></div>
-            <div><span class="text-gray-500">Setor:</span> <span class="font-medium"><?= htmlspecialchars($sop['setor_nome']) ?></span></div>
+            <div><span class="text-gray-500">Serviço:</span> <span class="font-medium"><?= htmlspecialchars($sop['servico_nome'] ?? $sop['nome_servico'] ?? $sop['titulo'] ?? 'N/A') ?></span></div>
+            <div><span class="text-gray-500">Setor:</span> <span class="font-medium"><?= htmlspecialchars($sop['setor_nome'] ?? $sop['nome_setor'] ?? $sop['departamento'] ?? 'N/A') ?></span></div>
             <div><span class="text-gray-500">Versão:</span> <span class="font-medium"><?= htmlspecialchars($data['versao'] ?? '1.0') ?></span></div>
             <div><span class="text-gray-500">Data:</span> <span class="font-medium"><?= htmlspecialchars($data['data_criacao'] ?? date('Y-m-d')) ?></span></div>
             <div><span class="text-gray-500">ID:</span> <span class="font-mono">#<?= $sop['id'] ?></span></div>

@@ -7504,7 +7504,8 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
     {
         Auth::proteger();
         
-        $sopId = (int) ($_GET['sop_id'] ?? 0);
+        // Aceitar tanto 'sop_id' quanto 'id' para compatibilidade
+        $sopId = (int) ($_GET['sop_id'] ?? $_GET['id'] ?? 0);
         
         if (!$sopId) {
             Flash::set('erro', 'SOP não encontrado.');
@@ -7519,6 +7520,37 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
              WHERE s.id = :id AND s.empresa_id = :empresa_id AND ss.tem_sop = 1",
             ['id' => $sopId, 'empresa_id' => Auth::empresa()]
         );
+        
+        // Se não encontrou com JOIN, tentar buscar apenas na tabela sops (fallback)
+        if (!$sop) {
+            $sop = Database::queryOne(
+                "SELECT s.*, s.titulo as nome_servico, s.titulo as servico_nome,
+                        s.departamento as nome_setor, s.departamento as setor_nome,
+                        s.titulo as codigo_servico
+                 FROM sops s
+                 WHERE s.id = :id AND s.empresa_id = :empresa_id",
+                ['id' => $sopId, 'empresa_id' => Auth::empresa()]
+            );
+        }
+        
+        // Debug: Log para identificar o problema
+        Logger::info('Debug verSopIndividual', [
+            'sop_id' => $sopId,
+            'empresa_id' => Auth::empresa(),
+            'sop_encontrado' => !empty($sop),
+            'campos_sop' => $sop ? array_keys($sop) : 'nenhum'
+        ]);
+        
+        // Debug adicional: Verificar se existem SOPs na tabela
+        $totalSOPs = Database::queryOne(
+            "SELECT COUNT(*) as total FROM sops WHERE empresa_id = :empresa_id",
+            ['empresa_id' => Auth::empresa()]
+        );
+        
+        Logger::info('Debug: SOPs na empresa', [
+            'total_sops' => $totalSOPs['total'] ?? 0,
+            'empresa_id' => Auth::empresa()
+        ]);
         
         if (!$sop) {
             Flash::set('erro', 'SOP não encontrado.');
