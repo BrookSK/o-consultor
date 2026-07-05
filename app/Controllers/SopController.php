@@ -10115,7 +10115,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         if ($fase === 2) {
             Logger::info('FILA FASE 2 (proc parte 1) INICIANDO', ['sop_id' => $sopId]);
             $prompt = $this->criarPromptProcedimentosParte($sopData, $detalhamento, $empresa, $diagnostico, 1);
-            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 4000, 55);
+            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 6000, 55);
             if (empty($resp['sucesso'])) {
                 return ['sucesso' => false, 'erro' => 'Fase 2 (Procedimentos): ' . ($resp['erro'] ?? 'Erro na IA')];
             }
@@ -10132,7 +10132,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         if ($fase === 3) {
             Logger::info('FILA FASE 3 (proc parte 2) INICIANDO', ['sop_id' => $sopId]);
             $prompt = $this->criarPromptProcedimentosParte($sopData, $detalhamento, $empresa, $diagnostico, 2);
-            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 4000, 55);
+            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 6000, 55);
             if (empty($resp['sucesso'])) {
                 return ['sucesso' => false, 'erro' => 'Fase 3 (Procedimentos parte 2): ' . ($resp['erro'] ?? 'Erro na IA')];
             }
@@ -10520,6 +10520,14 @@ Responda APENAS com o JSON válido, sem explicações adicionais.";
 Cada fase deve ter de 3 a 5 passos. Cada passo deve ser detalhado e prático (100-180 palavras no detalhamento).
 Use terminologia genérica. NUNCA mencione marcas comerciais.
 
+## REGRA IMPORTANTE SOBRE SCRIPTS (NÃO IGNORE):
+O campo \"scripts_operacionais_completos\" deve ser um GUIA DE FALA COMPLETO e orientado ao leitor do SOP, não uma frase solta. Sempre que o passo envolver comunicação (com cliente, colega, fornecedor ou equipe), escreva o diálogo COMPLETO palavra por palavra, cobrindo:
+- **Abertura**: como iniciar a conversa (saudação + identificação + objetivo)
+- **Desenvolvimento**: o que dizer no meio, perguntas exatas a fazer, como conduzir
+- **Contorno de objeções/dúvidas**: frases prontas para as reações mais comuns
+- **Fechamento**: como encerrar, confirmar entendimento e próximos passos
+Use rótulos como 'Você diz:', 'Se o cliente responder X, diga:', 'Para encerrar:'. Mínimo de 120 palavras por script quando houver comunicação. Se o passo for puramente técnico (sem interação humana), descreva os comandos/ações exatas a executar.
+
 # FORMATO (JSON):
 ```json
 {
@@ -10531,11 +10539,11 @@ Use terminologia genérica. NUNCA mencione marcas comerciais.
         {
           \"passo\": 1,
           \"acao_operacional\": \"Título da ação específica\",
-          \"detalhamento_operacional_completo\": \"Como executar passo a passo (100-180 palavras): ferramentas, validações, registros, scripts de comunicação quando aplicável.\",
+          \"detalhamento_operacional_completo\": \"Como executar passo a passo (100-180 palavras): ferramentas, validações, registros.\",
           \"responsavel_operacional\": \"Cargo responsável\",
           \"tempo_operacional_estimado\": \"Tempo estimado\",
           \"criterios_qualidade_operacionais\": \"Critérios de qualidade mensuráveis\",
-          \"scripts_operacionais_completos\": \"Scripts word-by-word quando houver comunicação, senão vazio\",
+          \"scripts_operacionais_completos\": \"GUIA DE FALA COMPLETO word-by-word (mínimo 120 palavras quando houver comunicação): Abertura, Desenvolvimento com perguntas exatas, contorno de objeções ('Se responder X, diga: ...'), e Fechamento. Se for técnico, os comandos/ações exatas.\",
           \"ferramentas_operacionais\": \"Ferramentas e sistemas usados\"
         }
       ]
