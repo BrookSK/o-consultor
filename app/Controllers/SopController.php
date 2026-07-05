@@ -4034,7 +4034,47 @@ class SopController
             'empresa_id' => $empresa['id']
         ]);
 
-        // FLUXO SIMPLIFICADO: Buscar setores e serviços organizados hierarquicamente
+        // ABORDAGEM FLEXÍVEL: Verificar quais tabelas existem e adaptar
+        try {
+            // Tentar usar nova estrutura hierárquica primeiro
+            $estruturaHierarquica = Database::queryOne(
+                "SELECT * FROM estruturas_hierarquicas WHERE diagnostico_id = ? AND empresa_id = ?",
+                [$diagnosticoId, $empresa['id']]
+            );
+            
+            if ($estruturaHierarquica) {
+                Logger::info('USANDO NOVA ESTRUTURA HIERÁRQUICA');
+                $dados = $this->carregarDadosEstruturalHierarquica($diagnostico, $empresa, $estruturaHierarquica);
+            } else {
+                Logger::info('USANDO ESTRUTURA TRADICIONAL - SOPS DIRETOS');
+                $dados = $this->carregarDadosSOPsTradicional($diagnostico, $empresa);
+            }
+
+            Logger::info('DADOS PREPARADOS PARA FLUXO LINEAR', [
+                'total_setores' => count($dados['setores_organizados'] ?? []),
+                'usando_estrutura' => isset($estruturaHierarquica) ? 'hierarquica' : 'tradicional'
+            ]);
+
+            require VIEW_PATH . '/sop/listar-por-diagnostico.php';
+            
+        } catch (Exception $e) {
+            Logger::error('ERRO na listagem de SOPs', [
+                'erro' => $e->getMessage(),
+                'diagnostico_id' => $diagnosticoId
+            ]);
+            
+            // Fallback: usar método tradicional simples
+            $dados = $this->carregarDadosSOPsSimples($diagnostico, $empresa);
+            require VIEW_PATH . '/sop/listar-por-diagnostico.php';
+        }
+    }
+
+    /**
+     * Carregar dados usando estrutura hierárquica (se disponível)
+     */
+    private function carregarDadosEstruturalHierarquica(array $diagnostico, array $empresa, array $estrutura): array
+    {
+        // Buscar setores da estrutura hierárquica
         $setoresComServicos = Database::query(
             "SELECT DISTINCT
                 so.id as setor_id,
@@ -4044,11 +4084,9 @@ class SopController
                 COUNT(sm.id) as total_servicos,
                 COUNT(CASE WHEN s.id IS NOT NULL THEN 1 END) as total_sops
              FROM setores_organizacionais so
-             INNER JOIN estruturas_hierarquicas eh ON so.estrutura_id = eh.id
              LEFT JOIN servicos_mapeados sm ON so.id = sm.setor_id
              LEFT JOIN sops s ON sm.id = s.servico_id
-             WHERE eh.diagnostico_id = :diagnostico_id 
-               AND eh.empresa_id = :empresa_id
+             WHERE so.estrutura_id = :estrutura_id
              GROUP BY so.id, so.nome_setor, so.tipo_setor, so.descricao
              ORDER BY 
                 CASE so.tipo_setor
@@ -4058,10 +4096,7 @@ class SopController
                     ELSE 4
                 END,
                 so.nome_setor",
-            [
-                'diagnostico_id' => $diagnosticoId,
-                'empresa_id' => $empresa['id']
-            ]
+            ['estrutura_id' => $estrutura['id']]
         );
 
         // Para cada setor, buscar seus serviços com SOPs
@@ -4098,7 +4133,7 @@ class SopController
             ];
         }
 
-        // Estatísticas gerais
+        // Estatísticas
         $estatisticas = [
             'total_setores' => count($setoresOrganizados),
             'total_servicos' => array_sum(array_column($setoresComServicos, 'total_servicos')),
@@ -4112,22 +4147,139 @@ class SopController
             );
         }
 
-        $dados = [
+        return [
             'diagnostico' => $diagnostico,
             'empresa' => $empresa,
             'setores_organizados' => $setoresOrganizados,
             'estatisticas' => $estatisticas,
             'usar_fluxo_linear' => true
         ];
+    }
 
-        Logger::info('DADOS PREPARADOS PARA FLUXO LINEAR', [
-            'total_setores' => $estatisticas['total_setores'],
-            'total_servicos' => $estatisticas['total_servicos'],
-            'total_sops' => $estatisticas['total_sops'],
-            'percentual_conclusao' => $estatisticas['percentual_conclusao']
-        ]);
+    /**
+     * Carregar dados usando abordagem tradicional (SOPs diretos)
+     */
+    private function carregarDadosSOPsTradicional(array $diagnostico, array $empresa): array
+    {
+        // Buscar todos os SOPs deste diagnóstico
+        $sopsExistentes = Database::query(
+            "SELECT 
+                s.*,
+                'SOP Tradicional' as setor_nome,
+                'tradicional' as tipo_setor
+             FROM sops s
+             WHERE s.diagnostico_id = :diagnostico_id 
+               AND s.empresa_id = :empresa_id
+             ORDER BY s.nome",
+            [
+                'diagnostico_id' => $diagnostico['id'],
+                'empresa_id' => $empresa['id']
+            ]
+        );
 
-        require VIEW_PATH . '/sop/listar-por-diagnostico.php';
+        // Organizar como se fosse um setor único
+        $setoresOrganizados = [];
+        if (!empty($sopsExistentes)) {
+            $servicosFormatados = [];
+            foreach ($sopsExistentes as $sop) {
+                $servicosFormatados[] = [
+                    'id' => $sop['servico_id'] ?? $sop['id'],
+                    'nome_servico' => $sop['nome'],
+                    'codigo_servico' => $sop['sop_codigo'] ?? 'SOP-' . $sop['id'],
+                    'categoria' => 'operacional',
+                    'criticidade' => 'media',
+                    'frequencia' => 'diaria',
+                    'servico_status' => $sop['status'],
+                    'sop_id' => $sop['id'],
+                    'sop_nome' => $sop['nome'],
+                    'sop_status' => $sop['status'],
+                    'sop_criado_em' => $sop['criado_em'],
+                    'status_final' => 'sop_gerado'
+                ];
+            }
+
+            $setoresOrganizados[] = [
+                'setor' => [
+                    'setor_id' => 1,
+                    'nome_setor' => 'SOPs Gerados',
+                    'tipo_setor' => 'tradicional',
+                    'setor_descricao' => 'SOPs criados pelo sistema tradicional',
+                    'total_servicos' => count($sopsExistentes),
+                    'total_sops' => count($sopsExistentes)
+                ],
+                'servicos' => $servicosFormatados
+            ];
+        }
+
+        $estatisticas = [
+            'total_setores' => 1,
+            'total_servicos' => count($sopsExistentes),
+            'total_sops' => count($sopsExistentes),
+            'percentual_conclusao' => count($sopsExistentes) > 0 ? 100 : 0
+        ];
+
+        return [
+            'diagnostico' => $diagnostico,
+            'empresa' => $empresa,
+            'setores_organizados' => $setoresOrganizados,
+            'estatisticas' => $estatisticas,
+            'usar_fluxo_linear' => true
+        ];
+    }
+
+    /**
+     * Carregar dados de forma mais simples (fallback)
+     */
+    private function carregarDadosSOPsSimples(array $diagnostico, array $empresa): array
+    {
+        Logger::info('USANDO MÉTODO SIMPLES - FALLBACK');
+        
+        // Buscar SOPs básicos
+        $sops = Database::query(
+            "SELECT * FROM sops WHERE empresa_id = ? ORDER BY nome LIMIT 50",
+            [$empresa['id']]
+        );
+
+        $setoresOrganizados = [];
+        if (!empty($sops)) {
+            $servicosFormatados = array_map(function($sop) {
+                return [
+                    'id' => $sop['id'],
+                    'nome_servico' => $sop['nome'] ?? 'SOP sem nome',
+                    'codigo_servico' => $sop['sop_codigo'] ?? 'SOP-' . $sop['id'],
+                    'categoria' => 'operacional',
+                    'criticidade' => 'media', 
+                    'frequencia' => 'diaria',
+                    'sop_id' => $sop['id'],
+                    'sop_criado_em' => $sop['criado_em'] ?? date('Y-m-d'),
+                    'status_final' => 'sop_gerado'
+                ];
+            }, $sops);
+
+            $setoresOrganizados[] = [
+                'setor' => [
+                    'nome_setor' => 'Todos os SOPs',
+                    'tipo_setor' => 'geral',
+                    'total_servicos' => count($sops),
+                    'total_sops' => count($sops)
+                ],
+                'servicos' => $servicosFormatados
+            ];
+        }
+
+        return [
+            'diagnostico' => $diagnostico,
+            'empresa' => $empresa,
+            'setores_organizados' => $setoresOrganizados,
+            'estatisticas' => [
+                'total_setores' => count($setoresOrganizados),
+                'total_servicos' => count($sops),
+                'total_sops' => count($sops),
+                'percentual_conclusao' => count($sops) > 0 ? 100 : 0
+            ],
+            'usar_fluxo_linear' => true
+        ];
+    }
     }
 
     /**
