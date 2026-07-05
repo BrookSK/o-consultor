@@ -340,6 +340,10 @@
                                    class="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700">
                                     📋 Ver SOP
                                 </a>
+                                <button onclick="regenerarSopHierarquia(<?= $servico['sop_id'] ?>)" 
+                                        class="px-3 py-1 bg-orange-600 text-white text-xs rounded hover:bg-orange-700">
+                                    🔄 Regenerar
+                                </button>
                                 <?php endif; ?>
                             </div>
                         </div>
@@ -848,6 +852,48 @@ function atualizarLoading(titulo, subtitulo, progresso = null) {
 
 function esconderLoading() {
     document.getElementById('modalLoading').classList.add('hidden');
+}
+
+// Regenerar SOP a partir da hierarquia
+async function regenerarSopHierarquia(sopId) {
+    if (!confirm('Deseja regenerar este SOP? Esta ação irá recriar todo o conteúdo usando IA.')) {
+        return;
+    }
+    
+    mostrarLoading('Regenerando SOP', 'Recriando procedimento operacional...');
+    
+    try {
+        const response = await fetch('<?= APP_URL ?>/sop/regenerar-sop-individual', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': '<?= Csrf::token() ?>'
+            },
+            body: JSON.stringify({
+                sop_id: sopId
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.sucesso) {
+            atualizarLoading('SOP Regenerado!', 'SOP atualizado com sucesso', 100);
+            
+            setTimeout(() => {
+                esconderLoading();
+                if (confirm('SOP regenerado com sucesso! Deseja visualizar o resultado?')) {
+                    window.open('<?= APP_URL ?>/sop/ver-sop-individual?id=' + sopId, '_blank');
+                }
+            }, 2000);
+        } else {
+            esconderLoading();
+            alert('Erro ao regenerar SOP: ' + (data.erro || 'Erro desconhecido'));
+        }
+    } catch (error) {
+        esconderLoading();
+        console.error('Erro:', error);
+        alert('Erro de comunicação com o servidor');
+    }
 }
 
 // Expandir todos os setores por padrão se houver poucos

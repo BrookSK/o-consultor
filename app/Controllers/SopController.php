@@ -7641,6 +7641,138 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             echo "\nConteúdo não é JSON, tratando como texto puro.";
         }
     }
+    
+    /**
+     * Regenerar SOP individual completamente
+     */
+    public function regenerarSopIndividual(): void
+    {
+        Auth::proteger();
+        
+        try {
+            $input = json_decode(file_get_contents('php://input'), true);
+            $sopId = (int) ($input['sop_id'] ?? 0);
+            
+            if (!$sopId) {
+                throw new Exception('ID do SOP não informado');
+            }
+            
+            // Buscar dados do SOP atual
+            $sop = Database::queryOne(
+                "SELECT s.*, ss.codigo_servico, ss.nome_servico, ss.detalhamento_completo, se.nome_setor 
+                 FROM sops s
+                 INNER JOIN servicos_setor ss ON s.id = ss.sop_id
+                 INNER JOIN setores_empresa se ON ss.setor_id = se.id
+                 WHERE s.id = :id AND s.empresa_id = :empresa_id",
+                ['id' => $sopId, 'empresa_id' => Auth::empresa()]
+            );
+            
+            if (!$sop) {
+                throw new Exception('SOP não encontrado');
+            }
+            
+            // Obter dados da empresa
+            $empresa = Database::queryOne(
+                "SELECT * FROM empresas WHERE id = :id",
+                ['id' => Auth::empresa()]
+            );
+            
+            if (!$empresa) {
+                throw new Exception('Empresa não encontrada');
+            }
+            
+            // Decodificar detalhamento do serviço
+            $detalhamento = json_decode($sop['detalhamento_completo'], true);
+            if (!$detalhamento) {
+                throw new Exception('Detalhamento do serviço não encontrado ou corrompido');
+            }
+            
+            // Gerar novo conteúdo SOP usando IA
+            $novoConteudo = $this->gerarConteudoSopCompleto($detalhamento, $empresa, $sop);
+            
+            if (!$novoConteudo) {
+                throw new Exception('Erro na geração do conteúdo pela IA');
+            }
+            
+            // Atualizar SOP no banco
+            Database::execute(
+                "UPDATE sops SET conteudo = :conteudo, atualizado_em = NOW(), versao = CONCAT(SUBSTRING_INDEX(versao, '.', 1), '.', CAST(SUBSTRING_INDEX(versao, '.', -1) AS UNSIGNED) + 1) WHERE id = :id",
+                ['conteudo' => $novoConteudo, 'id' => $sopId]
+            );
+            
+            Logger::info('SOP regenerado com sucesso', [
+                'sop_id' => $sopId,
+                'empresa_id' => Auth::empresa(),
+                'usuario' => Auth::usuario()['nome']
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => true,
+                'mensagem' => 'SOP regenerado com sucesso'
+            ]);
+            
+        } catch (Exception $e) {
+            Logger::error('Erro ao regenerar SOP', [
+                'erro' => $e->getMessage(),
+                'sop_id' => $sopId ?? 0,
+                'empresa_id' => Auth::empresa()
+            ]);
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => false,
+                'erro' => $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * Método privado para gerar conteúdo SOP completo
+     */
+    private function gerarConteudoSopCompleto(array $detalhamento, array $empresa, array $sop): ?string
+    {
+        try {
+            // Buscar dados do diagnóstico relacionado ao SOP
+            $diagnostico = Database::queryOne(
+                "SELECT * FROM diagnosticos WHERE empresa_id = :empresa_id ORDER BY id DESC LIMIT 1",
+                ['empresa_id' => Auth::empresa()]
+            );
+            
+            if (!$diagnostico) {
+                throw new Exception('Diagnóstico não encontrado');
+            }
+            
+            // Preparar dados do serviço no formato esperado pelo método
+            $servicoData = [
+                'nome_servico' => $sop['nome_servico'],
+                'nome_setor' => $sop['nome_setor'],
+                'codigo_servico' => $sop['codigo_servico']
+            ];
+            
+            $prompt = $this->criarPromptGeracaoSopDetalhado($servicoData, $detalhamento, $diagnostico);
+            
+            $resposta = ApiHelper::chamarOpenAI($prompt, [
+                'model' => 'gpt-4',
+                'temperature' => 0.3,
+                'max_tokens' => 4000,
+                'response_format' => ['type' => 'json_object']
+            ]);
+            
+            if (!$resposta || !isset($resposta['conteudo'])) {
+                throw new Exception('Resposta inválida da IA');
+            }
+            
+            return $resposta['conteudo'];
+            
+        } catch (Exception $e) {
+            Logger::error('Erro na geração de conteúdo SOP', [
+                'erro' => $e->getMessage(),
+                'detalhamento' => $detalhamento
+            ]);
+            return null;
+        }
+    }
 
     /**
      * Listar serviços manuais de um setor

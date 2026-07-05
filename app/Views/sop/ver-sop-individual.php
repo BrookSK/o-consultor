@@ -36,6 +36,10 @@ $temErroJson = isset($data['erro_json']);
                     <span id="microfone-icon">🎤</span>
                     <span id="microfone-texto">Gravar Voz</span>
                 </button>
+                <button onclick="regenerarSop()" 
+                        class="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition">
+                    🔄 Regenerar SOP
+                </button>
                 <button onclick="alternarModoEdicao()" 
                         id="btn-editar"
                         class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition">
@@ -369,6 +373,62 @@ let mediaRecorder = null;
 let audioChunks = [];
 let sopData = <?= json_encode($data, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?: '{}' ?>;
 let sopId = <?= (int) ($sop['id'] ?? 0) ?>;
+
+// Regenerar SOP completo
+async function regenerarSop() {
+    console.log('🔄 REGENERANDO SOP COMPLETO');
+    
+    if (!confirm('Deseja regenerar este SOP? Esta ação irá recriar todo o conteúdo usando IA.')) {
+        return;
+    }
+    
+    try {
+        // Desativar botão durante processamento
+        const btnRegenerar = document.querySelector('button[onclick="regenerarSop()"]');
+        const textoOriginal = btnRegenerar.innerHTML;
+        btnRegenerar.disabled = true;
+        btnRegenerar.innerHTML = '⏳ Regenerando...';
+        
+        const response = await fetch('/sop/regenerar-sop-individual', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+            },
+            body: JSON.stringify({
+                sop_id: sopId
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.sucesso) {
+            console.log('✅ SOP regenerado com sucesso');
+            showNotifToast('SOP regenerado com sucesso! Recarregando página...', 'sucesso');
+            
+            // Recarregar página após 2 segundos
+            setTimeout(() => {
+                window.location.reload();
+            }, 2000);
+            
+        } else {
+            throw new Error(result.erro || 'Erro ao regenerar SOP');
+        }
+        
+    } catch (error) {
+        console.error('❌ Erro ao regenerar SOP:', error);
+        alert(`Erro ao regenerar SOP:\n\n${error.message}`);
+        
+        // Restaurar botão
+        const btnRegenerar = document.querySelector('button[onclick="regenerarSop()"]');
+        btnRegenerar.disabled = false;
+        btnRegenerar.innerHTML = textoOriginal;
+    }
+}
 
 // Alternar modo de edição
 function alternarModoEdicao() {
@@ -705,6 +765,16 @@ style.textContent = `
     }
 `;
 document.head.appendChild(style);
+
+// Função helper para toast notifications (se não existir no layout)
+function showNotifToast(mensagem, tipo = 'info') {
+    if (typeof window.showNotifToast === 'function') {
+        window.showNotifToast(mensagem, tipo);
+    } else {
+        // Fallback para alert simples
+        alert(mensagem);
+    }
+}
 </script>
 
 <?php $conteudo = ob_get_clean(); ?>

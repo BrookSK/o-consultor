@@ -72,6 +72,7 @@ class Router
 
         // Manual Operacional (SOP)
         $this->get('manual-operacional', 'SopController', 'index');
+        $this->get('sop', 'SopController', 'index'); // Redirect alternativo para compatibilidade
         $this->get('sop/gerenciar', 'SopController', 'gerenciarSOPs');
         $this->post('sop/adicionar', 'SopController', 'adicionarSOP');
         $this->post('sop/remover', 'SopController', 'removerSOP');
@@ -87,6 +88,7 @@ class Router
         $this->post('sop/gerar-sop-individual', 'SopController', 'gerarSopIndividual');         // Novo: Gerar SOP específico
         $this->get('sop/ver-detalhamento-servico', 'SopController', 'verDetalhamentoServico'); // Novo: Ver detalhamento
         $this->get('sop/ver-sop-individual', 'SopController', 'verSopIndividual');             // Novo: Ver SOP individual
+        $this->post('sop/regenerar-sop-individual', 'SopController', 'regenerarSopIndividual'); // Novo: Regenerar SOP individual
         $this->get('sop/debug-dados', 'SopController', 'debugSopDados');                      // Debug: Ver dados brutos do SOP
         $this->post('sop/adicionar-servico-manual', 'SopController', 'adicionarServicoManual'); // Novo: Adicionar serviço manual
         $this->get('sop/listar-servicos-manuais', 'SopController', 'listarServicosManuais');   // Novo: Listar serviços manuais
