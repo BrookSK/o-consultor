@@ -204,67 +204,87 @@ $temErroJson = isset($data['erro_json']);
             <p class="text-gray-600 text-sm mb-4"><?= htmlspecialchars($fase['descricao']) ?></p>
             <?php endif; ?>
             
-            <?php if (!empty($fase['passos'])): ?>
+            <?php 
+            // Suporte para novo formato (passos_operacionais_detalhados) e antigo (passos)
+            $passosDaFase = $fase['passos_operacionais_detalhados'] ?? $fase['passos'] ?? [];
+            if (!empty($passosDaFase)): 
+            ?>
             <div class="space-y-4">
-                <?php foreach ($fase['passos'] as $passo): ?>
+                <?php foreach ($passosDaFase as $passo): ?>
                 <div class="flex items-start space-x-4 p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
                     <div class="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center font-medium text-sm">
                         <?= $passo['passo'] ?? '' ?>
                     </div>
                     <div class="flex-1">
-                        <h4 class="font-medium text-gray-800 mb-2 editavel" data-field="procedimentos[<?= $faseIndex ?>].passos[<?= key($fase['passos']) ?>].acao" contenteditable="false"><?= htmlspecialchars($passo['acao'] ?? '') ?></h4>
+                        <h4 class="font-medium text-gray-800 mb-2 editavel" data-field="procedimentos[<?= $faseIndex ?>].passos[<?= key($passosDaFase) ?>].acao" contenteditable="false"><?= htmlspecialchars($passo['acao_operacional'] ?? $passo['acao'] ?? '') ?></h4>
                         
-                        <?php if (!empty($passo['detalhamento'])): ?>
+                        <?php 
+                        // Detalhamento (novo e antigo formato)
+                        $detalhamento = $passo['detalhamento_operacional_completo'] ?? $passo['detalhamento'] ?? '';
+                        if (!empty($detalhamento)): 
+                        ?>
                         <div class="mb-3 p-3 bg-blue-50 border-l-4 border-blue-400 rounded">
-                            <h5 class="text-sm font-semibold text-blue-800 mb-1">📋 Detalhamento Instrutivo:</h5>
-                            <p class="text-sm text-blue-700 leading-relaxed"><?= nl2br(htmlspecialchars($passo['detalhamento'])) ?></p>
+                            <h5 class="text-sm font-semibold text-blue-800 mb-1">📋 Detalhamento Operacional:</h5>
+                            <p class="text-sm text-blue-700 leading-relaxed"><?= nl2br(htmlspecialchars($detalhamento)) ?></p>
                         </div>
                         <?php endif; ?>
                         
-                        <?php if (!empty($passo['scripts_modelos'])): ?>
+                        <?php 
+                        // Scripts (novo e antigo formato)
+                        $scripts = $passo['scripts_operacionais_completos'] ?? $passo['scripts_modelos'] ?? '';
+                        if (!empty($scripts)): 
+                        ?>
                         <div class="mb-3 p-3 bg-green-50 border-l-4 border-green-400 rounded">
-                            <h5 class="text-sm font-semibold text-green-800 mb-1">🎯 Scripts e Modelos:</h5>
-                            <p class="text-sm text-green-700 leading-relaxed font-mono"><?= nl2br(htmlspecialchars($passo['scripts_modelos'])) ?></p>
+                            <h5 class="text-sm font-semibold text-green-800 mb-1">🎯 Scripts Operacionais:</h5>
+                            <p class="text-sm text-green-700 leading-relaxed font-mono"><?= nl2br(htmlspecialchars($scripts)) ?></p>
                         </div>
                         <?php endif; ?>
                         
-                        <?php if (!empty($passo['tecnicas_avancadas'])): ?>
+                        <?php 
+                        // Metodologias/Técnicas (novo e antigo formato)
+                        $metodologias = $passo['metodologias_operacionais'] ?? $passo['tecnicas_avancadas'] ?? '';
+                        if (!empty($metodologias)): 
+                        ?>
                         <div class="mb-3 p-3 bg-purple-50 border-l-4 border-purple-400 rounded">
-                            <h5 class="text-sm font-semibold text-purple-800 mb-1">⚡ Técnicas Avançadas:</h5>
-                            <p class="text-sm text-purple-700 leading-relaxed"><?= nl2br(htmlspecialchars($passo['tecnicas_avancadas'])) ?></p>
+                            <h5 class="text-sm font-semibold text-purple-800 mb-1">⚡ Metodologias Operacionais:</h5>
+                            <p class="text-sm text-purple-700 leading-relaxed"><?= nl2br(htmlspecialchars($metodologias)) ?></p>
                         </div>
                         <?php endif; ?>
                         
-                        <?php if (!empty($passo['situacoes_especiais'])): ?>
+                        <?php 
+                        // Validações (novo formato)
+                        $validacoes = $passo['validacoes_operacionais'] ?? $passo['situacoes_especiais'] ?? '';
+                        if (!empty($validacoes)): 
+                        ?>
                         <div class="mb-3 p-3 bg-orange-50 border-l-4 border-orange-400 rounded">
-                            <h5 class="text-sm font-semibold text-orange-800 mb-1">⚠️ Situações Especiais:</h5>
-                            <p class="text-sm text-orange-700 leading-relaxed"><?= nl2br(htmlspecialchars($passo['situacoes_especiais'])) ?></p>
+                            <h5 class="text-sm font-semibold text-orange-800 mb-1">✅ Validações Operacionais:</h5>
+                            <p class="text-sm text-orange-700 leading-relaxed"><?= nl2br(htmlspecialchars($validacoes)) ?></p>
                         </div>
                         <?php endif; ?>
                         
-                        <?php if (!empty($passo['situacoes_criticas_especificas'])): ?>
-                        <div class="mb-3 p-3 bg-red-50 border-l-4 border-red-500 rounded">
-                            <h5 class="text-sm font-semibold text-red-800 mb-1">🚨 Situações Fora de Controle:</h5>
-                            <p class="text-sm text-red-700 leading-relaxed"><?= nl2br(htmlspecialchars($passo['situacoes_criticas_especificas'])) ?></p>
-                        </div>
-                        <?php endif; ?>
-                        
-                        <?php if (!empty($passo['protocolos_emergencia'])): ?>
-                        <div class="mb-3 p-3 bg-red-100 border-l-4 border-red-600 rounded">
-                            <h5 class="text-sm font-semibold text-red-900 mb-1">🆘 Protocolos de Emergência:</h5>
-                            <p class="text-sm text-red-800 leading-relaxed font-medium"><?= nl2br(htmlspecialchars($passo['protocolos_emergencia'])) ?></p>
+                        <?php 
+                        // Ferramentas (novo formato)
+                        $ferramentas = $passo['ferramentas_operacionais'] ?? '';
+                        if (!empty($ferramentas)): 
+                        ?>
+                        <div class="mb-3 p-3 bg-indigo-50 border-l-4 border-indigo-400 rounded">
+                            <h5 class="text-sm font-semibold text-indigo-800 mb-1">🛠️ Ferramentas Operacionais:</h5>
+                            <p class="text-sm text-indigo-700 leading-relaxed"><?= nl2br(htmlspecialchars($ferramentas)) ?></p>
                         </div>
                         <?php endif; ?>
                         
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-                            <div><span class="text-gray-500">Responsável:</span> <span class="text-gray-700"><?= htmlspecialchars($passo['responsavel'] ?? '') ?></span></div>
-                            <div><span class="text-gray-500">Tempo:</span> <span class="text-gray-700"><?= htmlspecialchars($passo['tempo_estimado'] ?? '') ?></span></div>
-                            <div><span class="text-gray-500">Qualidade:</span> <span class="text-gray-700"><?= htmlspecialchars($passo['criterio_qualidade'] ?? '') ?></span></div>
+                            <div><span class="text-gray-500">Responsável:</span> <span class="text-gray-700"><?= htmlspecialchars($passo['responsavel_operacional'] ?? $passo['responsavel'] ?? '') ?></span></div>
+                            <div><span class="text-gray-500">Tempo:</span> <span class="text-gray-700"><?= htmlspecialchars($passo['tempo_operacional_estimado'] ?? $passo['tempo_estimado'] ?? '') ?></span></div>
+                            <div><span class="text-gray-500">Qualidade:</span> <span class="text-gray-700"><?= htmlspecialchars($passo['criterios_qualidade_operacionais'] ?? $passo['criterio_qualidade'] ?? '') ?></span></div>
                         </div>
                         
-                        <?php if (!empty($passo['observacoes'])): ?>
+                        <?php 
+                        $observacoes = $passo['observacoes_operacionais'] ?? $passo['observacoes'] ?? '';
+                        if (!empty($observacoes)): 
+                        ?>
                         <div class="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
-                            <span class="text-yellow-700">💡 <strong>Observação:</strong> <?= htmlspecialchars($passo['observacoes']) ?></span>
+                            <span class="text-yellow-700">💡 <strong>Observações Operacionais:</strong> <?= htmlspecialchars($observacoes) ?></span>
                         </div>
                         <?php endif; ?>
                     </div>

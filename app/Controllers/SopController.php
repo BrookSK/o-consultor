@@ -8295,7 +8295,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
     }
     
     /**
-     * Método privado para gerar conteúdo SOP completo e detalhado
+     * Método privado para gerar conteúdo SOP completo em DUAS FASES
      */
     private function gerarConteudoSopCompleto(array $detalhamento, array $empresa, array $sop): ?string
     {
@@ -8317,109 +8317,143 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                 'codigo_servico' => $sop['codigo_servico']
             ];
             
-            // Criar prompt MUITO mais detalhado e específico
-            $prompt = $this->criarPromptSopCompletissimo($servicoData, $detalhamento, $empresa, $diagnostico);
-            
-            Logger::info('Chamando API OpenAI para regeneração', [
+            Logger::info('INICIANDO GERAÇÃO EM DUAS FASES', [
                 'servico' => $servicoData['nome_servico'],
-                'prompt_length' => strlen($prompt)
+                'setor' => $servicoData['nome_setor']
             ]);
             
-            $resposta = ApiHelper::chamarOpenAI($prompt, 'gpt-4o', true);
+            // **FASE 1: PROCEDIMENTOS OPERACIONAIS DETALHADOS**
+            Logger::info('FASE 1: Gerando procedimentos operacionais');
+            $promptProcedimentos = $this->criarPromptProcedimentosOperacionais($servicoData, $detalhamento, $empresa, $diagnostico);
             
-            Logger::info('Resposta da API OpenAI', [
-                'sucesso' => $resposta['sucesso'] ?? false,
-                'erro' => $resposta['erro'] ?? null,
-                'tem_conteudo' => isset($resposta['conteudo']) && !empty($resposta['conteudo'])
-            ]);
+            $respostaProcedimentos = ApiHelper::chamarOpenAI($promptProcedimentos, 'gpt-4o', true);
             
-            if (!$resposta['sucesso']) {
-                Logger::error('Erro na API OpenAI', [
-                    'erro_completo' => $resposta,
-                    'erro_msg' => $resposta['erro'] ?? 'Erro desconhecido'
+            if (!$respostaProcedimentos['sucesso']) {
+                Logger::error('Erro na FASE 1 - Procedimentos', [
+                    'erro' => $respostaProcedimentos['erro'] ?? 'Erro desconhecido'
                 ]);
-                throw new Exception('Erro na API OpenAI: ' . ($resposta['erro'] ?? 'Erro desconhecido'));
+                throw new Exception('Erro na Fase 1 (Procedimentos): ' . ($respostaProcedimentos['erro'] ?? 'Erro desconhecido'));
             }
             
-            if (!$resposta['conteudo']) {
-                throw new Exception('Resposta da IA vazia ou inválida');
+            $procedimentosOperacionais = $respostaProcedimentos['conteudo'];
+            Logger::info('FASE 1 CONCLUÍDA: Procedimentos operacionais gerados');
+            
+            // **FASE 2: SITUAÇÕES CRÍTICAS E EMERGENCIAIS**
+            Logger::info('FASE 2: Gerando situações críticas');
+            $promptCriticas = $this->criarPromptSituacoesCriticas($servicoData, $detalhamento, $empresa, $diagnostico);
+            
+            $respostaCriticas = ApiHelper::chamarOpenAI($promptCriticas, 'gpt-4o', true);
+            
+            if (!$respostaCriticas['sucesso']) {
+                Logger::error('Erro na FASE 2 - Situações Críticas', [
+                    'erro' => $respostaCriticas['erro'] ?? 'Erro desconhecido'
+                ]);
+                throw new Exception('Erro na Fase 2 (Situações Críticas): ' . ($respostaCriticas['erro'] ?? 'Erro desconhecido'));
             }
             
-            // Validar se o JSON tem as seções necessárias
-            $conteudo = $resposta['conteudo'];
+            $situacoesCriticas = $respostaCriticas['conteudo'];
+            Logger::info('FASE 2 CONCLUÍDA: Situações críticas geradas');
             
-            $secoesObrigatorias = ['objetivo', 'escopo', 'procedimentos', 'responsaveis', 'recursos_necessarios'];
+            // **COMBINAÇÃO DAS DUAS FASES**
+            Logger::info('COMBINANDO as duas fases em SOP completo');
+            
+            // Combinar os dados das duas fases em um SOP único
+            $sopCompleto = [
+                // Dados principais dos procedimentos operacionais
+                'sop_titulo' => $servicoData['codigo_servico'] . ' - ' . $servicoData['nome_servico'],
+                'objetivo' => $procedimentosOperacionais['objetivo'] ?? 'Objetivo não especificado',
+                'escopo' => $procedimentosOperacionais['escopo'] ?? 'Escopo não especificado',
+                'responsaveis' => $procedimentosOperacionais['responsaveis'] ?? [],
+                'competencias_requeridas' => $procedimentosOperacionais['competencias_operacionais_requeridas'] ?? [],
+                'pre_requisitos' => $procedimentosOperacionais['pre_requisitos_operacionais'] ?? [],
+                'recursos_necessarios' => $procedimentosOperacionais['recursos_operacionais_necessarios'] ?? [],
+                
+                // Procedimentos operacionais detalhados
+                'procedimentos' => $procedimentosOperacionais['procedimentos_operacionais_detalhados'] ?? [],
+                
+                // Checklists operacionais
+                'checklists' => $procedimentosOperacionais['checklists_operacionais'] ?? [],
+                
+                // Scripts de comunicação operacional
+                'scripts_comunicacao' => $procedimentosOperacionais['scripts_comunicacao_operacionais'] ?? [],
+                
+                // Indicadores de performance
+                'indicadores_performance' => $procedimentosOperacionais['indicadores_performance_operacionais'] ?? [],
+                
+                // **SITUAÇÕES CRÍTICAS E EMERGENCIAIS (FASE 2)**
+                'gestao_situacoes_fora_controle' => $situacoesCriticas['gestao_situacoes_criticas'] ?? [],
+                'matriz_riscos_servico' => $situacoesCriticas['matriz_riscos_servico'] ?? [],
+                'treinamento_gestao_crises' => $situacoesCriticas['treinamento_gestao_crises'] ?? [],
+                
+                // Documentação
+                'anexos_referencias' => $procedimentosOperacionais['documentacao_operacional'] ?? [],
+                
+                // Metadados
+                'versao' => '2.0 - Duas Fases (Operacional + Críticas)',
+                'data_criacao' => date('d/m/Y H:i:s'),
+                'fases_geradas' => [
+                    'fase_1_procedimentos' => 'Concluída',
+                    'fase_2_situacoes_criticas' => 'Concluída'
+                ]
+            ];
+            
+            // Validar se as seções essenciais estão presentes
+            $secoesObrigatorias = ['objetivo', 'escopo', 'procedimentos', 'responsaveis'];
             $secoesFaltando = [];
             
             foreach ($secoesObrigatorias as $secao) {
-                if (!isset($conteudo[$secao]) || empty($conteudo[$secao])) {
+                if (!isset($sopCompleto[$secao]) || empty($sopCompleto[$secao])) {
                     $secoesFaltando[] = $secao;
                 }
             }
             
             if (!empty($secoesFaltando)) {
-                Logger::warning('SOP gerado com seções faltando', [
-                    'secoes_faltando' => $secoesFaltando,
-                    'secoes_presentes' => array_keys($conteudo)
+                Logger::warning('SOP combinado com seções faltando', [
+                    'secoes_faltando' => $secoesFaltando
                 ]);
                 
-                // Adicionar seções mínimas se estiverem faltando
+                // Adicionar seções mínimas se necessário
                 foreach ($secoesFaltando as $secao) {
                     switch ($secao) {
                         case 'procedimentos':
-                            $conteudo['procedimentos'] = [
+                            $sopCompleto['procedimentos'] = [
                                 [
-                                    'fase' => 'Preparação e Planejamento',
-                                    'descricao' => 'Preparação inicial necessária antes da execução',
-                                    'passos' => [
+                                    'fase' => 'Execução Padrão',
+                                    'descricao' => 'Execução principal do serviço',
+                                    'passos_operacionais_detalhados' => [
                                         [
-                                            'passo' => 1, 
-                                            'acao' => 'Verificar pré-requisitos e recursos necessários',
-                                            'detalhamento' => 'Confirmar se todos os recursos, acessos e pré-requisitos estão disponíveis para execução do serviço.',
-                                            'responsavel' => 'Responsável do Setor', 
-                                            'tempo_estimado' => '10min',
-                                            'criterio_qualidade' => 'Todos os recursos confirmados como disponíveis'
-                                        ]
-                                    ]
-                                ],
-                                [
-                                    'fase' => 'Execução Principal',
-                                    'descricao' => 'Execução core do serviço',
-                                    'passos' => [
-                                        [
-                                            'passo' => 2,
-                                            'acao' => 'Executar processo principal do serviço',
-                                            'detalhamento' => 'Seguir procedimentos específicos do setor com atenção aos padrões de qualidade e boas práticas. Manter comunicação clara e eficiente durante todo o processo.',
-                                            'responsavel' => 'Responsável do Setor',
-                                            'tempo_estimado' => '30min',
-                                            'criterio_qualidade' => 'Processo executado conforme padrões estabelecidos com qualidade'
+                                            'passo' => 1,
+                                            'acao_operacional' => 'Executar processo conforme definição',
+                                            'detalhamento_operacional_completo' => 'Seguir procedimentos específicos do setor com atenção aos padrões de qualidade.',
+                                            'responsavel_operacional' => 'Responsável do Setor',
+                                            'tempo_operacional_estimado' => '30min'
                                         ]
                                     ]
                                 ]
                             ];
                             break;
                         case 'responsaveis':
-                            $conteudo['responsaveis'] = [
-                                'executor_principal' => 'Colaborador do Setor ' . $sop['nome_setor'],
-                                'supervisor' => 'Supervisor do Setor ' . $sop['nome_setor'],
-                                'aprovador' => 'Gestor do Setor ' . $sop['nome_setor']
-                            ];
-                            break;
-                        case 'recursos_necessarios':
-                            $conteudo['recursos_necessarios'] = [
-                                'equipamentos' => ['Computador', 'Sistema interno'],
-                                'documentos' => ['Formulários padrão', 'Checklist de verificação']
+                            $sopCompleto['responsaveis'] = [
+                                'executor_principal' => 'Colaborador do Setor ' . $servicoData['nome_setor'],
+                                'supervisor_operacional' => 'Supervisor do Setor ' . $servicoData['nome_setor'],
+                                'aprovador_final' => 'Gestor do Setor ' . $servicoData['nome_setor']
                             ];
                             break;
                     }
                 }
             }
             
+            Logger::info('SOP COMPLETO gerado com sucesso em duas fases', [
+                'total_procedimentos' => count($sopCompleto['procedimentos']),
+                'tem_situacoes_criticas' => !empty($sopCompleto['gestao_situacoes_fora_controle']),
+                'size_kb' => round(strlen(json_encode($sopCompleto)) / 1024, 2)
+            ]);
+            
             // Retornar o JSON como string para salvar no banco
-            return json_encode($conteudo, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+            return json_encode($sopCompleto, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
             
         } catch (Exception $e) {
-            Logger::error('Erro na geração de conteúdo SOP', [
+            Logger::error('Erro na geração de conteúdo SOP em duas fases', [
                 'erro' => $e->getMessage(),
                 'detalhamento_keys' => array_keys($detalhamento),
                 'servico' => $servicoData ?? 'indefinido',
@@ -8430,16 +8464,302 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
     }
     
     /**
-     * Criar prompt ULTRA DETALHADO para SOP completo e instrutivo
+     * Criar prompt para PROCEDIMENTOS OPERACIONAIS DETALHADOS (Primeira Fase)
      */
-    private function criarPromptSopCompletissimo(array $servico, array $detalhamento, array $empresa, array $diagnostico): string
+    private function criarPromptProcedimentosOperacionais(array $servico, array $detalhamento, array $empresa, array $diagnostico): string
     {
         $nomeEmpresa = json_decode($diagnostico['respostas'], true)['nome_empresa'] ?? $empresa['nome'] ?? 'Empresa';
         $nomeServico = $servico['nome_servico'];
         $nomeSetor = $servico['nome_setor'];
         $codigoServico = $servico['codigo_servico'];
         
-        return "GERAÇÃO DE SOP (PROCEDIMENTO OPERACIONAL PADRÃO) ULTRA TÉCNICO E INSTRUTIVO
+        return "GERAÇÃO DE SOP - FASE 1: PROCEDIMENTOS OPERACIONAIS DETALHADOS
+
+# INFORMAÇÕES DO SERVIÇO
+- **Código**: {$codigoServico}
+- **Serviço**: {$nomeServico}
+- **Setor**: {$nomeSetor}
+- **Empresa**: {$nomeEmpresa}
+
+# DETALHAMENTO COMPLETO DO SERVIÇO
+" . json_encode($detalhamento, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . "
+
+# FOCO DESTA FASE: PROCEDIMENTOS OPERACIONAIS EXTENSOS
+
+Esta é a **PRIMEIRA FASE** da geração do SOP. O foco é criar **PROCEDIMENTOS OPERACIONAIS ULTRA DETALHADOS** que sirvam como manual completo de treinamento operacional.
+
+## INSTRUÇÕES CRÍTICAS:
+
+### 1. **FOCO EXCLUSIVO EM PROCEDIMENTOS NORMAIS**
+- **NÃO incluir** situações críticas ou emergências nesta fase
+- **CONCENTRAR TODO O ESFORÇO** em detalhar os procedimentos operacionais normais
+- **MÁXIMO DETALHAMENTO** para cada passo operacional
+- **Scripts completos** para todas as interações normais
+
+### 2. **DETALHAMENTO OPERACIONAL EXTENSO**
+- **Mínimo 7-10 passos** por fase operacional
+- **Mínimo 200 palavras** por passo detalhado
+- **Scripts word-by-word** para todas as comunicações
+- **Procedimentos passo-a-passo minuciosos**
+
+## ESTRUTURA JSON PARA PROCEDIMENTOS OPERACIONAIS:
+
+```json
+{
+  \"sop_titulo\": \"SOP {$codigoServico} - {$nomeServico} (Procedimentos Operacionais)\",
+  \"objetivo\": \"OBRIGATÓRIO MÍNIMO 4 FRASES DETALHADAS: Objetivo operacional completo explicando propósito específico, resultados mensuráveis esperados, impacto direto no negócio e benefícios para o cliente operacional.\",
+  \"escopo\": \"OBRIGATÓRIO MÍNIMO 4 FRASES DETALHADAS: Definição técnica completa do escopo operacional incluindo o que está incluído, o que está excluído, limitações específicas, interfaces com outros processos operacionais.\",
+  \"responsaveis\": {
+    \"executor_principal\": \"Cargo específico com competências operacionais requeridas\",
+    \"supervisor_operacional\": \"Cargo de quem supervisiona operacionalmente e valida qualidade\",
+    \"aprovador_final\": \"Cargo de quem aprova o resultado operacional\"
+  },
+  \"competencias_operacionais_requeridas\": [
+    \"Competência operacional específica com nível requerido\",
+    \"Conhecimento técnico detalhado com aplicação operacional\",
+    \"Habilidade prática com contexto de uso operacional\",
+    \"Certificação ou qualificação operacional se aplicável\"
+  ],
+  \"pre_requisitos_operacionais\": [
+    \"Pré-requisito operacional específico com validação obrigatória\",
+    \"Conhecimento operacional necessário com profundidade requerida\",
+    \"Acesso/permissão específica operacional com justificativa\",
+    \"Ferramenta/sistema operacional com versão e configuração\"
+  ],
+  \"recursos_operacionais_necessarios\": {
+    \"sistemas_operacionais\": [\"Sistema específico operacional com função detalhada\", \"Plataforma operacional categoria X para finalidade Y\"],
+    \"equipamentos_operacionais\": [\"Equipamento operacional com especificações\", \"Ferramenta operacional categoria X\"],
+    \"documentos_operacionais\": [\"Formulário operacional específico com campos\", \"Template operacional X para situação Y\"],
+    \"materiais_operacionais\": [\"Material físico operacional com especificação\", \"Insumo operacional categoria X\"]
+  },
+  \"procedimentos_operacionais_detalhados\": [
+    {
+      \"fase\": \"NOME DA FASE OPERACIONAL (ex: Preparação Operacional Inicial)\",
+      \"descricao_operacional\": \"OBRIGATÓRIO MÍNIMO 3 FRASES: Descrição operacional detalhada da importância desta fase, objetivos operacionais específicos e impacto no resultado final.\",
+      \"metodologia_operacional\": \"Framework operacional específico utilizado (ex: Metodologia PDCA Operacional, Framework ITIL Operacional)\",
+      \"passos_operacionais_detalhados\": [
+        {
+          \"passo\": 1,
+          \"acao_operacional\": \"TÍTULO DA AÇÃO OPERACIONAL ESPECÍFICA (ex: Verificar e validar dados operacionais do cliente)\",
+          \"detalhamento_operacional_completo\": \"OBRIGATÓRIO MÍNIMO 200 PALAVRAS: Detalhar exatamente como executar operacionalmente passo-a-passo. Incluir: que ferramentas operacionais usar, que informações operacionais coletar, que validações operacionais realizar, como registrar operacionalmente, procedimentos de verificação operacional, métodos de conferência operacional. Para comunicação: scripts word-by-word completos, tom de voz, postura, perguntas específicas a fazer, como conduzir a conversa operacionalmente.\",
+          \"responsavel_operacional\": \"Cargo operacional específico com nível de competência\",
+          \"tempo_operacional_estimado\": \"Tempo operacional específico (ex: 8-12 minutos para casos normais, 15-20 para complexos)\",
+          \"criterios_qualidade_operacionais\": \"MÍNIMO 4 CRITÉRIOS OPERACIONAIS ESPECÍFICOS: Como validar operacionalmente se foi executado com padrão profissional\",
+          \"scripts_operacionais_completos\": \"OBRIGATÓRIO SCRIPTS WORD-BY-WORD OPERACIONAIS: Frases exatas de abertura operacional, desenvolvimento operacional e fechamento operacional. Para processos: comandos operacionais específicos, procedimentos operacionais detalhados\",
+          \"metodologias_operacionais\": \"MÍNIMO 2 TÉCNICAS OPERACIONAIS: Técnicas operacionais profissionais, frameworks operacionais reconhecidos\",
+          \"validacoes_operacionais\": \"MÍNIMO 4 VALIDAÇÕES OPERACIONAIS: Checklist operacional específico com critérios de aceitação mensuráveis\",
+          \"ferramentas_operacionais\": \"Lista específica de ferramentas operacionais, sistemas operacionais e recursos operacionais necessários\",
+          \"observacoes_operacionais\": \"MÍNIMO 3 DICAS OPERACIONAIS: Insights operacionais, armadilhas operacionais comuns, dicas operacionais avançadas\"
+        }
+      ]
+    }
+  ],
+  \"checklists_operacionais\": {
+    \"pre_execucao_operacional\": [
+      \"MÍNIMO 5 ITENS: Item operacional específico com critério de validação operacional\",
+      \"Verificação operacional detalhada com método operacional específico\"
+    ],
+    \"durante_execucao_operacional\": [
+      \"MÍNIMO 5 ITENS: Controle operacional específico com frequência operacional\",
+      \"Monitoramento operacional detalhado com métricas operacionais\"
+    ],
+    \"pos_execucao_operacional\": [
+      \"MÍNIMO 5 ITENS: Validação operacional final específica\",
+      \"Documentação operacional obrigatória detalhada\"
+    ]
+  },
+  \"scripts_comunicacao_operacionais\": {
+    \"abordagem_inicial_operacional\": \"MÍNIMO 150 PALAVRAS: Script operacional completo para primeiro contato operacional\",
+    \"apresentacao_servico_operacional\": \"MÍNIMO 150 PALAVRAS: Modelo operacional de apresentação com argumentação operacional\",
+    \"condução_processo_operacional\": \"MÍNIMO 200 PALAVRAS: Scripts operacionais para conduzir o processo operacional\",
+    \"finalizacao_operacional\": \"MÍNIMO 100 PALAVRAS: Modelo operacional de encerramento com próximos passos operacionais\"
+  },
+  \"indicadores_performance_operacionais\": [
+    {
+      \"nome_kpi_operacional\": \"KPI operacional específico e mensurável\",
+      \"formula_calculo_operacional\": \"Fórmula operacional exata de cálculo\",
+      \"meta_operacional\": \"Meta operacional específica com justificativa\",
+      \"frequencia_medicao_operacional\": \"Frequência operacional realista\",
+      \"responsavel_medicao_operacional\": \"Quem mede operacionalmente e reporta\"
+    }
+  ],
+  \"documentacao_operacional\": [
+    \"Template operacional específico com campos operacionais\",
+    \"Formulário operacional detalhado com validações operacionais\",
+    \"Checklist operacional específico com critérios operacionais\"
+  ],
+  \"versao\": \"1.0 - Procedimentos Operacionais\",
+  \"data_criacao\": \"" . date('d/m/Y') . "\"
+}
+```
+
+## REQUISITOS OBRIGATÓRIOS PARA PROCEDIMENTOS OPERACIONAIS:
+
+### 📋 **QUANTIDADE MÍNIMA OBRIGATÓRIA:**
+- **MÍNIMO 4 fases operacionais** (Preparação, Execução Inicial, Execução Principal, Finalização)
+- **MÍNIMO 7 passos operacionais** por fase
+- **MÍNIMO 200 palavras** por detalhamento operacional de passo
+- **MÍNIMO 5 scripts operacionais** de comunicação
+- **MÍNIMO 4 critérios operacionais** de qualidade por passo
+
+### 🎯 **FOCO OPERACIONAL EXCLUSIVO:**
+- **Procedimentos normais** do dia-a-dia operacional
+- **Fluxos padrão** de execução operacional
+- **Comunicação rotineira** operacional
+- **Validações normais** operacionais
+- **Documentação padrão** operacional
+
+### ⚠️ **ATENÇÃO - NÃO INCLUIR NESTA FASE:**
+- Situações críticas ou emergenciais
+- Gestão de crises
+- Protocolos de emergência
+- Escalações críticas
+- Procedimentos de contenção
+
+**IMPORTANTE**: Esta é apenas a PRIMEIRA FASE. Concentre todo o esforço em detalhar ao máximo os procedimentos operacionais normais. Uma segunda fase tratará das situações críticas separadamente.
+
+**TERMINOLOGIA**: Use SEMPRE terminologia genérica. NUNCA mencione marcas comerciais.
+
+Responda APENAS com o JSON válido dos procedimentos operacionais, sem explicações adicionais.";
+    }
+    {
+        $nomeEmpresa = json_decode($diagnostico['respostas'], true)['nome_empresa'] ?? $empresa['nome'] ?? 'Empresa';
+        $nomeServico = $servico['nome_servico'];
+        $nomeSetor = $servico['nome_setor'];
+        $codigoServico = $servico['codigo_servico'];
+        
+    /**
+     * Criar prompt para SITUAÇÕES CRÍTICAS E EMERGENCIAIS (Segunda Fase)
+     */
+    private function criarPromptSituacoesCriticas(array $servico, array $detalhamento, array $empresa, array $diagnostico): string
+    {
+        $nomeEmpresa = json_decode($diagnostico['respostas'], true)['nome_empresa'] ?? $empresa['nome'] ?? 'Empresa';
+        $nomeServico = $servico['nome_servico'];
+        $nomeSetor = $servico['nome_setor'];
+        $codigoServico = $servico['codigo_servico'];
+        
+        return "GERAÇÃO DE SOP - FASE 2: SITUAÇÕES CRÍTICAS E EMERGENCIAIS
+
+# INFORMAÇÕES DO SERVIÇO
+- **Código**: {$codigoServico}
+- **Serviço**: {$nomeServico}
+- **Setor**: {$nomeSetor}
+- **Empresa**: {$nomeEmpresa}
+
+# DETALHAMENTO COMPLETO DO SERVIÇO
+" . json_encode($detalhamento, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . "
+
+# FOCO DESTA FASE: SITUAÇÕES CRÍTICAS E GESTÃO DE EMERGÊNCIAS
+
+Esta é a **SEGUNDA FASE** da geração do SOP. O foco é criar **PROTOCOLOS ULTRA DETALHADOS** para todas as situações que podem fugir do controle normal.
+
+## INSTRUÇÕES CRÍTICAS:
+
+### 1. **FOCO EXCLUSIVO EM SITUAÇÕES CRÍTICAS**
+- **MAPEAR TODAS** as situações que podem sair do controle
+- **DETALHAR EXTENSAMENTE** cada cenário crítico
+- **SCRIPTS WORD-BY-WORD** para comunicação em crises
+- **PROTOCOLOS MINUCIOSOS** de emergência
+
+### 2. **SITUAÇÕES CRÍTICAS OBRIGATÓRIAS POR CONTEXTO**
+🔥 **ATENDIMENTO**: Cliente irritado, ameaças, reclamações públicas, constrangimentos
+💰 **FINANCEIRO**: Inadimplência, disputas, cobranças difíceis, execução judicial
+⚙️ **TÉCNICO**: Sistemas caídos, falhas massivas, ataques, equipamentos quebrados
+📋 **PROCESSOS**: Erros graves, não conformidades, acidentes, perda de certificações
+🚨 **GESTÃO**: Crises virais, greves, desastres, saída de pessoas-chave
+
+## ESTRUTURA JSON PARA SITUAÇÕES CRÍTICAS:
+
+```json
+{
+  \"sop_titulo\": \"SOP {$codigoServico} - {$nomeServico} (Situações Críticas)\",
+  \"gestao_situacoes_criticas\": {
+    \"cenarios_criticos_detalhados\": [
+      {
+        \"tipo_crise\": \"Categoria da situação crítica (atendimento, técnico, financeiro, operacional)\",
+        \"situacao_especifica\": \"MÍNIMO 100 PALAVRAS: Descrição detalhada da situação que fugiu do controle normal com contexto específico\",
+        \"sinais_identificacao\": [
+          \"MÍNIMO 7 SINAIS ESPECÍFICOS de como identificar que a situação saiu do controle\",
+          \"Indicadores comportamentais observáveis e mensuráveis\",
+          \"Sinais técnicos concretos e verificáveis\",
+          \"Métricas de alerta específicas do contexto\"
+        ],
+        \"acao_imediata_contencao\": \"MÍNIMO 200 PALAVRAS: Primeira ação passo-a-passo para conter imediatamente. Incluir postura física, tom de voz, primeiras frases exatas, movimento corporal, controle emocional próprio, técnicas de respiração se necessário\",
+        \"script_comunicacao_crise\": \"MÍNIMO 300 PALAVRAS: Script word-by-word completo. Frases EXATAS de abertura (como iniciar), desenvolvimento (como conduzir), tratamento de objeções (como responder), técnicas de acalmar (frases específicas), fechamento (como encerrar). Incluir variações para diferentes níveis de gravidade\",
+        \"tecnicas_desescalacao\": \"MÍNIMO 200 PALAVRAS: Metodologias psicológicas específicas - linguagem corporal (como se posicionar), tom de voz (volume e ritmo), técnicas de espelhamento (como aplicar), validação emocional (frases exatas), redirecionamento de foco (como desviar atenção), técnicas de ancoragem emocional\",
+        \"niveis_gravidade\": {
+          \"leve\": \"Como lidar quando situação está no início da escalada\",
+          \"moderada\": \"Procedimentos quando situação está em desenvolvimento\",
+          \"severa\": \"Protocolos para situação completamente fora de controle\"
+        },
+        \"quando_escalar\": \"CRITÉRIOS ESPECÍFICOS E MENSURÁVEIS: Sinais comportamentais exatos, tempo decorrido específico, nível de ameaça mensurável, impacto no negócio quantificado, indicadores de risco específicos\",
+        \"procedimento_pos_crise\": \"MÍNIMO 150 PALAVRAS: Follow-up detalhado (quando fazer, como fazer), documentação específica (que campos preencher), análise de causa raiz (metodologia), melhorias preventivas (ações concretas), comunicação interna (para quem reportar)\",
+        \"tempo_resposta_especifico\": \"Prazos específicos: contenção inicial (X minutos), escalação (X minutos), resolução (X minutos)\"
+      }
+    ],
+    \"scripts_situacoes_especificas\": {
+      \"cliente_extremamente_irritado\": \"MÍNIMO 400 PALAVRAS: Script ultra completo word-by-word. Abertura empática (frases exatas), investigação do problema (perguntas específicas), validação emocional (como validar), propostas de solução (como apresentar), técnicas de fechamento (frases de encerramento). Incluir variações para diferentes tipos de personalidade\",
+      \"cobranca_cliente_resistente\": \"MÍNIMO 350 PALAVRAS: Abordagem completa passo-a-passo. Técnicas de aproximação (como iniciar), argumentação (argumentos específicos), negociação (técnicas de concessão), pressão psicológica positiva (como aplicar), propostas de acordo (modelos específicos)\",
+      \"sistema_completamente_indisponivel\": \"MÍNIMO 300 PALAVRAS: Protocolo completo de comunicação. Como informar o problema (frases exatas), gerenciar expectativas (como explicar), oferecer alternativas (que opções dar), manter relacionamento (como preservar confiança), atualizações periódicas (frequência e conteúdo)\",
+      \"erro_grave_empresa_cometeu\": \"MÍNIMO 350 PALAVRAS: Metodologia de recuperação completa. Como assumir responsabilidade (frases exatas), comunicar transparência (nível de detalhes), propor reparação (tipos de compensação), recuperar confiança (ações específicas), prevenir reincidência (garantias)\",
+      \"prazo_critico_perdido\": \"MÍNIMO 250 PALAVRAS: Estratégias de comunicação específicas. Como comunicar atraso (timing e frases), justificar sem desculpas (técnicas de explicação), negociar nova data (como propor), manter credibilidade (ações de recuperação)\",
+      \"qualidade_fortemente_questionada\": \"MÍNIMO 300 PALAVRAS: Técnicas de defesa profissional. Como manter autoridade técnica (postura e argumentos), apresentar evidências (que mostrar), reconhecer limitações quando necessário (como admitir), propor melhorias (ações específicas)\"
+    },
+    \"protocolos_emergencia_criticos\": {
+      \"escalacao_imediata\": \"Quando e como acionar supervisão imediata com scripts exatos\",
+      \"comunicacao_interna_crise\": \"Protocolos de comunicação interna durante emergências\",
+      \"documentacao_obrigatoria_crise\": \"Que registros fazer obrigatoriamente em cada tipo de crise\",
+      \"acompanhamento_pos_emergencia\": \"Procedimentos de follow-up após resolução de emergências\"
+    }
+  },
+  \"matriz_riscos_servico\": [
+    {
+      \"risco_identificado\": \"Risco específico relacionado a este serviço\",
+      \"probabilidade\": \"Alta/Média/Baixa com justificativa\",
+      \"impacto\": \"Alto/Médio/Baixo com descrição específica\",
+      \"sinais_antecipacao\": [\"Como identificar antes que vire crise\"],
+      \"acoes_preventivas\": [\"Ações específicas para prevenir\"]
+    }
+  ],
+  \"treinamento_gestao_crises\": {
+    \"competencias_necessarias\": [\"Competência específica para gestão de crises deste serviço\"],
+    \"simulacoes_recomendadas\": [\"Exercícios práticos para preparar a equipe\"],
+    \"atualizacao_protocolos\": \"Frequência e método de atualização dos protocolos\"
+  },
+  \"versao\": \"1.0 - Situações Críticas\",
+  \"data_criacao\": \"" . date('d/m/Y') . "\"
+}
+```
+
+## REQUISITOS OBRIGATÓRIOS PARA SITUAÇÕES CRÍTICAS:
+
+### 🚨 **QUANTIDADE MÍNIMA OBRIGATÓRIA:**
+- **MÍNIMO 8 cenários críticos** detalhados por serviço
+- **MÍNIMO 6 scripts específicos** para situações difíceis
+- **MÍNIMO 300 palavras** por script de situação crítica
+- **MÍNIMO 5 níveis de escalação** com critérios específicos
+
+### 🎯 **DETALHAMENTO CRÍTICO OBRIGATÓRIO:**
+- **Scripts word-by-word**: Frases exatas, não resumos
+- **Técnicas psicológicas**: Metodologias científicas específicas
+- **Critérios mensuráveis**: Indicadores quantificáveis de escalação
+- **Múltiplos níveis**: Leve, moderada, severa para cada situação
+- **Pós-crise**: Procedimentos completos de recovery
+
+### ⚡ **SITUAÇÕES OBRIGATÓRIAS A MAPEAR:**
+- Cliente agressivo ou ameaçador
+- Sistemas indisponíveis por horas
+- Cobrança de inadimplente resistente
+- Erro grave que prejudicou cliente
+- Prazo crítico não cumprido
+- Qualidade questionada publicamente
+- Vazamento de informações
+- Acidente ou problema de segurança
+
+**TERMINOLOGIA**: Use SEMPRE terminologia genérica. NUNCA mencione marcas comerciais.
+
+Responda APENAS com o JSON válido das situações críticas, sem explicações adicionais.";
+    }
 
 # INFORMAÇÕES DO SERVIÇO
 - **Código**: {$codigoServico}
