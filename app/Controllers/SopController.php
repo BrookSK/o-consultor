@@ -1731,7 +1731,7 @@ class SopController
                             $setorId,
                             $empresa['id'],
                             $nomeServico,
-                            $this->gerarCodigoServico($nomeSetor, $nomeServico, $index + 1),
+                            $this->gerarCodigoServico($nomeSetor, $nomeServico),
                             $this->determinarCategoriaServico($nomeServico),
                             $this->determinarCriticidadeServico($nomeServico),
                             $this->determinarComplexidadeServico($nomeServico)
@@ -1762,74 +1762,6 @@ class SopController
         }
     }
 
-    /**
-     * Métodos auxiliares para determinação de propriedades dos serviços
-     */
-    private function gerarCodigoServico(string $setor, string $servico, int $index): string
-    {
-        $prefixoSetor = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $setor), 0, 3));
-        $prefixoServico = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $servico), 0, 3));
-        return sprintf('SRV-%s-%s-%03d', $prefixoSetor, $prefixoServico, $index);
-    }
-
-    private function determinarCategoriaServico(string $nomeServico): string
-    {
-        $nomeServiceLower = strtolower($nomeServico);
-        
-        if (strpos($nomeServiceLower, 'estrategi') !== false || strpos($nomeServiceLower, 'planejam') !== false) {
-            return 'estrategico';
-        } elseif (strpos($nomeServiceLower, 'core') !== false || strpos($nomeServiceLower, 'principal') !== false) {
-            return 'core';
-        } elseif (strpos($nomeServiceLower, 'crise') !== false || strpos($nomeServiceLower, 'emergenc') !== false) {
-            return 'crise';
-        } else {
-            return 'operacional';
-        }
-    }
-
-    private function determinarCriticidadeServico(string $nomeServico): string
-    {
-        $nomeServiceLower = strtolower($nomeServico);
-        
-        if (strpos($nomeServiceLower, 'critico') !== false || strpos($nomeServiceLower, 'emergenc') !== false) {
-            return 'alta';
-        } elseif (strpos($nomeServiceLower, 'importante') !== false || strpos($nomeServiceLower, 'essencial') !== false) {
-            return 'media';
-        } else {
-            return 'baixa';
-        }
-    }
-
-    private function determinarFrequenciaServico(string $nomeServico): string
-    {
-        $nomeServiceLower = strtolower($nomeServico);
-        
-        if (strpos($nomeServiceLower, 'diaria') !== false || strpos($nomeServiceLower, 'diario') !== false) {
-            return 'diaria';
-        } elseif (strpos($nomeServiceLower, 'semanal') !== false) {
-            return 'semanal';
-        } elseif (strpos($nomeServiceLower, 'mensal') !== false) {
-            return 'mensal';
-        } elseif (strpos($nomeServiceLower, 'anual') !== false) {
-            return 'anual';
-        } else {
-            return 'sob_demanda';
-        }
-    }
-
-    private function determinarComplexidadeServico(string $nomeServico): string
-    {
-        $nomeServiceLower = strtolower($nomeServico);
-        
-        if (strpos($nomeServiceLower, 'simples') !== false || strpos($nomeServiceLower, 'basico') !== false) {
-            return 'baixa';
-        } elseif (strpos($nomeServiceLower, 'complexo') !== false || strpos($nomeServiceLower, 'avancad') !== false) {
-            return 'alta';
-        } else {
-            return 'media';
-        }
-    }
-    
     /**
      * Função de recuperação: buscar dados mesmo se estrutura temporária expirou
      */
@@ -7288,6 +7220,67 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         $servicoSlug = strtolower(str_replace([' ', '/', '\\', '-'], '_', $servicoNome));
         
         return $setorSlug . '_' . $servicoSlug;
+    }
+
+    /**
+     * Métodos auxiliares para determinação de propriedades dos serviços
+     */
+    private function determinarCategoriaServico(string $nomeServico): string
+    {
+        $nomeServiceLower = strtolower($nomeServico);
+        
+        if (strpos($nomeServiceLower, 'estrategi') !== false || strpos($nomeServiceLower, 'planejam') !== false) {
+            return 'estrategico';
+        } elseif (strpos($nomeServiceLower, 'core') !== false || strpos($nomeServiceLower, 'principal') !== false) {
+            return 'core';
+        } elseif (strpos($nomeServiceLower, 'crise') !== false || strpos($nomeServiceLower, 'emergenc') !== false) {
+            return 'crise';
+        } else {
+            return 'operacional';
+        }
+    }
+
+    private function determinarCriticidadeServico(string $nomeServico): string
+    {
+        $nomeServiceLower = strtolower($nomeServico);
+        
+        if (strpos($nomeServiceLower, 'critico') !== false || strpos($nomeServiceLower, 'emergenc') !== false) {
+            return 'alta';
+        } elseif (strpos($nomeServiceLower, 'importante') !== false || strpos($nomeServiceLower, 'essencial') !== false) {
+            return 'media';
+        } else {
+            return 'baixa';
+        }
+    }
+
+    private function determinarFrequenciaServico(string $nomeServico): string
+    {
+        $nomeServiceLower = strtolower($nomeServico);
+        
+        if (strpos($nomeServiceLower, 'diaria') !== false || strpos($nomeServiceLower, 'diario') !== false) {
+            return 'diaria';
+        } elseif (strpos($nomeServiceLower, 'semanal') !== false) {
+            return 'semanal';
+        } elseif (strpos($nomeServiceLower, 'mensal') !== false) {
+            return 'mensal';
+        } elseif (strpos($nomeServiceLower, 'anual') !== false) {
+            return 'anual';
+        } else {
+            return 'sob_demanda';
+        }
+    }
+
+    private function determinarComplexidadeServico(string $nomeServico): string
+    {
+        $nomeServiceLower = strtolower($nomeServico);
+        
+        if (strpos($nomeServiceLower, 'simples') !== false || strpos($nomeServiceLower, 'basico') !== false) {
+            return 'baixa';
+        } elseif (strpos($nomeServiceLower, 'complexo') !== false || strpos($nomeServiceLower, 'avancad') !== false) {
+            return 'alta';
+        } else {
+            return 'media';
+        }
     }
 
     /**
