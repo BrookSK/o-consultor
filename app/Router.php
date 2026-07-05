@@ -109,6 +109,7 @@ class Router
         // SISTEMA HIERÁRQUICO UNIFICADO: Setor > Serviços > SOPs
         $this->get('sop/gerenciar-hierarquia', 'SopController', 'gerenciarHierarquia');          // Interface principal de gerenciamento
         $this->post('sop/processar-servico-completo', 'SopController', 'processarServicoCompleto'); // Processar serviço: detalhar + gerar SOP
+        $this->get('sop/status-servico-sop', 'SopController', 'statusServicoSop');                // Polling do status da geração background
         $this->post('sop/adicionar-servico-manual', 'SopController', 'adicionarServicoManual');  // Adicionar serviço manualmente
         $this->post('sop/adicionar-servico-audio', 'SopController', 'adicionarServicoAudio');    // Adicionar serviço por áudio
         $this->get('sop/ver-detalhes-servico', 'SopController', 'verDetalhesServico');           // Ver detalhes completos do serviço

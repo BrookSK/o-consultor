@@ -428,62 +428,84 @@ async function salvarEdicao() {
     }
 }
 
-// Processar serviço em 3 FASES sequenciais (evita timeout do servidor)
+// Processar serviço via GERAÇÃO EM BACKGROUND + polling (evita timeout do proxy)
 async function processarServico(servicoId, etapa) {
     const CSRF = '<?= Csrf::token() ?>';
-    const URL = '<?= APP_URL ?>/sop/processar-servico-completo';
+    const URL_INICIAR = '<?= APP_URL ?>/sop/processar-servico-completo';
+    const URL_STATUS = '<?= APP_URL ?>/sop/status-servico-sop';
 
-    // Função auxiliar que chama uma fase
-    async function chamarFase(fase, sopId) {
-        const response = await fetch(URL, {
+    const fasesLabel = {
+        0: 'Iniciando geração...',
+        1: 'Gerando resumo e estrutura (1/3)...',
+        2: 'Gerando procedimentos operacionais (2/3)...',
+        3: 'Gerando situações críticas (3/3)...'
+    };
+
+    try {
+        // 1. Iniciar a geração em background
+        mostrarLoading('Gerando SOP Completo', 'Iniciando geração...');
+
+        const respostaInicio = await fetch(URL_INICIAR, {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams({
                 servico_id: servicoId,
-                fase: fase,
-                sop_id: sopId || 0,
                 csrf_token: CSRF
             })
         });
-        return await response.json();
-    }
 
-    try {
-        // FASE 1: Resumo
-        mostrarLoading('Gerando SOP (1/3)', 'Criando resumo e estrutura inicial...');
-        let data = await chamarFase(1, 0);
-        if (!data.sucesso) {
+        const dataInicio = await respostaInicio.json();
+        if (!dataInicio.sucesso) {
             esconderLoading();
-            alert('Erro na Fase 1: ' + (data.erro || 'Erro desconhecido'));
-            return;
-        }
-        const sopId = data.sop_id;
-
-        // FASE 2: Procedimentos operacionais
-        mostrarLoading('Gerando SOP (2/3)', 'Criando processo operacional completo...');
-        data = await chamarFase(2, sopId);
-        if (!data.sucesso) {
-            esconderLoading();
-            alert('Erro na Fase 2: ' + (data.erro || 'Erro desconhecido') + '\n\nO resumo foi salvo. Tente regenerar para completar.');
+            alert('Erro ao iniciar: ' + (dataInicio.erro || 'Erro desconhecido'));
             return;
         }
 
-        // FASE 3: Situações críticas
-        mostrarLoading('Gerando SOP (3/3)', 'Criando situações críticas e gestão de crises...');
-        data = await chamarFase(3, sopId);
-        if (!data.sucesso) {
-            esconderLoading();
-            alert('Erro na Fase 3: ' + (data.erro || 'Erro desconhecido') + '\n\nOs procedimentos foram salvos. Tente regenerar para completar.');
-            return;
-        }
+        const sopId = dataInicio.sop_id;
 
-        esconderLoading();
-        // Redirecionar para o SOP gerado
-        if (data.redirect) {
-            window.location.href = data.redirect;
-        } else {
-            window.location.reload();
-        }
+        // 2. Fazer polling do status a cada 3 segundos
+        let tentativas = 0;
+        const maxTentativas = 100; // ~5 minutos
+
+        const intervalo = setInterval(async () => {
+            tentativas++;
+
+            if (tentativas > maxTentativas) {
+                clearInterval(intervalo);
+                esconderLoading();
+                alert('A geração está demorando mais que o esperado. Verifique novamente em alguns instantes.');
+                return;
+            }
+
+            try {
+                const respStatus = await fetch(URL_STATUS + '?sop_id=' + sopId);
+                const status = await respStatus.json();
+
+                if (!status.sucesso) {
+                    return; // tenta de novo no próximo ciclo
+                }
+
+                const fase = status.fase_atual || 0;
+                mostrarLoading('Gerando SOP Completo', status.mensagem || fasesLabel[fase] || 'Processando...');
+
+                if (status.status_geracao === 'concluido') {
+                    clearInterval(intervalo);
+                    esconderLoading();
+                    if (status.redirect) {
+                        window.location.href = status.redirect;
+                    } else {
+                        window.location.reload();
+                    }
+                } else if (status.status_geracao === 'erro') {
+                    clearInterval(intervalo);
+                    esconderLoading();
+                    alert('Erro na geração: ' + (status.mensagem || 'Erro desconhecido'));
+                }
+            } catch (e) {
+                // Erro de rede momentâneo - continua tentando
+                console.warn('Polling falhou, tentando novamente...', e);
+            }
+        }, 3000);
 
     } catch (error) {
         esconderLoading();
