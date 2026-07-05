@@ -7514,9 +7514,10 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         }
         
         $sop = Database::queryOne(
-            "SELECT s.*, ss.codigo_servico, ss.nome_servico, ss.nome_setor 
+            "SELECT s.*, ss.codigo_servico, ss.nome_servico, se.nome_setor 
              FROM sops s
              INNER JOIN servicos_setor ss ON s.id = ss.sop_id
+             INNER JOIN setores_empresa se ON ss.setor_id = se.id
              WHERE s.id = :id AND s.empresa_id = :empresa_id AND ss.tem_sop = 1",
             ['id' => $sopId, 'empresa_id' => Auth::empresa()]
         );
