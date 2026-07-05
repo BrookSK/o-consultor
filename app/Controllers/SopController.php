@@ -8108,13 +8108,15 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             exit;
         }
         
+        // NOTA: não filtrar por empresa - ADMIN_HOLDING tem Auth::empresa() = null.
+        // A validação de permissão é feita após encontrar o SOP.
         $sop = Database::queryOne(
             "SELECT s.*, ss.codigo_servico, ss.nome_servico, se.nome_setor 
              FROM sops s
              INNER JOIN servicos_setor ss ON s.id = ss.sop_id
              INNER JOIN setores_empresa se ON ss.setor_id = se.id
-             WHERE s.id = :id AND s.empresa_id = :empresa_id AND ss.tem_sop = 1",
-            ['id' => $sopId, 'empresa_id' => Auth::empresa()]
+             WHERE s.id = :id AND ss.tem_sop = 1",
+            ['id' => $sopId]
         );
         
         // Se não encontrou com JOIN, tentar buscar apenas na tabela sops (fallback)
@@ -8124,9 +8126,19 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                         s.departamento as nome_setor, s.departamento as setor_nome,
                         s.titulo as codigo_servico
                  FROM sops s
-                 WHERE s.id = :id AND s.empresa_id = :empresa_id",
-                ['id' => $sopId, 'empresa_id' => Auth::empresa()]
+                 WHERE s.id = :id",
+                ['id' => $sopId]
             );
+        }
+
+        // Validar permissão: ADMIN_HOLDING acessa tudo; outros só a própria empresa
+        if ($sop) {
+            $empresaUsuario = Auth::empresa();
+            if ($empresaUsuario !== null && (int) $sop['empresa_id'] !== (int) $empresaUsuario) {
+                Flash::set('erro', 'Sem permissão para acessar este SOP.');
+                header('Location: ' . APP_URL . '/sop');
+                exit;
+            }
         }
         
         // Debug: Log para identificar o problema
@@ -8137,24 +8149,13 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             'campos_sop' => $sop ? array_keys($sop) : 'nenhum'
         ]);
         
-        // Debug adicional: Verificar se existem SOPs na tabela
-        $totalSOPs = Database::queryOne(
-            "SELECT COUNT(*) as total FROM sops WHERE empresa_id = :empresa_id",
-            ['empresa_id' => Auth::empresa()]
-        );
-        
-        Logger::info('Debug: SOPs na empresa', [
-            'total_sops' => $totalSOPs['total'] ?? 0,
-            'empresa_id' => Auth::empresa()
-        ]);
-        
         if (!$sop) {
             // Verificar se há um serviço referenciando este SOP mas o SOP não existe
             $servicoComReferencia = Database::queryOne(
                 "SELECT ss.*, se.nome_setor FROM servicos_setor ss 
                  LEFT JOIN setores_empresa se ON ss.setor_id = se.id
-                 WHERE ss.sop_id = :sop_id AND ss.empresa_id = :empresa_id",
-                ['sop_id' => $sopId, 'empresa_id' => Auth::empresa()]
+                 WHERE ss.sop_id = :sop_id",
+                ['sop_id' => $sopId]
             );
             
             if ($servicoComReferencia) {
