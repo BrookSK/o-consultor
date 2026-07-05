@@ -10063,7 +10063,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         if ($fase === 1) {
             Logger::info('FILA FASE 1 INICIANDO', ['sop_id' => $sopId]);
             $prompt = $this->criarPromptResumoSop($sopData, $detalhamento, $empresa, $diagnostico);
-            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o', true, 3000, 160);
+            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 3000, 160);
             if (empty($resp['sucesso'])) {
                 return ['sucesso' => false, 'erro' => 'Fase 1 (Resumo): ' . ($resp['erro'] ?? 'Erro na IA')];
             }
@@ -10092,7 +10092,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             $prompt = $this->criarPromptProcedimentosOperacionais($sopData, $detalhamento, $empresa, $diagnostico);
             // Roda via fila (sem timeout de proxy), então usamos tokens altos
             // para permitir MÚLTIPLAS fases e etapas detalhadas.
-            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o', true, 16000, 160);
+            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 16000, 160);
             if (empty($resp['sucesso'])) {
                 return ['sucesso' => false, 'erro' => 'Fase 2 (Procedimentos): ' . ($resp['erro'] ?? 'Erro na IA')];
             }
@@ -10118,7 +10118,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         if ($fase === 3) {
             Logger::info('FILA FASE 3 INICIANDO', ['sop_id' => $sopId]);
             $prompt = $this->criarPromptSituacoesCriticas($sopData, $detalhamento, $empresa, $diagnostico);
-            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o', true, 8000, 160);
+            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 12000, 160);
             if (empty($resp['sucesso'])) {
                 return ['sucesso' => false, 'erro' => 'Fase 3 (Situações Críticas): ' . ($resp['erro'] ?? 'Erro na IA')];
             }
