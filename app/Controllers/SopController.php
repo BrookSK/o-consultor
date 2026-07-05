@@ -8622,12 +8622,7 @@ Esta é a **PRIMEIRA FASE** da geração do SOP. O foco é criar **PROCEDIMENTOS
 
 Responda APENAS com o JSON válido dos procedimentos operacionais, sem explicações adicionais.";
     }
-    {
-        $nomeEmpresa = json_decode($diagnostico['respostas'], true)['nome_empresa'] ?? $empresa['nome'] ?? 'Empresa';
-        $nomeServico = $servico['nome_servico'];
-        $nomeSetor = $servico['nome_setor'];
-        $codigoServico = $servico['codigo_servico'];
-        
+
     /**
      * Criar prompt para SITUAÇÕES CRÍTICAS E EMERGENCIAIS (Segunda Fase)
      */
