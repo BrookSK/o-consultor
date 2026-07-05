@@ -9690,6 +9690,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
 
         try {
             // Buscar serviço com dados do setor e estrutura
+            // NOTA: não filtrar por empresa - ADMIN_HOLDING tem Auth::empresa() = null
             $servico = Database::queryOne(
                 "SELECT 
                     ss.*,
@@ -9700,12 +9701,19 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                  FROM servicos_setor ss
                  LEFT JOIN setores_empresa se ON ss.setor_id = se.id
                  LEFT JOIN estruturas_organizacionais eo ON se.estrutura_id = eo.id
-                 WHERE ss.id = :id AND ss.empresa_id = :empresa_id",
-                ['id' => $servicoId, 'empresa_id' => Auth::empresa()]
+                 WHERE ss.id = :id",
+                ['id' => $servicoId]
             );
 
             if (!$servico) {
                 echo json_encode(['sucesso' => false, 'erro' => 'Serviço não encontrado.']);
+                exit;
+            }
+
+            // Validar permissão: ADMIN_HOLDING acessa tudo; outros só a própria empresa
+            $empresaUsuario = Auth::empresa();
+            if ($empresaUsuario !== null && (int) $servico['empresa_id'] !== (int) $empresaUsuario) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Sem permissão para acessar este serviço.']);
                 exit;
             }
 
@@ -9752,12 +9760,12 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                 exit;
             }
 
-            // Salvar SOP na tabela sops
+            // Salvar SOP na tabela sops (usar empresa do serviço, não Auth::empresa que pode ser null p/ admin)
             Database::execute(
                 "INSERT INTO sops (empresa_id, diagnostico_id, titulo, sop_codigo, departamento, conteudo, versao, status, gerado_por_ia, criado_em, atualizado_em)
                  VALUES (:empresa_id, :diagnostico_id, :titulo, :sop_codigo, :departamento, :conteudo, '1.0', 'ativo', 1, NOW(), NOW())",
                 [
-                    'empresa_id' => Auth::empresa(),
+                    'empresa_id' => $servico['empresa_id'],
                     'diagnostico_id' => $servico['diagnostico_id'],
                     'titulo' => $servico['nome_servico'],
                     'sop_codigo' => $servico['codigo_servico'],
@@ -9836,6 +9844,8 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             Logger::info('BUSCANDO DADOS DO SERVIÇO');
             
             // Buscar dados do serviço na tabela servicos_setor com JOINs
+            // NOTA: não filtrar por empresa aqui - ADMIN_HOLDING tem Auth::empresa() = null.
+            // A validação de permissão é feita após encontrar o serviço.
             $servico = Database::queryOne(
                 "SELECT 
                     ss.*,
@@ -9849,25 +9859,33 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                  LEFT JOIN setores_empresa se ON ss.setor_id = se.id
                  LEFT JOIN estruturas_organizacionais eo ON se.estrutura_id = eo.id
                  LEFT JOIN empresas e ON ss.empresa_id = e.id
-                 WHERE ss.id = :id 
-                   AND ss.empresa_id = :empresa_id",
-                [
-                    'id' => $servicoId,
-                    'empresa_id' => Auth::empresa()
-                ]
+                 WHERE ss.id = :id",
+                ['id' => $servicoId]
             );
             
             Logger::info('BUSCA EM servicos_setor', [
                 'encontrado' => !empty($servico),
-                'empresa_id' => Auth::empresa()
+                'empresa_servico' => $servico['empresa_id'] ?? null
             ]);
             
             if (!$servico) {
                 Logger::warning('SERVIÇO NÃO ENCONTRADO', [
-                    'servico_id' => $servicoId,
-                    'empresa_id' => Auth::empresa()
+                    'servico_id' => $servicoId
                 ]);
-                Flash::set('erro', 'Serviço não encontrado. Verifique se o serviço existe e se você tem permissão para acessá-lo.');
+                Flash::set('erro', 'Serviço não encontrado.');
+                header('Location: ' . APP_URL . '/sop');
+                exit;
+            }
+
+            // Validar permissão: ADMIN_HOLDING acessa tudo; outros só a própria empresa
+            $empresaUsuario = Auth::empresa();
+            if ($empresaUsuario !== null && (int) $servico['empresa_id'] !== (int) $empresaUsuario) {
+                Logger::warning('PERMISSÃO NEGADA AO SERVIÇO', [
+                    'servico_id' => $servicoId,
+                    'empresa_servico' => $servico['empresa_id'],
+                    'empresa_usuario' => $empresaUsuario
+                ]);
+                Flash::set('erro', 'Sem permissão para acessar este serviço.');
                 header('Location: ' . APP_URL . '/sop');
                 exit;
             }
@@ -9924,11 +9942,8 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             $sop = null;
             if (!empty($servico['sop_id'])) {
                 $sop = Database::queryOne(
-                    "SELECT * FROM sops WHERE id = :sop_id AND empresa_id = :empresa_id",
-                    [
-                        'sop_id' => $servico['sop_id'],
-                        'empresa_id' => Auth::empresa()
-                    ]
+                    "SELECT * FROM sops WHERE id = :sop_id",
+                    ['sop_id' => $servico['sop_id']]
                 );
                 
                 Logger::info('BUSCA DE SOP POR ID', [
