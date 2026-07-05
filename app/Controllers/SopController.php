@@ -9864,7 +9864,13 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
     public function processarFilaHttp(): void
     {
         Auth::proteger();
-        @set_time_limit(120);
+
+        // CRUCIAL: continuar processando mesmo que o proxy corte a conexão (504).
+        // Assim a fase é concluída e salva no banco em background, e o polling
+        // do navegador detecta a conclusão depois.
+        @ignore_user_abort(true);
+        @set_time_limit(300);
+
         header('Content-Type: application/json');
 
         $resultado = $this->processarProximoDaFila();
@@ -9907,14 +9913,25 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
      */
     public function processarProximoDaFila(): array
     {
-        // Buscar o próximo pedido pendente ou em processamento
+        // Buscar o próximo pedido: pendentes OU processando-travados (>120s sem update).
+        // Isso evita que duas requisições processem a MESMA fase simultaneamente:
+        // um pedido recém marcado como 'processando' não é pego por outra chamada
+        // até passar o tempo de "travado".
         $pedido = Database::queryOne(
             "SELECT * FROM fila_geracao_sop 
-             WHERE status IN ('pendente','processando') 
+             WHERE status = 'pendente'
+                OR (status = 'processando' AND atualizado_em < (NOW() - INTERVAL 240 SECOND))
              ORDER BY criado_em ASC LIMIT 1"
         );
 
         if (!$pedido) {
+            // Verificar se há algo em processamento (para o polling saber que não está vazio)
+            $emProcesso = Database::queryOne(
+                "SELECT id FROM fila_geracao_sop WHERE status = 'processando' LIMIT 1"
+            );
+            if ($emProcesso) {
+                return ['sucesso' => true, 'processando' => true, 'mensagem' => 'Fase em processamento...'];
+            }
             return ['sucesso' => true, 'vazio' => true, 'mensagem' => 'Fila vazia.'];
         }
 
