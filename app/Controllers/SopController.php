@@ -8544,11 +8544,21 @@ Este SOP deve ser um **MANUAL TÉCNICO COMPLETO DE CAPACITAÇÃO PROFISSIONAL**.
 
 ## ESTRUTURA OBRIGATÓRIA DO SOP ULTRA TÉCNICO EM JSON:
 
+**ATENÇÃO: ESTE SOP DEVE SER UM MANUAL COMPLETO DE TREINAMENTO. CADA SEÇÃO DEVE TER DETALHAMENTO EXTENSO. NÃO ACEITAR RESPOSTAS SUPERFICIAIS OU COM POUCAS PALAVRAS.**
+
+**EXEMPLO DE DETALHAMENTO CORRETO OBRIGATÓRIO:**
+- Objetivo: 4+ frases explicando propósito, resultados esperados, impacto no negócio
+- Detalhamento de Passo: 150+ palavras explicando exatamente como executar, que ferramentas usar, que validações fazer
+- Script de Comunicação: Frases completas word-by-word, não resumos
+- Situação Crítica: 300+ palavras com identificação, script, técnicas, escalação
+
+**SE A RESPOSTA FOR SUPERFICIAL (poucos passos, frases curtas, falta de detalhes), SERÁ REJEITADA**
+
 ```json
 {
   \"sop_titulo\": \"SOP {$codigoServico} - {$nomeServico}\",
-  \"objetivo\": \"Objetivo técnico detalhado explicando propósito, resultados mensuráveis esperados e impacto no negócio (mínimo 4 frases técnicas específicas)\",
-  \"escopo\": \"Definição técnica completa do escopo, limitações específicas, interfaces com outros processos e aplicabilidade por contexto (mínimo 4 frases técnicas detalhadas)\",
+  \"objetivo\": \"OBRIGATÓRIO MÍNIMO 4 FRASES DETALHADAS: Objetivo técnico completo explicando propósito específico, resultados mensuráveis esperados, impacto direto no negócio e benefícios para o cliente. Exemplo: Este SOP tem como objetivo padronizar o processo de atendimento ao cliente, garantindo resolução de 95% dos chamados em até 24 horas, reduzindo retrabalho em 30% e aumentando a satisfação do cliente para NPS superior a 8. O processo visa estabelecer comunicação eficaz, diagnóstico preciso dos problemas e soluções definitivas que agreguem valor ao relacionamento comercial.\",
+  \"escopo\": \"OBRIGATÓRIO MÍNIMO 4 FRASES DETALHADAS: Definição técnica completa do escopo incluindo o que está incluído, o que está excluído, limitações específicas, interfaces com outros processos, aplicabilidade por contexto e condições de execução. Exemplo: Este procedimento aplica-se a todos os atendimentos realizados pelos canais oficiais da empresa, incluindo telefone, email, chat e presencial, abrangendo clientes pessoa física e jurídica com contratos ativos. Não se aplica a atendimentos de prospecção comercial, cobrança judicial ou suporte técnico especializado nível 3. O escopo limita-se a problemas de complexidade baixa e média, com tempo de resolução estimado em até 4 horas de trabalho técnico.\",
   \"responsaveis\": {
     \"executor_principal\": \"Cargo específico com competências técnicas requeridas\",
     \"supervisor_tecnico\": \"Cargo de quem supervisiona tecnicamente e valida qualidade\",
@@ -8576,76 +8586,23 @@ Este SOP deve ser um **MANUAL TÉCNICO COMPLETO DE CAPACITAÇÃO PROFISSIONAL**.
   },
   \"procedimentos_ultra_detalhados\": [
     {
-      \"fase\": \"Preparação Técnica e Planejamento Estratégico\",
-      \"descricao_tecnica\": \"Descrição técnica detalhada da importância estratégica, objetivos mensuráveis e impacto desta fase no resultado final\",
-      \"metodologia_aplicada\": \"Framework ou metodologia técnica específica utilizada nesta fase\",
+      \"fase\": \"NOME DA FASE (ex: Preparação Técnica e Planejamento Estratégico)\",
+      \"descricao_tecnica\": \"OBRIGATÓRIO MÍNIMO 3 FRASES: Descrição técnica detalhada da importância estratégica desta fase, objetivos mensuráveis específicos e impacto direto no resultado final do processo.\",
+      \"metodologia_aplicada\": \"Framework ou metodologia técnica específica utilizada (ex: Metodologia DMAIC, Framework ITIL, Abordagem Lean, etc.)\",
       \"passos_tecnicos\": [
         {
           \"passo\": 1,
-          \"acao_tecnica\": \"Ação específica com metodologia técnica (para processos simples: objetiva; para complexos: detalhada)\",
-          \"detalhamento_profissional\": \"Para passos simples: explicação técnica concisa com validações. Para passos complexos: DETALHAMENTO TÉCNICO EXTENSO com metodologias profissionais, técnicas especializadas, abordagens múltiplas, scripts técnicos completos, exemplos práticos aplicáveis, troubleshooting detalhado e cenários específicos\",
-          \"responsavel_tecnico\": \"Cargo específico com nível de competência\",
-          \"tempo_estimado_realista\": \"Tempo técnico realista considerando complexidade e qualidade\",
-          \"criterios_qualidade_tecnicos\": \"Como validar tecnicamente se foi executado com padrão profissional\",
-          \"scripts_e_templates_completos\": \"Para interações: scripts psicológicos completos, modelos de abordagem profissional, técnicas de persuasão. Para processos técnicos: comandos específicos, códigos detalhados, procedimentos passo-a-passo\",
-          \"metodologias_especializadas\": \"Técnicas profissionais específicas, frameworks reconhecidos, abordagens científicas aplicáveis\",
-          \"cenarios_e_variacoes\": \"Como lidar tecnicamente com variações, exceções, problemas críticos e situações de alta complexidade\",
-          \"situacoes_criticas_especificas\": \"OBRIGATÓRIO DETALHAMENTO EXTENSO (mínimo 300 palavras): Detalhar minuciosamente como lidar com situações que fogem do controle normal específicas deste processo. Para cada situação crítica incluir: 1) Como identificar os sinais, 2) Script word-by-word da primeira abordagem, 3) Técnicas de desescalação passo-a-passo, 4) Múltiplas estratégias conforme gravidade, 5) Quando e como escalar, 6) Procedimentos pós-resolução. Exemplos obrigatórios: cliente irritado/agressivo, sistema indisponível, cobrança difícil, fornecedor atrasado, erro grave cometido, etc.\",
-          \"protocolos_emergencia\": \"OBRIGATÓRIO DETALHAMENTO ULTRA ESPECÍFICO (mínimo 200 palavras): Procedimentos técnicos minuciosos para quando a situação sai COMPLETAMENTE do controle. Incluir: escalação imediata, comunicação de crise, contenção de danos, recuperação do processo, documentação obrigatória. Scripts exatos de comunicação interna e externa durante a emergência\",
-          \"validacoes_tecnicas\": \"Checklist técnico de validações obrigatórias e critérios de aceitação\",
-          \"observacoes_profissionais\": \"Insights de especialistas, armadilhas comuns, dicas avançadas e melhores práticas técnicas\"
-        }
-      ]
-    },
-    {
-      \"fase\": \"Execução Técnica Principal\",
-      \"descricao_tecnica\": \"Descrição da fase core com importância técnica e metodologias aplicadas\",
-      \"metodologia_aplicada\": \"Framework técnico específico para execução profissional\",
-      \"passos_tecnicos\": [
-        {
-          \"passo\": 2,
-          \"acao_tecnica\": \"Ação principal com especificação técnica detalhada\",
-          \"detalhamento_profissional\": \"DETALHAMENTO TÉCNICO MÁXIMO: Para atendimento - psicologia aplicada, técnicas de comunicação avançada, metodologias de relacionamento, scripts comportamentais, tratamento de objeções complexas. Para processos técnicos - metodologia passo-a-passo minuciosa, validações técnicas múltiplas, troubleshooting completo, otimizações de performance\",
-          \"responsavel_tecnico\": \"Cargo específico com especialização\",
-          \"tempo_estimado_realista\": \"Tempo técnico detalhado com variações\",
-          \"criterios_qualidade_tecnicos\": \"Critérios técnicos específicos de excelência profissional\",
-          \"scripts_e_templates_completos\": \"Scripts técnicos completos: para atendimento - modelos psicológicos de abordagem, templates de apresentação profissional, técnicas de fechamento; para processos - códigos/comandos específicos, templates técnicos, procedimentos detalhados\",
-          \"metodologias_especializadas\": \"Técnicas profissionais avançadas, abordagens especializadas reconhecidas, métodos científicos comprovados\",
-          \"frameworks_aplicaveis\": \"Frameworks profissionais específicos aplicáveis ao contexto com adaptações necessárias\",
-          \"cenarios_complexos\": \"Cenários técnicos específicos com soluções detalhadas para cada situação complexa\",
-          \"troubleshooting_avancado\": \"Diagnóstico e solução técnica para problemas comuns e críticos com metodologia estruturada\",
-          \"otimizacoes_performance\": \"Técnicas de otimização e melhoria de performance aplicáveis ao processo\",
-          \"observacoes_especialistas\": \"Insights técnicos de especialistas, armadilhas técnicas e soluções avançadas\"
-        },
-        {
-          \"passo\": 3,
-          \"acao_tecnica\": \"Continuação da execução técnica principal\",
-          \"detalhamento_profissional\": \"Continuação do detalhamento técnico máximo conforme complexidade do processo\",
-          \"responsavel_tecnico\": \"Cargo específico\",
-          \"tempo_estimado_realista\": \"Tempo específico técnico\",
-          \"criterios_qualidade_tecnicos\": \"Validação técnica específica\",
-          \"scripts_e_templates_completos\": \"Modelos técnicos práticos aplicáveis\",
-          \"metodologias_especializadas\": \"Técnicas profissionais continuadas\",
-          \"observacoes_profissionais\": \"Dicas técnicas e cuidados especializados\"
-        }
-      ]
-    },
-    {
-      \"fase\": \"Finalização Técnica e Controle de Qualidade\",
-      \"descricao_tecnica\": \"Fase de fechamento técnico com validações e controles profissionais\",
-      \"metodologia_aplicada\": \"Framework de controle de qualidade e validação técnica\",
-      \"passos_tecnicos\": [
-        {
-          \"passo\": 4,
-          \"acao_tecnica\": \"Ação de finalização técnica com controles\",
-          \"detalhamento_profissional\": \"Como finalizar com excelência técnica, validações obrigatórias, documentação profissional requerida, controles de qualidade\",
-          \"responsavel_tecnico\": \"Cargo específico com competência de validação\",
-          \"tempo_estimado_realista\": \"Tempo de finalização com qualidade\",
-          \"criterios_qualidade_tecnicos\": \"Critérios técnicos rigorosos de conclusão e aceitação\",
-          \"scripts_e_templates_completos\": \"Modelos de fechamento profissional, scripts de encerramento técnico, templates de documentação\",
-          \"validacoes_obrigatorias\": \"Checklist técnico obrigatório de validações finais\",
-          \"documentacao_tecnica\": \"Documentação técnica requerida com templates específicos\",
-          \"observacoes_profissionais\": \"Validações finais técnicas, próximos passos e continuidade do processo\"
+          \"acao_tecnica\": \"TÍTULO DA AÇÃO ESPECÍFICA (ex: Verificar e validar credenciais de acesso do cliente)\",
+          \"detalhamento_profissional\": \"OBRIGATÓRIO MÍNIMO 150 PALAVRAS PARA PROCESSOS SIMPLES, 400 PALAVRAS PARA COMPLEXOS: Para processos simples incluir: o que fazer exatamente, como fazer passo-a-passo, que ferramentas usar, que informações coletar, que validações realizar. Para processos complexos incluir: metodologia completa passo-a-passo, múltiplas abordagens, técnicas especializadas, scripts de comunicação completos, exemplos práticos aplicáveis, tratamento de objeções, troubleshooting detalhado. Exemplo para atendimento complexo: Iniciar o contato com saudação personalizada usando o nome do cliente, demonstrar empatia pela situação relatada, realizar escuta ativa com técnicas de paráfrase, investigar o problema com perguntas abertas e fechadas específicas, validar o entendimento antes de propor soluções, apresentar opções claras com prós e contras, aguardar confirmação do cliente antes de proceder...\",
+          \"responsavel_tecnico\": \"Cargo específico com nível de competência requerida (ex: Analista de Atendimento Nível II com certificação em relacionamento)\",
+          \"tempo_estimado_realista\": \"Tempo técnico específico (ex: 8-12 minutos para clientes novos, 5-8 minutos para recorrentes)\",
+          \"criterios_qualidade_tecnicos\": \"MÍNIMO 3 CRITÉRIOS ESPECÍFICOS: Como validar tecnicamente se foi executado com padrão profissional. Exemplo: Cliente deve confirmar entendimento do problema, solução deve ser aceita verbalmente, registro deve conter todas as informações obrigatórias do checklist\",
+          \"scripts_e_templates_completos\": \"OBRIGATÓRIO SCRIPTS WORD-BY-WORD: Para interações humanas incluir frases exatas de abertura, desenvolvimento e fechamento. Para processos técnicos incluir comandos específicos, códigos detalhados, procedimentos passo-a-passo. Exemplo: 'Bom dia, [Nome do Cliente]. Aqui é [Seu Nome] da [Empresa]. Recebi sua solicitação sobre [assunto] e vou resolver isso para você agora mesmo. Posso confirmar alguns dados para agilizar o atendimento?'\",
+          \"metodologias_especializadas\": \"MÍNIMO 2 TÉCNICAS ESPECÍFICAS: Técnicas profissionais, frameworks reconhecidos, abordagens científicas. Exemplo: Técnica de escuta ativa com paráfrase, Metodologia de resolução de conflitos DESC (Descrever, Expressar, Especificar, Consequências)\",
+          \"situacoes_criticas_especificas\": \"OBRIGATÓRIO MÍNIMO 300 PALAVRAS: Detalhar minuciosamente situações que fogem do controle. Incluir: como identificar (sinais específicos), script word-by-word da primeira abordagem, técnicas de desescalação passo-a-passo, quando escalar, procedimentos pós-resolução. Exemplo completo obrigatório para cliente irritado: 'Sinais de identificação: tom de voz alterado, uso de palavras agressivas, repetição de reclamações, ameaças. Script inicial: Senhor [Nome], eu entendo completamente sua frustração e sei que esta situação está causando transtorno. Meu objetivo agora é resolver isso da melhor forma possível para você. Posso pedir apenas 2 minutos para entender exatamente o que aconteceu e já apresentar uma solução? Técnicas: manter tom calmo, validar emoções, não interromper, fazer perguntas específicas, oferecer soluções imediatas...'\",
+          \"protocolos_emergencia\": \"OBRIGATÓRIO MÍNIMO 200 PALAVRAS: Procedimentos para quando situação sai completamente do controle. Incluir escalação imediata, comunicação de crise, contenção de danos, scripts exatos. Exemplo: Se cliente ameaçar processos judiciais ou usar linguagem ofensiva: imediatamente informar 'Senhor [Nome], vou transferir você para meu supervisor que tem mais autonomia para resolver esta situação. Ele estará com você em no máximo 2 minutos.' Acionar supervisor via sistema interno, documentar ocorrência no sistema com classificação 'crítica', enviar resumo por email para gestão...\",
+          \"validacoes_tecnicas\": \"MÍNIMO 4 VALIDAÇÕES OBRIGATÓRIAS: Checklist técnico específico com critérios de aceitação mensuráveis\",
+          \"observacoes_profissionais\": \"MÍNIMO 3 DICAS ESPECÍFICAS: Insights de especialistas, armadilhas comuns, dicas avançadas com exemplos práticos\"
         }
       ]
     }
@@ -8812,6 +8769,14 @@ Este SOP deve ser um **MANUAL TÉCNICO COMPLETO DE CAPACITAÇÃO PROFISSIONAL**.
 - **Técnicas de Desescalação**: Metodologias psicológicas detalhadas
 - **Cenários de Múltipla Gravidade**: Leve, moderada, severa para cada situação
 
+### 📊 **REQUISITOS QUANTITATIVOS OBRIGATÓRIOS**:
+- **MÍNIMO 3 fases** no procedimento (Preparação, Execução, Finalização)
+- **MÍNIMO 5 passos** detalhados por fase
+- **MÍNIMO 150 palavras** por campo de detalhamento
+- **MÍNIMO 3 situações críticas** mapeadas por processo
+- **MÍNIMO 5 scripts** de comunicação específicos
+- **MÍNIMO 4 critérios** de qualidade por passo
+
 ### 🎪 **CONTEXTO TÉCNICO EMPRESARIAL**:
 - Considerar o setor técnico de atuação: {$nomeEmpresa}
 - Adaptar linguagem técnica ao nível hierárquico e competência do setor
@@ -8830,9 +8795,23 @@ Este SOP deve ser um **MANUAL TÉCNICO COMPLETO DE CAPACITAÇÃO PROFISSIONAL**.
 - **Critérios mensuráveis**: Quando escalar (ex: "se cliente usar palavrões mais de 3 vezes...")
 - **Passo-a-passo temporal**: "Nos primeiros 30 segundos...", "Após 2 minutos...", etc.
 
+**ATENÇÃO CRÍTICA PARA A IA:**
+1. **NÃO GERAR** procedimentos com apenas 1 ou 2 passos
+2. **OBRIGATÓRIO** mínimo 5 passos detalhados por fase
+3. **NÃO ACEITAR** respostas de uma única frase - cada campo deve ter parágrafo completo
+4. **OBRIGATÓRIO** incluir pelo menos 3 fases: Preparação, Execução, Finalização
+5. **CADA PASSO** deve ter no mínimo 150 palavras de detalhamento
+6. **SCRIPTS** devem ser frases completas, não resumos
+7. **SITUAÇÕES CRÍTICAS** devem ter no mínimo 300 palavras com exemplos específicos
+
+**EXEMPLO DE DETALHAMENTO MÍNIMO ACEITÁVEL:**
+Um passo de "Verificar dados do cliente" deve incluir: quais dados verificar, em que sistema acessar, como abordar o cliente, que perguntas fazer, como validar as informações, que fazer se dados estiverem incorretos, como registrar a verificação, tempo máximo para execução, e scripts exatos de comunicação.
+
 **TERMINOLOGIA**: Use SEMPRE terminologia genérica. NUNCA mencione marcas, produtos específicos ou nomes comerciais. Use categorias funcionais e termos técnicos genéricos.
 
-Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais.";
+**IMPORTANTE**: Se a resposta gerada não atender aos requisitos mínimos de detalhamento (menos de 5 passos por fase, menos de 150 palavras por passo, situações críticas superficiais), será considerada inadequada e deve ser refeita com mais detalhes.
+
+Responda APENAS com o JSON válido do SOP técnico completo, sem explicações adicionais.";
     }
 
     /**
