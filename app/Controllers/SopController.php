@@ -9744,29 +9744,92 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             ['sop_id' => $sopId, 'id' => $servicoId]
         );
 
-        // Responder ao navegador IMEDIATAMENTE
+        // Disparar um WORKER CLI totalmente desanexado do ciclo web.
+        // Isso evita o timeout de 60s do proxy (nginx/Apache), pois o worker
+        // roda como processo independente de linha de comando.
+        $disparado = $this->dispararWorkerSop($sopId, $servicoId);
+
+        if (!$disparado) {
+            // Fallback: tentar fastcgi_finish_request se o exec não estiver disponível
+            Logger::warning('WORKER CLI não disponível, usando fallback fastcgi_finish_request', ['sop_id' => $sopId]);
+
+            echo json_encode([
+                'sucesso' => true,
+                'sop_id' => $sopId,
+                'mensagem' => 'Geração iniciada (modo fallback).'
+            ]);
+
+            if (function_exists('fastcgi_finish_request')) {
+                fastcgi_finish_request();
+            } else {
+                @ob_end_flush();
+                @flush();
+            }
+
+            @set_time_limit(600);
+            @ignore_user_abort(true);
+            $this->executarGeracaoSopBackground($sopId, $servicoId, $servico);
+            exit;
+        }
+
+        // Worker disparado com sucesso: responder imediatamente ao navegador
         echo json_encode([
             'sucesso' => true,
             'sop_id' => $sopId,
             'mensagem' => 'Geração iniciada em segundo plano.'
         ]);
+        exit;
+    }
 
-        // Fechar a conexão HTTP com o navegador e continuar processando
-        if (function_exists('fastcgi_finish_request')) {
-            fastcgi_finish_request();
-        } else {
-            // Fallback: enviar buffer e continuar
-            @ob_end_flush();
-            @flush();
+    /**
+     * Dispara o worker CLI de geração de SOP como processo desanexado.
+     * Retorna true se conseguiu disparar, false caso contrário.
+     */
+    private function dispararWorkerSop(int $sopId, int $servicoId): bool
+    {
+        // Verificar se exec está disponível (pode estar desabilitado por segurança)
+        if (!function_exists('exec')) {
+            return false;
+        }
+        $disabled = explode(',', str_replace(' ', '', (string) ini_get('disable_functions')));
+        if (in_array('exec', $disabled, true)) {
+            return false;
         }
 
-        // A partir daqui o navegador já recebeu a resposta.
-        // Executar a geração pesada em background.
-        @set_time_limit(600);
-        @ignore_user_abort(true);
+        // Localizar o binário do PHP
+        $phpBin = PHP_BINDIR . '/php';
+        if (!@is_executable($phpBin)) {
+            $phpBin = 'php'; // fallback para o PATH
+        }
 
+        $workerScript = ROOT_PATH . '/worker/gerar_sop.php';
+        if (!file_exists($workerScript)) {
+            Logger::error('WORKER script não encontrado', ['path' => $workerScript]);
+            return false;
+        }
+
+        // Montar comando desanexado (roda em background, redireciona saída)
+        $logWorker = ROOT_PATH . '/worker/worker.log';
+        $cmd = escapeshellcmd($phpBin) . ' '
+            . escapeshellarg($workerScript) . ' '
+            . escapeshellarg((string) $sopId) . ' '
+            . escapeshellarg((string) $servicoId)
+            . ' >> ' . escapeshellarg($logWorker) . ' 2>&1 &';
+
+        Logger::info('DISPARANDO WORKER CLI', ['cmd' => $cmd, 'sop_id' => $sopId]);
+
+        exec($cmd, $output, $returnCode);
+
+        // Com o '&' o exec retorna imediatamente; returnCode 0 indica que o shell aceitou
+        return true;
+    }
+
+    /**
+     * Wrapper público para o worker CLI chamar a geração em background.
+     */
+    public function executarGeracaoSopBackgroundPublic(int $sopId, int $servicoId, array $servico): void
+    {
         $this->executarGeracaoSopBackground($sopId, $servicoId, $servico);
-        exit;
     }
 
     /**
