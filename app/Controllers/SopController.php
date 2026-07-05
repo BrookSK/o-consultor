@@ -8352,10 +8352,23 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             }
             
             $situacoesCriticas = $respostaCriticas['conteudo'];
-            Logger::info('FASE 2 CONCLUÍDA: Situações críticas geradas');
+            Logger::info('FASE 2 CONCLUÍDA: Situações críticas geradas', [
+                'size_resposta' => strlen(json_encode($situacoesCriticas)),
+                'tem_gestao_situacoes' => isset($situacoesCriticas['gestao_situacoes_criticas']),
+                'keys_situacoes' => array_keys($situacoesCriticas)
+            ]);
             
             // **COMBINAÇÃO DAS DUAS FASES**
             Logger::info('COMBINANDO as duas fases em SOP completo');
+            
+            // Debug detalhado das situações críticas recebidas
+            Logger::info('DEBUG SITUAÇÕES CRÍTICAS RECEBIDAS', [
+                'situacoes_raw_keys' => array_keys($situacoesCriticas),
+                'tem_gestao_situacoes_criticas' => isset($situacoesCriticas['gestao_situacoes_criticas']),
+                'estrutura_gestao_situacoes' => isset($situacoesCriticas['gestao_situacoes_criticas']) ? array_keys($situacoesCriticas['gestao_situacoes_criticas']) : null,
+                'cenarios_detalhados_count' => count($situacoesCriticas['gestao_situacoes_criticas']['cenarios_criticos_detalhados'] ?? []),
+                'scripts_especificos_count' => count($situacoesCriticas['gestao_situacoes_criticas']['scripts_situacoes_especificas'] ?? [])
+            ]);
             
             // Combinar os dados das duas fases em um SOP único
             $sopCompleto = [
@@ -8381,7 +8394,10 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                 'indicadores_performance' => $procedimentosOperacionais['indicadores_performance_operacionais'] ?? [],
                 
                 // **SITUAÇÕES CRÍTICAS E EMERGENCIAIS (FASE 2)**
-                'gestao_situacoes_fora_controle' => $situacoesCriticas['gestao_situacoes_criticas'] ?? [],
+                'gestao_situacoes_fora_controle' => [
+                    'cenarios_criticos_obrigatorios' => $situacoesCriticas['gestao_situacoes_criticas']['cenarios_criticos_detalhados'] ?? [],
+                    'scripts_situacoes_dificeis' => $situacoesCriticas['gestao_situacoes_criticas']['scripts_situacoes_especificas'] ?? []
+                ],
                 'matriz_riscos_servico' => $situacoesCriticas['matriz_riscos_servico'] ?? [],
                 'treinamento_gestao_crises' => $situacoesCriticas['treinamento_gestao_crises'] ?? [],
                 
@@ -8396,6 +8412,15 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                     'fase_2_situacoes_criticas' => 'Concluída'
                 ]
             ];
+            
+            // Debug do mapeamento das situações críticas
+            Logger::info('DEBUG MAPEAMENTO SITUAÇÕES CRÍTICAS FINAL', [
+                'cenarios_mapeados' => count($situacoesCriticas['gestao_situacoes_criticas']['cenarios_criticos_detalhados'] ?? []),
+                'scripts_mapeados' => count($situacoesCriticas['gestao_situacoes_criticas']['scripts_situacoes_especificas'] ?? []),
+                'estrutura_final_tem_gestao' => isset($sopCompleto['gestao_situacoes_fora_controle']),
+                'estrutura_final_tem_cenarios' => !empty($sopCompleto['gestao_situacoes_fora_controle']['cenarios_criticos_obrigatorios']),
+                'estrutura_final_tem_scripts' => !empty($sopCompleto['gestao_situacoes_fora_controle']['scripts_situacoes_dificeis'])
+            ]);
             
             // Validar se as seções essenciais estão presentes
             $secoesObrigatorias = ['objetivo', 'escopo', 'procedimentos', 'responsaveis'];
@@ -8446,6 +8471,10 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             Logger::info('SOP COMPLETO gerado com sucesso em duas fases', [
                 'total_procedimentos' => count($sopCompleto['procedimentos']),
                 'tem_situacoes_criticas' => !empty($sopCompleto['gestao_situacoes_fora_controle']),
+                'tem_cenarios_criticos' => !empty($sopCompleto['gestao_situacoes_fora_controle']['cenarios_criticos_obrigatorios']),
+                'tem_scripts_dificeis' => !empty($sopCompleto['gestao_situacoes_fora_controle']['scripts_situacoes_dificeis']),
+                'total_cenarios' => count($sopCompleto['gestao_situacoes_fora_controle']['cenarios_criticos_obrigatorios'] ?? []),
+                'total_scripts' => count($sopCompleto['gestao_situacoes_fora_controle']['scripts_situacoes_dificeis'] ?? []),
                 'size_kb' => round(strlen(json_encode($sopCompleto)) / 1024, 2)
             ]);
             
@@ -8927,5 +8956,93 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             'processos_detalhados' => [],
             'nivel_criticidade' => 'Média'
         ];
+    }
+    
+    /**
+     * Método de debug para testar geração de situações críticas
+     */
+    public function debugSituacoesCriticas(): void
+    {
+        Auth::proteger();
+        
+        // Dados de teste
+        $servicoTeste = [
+            'nome_servico' => 'Atendimento ao Cliente',
+            'nome_setor' => 'Comercial',
+            'codigo_servico' => 'COM-ATE-001'
+        ];
+        
+        $detalhamentoTeste = [
+            'objetivo_principal' => 'Atender clientes com excelência',
+            'responsabilidades' => ['Atender chamadas', 'Resolver problemas'],
+            'nivel_criticidade' => 'Alta'
+        ];
+        
+        $empresaTeste = ['nome' => 'Empresa Teste'];
+        
+        $diagnosticoTeste = [
+            'respostas' => json_encode(['nome_empresa' => 'Empresa Teste'])
+        ];
+        
+        try {
+            Logger::info('INICIANDO DEBUG - Geração de Situações Críticas');
+            
+            $prompt = $this->criarPromptSituacoesCriticas($servicoTeste, $detalhamentoTeste, $empresaTeste, $diagnosticoTeste);
+            
+            Logger::info('PROMPT GERADO', [
+                'prompt_size' => strlen($prompt),
+                'prompt_preview' => substr($prompt, 0, 500)
+            ]);
+            
+            $resposta = ApiHelper::chamarOpenAI($prompt, 'gpt-4o', true);
+            
+            Logger::info('RESPOSTA DA API', [
+                'sucesso' => $resposta['sucesso'],
+                'tem_conteudo' => !empty($resposta['conteudo']),
+                'tipo_conteudo' => gettype($resposta['conteudo']),
+                'keys_resposta' => is_array($resposta['conteudo']) ? array_keys($resposta['conteudo']) : 'não é array',
+                'erro' => $resposta['erro']
+            ]);
+            
+            if ($resposta['sucesso'] && !empty($resposta['conteudo'])) {
+                $situacoes = $resposta['conteudo'];
+                
+                $analise = [
+                    'tem_gestao_situacoes' => isset($situacoes['gestao_situacoes_criticas']),
+                    'tem_cenarios' => isset($situacoes['gestao_situacoes_criticas']['cenarios_criticos_detalhados']),
+                    'tem_scripts' => isset($situacoes['gestao_situacoes_criticas']['scripts_situacoes_especificas']),
+                    'total_cenarios' => count($situacoes['gestao_situacoes_criticas']['cenarios_criticos_detalhados'] ?? []),
+                    'total_scripts' => count($situacoes['gestao_situacoes_criticas']['scripts_situacoes_especificas'] ?? [])
+                ];
+                
+                Logger::info('ANÁLISE DA ESTRUTURA DE SITUAÇÕES CRÍTICAS', $analise);
+                
+                echo json_encode([
+                    'debug' => true,
+                    'resposta_api' => $resposta,
+                    'analise_estrutura' => $analise,
+                    'estrutura_completa' => $situacoes
+                ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+            } else {
+                echo json_encode([
+                    'debug' => true,
+                    'erro' => 'Falha na geração',
+                    'detalhes' => $resposta
+                ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+            }
+            
+        } catch (Exception $e) {
+            Logger::error('Erro no debug de situações críticas', [
+                'erro' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            echo json_encode([
+                'debug' => true,
+                'erro' => $e->getMessage()
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        }
+        
+        exit;
     }
 }
