@@ -510,31 +510,17 @@ async function processarServico(servicoId, etapa) {
 
         sopId = dataInicio.sop_id;
 
-        // 2. Loop de acompanhamento. A cada ciclo de 15s:
-        //    - Consulta o status.
-        //    - Se a fase anterior já terminou (nada "processando"), dispara a próxima.
-        //    - NUNCA dispara nova fase enquanto uma estiver "processando"
-        //      (isso evita acumular requisições e esgotar os workers do servidor).
+        // 2. Disparar o worker CLI (processa as 3 fases em background, fora do pool web).
+        //    Fazemos isso periodicamente como "keep-alive": se o worker parou entre
+        //    fases, uma nova chamada o reinicia. É leve (retorna em <1s).
         let concluido = false;
-        let disparando = false;
-        const maxCiclos = 60; // ~15 min (15s por ciclo)
+        const maxCiclos = 80; // ~15-20 min
 
-        const dispararProximaFase = function() {
-            if (disparando) return;
-            disparando = true;
-            // Não usamos await: a chamada pode expirar no proxy, mas o servidor
-            // continua processando (ignore_user_abort). Liberamos a flag ao terminar.
-            fetch(URL_PROCESSAR + '?_=' + Date.now())
-                .then(r => r.json())
-                .catch(() => null)
-                .finally(() => { disparando = false; });
-        };
-
-        // Dispara a primeira fase imediatamente
-        dispararProximaFase();
+        // Dispara o worker imediatamente (fire-and-forget, resposta rápida)
+        fetch(URL_PROCESSAR + '?_=' + Date.now()).catch(() => null);
 
         for (let i = 0; i < maxCiclos && !concluido; i++) {
-            await esperar(15000);
+            await esperar(12000);
 
             const status = await consultarStatus();
 
@@ -552,12 +538,12 @@ async function processarServico(servicoId, etapa) {
                 const faseAtual = status.fase_atual || 0;
                 const proximaFase = faseAtual + 1;
                 atualizarProgresso(proximaFase <= 3 ? proximaFase : 3, fasesTexto[proximaFase] || 'Processando...');
+            }
 
-                // Se NÃO está processando no momento, a fase anterior terminou:
-                // dispara a próxima. Caso contrário, aguarda o próximo ciclo.
-                if (!status.processando && !disparando) {
-                    dispararProximaFase();
-                }
+            // Keep-alive do worker: re-dispara a cada ~36s caso ele tenha encerrado.
+            // Leve e rápido (só faz exec e retorna). Não segura worker web.
+            if (i % 3 === 0) {
+                fetch(URL_PROCESSAR + '?_=' + Date.now()).catch(() => null);
             }
         }
 
@@ -566,7 +552,7 @@ async function processarServico(servicoId, etapa) {
             atualizarProgresso(3, 'SOP completo gerado com sucesso!');
             window.location.href = '<?= APP_URL ?>/sop/ver-sop-individual?id=' + sopId;
         } else {
-            alert('A geração está demorando mais que o esperado. Atualize a página em instantes para ver o resultado.');
+            alert('A geração continua em segundo plano. Atualize a página em alguns minutos para ver o SOP completo.');
         }
 
     } catch (error) {

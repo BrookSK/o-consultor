@@ -9876,20 +9876,66 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
     public function processarFilaHttp(): void
     {
         Auth::proteger();
-
-        // Processa UMA fase por chamada. O navegador chama esta rota em sequência,
-        // aguardando 15s entre as chamadas (uma por vez, sem sobreposição).
-        // ignore_user_abort garante que, se o proxy cortar em 60s, o PHP conclui
-        // e salva a fase mesmo assim. Como só há UMA chamada por vez (o JS aguarda),
-        // não há acúmulo que esgote o pool de workers.
-        @ignore_user_abort(true);
-        @set_time_limit(200);
-
         header('Content-Type: application/json');
 
-        $resultado = $this->processarProximoDaFila();
-        echo json_encode($resultado);
+        // NÃO processar a IA aqui dentro (isso segura um worker do PHP-FPM e trava
+        // o site inteiro neste servidor). Em vez disso, disparamos um WORKER CLI
+        // totalmente separado, que roda fora do pool web e não sofre timeout.
+        $disparado = $this->dispararWorkerCli();
+
+        echo json_encode([
+            'sucesso' => true,
+            'worker_disparado' => $disparado,
+            'mensagem' => $disparado
+                ? 'Processamento disparado em segundo plano.'
+                : 'Não foi possível disparar o worker automaticamente (exec bloqueado).'
+        ]);
         exit;
+    }
+
+    /**
+     * Dispara o worker CLI (worker/processar_fila.php) como processo desanexado.
+     * Retorna true se conseguiu disparar.
+     */
+    private function dispararWorkerCli(): bool
+    {
+        if (!function_exists('exec')) {
+            return false;
+        }
+        $disabled = explode(',', str_replace(' ', '', (string) ini_get('disable_functions')));
+        if (in_array('exec', $disabled, true)) {
+            return false;
+        }
+
+        // Descobrir binário do PHP
+        $candidatos = [
+            PHP_BINDIR . '/php',
+            '/opt/plesk/php/8.3/bin/php',
+            '/opt/plesk/php/8.2/bin/php',
+            '/usr/bin/php',
+            'php'
+        ];
+        $phpBin = 'php';
+        foreach ($candidatos as $c) {
+            if ($c === 'php' || @is_executable($c)) {
+                $phpBin = $c;
+                break;
+            }
+        }
+
+        $script = ROOT_PATH . '/worker/processar_fila.php';
+        if (!file_exists($script)) {
+            Logger::error('WORKER CLI não encontrado', ['path' => $script]);
+            return false;
+        }
+
+        $logWorker = ROOT_PATH . '/worker/fila.log';
+        $cmd = escapeshellcmd($phpBin) . ' ' . escapeshellarg($script)
+            . ' >> ' . escapeshellarg($logWorker) . ' 2>&1 &';
+
+        Logger::info('DISPARANDO WORKER CLI', ['cmd' => $cmd]);
+        @exec($cmd);
+        return true;
     }
 
     /**
@@ -9898,26 +9944,8 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
      */
     private function tentarDispararProcessamentoFila(): void
     {
-        if (!function_exists('exec')) {
-            return;
-        }
-        $disabled = explode(',', str_replace(' ', '', (string) ini_get('disable_functions')));
-        if (in_array('exec', $disabled, true)) {
-            return;
-        }
-
-        $phpBin = PHP_BINDIR . '/php';
-        if (!@is_executable($phpBin)) {
-            $phpBin = 'php';
-        }
-        $script = ROOT_PATH . '/worker/processar_fila.php';
-        if (!file_exists($script)) {
-            return;
-        }
-
-        $cmd = escapeshellcmd($phpBin) . ' ' . escapeshellarg($script)
-            . ' > /dev/null 2>&1 &';
-        @exec($cmd);
+        // Delega para o método unificado de disparo do worker CLI.
+        $this->dispararWorkerCli();
     }
 
     /**
