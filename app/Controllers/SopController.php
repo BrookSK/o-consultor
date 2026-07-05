@@ -7554,7 +7554,26 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         ]);
         
         if (!$sop) {
-            Flash::set('erro', 'SOP não encontrado.');
+            // Verificar se há um serviço referenciando este SOP mas o SOP não existe
+            $servicoComReferencia = Database::queryOne(
+                "SELECT ss.*, se.nome_setor FROM servicos_setor ss 
+                 LEFT JOIN setores_empresa se ON ss.setor_id = se.id
+                 WHERE ss.sop_id = :sop_id AND ss.empresa_id = :empresa_id",
+                ['sop_id' => $sopId, 'empresa_id' => Auth::empresa()]
+            );
+            
+            if ($servicoComReferencia) {
+                Logger::error('Referência quebrada detectada', [
+                    'sop_id' => $sopId,
+                    'servico' => $servicoComReferencia['nome_servico'],
+                    'setor' => $servicoComReferencia['nome_setor'] ?? 'N/A'
+                ]);
+                
+                Flash::set('erro', "Referência de SOP quebrada detectada! O serviço '{$servicoComReferencia['nome_servico']}' aponta para um SOP inexistente. <a href='" . APP_URL . "/sop/corrigir-referencias' class='underline text-blue-600'>Clique aqui para corrigir automaticamente</a>.");
+            } else {
+                Flash::set('erro', 'SOP não encontrado.');
+            }
+            
             header('Location: ' . APP_URL . '/sop');
             exit;
         }
@@ -7601,7 +7620,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
     }
     
     /**
-     * Debug: Ver dados brutos do SOP (apenas para debug)
+     * Debug: Ver dados brutos do SOP e relacionamentos (apenas para debug)
      */
     public function debugSopDados(): void
     {
@@ -7612,33 +7631,269 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             die('ID não informado');
         }
         
+        header('Content-Type: text/plain; charset=utf-8');
+        echo "=== DEBUG COMPLETO SOP #$sopId ===\n\n";
+        
+        // 1. Verificar se SOP existe na tabela sops
         $sop = Database::queryOne(
             "SELECT * FROM sops WHERE id = :id AND empresa_id = :empresa_id LIMIT 1",
             ['id' => $sopId, 'empresa_id' => Auth::empresa()]
         );
         
-        if (!$sop) {
-            die('SOP não encontrado');
+        echo "1. TABELA SOPS:\n";
+        if ($sop) {
+            echo "✅ SOP encontrado na tabela sops\n";
+            foreach ($sop as $campo => $valor) {
+                $valorExibicao = is_string($valor) ? (strlen($valor) > 100 ? substr($valor, 0, 100) . '...' : $valor) : $valor;
+                echo "- $campo: $valorExibicao\n";
+            }
+        } else {
+            echo "❌ SOP NÃO encontrado na tabela sops\n";
         }
+        
+        echo "\n2. TABELA SERVICOS_SETOR (procurando sop_id = $sopId):\n";
+        $servicos = Database::query(
+            "SELECT * FROM servicos_setor WHERE sop_id = :sop_id AND empresa_id = :empresa_id",
+            ['sop_id' => $sopId, 'empresa_id' => Auth::empresa()]
+        );
+        
+        if ($servicos) {
+            echo "✅ " . count($servicos) . " serviço(s) encontrado(s) vinculado(s) ao SOP\n";
+            foreach ($servicos as $i => $servico) {
+                echo "Serviço #" . ($i + 1) . ":\n";
+                foreach ($servico as $campo => $valor) {
+                    $valorExibicao = is_string($valor) ? (strlen($valor) > 100 ? substr($valor, 0, 100) . '...' : $valor) : $valor;
+                    echo "  - $campo: $valorExibicao\n";
+                }
+                echo "\n";
+            }
+        } else {
+            echo "❌ Nenhum serviço encontrado com sop_id = $sopId\n";
+        }
+        
+        echo "\n3. VERIFICAR SERVIÇOS COM STATUS 'sop_gerado' ou 'aprovado':\n";
+        $servicosGerados = Database::query(
+            "SELECT id, nome_servico, codigo_servico, sop_id, status FROM servicos_setor 
+             WHERE empresa_id = :empresa_id AND status IN ('sop_gerado', 'aprovado') 
+             ORDER BY id DESC LIMIT 10",
+            ['empresa_id' => Auth::empresa()]
+        );
+        
+        if ($servicosGerados) {
+            echo "✅ " . count($servicosGerados) . " serviço(s) com SOP gerado:\n";
+            foreach ($servicosGerados as $servico) {
+                echo "- ID: {$servico['id']}, Serviço: {$servico['nome_servico']}, SOP ID: {$servico['sop_id']}, Status: {$servico['status']}\n";
+            }
+        } else {
+            echo "❌ Nenhum serviço encontrado com SOP gerado\n";
+        }
+        
+        echo "\n4. VERIFICAR TODOS OS SOPs DA EMPRESA:\n";
+        $todosSOPs = Database::query(
+            "SELECT id, titulo, departamento, status, criado_em FROM sops 
+             WHERE empresa_id = :empresa_id 
+             ORDER BY id DESC LIMIT 10",
+            ['empresa_id' => Auth::empresa()]
+        );
+        
+        if ($todosSOPs) {
+            echo "✅ " . count($todosSOPs) . " SOP(s) na empresa:\n";
+            foreach ($todosSOPs as $sopItem) {
+                echo "- ID: {$sopItem['id']}, Título: {$sopItem['titulo']}, Status: {$sopItem['status']}\n";
+            }
+        } else {
+            echo "❌ Nenhum SOP encontrado na empresa\n";
+        }
+        
+        echo "\n5. EMPRESA ATUAL:\n";
+        echo "- Empresa ID: " . Auth::empresa() . "\n";
+        echo "- Usuário: " . (Auth::usuario()['nome'] ?? 'N/A') . "\n";
+        
+        echo "\n=== FIM DEBUG ===\n";
+    }
+    
+    /**
+     * Debug: Ver dados da hierarquia completa para debug
+     */
+    public function debugHierarquia(): void
+    {
+        Auth::proteger();
+        
+        $estruturaId = (int) ($_GET['estrutura_id'] ?? 0);
         
         header('Content-Type: text/plain; charset=utf-8');
-        echo "=== DEBUG SOP #$sopId ===\n\n";
-        echo "Campos disponíveis:\n";
-        foreach ($sop as $campo => $valor) {
-            echo "- $campo: " . (is_string($valor) ? strlen($valor) . ' chars' : gettype($valor)) . "\n";
+        echo "=== DEBUG HIERARQUIA COMPLETA ===\n\n";
+        echo "Empresa ID: " . Auth::empresa() . "\n";
+        echo "Estrutura ID: $estruturaId\n\n";
+        
+        // 1. Verificar estrutura
+        $estrutura = Database::queryOne(
+            "SELECT * FROM estruturas_organizacionais WHERE id = :id AND empresa_id = :empresa_id",
+            ['id' => $estruturaId, 'empresa_id' => Auth::empresa()]
+        );
+        
+        echo "1. ESTRUTURA ORGANIZACIONAL:\n";
+        if ($estrutura) {
+            echo "✅ Estrutura encontrada: {$estrutura['nome_empresa']}\n";
+            echo "- Total setores: {$estrutura['total_setores']}\n";
+            echo "- Status: {$estrutura['status']}\n";
+        } else {
+            echo "❌ Estrutura não encontrada\n";
         }
         
-        echo "\n\nConteúdo bruto (primeiros 500 chars):\n";
-        echo substr($sop['conteudo'], 0, 500) . (strlen($sop['conteudo']) > 500 ? '...' : '');
+        // 2. Verificar setores
+        echo "\n2. SETORES:\n";
+        $setores = Database::query(
+            "SELECT * FROM setores_empresa WHERE estrutura_id = :estrutura_id ORDER BY nome_setor",
+            ['estrutura_id' => $estruturaId]
+        );
         
-        echo "\n\n=== Tentativa de decodificação JSON ===\n";
-        $decoded = json_decode($sop['conteudo'], true);
-        if ($decoded) {
-            echo "JSON VÁLIDO - Chaves principais:\n";
-            echo implode(', ', array_keys($decoded));
-        } else {
-            echo "JSON INVÁLIDO - Erro: " . json_last_error_msg();
-            echo "\nConteúdo não é JSON, tratando como texto puro.";
+        foreach ($setores as $setor) {
+            echo "Setor: {$setor['nome_setor']} (ID: {$setor['id']})\n";
+            echo "- Total serviços: {$setor['total_servicos']}\n";
+            echo "- Total SOPs: {$setor['total_sops']}\n";
+            echo "- Status: {$setor['status']}\n";
+            
+            // 3. Verificar serviços do setor
+            $servicos = Database::query(
+                "SELECT id, nome_servico, codigo_servico, status, tem_sop, sop_id FROM servicos_setor 
+                 WHERE setor_id = :setor_id ORDER BY nome_servico",
+                ['setor_id' => $setor['id']]
+            );
+            
+            echo "  Serviços (" . count($servicos) . "):\n";
+            foreach ($servicos as $servico) {
+                $statusIcon = match($servico['status']) {
+                    'sop_gerado', 'aprovado' => '✅',
+                    'detalhado' => '🔧',
+                    'mapeado' => '📋',
+                    default => '⚠️'
+                };
+                
+                echo "    $statusIcon {$servico['nome_servico']} (ID: {$servico['id']})\n";
+                echo "      - Código: {$servico['codigo_servico']}\n";
+                echo "      - Status: {$servico['status']}\n";
+                echo "      - Tem SOP: " . ($servico['tem_sop'] ? 'SIM' : 'NÃO') . "\n";
+                echo "      - SOP ID: " . ($servico['sop_id'] ?? 'NULL') . "\n";
+                
+                // Verificar se o SOP realmente existe
+                if ($servico['sop_id']) {
+                    $sopExiste = Database::queryOne(
+                        "SELECT id, titulo, status FROM sops WHERE id = :id",
+                        ['id' => $servico['sop_id']]
+                    );
+                    
+                    if ($sopExiste) {
+                        echo "      - SOP existe: ✅ '{$sopExiste['titulo']}' ({$sopExiste['status']})\n";
+                    } else {
+                        echo "      - SOP existe: ❌ REFERÊNCIA QUEBRADA!\n";
+                    }
+                }
+                echo "\n";
+            }
+            echo "\n";
+        }
+        
+        echo "=== FIM DEBUG HIERARQUIA ===\n";
+    }
+    
+    /**
+     * Corrigir referências quebradas de SOPs
+     */
+    public function corrigirReferencias(): void
+    {
+        Auth::proteger();
+        
+        header('Content-Type: text/plain; charset=utf-8');
+        echo "=== CORRIGINDO REFERÊNCIAS DE SOPs ===\n\n";
+        
+        try {
+            // 1. Encontrar serviços com sop_id que não existem na tabela sops
+            $servicosQuebrados = Database::query(
+                "SELECT ss.id, ss.nome_servico, ss.sop_id 
+                 FROM servicos_setor ss 
+                 LEFT JOIN sops s ON ss.sop_id = s.id 
+                 WHERE ss.sop_id IS NOT NULL 
+                 AND s.id IS NULL 
+                 AND ss.empresa_id = :empresa_id",
+                ['empresa_id' => Auth::empresa()]
+            );
+            
+            echo "1. SERVIÇOS COM REFERÊNCIAS QUEBRADAS:\n";
+            if ($servicosQuebrados) {
+                echo "Encontrados " . count($servicosQuebrados) . " serviços com referências quebradas:\n";
+                foreach ($servicosQuebrados as $servico) {
+                    echo "- Serviço: {$servico['nome_servico']} (ID: {$servico['id']}) -> SOP ID inexistente: {$servico['sop_id']}\n";
+                }
+                
+                // Corrigir referências quebradas
+                foreach ($servicosQuebrados as $servico) {
+                    Database::execute(
+                        "UPDATE servicos_setor SET sop_id = NULL, tem_sop = 0, status = 'detalhado' WHERE id = :id",
+                        ['id' => $servico['id']]
+                    );
+                    echo "✅ Corrigido: {$servico['nome_servico']}\n";
+                }
+                
+            } else {
+                echo "✅ Nenhuma referência quebrada encontrada\n";
+            }
+            
+            // 2. Encontrar SOPs órfãos (não referenciados por nenhum serviço)
+            echo "\n2. SOPs ÓRFÃOS (sem referência de serviços):\n";
+            $sopsOrfaos = Database::query(
+                "SELECT s.id, s.titulo 
+                 FROM sops s 
+                 LEFT JOIN servicos_setor ss ON s.id = ss.sop_id 
+                 WHERE ss.sop_id IS NULL 
+                 AND s.empresa_id = :empresa_id",
+                ['empresa_id' => Auth::empresa()]
+            );
+            
+            if ($sopsOrfaos) {
+                echo "Encontrados " . count($sopsOrfaos) . " SOPs órfãos:\n";
+                foreach ($sopsOrfaos as $sop) {
+                    echo "- SOP: {$sop['titulo']} (ID: {$sop['id']})\n";
+                }
+                echo "💡 Estes SOPs não têm serviços vinculados e podem ser removidos manualmente se necessário.\n";
+            } else {
+                echo "✅ Nenhum SOP órfão encontrado\n";
+            }
+            
+            // 3. Atualizar contadores dos setores
+            echo "\n3. ATUALIZANDO CONTADORES DOS SETORES:\n";
+            $setores = Database::query(
+                "SELECT id, nome_setor FROM setores_empresa WHERE empresa_id = :empresa_id",
+                ['empresa_id' => Auth::empresa()]
+            );
+            
+            foreach ($setores as $setor) {
+                // Contar serviços
+                $totalServicos = Database::queryOne(
+                    "SELECT COUNT(*) as total FROM servicos_setor WHERE setor_id = :setor_id",
+                    ['setor_id' => $setor['id']]
+                )['total'];
+                
+                // Contar SOPs
+                $totalSOPs = Database::queryOne(
+                    "SELECT COUNT(*) as total FROM servicos_setor WHERE setor_id = :setor_id AND tem_sop = 1",
+                    ['setor_id' => $setor['id']]
+                )['total'];
+                
+                // Atualizar contadores
+                Database::execute(
+                    "UPDATE setores_empresa SET total_servicos = :total_servicos, total_sops = :total_sops WHERE id = :id",
+                    ['total_servicos' => $totalServicos, 'total_sops' => $totalSOPs, 'id' => $setor['id']]
+                );
+                
+                echo "✅ {$setor['nome_setor']}: {$totalServicos} serviços, {$totalSOPs} SOPs\n";
+            }
+            
+            echo "\n✅ CORREÇÃO CONCLUÍDA!\n";
+            echo "Recomendação: Recarregue a página de gerenciamento hierárquico.\n";
+            
+        } catch (Exception $e) {
+            echo "❌ ERRO: " . $e->getMessage() . "\n";
         }
     }
     
