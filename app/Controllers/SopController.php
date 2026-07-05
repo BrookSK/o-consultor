@@ -4170,7 +4170,7 @@ class SopController
              FROM sops s
              WHERE s.diagnostico_id = :diagnostico_id 
                AND s.empresa_id = :empresa_id
-             ORDER BY s.nome",
+             ORDER BY s.sop_codigo, s.criado_em DESC",
             [
                 'diagnostico_id' => $diagnostico['id'],
                 'empresa_id' => $empresa['id']
@@ -4184,14 +4184,14 @@ class SopController
             foreach ($sopsExistentes as $sop) {
                 $servicosFormatados[] = [
                     'id' => $sop['servico_id'] ?? $sop['id'],
-                    'nome_servico' => $sop['nome'],
+                    'nome_servico' => $sop['sop_codigo'] ?? ('SOP-' . $sop['id']),
                     'codigo_servico' => $sop['sop_codigo'] ?? 'SOP-' . $sop['id'],
                     'categoria' => 'operacional',
                     'criticidade' => 'media',
                     'frequencia' => 'diaria',
                     'servico_status' => $sop['status'],
                     'sop_id' => $sop['id'],
-                    'sop_nome' => $sop['nome'],
+                    'sop_nome' => $sop['sop_codigo'] ?? ('SOP-' . $sop['id']),
                     'sop_status' => $sop['status'],
                     'sop_criado_em' => $sop['criado_em'],
                     'status_final' => 'sop_gerado'
@@ -4236,7 +4236,7 @@ class SopController
         
         // Buscar SOPs básicos
         $sops = Database::query(
-            "SELECT * FROM sops WHERE empresa_id = ? ORDER BY nome LIMIT 50",
+            "SELECT * FROM sops WHERE empresa_id = ? ORDER BY sop_codigo, criado_em DESC LIMIT 50",
             [$empresa['id']]
         );
 
@@ -4245,7 +4245,7 @@ class SopController
             $servicosFormatados = array_map(function($sop) {
                 return [
                     'id' => $sop['id'],
-                    'nome_servico' => $sop['nome'] ?? 'SOP sem nome',
+                    'nome_servico' => $sop['sop_codigo'] ?? ('SOP-' . $sop['id']),
                     'codigo_servico' => $sop['sop_codigo'] ?? 'SOP-' . $sop['id'],
                     'categoria' => 'operacional',
                     'criticidade' => 'media', 
