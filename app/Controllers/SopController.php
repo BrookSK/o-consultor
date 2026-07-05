@@ -8788,12 +8788,12 @@ Este SOP deve ser um **MANUAL TÉCNICO COMPLETO DE CAPACITAÇÃO PROFISSIONAL**.
 **SITUAÇÕES CRÍTICAS**: O SOP DEVE preparar o profissional para **TODAS as situações que podem fugir do controle normal**, incluindo clientes irritados, sistemas indisponíveis, cobranças difíceis, fornecedores atrasados, erros graves, crises de qualidade e qualquer cenário adverso específico do setor. Cada situação crítica deve ter protocolo detalhado, scripts exatos e procedimentos de emergência.
 
 **PADRÃO DE DETALHAMENTO OBRIGATÓRIO PARA SITUAÇÕES CRÍTICAS:**
-- **Scripts word-by-word**: Frases exatas, não resumos (ex: "Senhor João, entendo perfeitamente sua frustração e vou resolver isso agora mesmo...")
+- **Scripts word-by-word**: Frases exatas, não resumos (ex: \"Senhor João, entendo perfeitamente sua frustração e vou resolver isso agora mesmo...\")
 - **Detalhamento comportamental**: Como se posicionar, tom de voz, linguagem corporal
 - **Múltiplos cenários**: Situação leve, moderada e severa para cada tipo de crise
 - **Técnicas psicológicas**: Validação emocional, espelhamento, redirecionamento específico
-- **Critérios mensuráveis**: Quando escalar (ex: "se cliente usar palavrões mais de 3 vezes...")
-- **Passo-a-passo temporal**: "Nos primeiros 30 segundos...", "Após 2 minutos...", etc.
+- **Critérios mensuráveis**: Quando escalar (ex: \"se cliente usar palavrões mais de 3 vezes...\")
+- **Passo-a-passo temporal**: \"Nos primeiros 30 segundos...\", \"Após 2 minutos...\", etc.
 
 **ATENÇÃO CRÍTICA PARA A IA:**
 1. **NÃO GERAR** procedimentos com apenas 1 ou 2 passos
@@ -8805,7 +8805,7 @@ Este SOP deve ser um **MANUAL TÉCNICO COMPLETO DE CAPACITAÇÃO PROFISSIONAL**.
 7. **SITUAÇÕES CRÍTICAS** devem ter no mínimo 300 palavras com exemplos específicos
 
 **EXEMPLO DE DETALHAMENTO MÍNIMO ACEITÁVEL:**
-Um passo de "Verificar dados do cliente" deve incluir: quais dados verificar, em que sistema acessar, como abordar o cliente, que perguntas fazer, como validar as informações, que fazer se dados estiverem incorretos, como registrar a verificação, tempo máximo para execução, e scripts exatos de comunicação.
+Um passo de \"Verificar dados do cliente\" deve incluir: quais dados verificar, em que sistema acessar, como abordar o cliente, que perguntas fazer, como validar as informações, que fazer se dados estiverem incorretos, como registrar a verificação, tempo máximo para execução, e scripts exatos de comunicação.
 
 **TERMINOLOGIA**: Use SEMPRE terminologia genérica. NUNCA mencione marcas, produtos específicos ou nomes comerciais. Use categorias funcionais e termos técnicos genéricos.
 
