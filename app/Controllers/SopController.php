@@ -9719,7 +9719,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                 'sop_titulo' => $servico['codigo_servico'] . ' - ' . $servico['nome_servico'],
                 'status_geracao' => 'na_fila',
                 'fase_atual' => 0,
-                'total_fases' => 4,
+                'total_fases' => 8,
                 'mensagem_progresso' => 'Aguardando processamento...',
                 'data_criacao' => date('d/m/Y H:i:s')
             ];
@@ -9755,7 +9755,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             Database::execute("DELETE FROM fila_geracao_sop WHERE servico_id = :id", ['id' => $servicoId]);
             Database::execute(
                 "INSERT INTO fila_geracao_sop (sop_id, servico_id, empresa_id, status, fase_atual, total_fases, mensagem, criado_em, atualizado_em)
-                 VALUES (:sop_id, :servico_id, :empresa_id, 'pendente', 0, 4, 'Aguardando processamento...', NOW(), NOW())",
+                 VALUES (:sop_id, :servico_id, :empresa_id, 'pendente', 0, 8, 'Aguardando processamento...', NOW(), NOW())",
                 [
                     'sop_id' => $sopId,
                     'servico_id' => $servicoId,
@@ -10016,10 +10016,10 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                 return $resultado;
             }
 
-            if ($proximaFase >= 4) {
+            if ($proximaFase >= 8) {
                 // Concluído
                 Database::execute(
-                    "UPDATE fila_geracao_sop SET status = 'concluido', fase_atual = 4, mensagem = 'Concluído', concluido_em = NOW(), atualizado_em = NOW() WHERE id = :id",
+                    "UPDATE fila_geracao_sop SET status = 'concluido', fase_atual = 8, mensagem = 'Concluído', concluido_em = NOW(), atualizado_em = NOW() WHERE id = :id",
                     ['id' => $filaId]
                 );
             } else {
@@ -10097,7 +10097,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                 'sop_titulo' => $sopData['codigo_servico'] . ' - ' . $sopData['nome_servico'],
                 'status_geracao' => 'processando',
                 'fase_atual' => 1,
-                'total_fases' => 4,
+                'total_fases' => 8,
                 'objetivo' => $r['objetivo'] ?? 'Objetivo não especificado',
                 'escopo' => $r['escopo'] ?? 'Escopo não especificado',
                 'resumo_executivo' => $r['resumo_executivo'] ?? '',
@@ -10111,50 +10111,50 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             return ['sucesso' => true, 'fase' => 1, 'mensagem' => 'Resumo concluído.'];
         }
 
-        // ===== FASE 2: PROCEDIMENTOS - PARTE 1 (fases iniciais) =====
-        if ($fase === 2) {
-            Logger::info('FILA FASE 2 (proc parte 1) INICIANDO', ['sop_id' => $sopId]);
-            $prompt = $this->criarPromptProcedimentosParte($sopData, $detalhamento, $empresa, $diagnostico, 1);
-            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 6000, 55);
-            if (empty($resp['sucesso'])) {
-                return ['sucesso' => false, 'erro' => 'Fase 2 (Procedimentos): ' . ($resp['erro'] ?? 'Erro na IA')];
-            }
-            $p = $resp['conteudo'];
-            // Iniciar o array de procedimentos com as primeiras fases
-            $conteudo['procedimentos'] = $p['procedimentos_operacionais_detalhados'] ?? ($p['procedimentos'] ?? []);
-            $conteudo['fase_atual'] = 2;
-            $conteudo['mensagem_progresso'] = 'Procedimentos (parte 1) concluídos. Gerando parte 2...';
-            $this->salvarConteudoSop($sopId, $conteudo, 'rascunho');
-            return ['sucesso' => true, 'fase' => 2, 'mensagem' => 'Procedimentos parte 1 concluídos.'];
-        }
+        // ===== FASES 2 a 7: UMA fase operacional por chamada (em profundidade) =====
+        // fase 2 -> operacional 1 (Preparação)
+        // fase 3 -> operacional 2 (Primeiro Contato e Abertura)
+        // fase 4 -> operacional 3 (Levantamento e Diagnóstico)
+        // fase 5 -> operacional 4 (Execução Principal)
+        // fase 6 -> operacional 5 (Controle, Validação e Objeções)
+        // fase 7 -> operacional 6 (Finalização e Pós-execução)
+        if ($fase >= 2 && $fase <= 7) {
+            $indiceFase = $fase - 1; // 2->1 ... 7->6
+            $info = $this->getFaseOperacionalInfo($indiceFase);
+            Logger::info('FILA FASE ' . $fase . ' (fase operacional ' . $indiceFase . ') INICIANDO', ['sop_id' => $sopId]);
 
-        // ===== FASE 3: PROCEDIMENTOS - PARTE 2 (fases finais) =====
-        if ($fase === 3) {
-            Logger::info('FILA FASE 3 (proc parte 2) INICIANDO', ['sop_id' => $sopId]);
-            $prompt = $this->criarPromptProcedimentosParte($sopData, $detalhamento, $empresa, $diagnostico, 2);
-            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 6000, 55);
+            $prompt = $this->criarPromptFaseUnica($sopData, $detalhamento, $empresa, $diagnostico, $indiceFase);
+            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 7000, 55);
             if (empty($resp['sucesso'])) {
-                return ['sucesso' => false, 'erro' => 'Fase 3 (Procedimentos parte 2): ' . ($resp['erro'] ?? 'Erro na IA')];
+                return ['sucesso' => false, 'erro' => 'Fase ' . $fase . ' (' . $info['nome'] . '): ' . ($resp['erro'] ?? 'Erro na IA')];
             }
             $p = $resp['conteudo'];
-            // Acrescentar as fases finais ao array de procedimentos existente
-            $novasFases = $p['procedimentos_operacionais_detalhados'] ?? ($p['procedimentos'] ?? []);
+
+            // O prompt retorna UMA fase (objeto). Normalizar para objeto de fase.
+            if (isset($p['passos_operacionais_detalhados'])) {
+                $faseObj = $p;
+            } elseif (isset($p['procedimentos_operacionais_detalhados'][0])) {
+                $faseObj = $p['procedimentos_operacionais_detalhados'][0];
+            } else {
+                $faseObj = ['fase' => $info['nome'], 'passos_operacionais_detalhados' => []];
+            }
+
             $existentes = $conteudo['procedimentos'] ?? [];
-            $conteudo['procedimentos'] = array_merge($existentes, $novasFases);
-            $conteudo['fase_atual'] = 3;
-            $conteudo['mensagem_progresso'] = 'Procedimentos concluídos. Gerando situações críticas...';
+            $existentes[] = $faseObj;
+            $conteudo['procedimentos'] = $existentes;
+            $conteudo['fase_atual'] = $fase;
+            $conteudo['mensagem_progresso'] = 'Procedimentos: ' . $info['nome'] . ' concluído.';
             $this->salvarConteudoSop($sopId, $conteudo, 'rascunho');
-            return ['sucesso' => true, 'fase' => 3, 'mensagem' => 'Procedimentos parte 2 concluídos.'];
+            return ['sucesso' => true, 'fase' => $fase, 'mensagem' => $info['nome'] . ' concluída.'];
         }
 
-        // ===== FASE 4: SITUAÇÕES CRÍTICAS (finaliza) =====
-        if ($fase === 4) {
-            Logger::info('FILA FASE 4 (situações críticas) INICIANDO', ['sop_id' => $sopId]);
-            // Prompt enxuto para caber em < 55s
+        // ===== FASE 8: SITUAÇÕES CRÍTICAS (finaliza) =====
+        if ($fase === 8) {
+            Logger::info('FILA FASE 8 (situações críticas) INICIANDO', ['sop_id' => $sopId]);
             $prompt = $this->criarPromptSituacoesCriticasLeve($sopData, $detalhamento, $empresa, $diagnostico);
-            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 4000, 55);
+            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 5000, 55);
             if (empty($resp['sucesso'])) {
-                return ['sucesso' => false, 'erro' => 'Fase 4 (Situações Críticas): ' . ($resp['erro'] ?? 'Erro na IA')];
+                return ['sucesso' => false, 'erro' => 'Fase 8 (Situações Críticas): ' . ($resp['erro'] ?? 'Erro na IA')];
             }
             $c = $resp['conteudo'];
             $conteudo['gestao_situacoes_fora_controle'] = [
@@ -10164,8 +10164,8 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             $conteudo['matriz_riscos_servico'] = $c['matriz_riscos_servico'] ?? [];
             $conteudo['treinamento_gestao_crises'] = $c['treinamento_gestao_crises'] ?? [];
             $conteudo['status_geracao'] = 'concluido';
-            $conteudo['fase_atual'] = 4;
-            $conteudo['total_fases'] = 4;
+            $conteudo['fase_atual'] = 8;
+            $conteudo['total_fases'] = 8;
             $conteudo['mensagem_progresso'] = 'SOP completo gerado com sucesso!';
             $this->salvarConteudoSop($sopId, $conteudo, 'ativo');
 
@@ -10178,7 +10178,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                 "UPDATE setores_empresa SET total_sops = (SELECT COUNT(*) FROM servicos_setor WHERE setor_id = :s1 AND tem_sop = 1) WHERE id = :s2",
                 ['s1' => $servico['setor_id'], 's2' => $servico['setor_id']]
             );
-            return ['sucesso' => true, 'fase' => 4, 'concluido' => true, 'mensagem' => 'SOP completo gerado com sucesso!'];
+            return ['sucesso' => true, 'fase' => 8, 'concluido' => true, 'mensagem' => 'SOP completo gerado com sucesso!'];
         }
 
         return ['sucesso' => false, 'erro' => 'Fase inválida: ' . $fase];
@@ -10440,7 +10440,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             'sop_id' => $sopId,
             'status_geracao' => $statusGeracao,
             'fase_atual' => $faseFila ?: ($conteudo['fase_atual'] ?? 0),
-            'total_fases' => $conteudo['total_fases'] ?? 4,
+            'total_fases' => $conteudo['total_fases'] ?? 8,
             'mensagem' => $mensagem,
             'processando' => $processandoAgora,
             'segundos_sem_atualizar' => $segundosDesdeUpdate,
@@ -10491,68 +10491,90 @@ Responda APENAS com o JSON válido, sem explicações adicionais.";
     }
 
     /**
-     * Prompt de procedimentos operacionais POR PARTE (leve, cabe em <55s).
-     * $parte 1 = fases iniciais (Preparação, Execução Inicial)
-     * $parte 2 = fases finais (Execução Principal, Controle, Finalização)
+     * Retorna o nome/foco de cada fase operacional individual (1 a 4).
      */
-    private function criarPromptProcedimentosParte(array $servico, array $detalhamento, array $empresa, array $diagnostico, int $parte): string
+    private function getFaseOperacionalInfo(int $indice): array
+    {
+        $fases = [
+            1 => ['nome' => 'Preparação Operacional Inicial', 'foco' => 'preparação, verificações prévias, organização de recursos, ferramentas e ambiente antes de iniciar a execução'],
+            2 => ['nome' => 'Primeiro Contato e Abertura', 'foco' => 'abordagem inicial, primeiro contato com o cliente/demanda, apresentação, quebra-gelo e roteiro completo de abertura da conversa'],
+            3 => ['nome' => 'Levantamento e Diagnóstico', 'foco' => 'coleta de informações, perguntas de qualificação, entendimento da necessidade e roteiro completo de perguntas com ramificações'],
+            4 => ['nome' => 'Execução Principal', 'foco' => 'execução central do serviço, condução da solução, apresentação de propostas/ações e roteiro de negociação/condução'],
+            5 => ['nome' => 'Controle, Validação e Objeções', 'foco' => 'pontos de controle, validações de qualidade, tratamento de dúvidas e objeções com respostas prontas'],
+            6 => ['nome' => 'Finalização e Pós-execução', 'foco' => 'encerramento, confirmação de entrega, registros finais, follow-up, roteiro de despedida e acompanhamento pós-serviço'],
+        ];
+        return $fases[$indice] ?? $fases[1];
+    }
+
+    /**
+     * Prompt que gera UMA ÚNICA fase operacional em PROFUNDIDADE (cabe em <55s).
+     * Como gera só uma fase por chamada, há espaço para scripts completos e ricos.
+     */
+    private function criarPromptFaseUnica(array $servico, array $detalhamento, array $empresa, array $diagnostico, int $indiceFase): string
     {
         $nomeEmpresa = json_decode($diagnostico['respostas'], true)['nome_empresa'] ?? $empresa['nome'] ?? 'Empresa';
         $nomeServico = $servico['nome_servico'];
         $nomeSetor = $servico['nome_setor'];
+        $info = $this->getFaseOperacionalInfo($indiceFase);
+        $nomeFase = $info['nome'];
+        $focoFase = $info['foco'];
 
-        if ($parte === 1) {
-            $foco = "Gere as 2 PRIMEIRAS FASES operacionais: '1. Preparação Operacional Inicial' e '2. Execução Inicial'.";
-        } else {
-            $foco = "Gere as 2 FASES FINAIS operacionais: '3. Execução Principal e Controle' e '4. Finalização e Pós-execução'.";
-        }
-
-        return "Você é especialista em processos. Gere PROCEDIMENTOS OPERACIONAIS DETALHADOS para um SOP.
+        return "Você é especialista em processos operacionais e roteiros de atendimento. Gere UMA fase de procedimento operacional em MÁXIMA PROFUNDIDADE para um SOP de treinamento.
 
 # CONTEXTO
 - Empresa: {$nomeEmpresa}
 - Setor: {$nomeSetor}
 - Serviço: {$nomeServico}
 
-# TAREFA (PARTE {$parte} DE 2)
-{$foco}
+# TAREFA
+Gere APENAS a fase operacional: **\"{$nomeFase}\"**
+Foco desta fase: {$focoFase}.
 
-Cada fase deve ter de 3 a 5 passos. Cada passo deve ser detalhado e prático (100-180 palavras no detalhamento).
-Use terminologia genérica. NUNCA mencione marcas comerciais.
+Esta fase deve conter EXATAMENTE de 3 a 4 passos operacionais. Gere POUCOS passos, porém cada um EXTREMAMENTE completo. O objetivo é qualidade e profundidade, não quantidade. Use terminologia genérica. NUNCA mencione marcas comerciais.
 
-## REGRA IMPORTANTE SOBRE SCRIPTS (NÃO IGNORE):
-O campo \"scripts_operacionais_completos\" deve ser um GUIA DE FALA COMPLETO e orientado ao leitor do SOP, não uma frase solta. Sempre que o passo envolver comunicação (com cliente, colega, fornecedor ou equipe), escreva o diálogo COMPLETO palavra por palavra, cobrindo:
-- **Abertura**: como iniciar a conversa (saudação + identificação + objetivo)
-- **Desenvolvimento**: o que dizer no meio, perguntas exatas a fazer, como conduzir
-- **Contorno de objeções/dúvidas**: frases prontas para as reações mais comuns
-- **Fechamento**: como encerrar, confirmar entendimento e próximos passos
-Use rótulos como 'Você diz:', 'Se o cliente responder X, diga:', 'Para encerrar:'. Mínimo de 120 palavras por script quando houver comunicação. Se o passo for puramente técnico (sem interação humana), descreva os comandos/ações exatas a executar.
+## REGRA MAIS IMPORTANTE — SCRIPT = ROTEIRO DE CONVERSA COMPLETO (ÁRVORE DE DECISÃO):
+O campo \"scripts_operacionais_completos\" é a parte MAIS importante. Ele NÃO pode ser apenas a mensagem inicial. Deve ser o ROTEIRO COMPLETO da conversa, do 'olá' até a despedida, ensinando o colaborador a conduzir TODAS as possibilidades de diálogo. Sempre que o passo envolver comunicação (cliente, colega, fornecedor, equipe), escreva no formato de ÁRVORE DE DECISÃO passo a passo:
+
+1. **ABERTURA** — 'Você diz: \"...\"' (saudação + identificação + motivo do contato, texto exato).
+2. **PERGUNTA 1** — 'Você pergunta: \"...\"'
+   - 'SE o cliente responder [cenário A], você diz: \"...\" e prossegue para...'
+   - 'SE responder [cenário B], você diz: \"...\" e prossegue para...'
+   - 'SE responder [cenário C / não sabe / recusa], você diz: \"...\"'
+3. **PERGUNTA 2 (e seguintes)** — repita a estrutura, sempre com as ramificações (o que dizer em cada resposta possível).
+4. **OBJEÇÕES E SITUAÇÕES DIFÍCEIS** — liste as objeções/dúvidas mais comuns e a resposta EXATA para cada uma ('Se o cliente disser que está caro, responda: \"...\"').
+5. **CONFIRMAÇÃO** — 'Você confirma o entendimento dizendo: \"...\"'
+6. **FECHAMENTO** — 'Para encerrar, você diz: \"...\"' (próximos passos + despedida).
+
+Regras do script:
+- MÍNIMO de 300 palavras por script quando houver comunicação.
+- Cada pergunta DEVE ter suas ramificações (o que fazer/dizer em cada resposta possível). NUNCA deixe uma pergunta sem descrever os caminhos após ela.
+- Use frases prontas e completas, entre aspas, prontas para o colaborador ler e usar.
+- Se o passo for puramente técnico (sem interação humana), liste os comandos/ações exatas em sequência numerada.
 
 # FORMATO (JSON):
 ```json
 {
-  \"procedimentos_operacionais_detalhados\": [
+  \"fase\": \"{$nomeFase}\",
+  \"descricao_operacional\": \"Descrição detalhada da importância e objetivo desta fase (2-3 frases)\",
+  \"passos_operacionais_detalhados\": [
     {
-      \"fase\": \"Nome da fase operacional\",
-      \"descricao_operacional\": \"Descrição da importância desta fase (2 frases)\",
-      \"passos_operacionais_detalhados\": [
-        {
-          \"passo\": 1,
-          \"acao_operacional\": \"Título da ação específica\",
-          \"detalhamento_operacional_completo\": \"Como executar passo a passo (100-180 palavras): ferramentas, validações, registros.\",
-          \"responsavel_operacional\": \"Cargo responsável\",
-          \"tempo_operacional_estimado\": \"Tempo estimado\",
-          \"criterios_qualidade_operacionais\": \"Critérios de qualidade mensuráveis\",
-          \"scripts_operacionais_completos\": \"GUIA DE FALA COMPLETO word-by-word (mínimo 120 palavras quando houver comunicação): Abertura, Desenvolvimento com perguntas exatas, contorno de objeções ('Se responder X, diga: ...'), e Fechamento. Se for técnico, os comandos/ações exatas.\",
-          \"ferramentas_operacionais\": \"Ferramentas e sistemas usados\"
-        }
-      ]
+      \"passo\": 1,
+      \"acao_operacional\": \"Título claro e específico da ação\",
+      \"detalhamento_operacional_completo\": \"Como executar em detalhes (120-200 palavras): o que fazer, ferramentas, validações, registros, ordem exata das ações.\",
+      \"responsavel_operacional\": \"Cargo responsável\",
+      \"tempo_operacional_estimado\": \"Tempo estimado\",
+      \"criterios_qualidade_operacionais\": \"Critérios de qualidade mensuráveis (mínimo 3)\",
+      \"scripts_operacionais_completos\": \"ROTEIRO DE CONVERSA COMPLETO em árvore de decisão (MÍNIMO 300 palavras se houver comunicação): Abertura, cada Pergunta com TODAS as ramificações ('Se responder X, diga: ...'), Objeções comuns com respostas exatas, Confirmação e Fechamento. Se técnico, comandos/ações exatas numeradas.\",
+      \"metodologias_operacionais\": \"Técnicas ou frameworks aplicáveis a este passo\",
+      \"validacoes_operacionais\": \"Checklist de validação do passo (mínimo 3 itens)\",
+      \"ferramentas_operacionais\": \"Ferramentas e sistemas usados\",
+      \"observacoes_operacionais\": \"Dicas, armadilhas comuns e boas práticas\"
     }
   ]
 }
 ```
 
-Responda APENAS com o JSON válido.";
+Responda APENAS com o JSON válido desta única fase.";
     }
 
     /**

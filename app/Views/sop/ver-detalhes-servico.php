@@ -467,10 +467,14 @@ async function processarServico(servicoId, etapa) {
 
     const fasesTexto = {
         0: 'Preparando geração...',
-        1: 'Gerando resumo e estrutura (1/4)...',
-        2: 'Gerando procedimentos - parte 1 (2/4)...',
-        3: 'Gerando procedimentos - parte 2 (3/4)...',
-        4: 'Gerando situações críticas (4/4)...'
+        1: 'Gerando resumo e estrutura (1/8)...',
+        2: 'Gerando fase: Preparação (2/8)...',
+        3: 'Gerando fase: Primeiro Contato (3/8)...',
+        4: 'Gerando fase: Levantamento e Diagnóstico (4/8)...',
+        5: 'Gerando fase: Execução Principal (5/8)...',
+        6: 'Gerando fase: Controle e Objeções (6/8)...',
+        7: 'Gerando fase: Finalização (7/8)...',
+        8: 'Gerando situações críticas e riscos (8/8)...'
     };
 
     // Helper: aguarda X milissegundos
@@ -516,7 +520,7 @@ async function processarServico(servicoId, etapa) {
         //    chama a próxima. Se uma chamada expirar no proxy, verificamos o
         //    status e re-chamamos até avançar.
         let concluido = false;
-        const maxTentativas = 16; // 4 fases + margem para reprocessar
+        const maxTentativas = 32; // 8 fases + margem para reprocessar
 
         for (let t = 0; t < maxTentativas && !concluido; t++) {
             // Atualizar barra conforme fase atual
@@ -529,7 +533,7 @@ async function processarServico(servicoId, etapa) {
                     return;
                 }
                 const proxima = (stAntes.fase_atual || 0) + 1;
-                atualizarProgresso(proxima <= 4 ? proxima : 4, fasesTexto[proxima] || 'Processando...');
+                atualizarProgresso(proxima <= 8 ? proxima : 8, fasesTexto[proxima] || 'Processando...');
             }
 
             // Processar a próxima fase (síncrono). Aguardamos a resposta.
@@ -542,7 +546,7 @@ async function processarServico(servicoId, etapa) {
                     alert('Erro na geração: ' + (proc.erro || 'Erro desconhecido'));
                     return;
                 }
-                if (proc && (proc.concluido || (proc.fase && proc.fase >= 4))) {
+                if (proc && (proc.concluido || (proc.fase && proc.fase >= 8))) {
                     concluido = true;
                     break;
                 }
@@ -627,23 +631,23 @@ function esconderLoading() {
 // Internamente há 4 fases (resumo, proc parte 1, proc parte 2, críticas),
 // mas visualmente mostramos 3 círculos: Resumo / Procedimentos / Situações Críticas.
 function atualizarProgresso(fase, mensagem) {
-    const percentuais = { 0: 5, 1: 25, 2: 50, 3: 75, 4: 100 };
-    const pct = percentuais[fase] ?? 5;
+    const percentuais = { 0: 4, 1: 12, 2: 25, 3: 38, 4: 50, 5: 62, 6: 75, 7: 88, 8: 100 };
+    const pct = percentuais[fase] ?? 4;
 
     const bar = document.getElementById('loadingBar');
     if (bar) bar.style.width = pct + '%';
 
     const etapaLabel = document.getElementById('loadingEtapa');
-    if (etapaLabel) etapaLabel.textContent = 'Etapa ' + fase + ' de 4';
+    if (etapaLabel) etapaLabel.textContent = 'Etapa ' + fase + ' de 8';
 
     if (mensagem) {
         document.getElementById('loadingSubtitulo').textContent = mensagem;
     }
 
-    // Mapear as 4 fases internas para os 3 círculos visuais:
-    // círculo 1 = fase 1 (resumo); círculo 2 = fases 2 e 3 (procedimentos);
-    // círculo 3 = fase 4 (situações críticas)
-    const circuloAtivo = (fase <= 1) ? 1 : (fase <= 3 ? 2 : 3);
+    // Mapear as 8 fases internas para os 3 círculos visuais:
+    // círculo 1 = fase 1 (resumo); círculo 2 = fases 2 a 7 (procedimentos);
+    // círculo 3 = fase 8 (situações críticas)
+    const circuloAtivo = (fase <= 1) ? 1 : (fase <= 7 ? 2 : 3);
 
     for (let i = 1; i <= 3; i++) {
         const circle = document.getElementById('etapa' + i + '-circle');
