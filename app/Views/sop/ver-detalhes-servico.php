@@ -465,10 +465,32 @@ async function processarServico(servicoId, etapa) {
 
     const URL_PROCESSAR = '<?= APP_URL ?>/sop/processar-fila';
 
+    const fasesTexto = {
+        0: 'Preparando geração...',
+        1: 'Gerando resumo e estrutura (1/3)...',
+        2: 'Gerando procedimentos operacionais (2/3)...',
+        3: 'Gerando situações críticas (3/3)...'
+    };
+
+    // Helper: aguarda X milissegundos
+    const esperar = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    // Helper: consulta o status atual do SOP
+    async function consultarStatus() {
+        try {
+            const resp = await fetch(URL_STATUS + '?sop_id=' + sopId + '&_=' + Date.now());
+            return await resp.json();
+        } catch (e) {
+            return null;
+        }
+    }
+
+    let sopId = 0;
+
     try {
-        // 1. Enfileirar o pedido (resposta instantânea, não trava)
-        mostrarLoading('Gerando SOP Completo', 'Adicionando à fila de processamento...');
-        atualizarProgresso(1, 'Adicionando à fila...');
+        // 1. Enfileirar o pedido (resposta instantânea)
+        mostrarLoading('Gerando SOP Completo', 'Preparando geração...');
+        atualizarProgresso(1, 'Preparando geração...');
 
         const respInicio = await fetch(URL_INICIAR, {
             method: 'POST',
@@ -482,74 +504,70 @@ async function processarServico(servicoId, etapa) {
         const dataInicio = await respInicio.json();
         if (!dataInicio.sucesso) {
             esconderLoading();
-            alert('Erro ao enfileirar: ' + (dataInicio.erro || 'Erro desconhecido'));
+            alert('Erro ao iniciar: ' + (dataInicio.erro || 'Erro desconhecido'));
             return;
         }
 
-        const sopId = dataInicio.sop_id;
+        sopId = dataInicio.sop_id;
 
-        const fasesTexto = {
-            0: 'Aguardando início do processamento...',
-            1: 'Gerando resumo e estrutura...',
-            2: 'Gerando procedimentos operacionais...',
-            3: 'Gerando situações críticas e gestão de crises...'
+        // 2. Loop de acompanhamento. A cada ciclo de 15s:
+        //    - Consulta o status.
+        //    - Se a fase anterior já terminou (nada "processando"), dispara a próxima.
+        //    - NUNCA dispara nova fase enquanto uma estiver "processando"
+        //      (isso evita acumular requisições e esgotar os workers do servidor).
+        let concluido = false;
+        let disparando = false;
+        const maxCiclos = 60; // ~15 min (15s por ciclo)
+
+        const dispararProximaFase = function() {
+            if (disparando) return;
+            disparando = true;
+            // Não usamos await: a chamada pode expirar no proxy, mas o servidor
+            // continua processando (ignore_user_abort). Liberamos a flag ao terminar.
+            fetch(URL_PROCESSAR + '?_=' + Date.now())
+                .then(r => r.json())
+                .catch(() => null)
+                .finally(() => { disparando = false; });
         };
 
-        // 2. Acompanhar o progresso. Duas estratégias em paralelo:
-        //    a) Disparar o processamento de uma fase por vez via HTTP (best-effort,
-        //       com timeout tolerante). Se a chamada expirar no proxy, tudo bem:
-        //       o cron continua o trabalho em background.
-        //    b) Fazer polling do status para atualizar a barra e detectar conclusão.
-        let tentativas = 0;
-        const maxTentativas = 200; // ~10 minutos
-        let processandoFase = false;
+        // Dispara a primeira fase imediatamente
+        dispararProximaFase();
 
-        const intervalo = setInterval(async () => {
-            tentativas++;
-            if (tentativas > maxTentativas) {
-                clearInterval(intervalo);
-                esconderLoading();
-                alert('A geração está demorando mais que o esperado. Atualize a página em instantes — ela continua sendo processada em segundo plano.');
-                return;
-            }
+        for (let i = 0; i < maxCiclos && !concluido; i++) {
+            await esperar(15000);
 
-            // Polling do status
-            try {
-                const respStatus = await fetch(URL_STATUS + '?sop_id=' + sopId + '&_=' + Date.now());
-                const status = await respStatus.json();
-                if (status.sucesso) {
-                    const fase = status.fase_atual || 0;
-                    const faseVisual = fase < 1 ? 1 : fase;
-                    atualizarProgresso(faseVisual, status.mensagem || fasesTexto[fase] || 'Processando...');
+            const status = await consultarStatus();
 
-                    if (status.status_geracao === 'concluido') {
-                        clearInterval(intervalo);
-                        atualizarProgresso(3, 'SOP completo gerado com sucesso!');
-                        setTimeout(() => {
-                            esconderLoading();
-                            window.location.href = status.redirect || ('<?= APP_URL ?>/sop/ver-sop-individual?id=' + sopId);
-                        }, 800);
-                        return;
-                    } else if (status.status_geracao === 'erro') {
-                        clearInterval(intervalo);
-                        esconderLoading();
-                        alert('Erro na geração: ' + (status.mensagem || 'Erro desconhecido'));
-                        return;
-                    }
+            if (status && status.sucesso) {
+                if (status.status_geracao === 'concluido') {
+                    concluido = true;
+                    break;
                 }
-            } catch (e) {
-                console.warn('Polling de status falhou, tentando novamente...', e);
-            }
+                if (status.status_geracao === 'erro') {
+                    esconderLoading();
+                    alert('Erro na geração: ' + (status.mensagem || 'Erro desconhecido'));
+                    return;
+                }
 
-            // Disparar processamento de uma fase (best-effort, não bloqueia o polling)
-            if (!processandoFase) {
-                processandoFase = true;
-                fetch(URL_PROCESSAR + '?_=' + Date.now())
-                    .then(r => r.json())
-                    .catch(() => null)
-                    .finally(() => { processandoFase = false; });
+                const faseAtual = status.fase_atual || 0;
+                const proximaFase = faseAtual + 1;
+                atualizarProgresso(proximaFase <= 3 ? proximaFase : 3, fasesTexto[proximaFase] || 'Processando...');
+
+                // Se NÃO está processando no momento, a fase anterior terminou:
+                // dispara a próxima. Caso contrário, aguarda o próximo ciclo.
+                if (!status.processando && !disparando) {
+                    dispararProximaFase();
+                }
             }
-        }, 3000);
+        }
+
+        esconderLoading();
+        if (concluido) {
+            atualizarProgresso(3, 'SOP completo gerado com sucesso!');
+            window.location.href = '<?= APP_URL ?>/sop/ver-sop-individual?id=' + sopId;
+        } else {
+            alert('A geração está demorando mais que o esperado. Atualize a página em instantes para ver o resultado.');
+        }
 
     } catch (error) {
         esconderLoading();

@@ -68,6 +68,12 @@ try {
             break;
         }
 
+        // Se retornou "processando" (outro processo pegou), aguardar e tentar de novo
+        if (!empty($resultado['processando'])) {
+            sleep(3);
+            continue;
+        }
+
         $processados++;
 
         // Pequena pausa entre fases para não sobrecarregar a API

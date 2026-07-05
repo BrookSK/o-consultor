@@ -9807,9 +9807,21 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
 
         // exec disponível?
         $disabled = explode(',', str_replace(' ', '', (string) ini_get('disable_functions')));
-        $info['exec_disponivel'] = (function_exists('exec') && !in_array('exec', $disabled, true)) ? 'SIM' : 'NÃO';
+        $execOk = (function_exists('exec') && !in_array('exec', $disabled, true));
+        $info['exec_disponivel'] = $execOk ? 'SIM' : 'NÃO';
         $info['php_bindir'] = PHP_BINDIR;
+        $info['php_binario_sugerido'] = PHP_BINDIR . '/php';
+        $info['worker_path'] = ROOT_PATH . '/worker/processar_fila.php';
         $info['worker_existe'] = file_exists(ROOT_PATH . '/worker/processar_fila.php') ? 'SIM' : 'NÃO';
+        $info['comando_cron_sugerido'] = '* * * * * ' . PHP_BINDIR . '/php ' . ROOT_PATH . '/worker/processar_fila.php >> ' . ROOT_PATH . '/worker/fila.log 2>&1';
+
+        // Testar disparo do worker (best-effort)
+        if ($execOk) {
+            $this->tentarDispararProcessamentoFila();
+            $info['worker_disparado'] = 'Tentado (verifique worker/fila.log)';
+        } else {
+            $info['worker_disparado'] = 'NÃO - exec bloqueado, use CRON obrigatoriamente';
+        }
 
         // Últimos pedidos da fila
         try {
@@ -9865,11 +9877,13 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
     {
         Auth::proteger();
 
-        // CRUCIAL: continuar processando mesmo que o proxy corte a conexão (504).
-        // Assim a fase é concluída e salva no banco em background, e o polling
-        // do navegador detecta a conclusão depois.
+        // Processa UMA fase por chamada. O navegador chama esta rota em sequência,
+        // aguardando 15s entre as chamadas (uma por vez, sem sobreposição).
+        // ignore_user_abort garante que, se o proxy cortar em 60s, o PHP conclui
+        // e salva a fase mesmo assim. Como só há UMA chamada por vez (o JS aguarda),
+        // não há acúmulo que esgote o pool de workers.
         @ignore_user_abort(true);
-        @set_time_limit(300);
+        @set_time_limit(200);
 
         header('Content-Type: application/json');
 
@@ -10049,7 +10063,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         if ($fase === 1) {
             Logger::info('FILA FASE 1 INICIANDO', ['sop_id' => $sopId]);
             $prompt = $this->criarPromptResumoSop($sopData, $detalhamento, $empresa, $diagnostico);
-            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o', true, 3000);
+            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o', true, 3000, 160);
             if (empty($resp['sucesso'])) {
                 return ['sucesso' => false, 'erro' => 'Fase 1 (Resumo): ' . ($resp['erro'] ?? 'Erro na IA')];
             }
@@ -10078,7 +10092,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             $prompt = $this->criarPromptProcedimentosOperacionais($sopData, $detalhamento, $empresa, $diagnostico);
             // Roda via fila (sem timeout de proxy), então usamos tokens altos
             // para permitir MÚLTIPLAS fases e etapas detalhadas.
-            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o', true, 16000);
+            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o', true, 16000, 160);
             if (empty($resp['sucesso'])) {
                 return ['sucesso' => false, 'erro' => 'Fase 2 (Procedimentos): ' . ($resp['erro'] ?? 'Erro na IA')];
             }
@@ -10104,7 +10118,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         if ($fase === 3) {
             Logger::info('FILA FASE 3 INICIANDO', ['sop_id' => $sopId]);
             $prompt = $this->criarPromptSituacoesCriticas($sopData, $detalhamento, $empresa, $diagnostico);
-            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o', true, 8000);
+            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o', true, 8000, 160);
             if (empty($resp['sucesso'])) {
                 return ['sucesso' => false, 'erro' => 'Fase 3 (Situações Críticas): ' . ($resp['erro'] ?? 'Erro na IA')];
             }
@@ -10348,22 +10362,41 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
 
         // Consultar a fila para status mais preciso
         $pedidoFila = Database::queryOne(
-            "SELECT status, fase_atual, mensagem FROM fila_geracao_sop WHERE sop_id = :id ORDER BY id DESC LIMIT 1",
+            "SELECT status, fase_atual, mensagem, TIMESTAMPDIFF(SECOND, atualizado_em, NOW()) as seg_fila 
+             FROM fila_geracao_sop WHERE sop_id = :id ORDER BY id DESC LIMIT 1",
             ['id' => $sopId]
         );
+
+        // "processandoAgora" indica que uma fase está EFETIVAMENTE em execução
+        // (status 'processando' e atualizada há menos de 240s). Usado pelo JS
+        // para não disparar uma nova fase enquanto a atual roda.
+        $processandoAgora = false;
+        $faseFila = 0;
+
         if ($pedidoFila) {
+            $faseFila = (int) $pedidoFila['fase_atual'];
             if ($pedidoFila['status'] === 'erro') {
                 $statusGeracao = 'erro';
                 $mensagem = $pedidoFila['mensagem'] ?: $mensagem;
             } elseif ($pedidoFila['status'] === 'concluido') {
                 $statusGeracao = 'concluido';
-            } elseif (in_array($pedidoFila['status'], ['pendente', 'processando'], true)) {
+            } elseif ($pedidoFila['status'] === 'processando') {
                 if ($statusGeracao !== 'concluido') {
                     $statusGeracao = 'processando';
                     if (!empty($pedidoFila['mensagem'])) {
                         $mensagem = $pedidoFila['mensagem'];
                     }
                 }
+                // Considera "em execução" se atualizado recentemente (< 240s)
+                $processandoAgora = ((int) $pedidoFila['seg_fila'] < 240);
+            } elseif ($pedidoFila['status'] === 'pendente') {
+                if ($statusGeracao !== 'concluido') {
+                    $statusGeracao = 'processando';
+                    if (!empty($pedidoFila['mensagem'])) {
+                        $mensagem = $pedidoFila['mensagem'];
+                    }
+                }
+                $processandoAgora = false; // pendente = pronto para disparar próxima fase
             }
         }
 
@@ -10371,9 +10404,10 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             'sucesso' => true,
             'sop_id' => $sopId,
             'status_geracao' => $statusGeracao,
-            'fase_atual' => $conteudo['fase_atual'] ?? ($pedidoFila['fase_atual'] ?? 0),
+            'fase_atual' => $faseFila ?: ($conteudo['fase_atual'] ?? 0),
             'total_fases' => $conteudo['total_fases'] ?? 3,
             'mensagem' => $mensagem,
+            'processando' => $processandoAgora,
             'segundos_sem_atualizar' => $segundosDesdeUpdate,
             'redirect' => ($statusGeracao === 'concluido') ? (APP_URL . '/sop/ver-sop-individual?id=' . $sopId) : null
         ]);
