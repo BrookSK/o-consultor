@@ -9709,6 +9709,9 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         }
 
         try {
+            // Garantir que a tabela da fila existe (evita depender de migration manual)
+            $this->garantirTabelaFila();
+
             // Criar/reaproveitar o registro do SOP em estado "na fila"
             $conteudoInicial = [
                 'sop_titulo' => $servico['codigo_servico'] . ' - ' . $servico['nome_servico'],
@@ -9780,6 +9783,75 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
             exit;
         }
+    }
+
+    /**
+     * DEBUG: inspecionar o estado da fila e diagnosticar problemas.
+     */
+    public function debugFila(): void
+    {
+        Auth::proteger();
+        header('Content-Type: application/json');
+
+        $info = [];
+
+        // A tabela existe?
+        try {
+            $this->garantirTabelaFila();
+            $info['tabela_fila'] = 'OK (existe ou criada)';
+        } catch (Exception $e) {
+            $info['tabela_fila'] = 'ERRO: ' . $e->getMessage();
+        }
+
+        // exec disponível?
+        $disabled = explode(',', str_replace(' ', '', (string) ini_get('disable_functions')));
+        $info['exec_disponivel'] = (function_exists('exec') && !in_array('exec', $disabled, true)) ? 'SIM' : 'NÃO';
+        $info['php_bindir'] = PHP_BINDIR;
+        $info['worker_existe'] = file_exists(ROOT_PATH . '/worker/processar_fila.php') ? 'SIM' : 'NÃO';
+
+        // Últimos pedidos da fila
+        try {
+            $info['ultimos_pedidos'] = Database::query(
+                "SELECT id, sop_id, servico_id, status, fase_atual, mensagem, criado_em, atualizado_em 
+                 FROM fila_geracao_sop ORDER BY id DESC LIMIT 10"
+            );
+        } catch (Exception $e) {
+            $info['ultimos_pedidos'] = 'ERRO: ' . $e->getMessage();
+        }
+
+        // Chave OpenAI configurada?
+        $info['openai_configurada'] = !empty(Configuracao::get('openai_key')) ? 'SIM' : 'NÃO';
+
+        echo json_encode($info, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    /**
+     * Garante que a tabela fila_geracao_sop existe (cria se necessário).
+     */
+    private function garantirTabelaFila(): void
+    {
+        Database::execute(
+            "CREATE TABLE IF NOT EXISTS `fila_geracao_sop` (
+              `id` int(11) NOT NULL AUTO_INCREMENT,
+              `sop_id` int(11) NOT NULL,
+              `servico_id` int(11) NOT NULL,
+              `empresa_id` int(11) NOT NULL,
+              `status` enum('pendente','processando','concluido','erro') NOT NULL DEFAULT 'pendente',
+              `fase_atual` int(11) NOT NULL DEFAULT 0,
+              `total_fases` int(11) NOT NULL DEFAULT 3,
+              `mensagem` varchar(500) DEFAULT NULL,
+              `tentativas` int(11) NOT NULL DEFAULT 0,
+              `criado_em` datetime NOT NULL,
+              `iniciado_em` datetime DEFAULT NULL,
+              `concluido_em` datetime DEFAULT NULL,
+              `atualizado_em` datetime DEFAULT NULL,
+              PRIMARY KEY (`id`),
+              KEY `idx_status` (`status`),
+              KEY `idx_sop_id` (`sop_id`),
+              KEY `idx_servico_id` (`servico_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
     }
 
     /**

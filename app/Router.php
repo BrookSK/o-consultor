@@ -111,6 +111,7 @@ class Router
         $this->post('sop/processar-servico-completo', 'SopController', 'processarServicoCompleto'); // Enfileira geração de SOP
         $this->get('sop/status-servico-sop', 'SopController', 'statusServicoSop');                // Polling do status da geração
         $this->get('sop/processar-fila', 'SopController', 'processarFilaHttp');                    // Processa 1 fase da fila (fallback sem cron)
+        $this->get('sop/debug-fila', 'SopController', 'debugFila');                                // DEBUG: inspecionar estado da fila
         $this->post('sop/adicionar-servico-manual', 'SopController', 'adicionarServicoManual');  // Adicionar serviço manualmente
         $this->post('sop/adicionar-servico-audio', 'SopController', 'adicionarServicoAudio');    // Adicionar serviço por áudio
         $this->get('sop/ver-detalhes-servico', 'SopController', 'verDetalhesServico');           // Ver detalhes completos do serviço

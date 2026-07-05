@@ -487,50 +487,74 @@ async function processarServico(servicoId, etapa) {
         }
 
         const sopId = dataInicio.sop_id;
-        let concluido = false;
 
-        // 2. Processar as fases: cada chamada processa UMA fase e retorna.
-        // Chamamos em loop até concluir. Como cada chamada faz só uma
-        // requisição de IA, cabe no timeout do proxy.
         const fasesTexto = {
+            0: 'Aguardando início do processamento...',
             1: 'Gerando resumo e estrutura...',
             2: 'Gerando procedimentos operacionais...',
             3: 'Gerando situações críticas e gestão de crises...'
         };
 
-        for (let i = 0; i < 4 && !concluido; i++) {
-            // Atualiza o feedback visual antes de cada fase
-            const respStatus = await fetch(URL_STATUS + '?sop_id=' + sopId + '&_=' + Date.now());
-            const status = await respStatus.json();
-            const faseInfo = (status.fase_atual || 0) + 1;
-            atualizarProgresso(faseInfo <= 3 ? faseInfo : 3, fasesTexto[faseInfo] || 'Processando...');
+        // 2. Acompanhar o progresso. Duas estratégias em paralelo:
+        //    a) Disparar o processamento de uma fase por vez via HTTP (best-effort,
+        //       com timeout tolerante). Se a chamada expirar no proxy, tudo bem:
+        //       o cron continua o trabalho em background.
+        //    b) Fazer polling do status para atualizar a barra e detectar conclusão.
+        let tentativas = 0;
+        const maxTentativas = 200; // ~10 minutos
+        let processandoFase = false;
 
-            // Processar a próxima fase
-            const respProc = await fetch(URL_PROCESSAR + '?_=' + Date.now());
-            const proc = await respProc.json();
-
-            if (!proc.sucesso) {
+        const intervalo = setInterval(async () => {
+            tentativas++;
+            if (tentativas > maxTentativas) {
+                clearInterval(intervalo);
                 esconderLoading();
-                alert('Erro na geração: ' + (proc.erro || 'Erro desconhecido'));
+                alert('A geração está demorando mais que o esperado. Atualize a página em instantes — ela continua sendo processada em segundo plano.');
                 return;
             }
 
-            if (proc.vazio || proc.concluido || (proc.fase && proc.fase >= 3)) {
-                concluido = true;
-            }
-        }
+            // Polling do status
+            try {
+                const respStatus = await fetch(URL_STATUS + '?sop_id=' + sopId + '&_=' + Date.now());
+                const status = await respStatus.json();
+                if (status.sucesso) {
+                    const fase = status.fase_atual || 0;
+                    const faseVisual = fase < 1 ? 1 : fase;
+                    atualizarProgresso(faseVisual, status.mensagem || fasesTexto[fase] || 'Processando...');
 
-        // 3. Confirmar conclusão
-        atualizarProgresso(3, 'SOP completo gerado com sucesso!');
-        setTimeout(() => {
-            esconderLoading();
-            window.location.href = '<?= APP_URL ?>/sop/ver-sop-individual?id=' + sopId;
-        }, 800);
+                    if (status.status_geracao === 'concluido') {
+                        clearInterval(intervalo);
+                        atualizarProgresso(3, 'SOP completo gerado com sucesso!');
+                        setTimeout(() => {
+                            esconderLoading();
+                            window.location.href = status.redirect || ('<?= APP_URL ?>/sop/ver-sop-individual?id=' + sopId);
+                        }, 800);
+                        return;
+                    } else if (status.status_geracao === 'erro') {
+                        clearInterval(intervalo);
+                        esconderLoading();
+                        alert('Erro na geração: ' + (status.mensagem || 'Erro desconhecido'));
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.warn('Polling de status falhou, tentando novamente...', e);
+            }
+
+            // Disparar processamento de uma fase (best-effort, não bloqueia o polling)
+            if (!processandoFase) {
+                processandoFase = true;
+                fetch(URL_PROCESSAR + '?_=' + Date.now())
+                    .then(r => r.json())
+                    .catch(() => null)
+                    .finally(() => { processandoFase = false; });
+            }
+        }, 3000);
 
     } catch (error) {
         esconderLoading();
         console.error('Erro:', error);
-        alert('Erro de comunicação com o servidor. Se uma fase demorou demais, tente regenerar.');
+        alert('Erro de comunicação com o servidor.');
     }
 }
 
