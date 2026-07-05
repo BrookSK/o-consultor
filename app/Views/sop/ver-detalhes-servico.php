@@ -510,41 +510,53 @@ async function processarServico(servicoId, etapa) {
 
         sopId = dataInicio.sop_id;
 
-        // 2. Disparar o worker CLI (processa as 3 fases em background, fora do pool web).
-        //    Fazemos isso periodicamente como "keep-alive": se o worker parou entre
-        //    fases, uma nova chamada o reinicia. É leve (retorna em <1s).
+        // 2. Processar as 3 fases EM SEQUÊNCIA. Cada chamada processa uma fase
+        //    e retorna rápido (< 55s). O navegador aguarda cada uma (await) e
+        //    chama a próxima. Se uma chamada expirar no proxy, verificamos o
+        //    status e re-chamamos até avançar.
         let concluido = false;
-        const maxCiclos = 80; // ~15-20 min
+        const maxTentativas = 12; // 3 fases + margem para reprocessar
 
-        // Dispara o worker imediatamente (fire-and-forget, resposta rápida)
-        fetch(URL_PROCESSAR + '?_=' + Date.now()).catch(() => null);
+        for (let t = 0; t < maxTentativas && !concluido; t++) {
+            // Atualizar barra conforme fase atual
+            const stAntes = await consultarStatus();
+            if (stAntes && stAntes.sucesso) {
+                if (stAntes.status_geracao === 'concluido') { concluido = true; break; }
+                if (stAntes.status_geracao === 'erro') {
+                    esconderLoading();
+                    alert('Erro na geração: ' + (stAntes.mensagem || 'Erro desconhecido'));
+                    return;
+                }
+                const proxima = (stAntes.fase_atual || 0) + 1;
+                atualizarProgresso(proxima <= 3 ? proxima : 3, fasesTexto[proxima] || 'Processando...');
+            }
 
-        for (let i = 0; i < maxCiclos && !concluido; i++) {
-            await esperar(12000);
+            // Processar a próxima fase (síncrono). Aguardamos a resposta.
+            try {
+                const respProc = await fetch(URL_PROCESSAR + '?_=' + Date.now());
+                const proc = await respProc.json();
 
-            const status = await consultarStatus();
-
-            if (status && status.sucesso) {
-                if (status.status_geracao === 'concluido') {
+                if (proc && proc.sucesso === false) {
+                    esconderLoading();
+                    alert('Erro na geração: ' + (proc.erro || 'Erro desconhecido'));
+                    return;
+                }
+                if (proc && (proc.concluido || (proc.fase && proc.fase >= 3))) {
                     concluido = true;
                     break;
                 }
-                if (status.status_geracao === 'erro') {
-                    esconderLoading();
-                    alert('Erro na geração: ' + (status.mensagem || 'Erro desconhecido'));
-                    return;
-                }
-
-                const faseAtual = status.fase_atual || 0;
-                const proximaFase = faseAtual + 1;
-                atualizarProgresso(proximaFase <= 3 ? proximaFase : 3, fasesTexto[proximaFase] || 'Processando...');
+            } catch (e) {
+                // A chamada pode ter expirado no proxy. Aguardamos um pouco e o
+                // próximo ciclo verifica o status e continua de onde parou.
+                console.warn('Fase expirou no proxy, verificando status...', e);
+                await esperar(3000);
             }
+        }
 
-            // Keep-alive do worker: re-dispara a cada ~36s caso ele tenha encerrado.
-            // Leve e rápido (só faz exec e retorna). Não segura worker web.
-            if (i % 3 === 0) {
-                fetch(URL_PROCESSAR + '?_=' + Date.now()).catch(() => null);
-            }
+        // Verificação final
+        if (!concluido) {
+            const stFinal = await consultarStatus();
+            if (stFinal && stFinal.status_geracao === 'concluido') concluido = true;
         }
 
         esconderLoading();
@@ -552,7 +564,7 @@ async function processarServico(servicoId, etapa) {
             atualizarProgresso(3, 'SOP completo gerado com sucesso!');
             window.location.href = '<?= APP_URL ?>/sop/ver-sop-individual?id=' + sopId;
         } else {
-            alert('A geração continua em segundo plano. Atualize a página em alguns minutos para ver o SOP completo.');
+            alert('A geração não pôde ser concluída. Tente novamente ou verifique com o suporte.');
         }
 
     } catch (error) {

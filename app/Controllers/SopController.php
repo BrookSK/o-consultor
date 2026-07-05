@@ -9876,20 +9876,17 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
     public function processarFilaHttp(): void
     {
         Auth::proteger();
+
+        // Processa UMA fase de forma SÍNCRONA e retorna. SEM ignore_user_abort:
+        // se a fase completa em menos de ~55s, o worker web é liberado rapidamente
+        // e o site NÃO trava. As fases foram dimensionadas para caber nesse tempo.
+        // O navegador chama esta rota em sequência (await) até concluir.
+        @set_time_limit(70);
+
         header('Content-Type: application/json');
 
-        // NÃO processar a IA aqui dentro (isso segura um worker do PHP-FPM e trava
-        // o site inteiro neste servidor). Em vez disso, disparamos um WORKER CLI
-        // totalmente separado, que roda fora do pool web e não sofre timeout.
-        $disparado = $this->dispararWorkerCli();
-
-        echo json_encode([
-            'sucesso' => true,
-            'worker_disparado' => $disparado,
-            'mensagem' => $disparado
-                ? 'Processamento disparado em segundo plano.'
-                : 'Não foi possível disparar o worker automaticamente (exec bloqueado).'
-        ]);
+        $resultado = $this->processarProximoDaFila();
+        echo json_encode($resultado);
         exit;
     }
 
@@ -10091,7 +10088,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         if ($fase === 1) {
             Logger::info('FILA FASE 1 INICIANDO', ['sop_id' => $sopId]);
             $prompt = $this->criarPromptResumoSop($sopData, $detalhamento, $empresa, $diagnostico);
-            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 3000, 160);
+            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 2500, 55);
             if (empty($resp['sucesso'])) {
                 return ['sucesso' => false, 'erro' => 'Fase 1 (Resumo): ' . ($resp['erro'] ?? 'Erro na IA')];
             }
@@ -10118,9 +10115,8 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         if ($fase === 2) {
             Logger::info('FILA FASE 2 INICIANDO', ['sop_id' => $sopId]);
             $prompt = $this->criarPromptProcedimentosOperacionais($sopData, $detalhamento, $empresa, $diagnostico);
-            // Roda via fila (sem timeout de proxy), então usamos tokens altos
-            // para permitir MÚLTIPLAS fases e etapas detalhadas.
-            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 16000, 160);
+            // Tokens dimensionados para responder em < 55s (caber no proxy).
+            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 5000, 55);
             if (empty($resp['sucesso'])) {
                 return ['sucesso' => false, 'erro' => 'Fase 2 (Procedimentos): ' . ($resp['erro'] ?? 'Erro na IA')];
             }
@@ -10146,7 +10142,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         if ($fase === 3) {
             Logger::info('FILA FASE 3 INICIANDO', ['sop_id' => $sopId]);
             $prompt = $this->criarPromptSituacoesCriticas($sopData, $detalhamento, $empresa, $diagnostico);
-            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 12000, 160);
+            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 5000, 55);
             if (empty($resp['sucesso'])) {
                 return ['sucesso' => false, 'erro' => 'Fase 3 (Situações Críticas): ' . ($resp['erro'] ?? 'Erro na IA')];
             }
