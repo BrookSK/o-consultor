@@ -91,6 +91,7 @@ class Router
         $this->post('sop/regenerar-sop-individual', 'SopController', 'regenerarSopIndividual'); // Novo: Regenerar SOP individual
         $this->get('sop/debug-dados', 'SopController', 'debugSopDados');                      // Debug: Ver dados brutos do SOP
         $this->get('sop/debug-hierarquia', 'SopController', 'debugHierarquia');               // Debug: Ver dados da hierarquia completa
+        $this->get('sop/debug-api', 'SopController', 'debugApi');                           // Debug: Testar configurações de API
         $this->get('sop/corrigir-referencias', 'SopController', 'corrigirReferencias');       // Debug: Corrigir referências quebradas
         $this->post('sop/adicionar-servico-manual', 'SopController', 'adicionarServicoManual'); // Novo: Adicionar serviço manual
         $this->get('sop/listar-servicos-manuais', 'SopController', 'listarServicosManuais');   // Novo: Listar serviços manuais

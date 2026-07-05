@@ -38,7 +38,7 @@ $temErroJson = isset($data['erro_json']);
                 </button>
                 <button onclick="regenerarSop()" 
                         class="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition">
-                    🔄 Regenerar SOP
+                    🔄 Regenerar SOP Completo
                 </button>
                 <button onclick="alternarModoEdicao()" 
                         id="btn-editar"
@@ -378,7 +378,7 @@ let sopId = <?= (int) ($sop['id'] ?? 0) ?>;
 async function regenerarSop() {
     console.log('🔄 REGENERANDO SOP COMPLETO');
     
-    if (!confirm('Deseja regenerar este SOP? Esta ação irá recriar todo o conteúdo usando IA.')) {
+    if (!confirm('Deseja regenerar este SOP com TODOS os detalhamentos completos? Esta ação irá recriar todo o conteúdo usando IA com prompt aprimorado.')) {
         return;
     }
     
@@ -387,7 +387,7 @@ async function regenerarSop() {
         const btnRegenerar = document.querySelector('button[onclick="regenerarSop()"]');
         const textoOriginal = btnRegenerar.innerHTML;
         btnRegenerar.disabled = true;
-        btnRegenerar.innerHTML = '⏳ Regenerando...';
+        btnRegenerar.innerHTML = '⏳ Regenerando SOP Completo...';
         
         const response = await fetch('/sop/regenerar-sop-individual', {
             method: 'POST',
@@ -401,14 +401,14 @@ async function regenerarSop() {
         });
         
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         
         const result = await response.json();
         
         if (result.sucesso) {
             console.log('✅ SOP regenerado com sucesso');
-            showNotifToast('SOP regenerado com sucesso! Recarregando página...', 'sucesso');
+            showNotifToast('SOP regenerado com TODOS os detalhamentos! Nova versão: ' + (result.nova_versao || 'atualizada'), 'sucesso');
             
             // Recarregar página após 2 segundos
             setTimeout(() => {
@@ -421,10 +421,21 @@ async function regenerarSop() {
         
     } catch (error) {
         console.error('❌ Erro ao regenerar SOP:', error);
-        alert(`Erro ao regenerar SOP:\n\n${error.message}`);
+        
+        // Mostrar erro detalhado
+        let mensagemErro = `Erro ao regenerar SOP:\n\n${error.message}`;
+        
+        if (error.message.includes('API')) {
+            mensagemErro += '\n\n💡 Possível causa: Problema nas configurações da API OpenAI.';
+            mensagemErro += '\n\nPara diagnosticar:';
+            mensagemErro += '\n1. Acesse: /sop/debug-api';
+            mensagemErro += '\n2. Verifique se a chave da API está configurada';
+            mensagemErro += '\n3. Contate o administrador se necessário';
+        }
+        
+        alert(mensagemErro);
         
         // Restaurar botão
-        const btnRegenerar = document.querySelector('button[onclick="regenerarSop()"]');
         btnRegenerar.disabled = false;
         btnRegenerar.innerHTML = textoOriginal;
     }

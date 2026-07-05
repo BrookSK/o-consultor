@@ -7798,6 +7798,79 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
     }
     
     /**
+     * Debug: Verificar configurações de API e testar conexão
+     */
+    public function debugApi(): void
+    {
+        Auth::proteger();
+        
+        header('Content-Type: text/plain; charset=utf-8');
+        echo "=== DEBUG CONFIGURAÇÕES DE API ===\n\n";
+        
+        try {
+            // Verificar configurações OpenAI
+            $openaiKey = ApiHelper::config('openai_key');
+            $openaiModelo = ApiHelper::config('openai_modelo', 'gpt-4o');
+            $maxTokens = ApiHelper::config('openai_max_tokens', '8192');
+            
+            echo "1. CONFIGURAÇÕES OPENAI:\n";
+            echo "- Chave configurada: " . ($openaiKey ? "✅ SIM (***" . substr($openaiKey, -4) . ")" : "❌ NÃO") . "\n";
+            echo "- Modelo: $openaiModelo\n";
+            echo "- Max tokens: $maxTokens\n\n";
+            
+            if (!$openaiKey) {
+                echo "❌ ERRO: Chave OpenAI não configurada!\n";
+                echo "Configure em: Admin > Configurações > APIs\n\n";
+                return;
+            }
+            
+            // Testar chamada simples
+            echo "2. TESTE DE CONEXÃO:\n";
+            $promptTeste = "Responda apenas com um JSON simples: {\"status\": \"ok\", \"mensagem\": \"API funcionando\"}";
+            
+            $resultado = ApiHelper::chamarOpenAI($promptTeste, $openaiModelo, true);
+            
+            if ($resultado['sucesso']) {
+                echo "✅ Conexão com OpenAI: SUCESSO\n";
+                echo "✅ Resposta válida recebida\n";
+                if (isset($resultado['conteudo']['status'])) {
+                    echo "✅ JSON parsing: OK\n";
+                } else {
+                    echo "⚠️ JSON parsing: Estrutura inesperada\n";
+                }
+            } else {
+                echo "❌ Conexão com OpenAI: FALHA\n";
+                echo "❌ Erro: " . ($resultado['erro'] ?? 'Erro desconhecido') . "\n";
+            }
+            
+            echo "\n3. TESTE DE GERAÇÃO DE SOP:\n";
+            // Testar com prompt similar ao SOP
+            $promptSop = "Crie um SOP simples em formato JSON com as seguintes chaves: objetivo, escopo, procedimentos. Responda apenas com JSON válido.";
+            
+            $resultadoSop = ApiHelper::chamarOpenAI($promptSop, $openaiModelo, true);
+            
+            if ($resultadoSop['sucesso']) {
+                echo "✅ Geração de SOP: SUCESSO\n";
+                $conteudo = $resultadoSop['conteudo'];
+                if (isset($conteudo['objetivo']) && isset($conteudo['escopo']) && isset($conteudo['procedimentos'])) {
+                    echo "✅ Estrutura SOP: VÁLIDA\n";
+                } else {
+                    echo "⚠️ Estrutura SOP: Campos esperados ausentes\n";
+                    echo "Campos presentes: " . implode(', ', array_keys($conteudo)) . "\n";
+                }
+            } else {
+                echo "❌ Geração de SOP: FALHA\n";
+                echo "❌ Erro: " . ($resultadoSop['erro'] ?? 'Erro desconhecido') . "\n";
+            }
+            
+        } catch (Exception $e) {
+            echo "❌ ERRO GERAL: " . $e->getMessage() . "\n";
+        }
+        
+        echo "\n=== FIM DEBUG API ===\n";
+    }
+    
+    /**
      * Corrigir referências quebradas de SOPs
      */
     public function corrigirReferencias(): void
@@ -8007,7 +8080,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
     }
     
     /**
-     * Método privado para gerar conteúdo SOP completo
+     * Método privado para gerar conteúdo SOP completo e detalhado
      */
     private function gerarConteudoSopCompleto(array $detalhamento, array $empresa, array $sop): ?string
     {
@@ -8029,28 +8102,262 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                 'codigo_servico' => $sop['codigo_servico']
             ];
             
-            $prompt = $this->criarPromptGeracaoSopDetalhado($servicoData, $detalhamento, $diagnostico);
+            // Criar prompt MUITO mais detalhado e específico
+            $prompt = $this->criarPromptSopCompletissimo($servicoData, $detalhamento, $empresa, $diagnostico);
             
-            $resposta = ApiHelper::chamarOpenAI($prompt, 'gpt-4', true);
+            Logger::info('Chamando API OpenAI para regeneração', [
+                'servico' => $servicoData['nome_servico'],
+                'prompt_length' => strlen($prompt)
+            ]);
+            
+            $resposta = ApiHelper::chamarOpenAI($prompt, 'gpt-4o', true);
+            
+            Logger::info('Resposta da API OpenAI', [
+                'sucesso' => $resposta['sucesso'] ?? false,
+                'erro' => $resposta['erro'] ?? null,
+                'tem_conteudo' => isset($resposta['conteudo']) && !empty($resposta['conteudo'])
+            ]);
             
             if (!$resposta['sucesso']) {
+                Logger::error('Erro na API OpenAI', [
+                    'erro_completo' => $resposta,
+                    'erro_msg' => $resposta['erro'] ?? 'Erro desconhecido'
+                ]);
                 throw new Exception('Erro na API OpenAI: ' . ($resposta['erro'] ?? 'Erro desconhecido'));
             }
             
             if (!$resposta['conteudo']) {
-                throw new Exception('Resposta da IA vazia');
+                throw new Exception('Resposta da IA vazia ou inválida');
+            }
+            
+            // Validar se o JSON tem as seções necessárias
+            $conteudo = $resposta['conteudo'];
+            
+            $secoesObrigatorias = ['objetivo', 'escopo', 'procedimentos', 'responsaveis', 'recursos_necessarios'];
+            $secoesFaltando = [];
+            
+            foreach ($secoesObrigatorias as $secao) {
+                if (!isset($conteudo[$secao]) || empty($conteudo[$secao])) {
+                    $secoesFaltando[] = $secao;
+                }
+            }
+            
+            if (!empty($secoesFaltando)) {
+                Logger::warning('SOP gerado com seções faltando', [
+                    'secoes_faltando' => $secoesFaltando,
+                    'secoes_presentes' => array_keys($conteudo)
+                ]);
+                
+                // Adicionar seções mínimas se estiverem faltando
+                foreach ($secoesFaltando as $secao) {
+                    switch ($secao) {
+                        case 'procedimentos':
+                            $conteudo['procedimentos'] = [
+                                [
+                                    'fase' => 'Execução Principal',
+                                    'passos' => [
+                                        ['passo' => 1, 'acao' => 'Executar processo conforme definição', 'responsavel' => 'Responsável do Setor', 'tempo_estimado' => '30min']
+                                    ]
+                                ]
+                            ];
+                            break;
+                        case 'responsaveis':
+                            $conteudo['responsaveis'] = [
+                                'executor_principal' => 'Colaborador do Setor ' . $sop['nome_setor'],
+                                'supervisor' => 'Supervisor do Setor ' . $sop['nome_setor'],
+                                'aprovador' => 'Gestor do Setor ' . $sop['nome_setor']
+                            ];
+                            break;
+                        case 'recursos_necessarios':
+                            $conteudo['recursos_necessarios'] = [
+                                'equipamentos' => ['Computador', 'Sistema interno'],
+                                'documentos' => ['Formulários padrão', 'Checklist de verificação']
+                            ];
+                            break;
+                    }
+                }
             }
             
             // Retornar o JSON como string para salvar no banco
-            return json_encode($resposta['conteudo'], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+            return json_encode($conteudo, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
             
         } catch (Exception $e) {
             Logger::error('Erro na geração de conteúdo SOP', [
                 'erro' => $e->getMessage(),
-                'detalhamento' => $detalhamento
+                'detalhamento_keys' => array_keys($detalhamento),
+                'servico' => $servicoData ?? 'indefinido',
+                'trace' => $e->getTraceAsString()
             ]);
             return null;
         }
+    }
+    
+    /**
+     * Criar prompt super detalhado para SOP completo
+     */
+    private function criarPromptSopCompletissimo(array $servico, array $detalhamento, array $empresa, array $diagnostico): string
+    {
+        $nomeEmpresa = json_decode($diagnostico['respostas'], true)['nome_empresa'] ?? $empresa['nome'] ?? 'Empresa';
+        $nomeServico = $servico['nome_servico'];
+        $nomeSetor = $servico['nome_setor'];
+        $codigoServico = $servico['codigo_servico'];
+        
+        return "GERAÇÃO DE SOP (PROCEDIMENTO OPERACIONAL PADRÃO) ULTRA DETALHADO
+
+# INFORMAÇÕES DO SERVIÇO
+- **Código**: {$codigoServico}
+- **Serviço**: {$nomeServico}
+- **Setor**: {$nomeSetor}
+- **Empresa**: {$nomeEmpresa}
+
+# DETALHAMENTO COMPLETO DO SERVIÇO
+" . json_encode($detalhamento, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . "
+
+# INSTRUÇÕES CRÍTICAS
+Você deve criar um SOP COMPLETO, PROFISSIONAL e EXTREMAMENTE DETALHADO para este serviço.
+
+O SOP deve conter OBRIGATORIAMENTE todas as seções abaixo com conteúdo rico e detalhado:
+
+## ESTRUTURA OBRIGATÓRIA DO SOP EM JSON:
+
+```json
+{
+  \"sop_titulo\": \"SOP {$codigoServico} - {$nomeServico}\",
+  \"objetivo\": \"Objetivo claro e específico do procedimento (mín. 2 frases)\",
+  \"escopo\": \"Definição detalhada do escopo de aplicação (mín. 2 frases)\",
+  \"responsaveis\": {
+    \"executor_principal\": \"Cargo/função de quem executa\",
+    \"supervisor\": \"Cargo/função de quem supervisiona\",
+    \"aprovador\": \"Cargo/função de quem aprova\"
+  },
+  \"pre_requisitos\": [
+    \"Pré-requisito 1 específico\",
+    \"Pré-requisito 2 específico\",
+    \"Pré-requisito 3 específico\"
+  ],
+  \"recursos_necessarios\": {
+    \"equipamentos\": [\"Equipamento 1\", \"Equipamento 2\"],
+    \"sistemas\": [\"Sistema 1\", \"Sistema 2\"],
+    \"documentos\": [\"Documento 1\", \"Documento 2\"],
+    \"materiais\": [\"Material 1\", \"Material 2\"]
+  },
+  \"procedimentos\": [
+    {
+      \"fase\": \"Preparação e Planejamento\",
+      \"descricao\": \"Descrição da fase\",
+      \"passos\": [
+        {
+          \"passo\": 1,
+          \"acao\": \"Ação detalhada do passo 1\",
+          \"responsavel\": \"Cargo responsável\",
+          \"tempo_estimado\": \"10min\",
+          \"criterio_qualidade\": \"Como verificar se foi feito corretamente\",
+          \"observacoes\": \"Observações importantes\"
+        }
+      ]
+    },
+    {
+      \"fase\": \"Execução Principal\",
+      \"descricao\": \"Descrição da fase principal\",
+      \"passos\": [
+        {
+          \"passo\": 2,
+          \"acao\": \"Ação detalhada do passo 2\",
+          \"responsavel\": \"Cargo responsável\",
+          \"tempo_estimado\": \"20min\",
+          \"criterio_qualidade\": \"Como verificar qualidade\",
+          \"observacoes\": \"Observações importantes\"
+        },
+        {
+          \"passo\": 3,
+          \"acao\": \"Ação detalhada do passo 3\",
+          \"responsavel\": \"Cargo responsável\",
+          \"tempo_estimado\": \"15min\",
+          \"criterio_qualidade\": \"Como verificar qualidade\",
+          \"observacoes\": \"Observações importantes\"
+        }
+      ]
+    },
+    {
+      \"fase\": \"Finalização e Controle\",
+      \"descricao\": \"Descrição da fase de finalização\",
+      \"passos\": [
+        {
+          \"passo\": 4,
+          \"acao\": \"Ação de finalização\",
+          \"responsavel\": \"Cargo responsável\",
+          \"tempo_estimado\": \"10min\",
+          \"criterio_qualidade\": \"Como verificar conclusão\",
+          \"observacoes\": \"Observações finais\"
+        }
+      ]
+    }
+  ],
+  \"pontos_controle\": [
+    {
+      \"momento\": \"Após preparação\",
+      \"o_que_verificar\": \"O que deve ser verificado\",
+      \"criterio_aceitacao\": \"Critério para aprovar\",
+      \"acao_se_nao_conforme\": \"O que fazer se não estiver conforme\"
+    },
+    {
+      \"momento\": \"Antes da finalização\",
+      \"o_que_verificar\": \"Verificação final\",
+      \"criterio_aceitacao\": \"Critério final\",
+      \"acao_se_nao_conforme\": \"Ação corretiva\"
+    }
+  ],
+  \"procedimentos_emergencia\": {
+    \"situacoes_criticas\": [
+      {
+        \"situacao\": \"Situação de emergência específica\",
+        \"sinais_alerta\": [\"Sinal 1\", \"Sinal 2\"],
+        \"acao_imediata\": \"O que fazer imediatamente\",
+        \"quem_notificar\": \"Quem deve ser notificado\",
+        \"tempo_resposta_maximo\": \"30min\"
+      }
+    ]
+  },
+  \"checklists\": {
+    \"pre_execucao\": [
+      \"Item de verificação 1\",
+      \"Item de verificação 2\",
+      \"Item de verificação 3\"
+    ],
+    \"durante_execucao\": [
+      \"Item de controle 1\",
+      \"Item de controle 2\"
+    ],
+    \"pos_execucao\": [
+      \"Item de finalização 1\",
+      \"Item de finalização 2\"
+    ]
+  },
+  \"indicadores_performance\": [
+    {
+      \"nome\": \"Nome do KPI\",
+      \"formula\": \"Como calcular\",
+      \"meta\": \"Meta esperada\",
+      \"frequencia_medicao\": \"Frequência de medição\"
+    }
+  ],
+  \"versao\": \"1.0\",
+  \"data_criacao\": \"" . date('d/m/Y') . "\"
+}
+```
+
+## REQUISITOS CRÍTICOS:
+1. **TODOS os campos devem ser preenchidos com conteúdo relevante e específico**
+2. **Mínimo 3 fases de procedimentos com pelo menos 2 passos cada**
+3. **Cada passo deve ter ação detalhada, responsável, tempo e critério de qualidade**
+4. **Incluir situações de emergência baseadas no contexto do serviço**
+5. **Checklists práticos e aplicáveis**
+6. **KPIs mensuráveis e relevantes**
+7. **Linguagem clara, objetiva e profissional**
+8. **Considerar o contexto real da empresa {$nomeEmpresa}**
+9. **Focar na aplicabilidade prática no dia a dia**
+
+Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais.";
     }
 
     /**
