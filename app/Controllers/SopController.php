@@ -2092,22 +2092,24 @@ class SopController
         // 1. Buscar SOPs da arquitetura antiga
         $sopsAntigos = Sop::buscarPorEmpresa($empresaId);
         
-        // 2. Buscar SOPs da nova arquitetura
+        // 2. Buscar SOPs da nova arquitetura (através de servicos_setor + sops)
         $sopsNovos = Database::query(
             "SELECT 
-                id,
-                estrutura_id,
-                setor_nome as departamento,
-                servico_nome as titulo,
-                sop_json as conteudo_completo,
-                tipo,
-                criado_em,
-                atualizado_em,
+                s.id,
+                s.titulo,
+                s.departamento,
+                s.conteudo,
+                s.criado_em,
+                s.atualizado_em,
                 'nova_arquitetura' as origem,
-                'ativo' as status
-             FROM sops_gerados_nova_arquitetura 
-             WHERE empresa_id = :empresa_id 
-             ORDER BY criado_em DESC",
+                s.status,
+                ss.codigo_servico,
+                ss.nome_servico,
+                ss.nome_setor
+             FROM sops s
+             INNER JOIN servicos_setor ss ON s.id = ss.sop_id
+             WHERE s.empresa_id = :empresa_id AND ss.tem_sop = 1
+             ORDER BY s.criado_em DESC",
             ['empresa_id' => $empresaId]
         );
         
@@ -2167,13 +2169,14 @@ class SopController
         // 1. Estatísticas da arquitetura antiga
         $statsAntiga = Sop::estatisticas($empresaId);
         
-        // 2. Estatísticas da nova arquitetura
+        // 2. Estatísticas da nova arquitetura (SOPs gerados via servicos_setor)
         $statsNova = Database::queryOne(
             "SELECT 
                 COUNT(*) as total,
                 COUNT(*) as aprovados
-             FROM sops_gerados_nova_arquitetura 
-             WHERE empresa_id = :empresa_id",
+             FROM sops s
+             INNER JOIN servicos_setor ss ON s.id = ss.sop_id
+             WHERE s.empresa_id = :empresa_id AND ss.tem_sop = 1",
             ['empresa_id' => $empresaId]
         );
         
@@ -7415,16 +7418,15 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                 throw new Exception('Resposta inválida da IA.');
             }
             
-            // Salvar SOP no banco
-            $sopId = Database::execute(
-                "INSERT INTO sops_gerados_nova_arquitetura (estrutura_id, setor_nome, servico_nome, sop_json, criado_em, empresa_id, tipo) 
-                 VALUES (:estrutura_id, :setor_nome, :servico_nome, :sop, NOW(), :empresa_id, 'individual')",
+            // Salvar SOP no banco usando a tabela sops
+            Database::execute(
+                "INSERT INTO sops (empresa_id, titulo, departamento, conteudo, versao, status, gerado_por_ia, criado_em, atualizado_em) 
+                 VALUES (:empresa_id, :titulo, :departamento, :conteudo, '1.0', 'ativo', 1, NOW(), NOW())",
                 [
-                    'estrutura_id' => $estruturaId,
-                    'setor_nome' => $estruturaData['estrutura']['setores'][$setorIndex]['nome_setor'] ?? 'Setor Desconhecido',
-                    'servico_nome' => $servicoNome,
-                    'sop' => json_encode($sop, JSON_UNESCAPED_UNICODE),
-                    'empresa_id' => Auth::empresa()
+                    'empresa_id' => Auth::empresa(),
+                    'titulo' => $servicoNome,
+                    'departamento' => $estruturaData['estrutura']['setores'][$setorIndex]['nome_setor'] ?? 'Setor Desconhecido',
+                    'conteudo' => json_encode($sop, JSON_UNESCAPED_UNICODE)
                 ]
             );
             
@@ -7511,7 +7513,10 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         }
         
         $sop = Database::queryOne(
-            "SELECT * FROM sops_gerados_nova_arquitetura WHERE id = :id AND empresa_id = :empresa_id",
+            "SELECT s.*, ss.codigo_servico, ss.nome_servico, ss.nome_setor 
+             FROM sops s
+             INNER JOIN servicos_setor ss ON s.id = ss.sop_id
+             WHERE s.id = :id AND s.empresa_id = :empresa_id AND ss.tem_sop = 1",
             ['id' => $sopId, 'empresa_id' => Auth::empresa()]
         );
         
@@ -7523,8 +7528,8 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         
         $dados = [
             'sop' => $sop,
-            'sop_data' => json_decode($sop['sop_json'], true),
-            'titulo_pagina' => 'SOP: ' . $sop['servico_nome']
+            'sop_data' => json_decode($sop['conteudo'], true) ?: ['conteudo' => $sop['conteudo']],
+            'titulo_pagina' => 'SOP: ' . $sop['nome_servico']
         ];
         
         require VIEW_PATH . '/sop/ver-sop-individual.php';
@@ -7770,7 +7775,10 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         try {
             // Buscar SOP atual
             $sopAtual = Database::queryOne(
-                "SELECT * FROM sops_gerados_nova_arquitetura WHERE id = :id AND empresa_id = :empresa_id",
+                "SELECT s.*, ss.codigo_servico, ss.nome_servico, ss.nome_setor 
+                 FROM sops s
+                 INNER JOIN servicos_setor ss ON s.id = ss.sop_id
+                 WHERE s.id = :id AND s.empresa_id = :empresa_id AND ss.tem_sop = 1",
                 ['id' => $sopId, 'empresa_id' => Auth::empresa()]
             );
             
@@ -7798,9 +7806,9 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             
             // Atualizar SOP no banco
             Database::execute(
-                "UPDATE sops_gerados_nova_arquitetura SET sop_json = :sop_json, atualizado_em = NOW() WHERE id = :id",
+                "UPDATE sops SET conteudo = :conteudo, atualizado_em = NOW() WHERE id = :id",
                 [
-                    'sop_json' => json_encode($novoSop, JSON_UNESCAPED_UNICODE),
+                    'conteudo' => json_encode($novoSop, JSON_UNESCAPED_UNICODE),
                     'id' => $sopId
                 ]
             );
@@ -7858,7 +7866,10 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         try {
             // Buscar SOP atual
             $sopAtual = Database::queryOne(
-                "SELECT * FROM sops_gerados_nova_arquitetura WHERE id = :id AND empresa_id = :empresa_id",
+                "SELECT s.*, ss.codigo_servico, ss.nome_servico, ss.nome_setor 
+                 FROM sops s
+                 INNER JOIN servicos_setor ss ON s.id = ss.sop_id
+                 WHERE s.id = :id AND s.empresa_id = :empresa_id AND ss.tem_sop = 1",
                 ['id' => $sopId, 'empresa_id' => Auth::empresa()]
             );
             
@@ -7867,7 +7878,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             }
             
             // Decodificar JSON atual
-            $sopData = json_decode($sopAtual['sop_json'], true);
+            $sopData = json_decode($sopAtual['conteudo'], true);
             if (!$sopData) {
                 throw new Exception('Dados do SOP corrompidos.');
             }
@@ -7880,9 +7891,9 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             
             // Salvar SOP atualizado
             Database::execute(
-                "UPDATE sops_gerados_nova_arquitetura SET sop_json = :sop_json, atualizado_em = NOW() WHERE id = :id",
+                "UPDATE sops SET conteudo = :conteudo, atualizado_em = NOW() WHERE id = :id",
                 [
-                    'sop_json' => json_encode($sopData, JSON_UNESCAPED_UNICODE),
+                    'conteudo' => json_encode($sopData, JSON_UNESCAPED_UNICODE),
                     'id' => $sopId
                 ]
             );
@@ -9026,31 +9037,35 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
     private function salvarSopNaNovaArquitetura(array $servico, array $detalhamento, string $conteudoSop, array $diagnostico): ?int
     {
         try {
+            // 1. Salvar o SOP na tabela principal de SOPs
             Database::execute(
-                "INSERT INTO sops_gerados_nova_arquitetura 
-                 (diagnostico_id, empresa_id, servico_id, codigo_sop, nome, setor, 
-                  objetivo, conteudo_markdown, contexto_json, status, 
-                  criado_em, atualizado_em) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'gerado', NOW(), NOW())",
+                "INSERT INTO sops 
+                 (empresa_id, titulo, departamento, conteudo, versao, status, gerado_por_ia, criado_em, atualizado_em) 
+                 VALUES (?, ?, ?, ?, '1.0', 'ativo', 1, NOW(), NOW())",
                 [
-                    $servico['diagnostico_id'],
                     $servico['empresa_id'],
-                    $servico['id'],
-                    $servico['codigo_servico'],
                     $servico['nome_servico'],
                     $servico['nome_setor'],
-                    $detalhamento['objetivo_principal'] ?? 'Objetivo definido',
-                    $conteudoSop,
-                    json_encode($detalhamento, JSON_UNESCAPED_UNICODE),
+                    $conteudoSop
                 ]
             );
             
             $sopId = (int) Database::lastInsertId();
             
+            // 2. Atualizar o serviço para indicar que tem SOP e referenciar o ID
+            Database::execute(
+                "UPDATE servicos_setor 
+                 SET tem_sop = TRUE, sop_id = ?, status = 'sop_gerado', sop_gerado_em = NOW(), atualizado_em = NOW() 
+                 WHERE id = ?",
+                [$sopId, $servico['id']]
+            );
+            
             Logger::info('SOP salvo na nova arquitetura', [
                 'sop_id' => $sopId,
                 'servico_id' => $servico['id'],
-                'codigo_sop' => $servico['codigo_servico']
+                'codigo_servico' => $servico['codigo_servico'],
+                'tabela_principal' => 'sops',
+                'servico_atualizado' => true
             ]);
             
             return $sopId;
@@ -9058,7 +9073,8 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         } catch (Exception $e) {
             Logger::error('Erro ao salvar SOP na nova arquitetura', [
                 'servico_id' => $servico['id'],
-                'erro' => $e->getMessage()
+                'erro' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
             return null;
         }
