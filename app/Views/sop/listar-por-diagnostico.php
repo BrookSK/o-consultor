@@ -216,17 +216,11 @@
 </div>
 
 <script>
-// Função para acessar serviço de forma inteligente baseado no status
+// Função para acessar o serviço: sempre abre a página de detalhes,
+// de onde é possível ver ou gerar o SOP.
 function acessarServico(servicoId, status, sopId) {
     console.log('Acessando serviço:', servicoId, status, sopId);
-    
-    if (status === 'sop_gerado' && sopId) {
-        // Se tem SOP, ir direto para visualizar
-        window.open('<?= APP_URL ?>/sop/ver-sop-individual?id=' + sopId, '_blank');
-    } else {
-        // Se não tem SOP, ir para detalhes do serviço
-        window.open('<?= APP_URL ?>/sop/ver-detalhes-servico?servico_id=' + servicoId, '_blank');
-    }
+    window.location.href = '<?= APP_URL ?>/sop/ver-detalhes-servico?servico_id=' + servicoId;
 }
 </script>
 
