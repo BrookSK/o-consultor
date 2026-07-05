@@ -825,11 +825,24 @@ class SopController
                 'descricao' => 'Geração de leads, tráfego, prospecção, branding',
                 'funcoes_principais' => ['Geração de leads', 'Gestão de tráfego', 'Prospecção ativa', 'Branding e posicionamento'],
                 'sops_padrao' => [
-                    'Geração e Qualificação de Leads',
-                    'Gestão de Campanhas Digitais', 
-                    'Prospecção Ativa de Prospects',
-                    'Construção de Brand Awareness',
-                    'Análise de Métricas de Marketing'
+                    'Geração e Qualificação de Leads Inbound',
+                    'Gestão de Campanhas Digitais Pagas',
+                    'Prospecção Ativa Outbound B2B',
+                    'Prospecção Ativa Outbound B2C',
+                    'Construção e Gestão de Brand Awareness',
+                    'Análise e Otimização de Métricas de Marketing',
+                    'Gestão de Conteúdo para Redes Sociais',
+                    'Planejamento e Execução de Email Marketing',
+                    'SEO - Otimização para Mecanismos de Busca',
+                    'Gestão de Marketing de Influenciadores',
+                    'Criação e Gestão de Landing Pages',
+                    'Automação de Marketing e Nutrição de Leads',
+                    'Pesquisa de Mercado e Análise de Concorrência',
+                    'Gestão de Eventos e Webinars',
+                    'Marketing de Relacionamento e CRM',
+                    'Planejamento de Campanhas Sazonais',
+                    'Gestão de Parcerias e Co-marketing',
+                    'Análise de ROI e Attribution Modeling'
                 ],
                 'kpis_essenciais' => ['Taxa de conversão de leads', 'CAC (Custo de Aquisição)', 'ROI de campanhas']
             ],
@@ -838,11 +851,26 @@ class SopController
                 'descricao' => 'Qualificação, negociação, fechamento',
                 'funcoes_principais' => ['Qualificação de leads', 'Negociação comercial', 'Fechamento de vendas', 'Gestão de pipeline'],
                 'sops_padrao' => [
-                    'Qualificação e Follow-up de Leads',
+                    'Qualificação e Descoberta de Necessidades',
+                    'Follow-up Estruturado de Leads',
                     'Apresentação de Propostas Comerciais',
-                    'Negociação e Fechamento de Vendas',
+                    'Negociação de Preços e Condições',
+                    'Fechamento e Assinatura de Contratos',
                     'Gestão de Pipeline de Vendas',
-                    'Onboarding de Novos Clientes'
+                    'Onboarding de Novos Clientes',
+                    'Gestão de Relacionamento com Prospects',
+                    'Tratamento de Objeções Comerciais',
+                    'Upselling e Cross-selling',
+                    'Renovação de Contratos Existentes',
+                    'Gestão de Vendas Consultivas Complexas',
+                    'Prospecção e Qualificação BANT',
+                    'Gestão de Ciclo de Vendas B2B',
+                    'Vendas por Telefone (Inside Sales)',
+                    'Vendas Presenciais (Outside Sales)',
+                    'Gestão de Propostas e RFPs',
+                    'Análise de Performance de Vendas',
+                    'Gestão de Territorial e Cotas',
+                    'Treinamento e Capacitação de Vendedores'
                 ],
                 'kpis_essenciais' => ['Taxa de conversão', 'Ticket médio', 'Ciclo de vendas']
             ],
@@ -854,8 +882,23 @@ class SopController
                     'Controle de Fluxo de Caixa Diário',
                     'Gestão de Contas a Pagar',
                     'Gestão de Contas a Receber',
-                    'Processo de Cobrança e Inadimplência',
-                    'Conciliação Bancária e Fiscal'
+                    'Processo de Cobrança Preventiva',
+                    'Tratamento de Inadimplência e Negociação',
+                    'Conciliação Bancária e Financeira',
+                    'Controle e Apuração Fiscal',
+                    'Elaboração de Demonstrativos Financeiros',
+                    'Análise de Crédito de Clientes',
+                    'Gestão de Orçamento e Budget',
+                    'Controle de Custos e Despesas',
+                    'Análise de Rentabilidade por Produto/Serviço',
+                    'Gestão de Investimentos e Aplicações',
+                    'Planejamento Tributário',
+                    'Auditoria Interna Financeira',
+                    'Gestão de Relacionamento Bancário',
+                    'Controle de Margem e Markup',
+                    'Análise de Viabilidade de Projetos',
+                    'Gestão de Capital de Giro',
+                    'Emissão e Controle de Notas Fiscais'
                 ],
                 'kpis_essenciais' => ['DRE mensal', 'Inadimplência (%)', 'Prazo médio recebimento']
             ],
@@ -864,11 +907,25 @@ class SopController
                 'descricao' => 'Pré e pós-venda, relacionamento com cliente',
                 'funcoes_principais' => ['Atendimento pré-venda', 'Suporte pós-venda', 'Relacionamento com clientes'],
                 'sops_padrao' => [
-                    'Atendimento e Suporte ao Cliente',
+                    'Atendimento Receptivo e Ativo',
+                    'Suporte Técnico Especializado',
                     'Gestão de Relacionamento Pós-Venda',
-                    'Tratamento de Reclamações e Feedback',
+                    'Tratamento de Reclamações e Conflitos',
                     'Processo de Retenção de Clientes',
-                    'Pesquisa de Satisfação'
+                    'Pesquisa de Satisfação e NPS',
+                    'Atendimento Multicanal (Telefone, Chat, Email)',
+                    'Gestão de Base de Conhecimento',
+                    'Escalação de Problemas Complexos',
+                    'Programas de Fidelização',
+                    'Atendimento VIP e Clientes Estratégicos',
+                    'Gestão de Expectativas do Cliente',
+                    'Comunicação Proativa com Clientes',
+                    'Atendimento de Urgências e Emergências',
+                    'Recuperação de Clientes Insatisfeitos',
+                    'Gestão de Feedback e Melhorias',
+                    'Atendimento Personalizado por Perfil',
+                    'Gestão de SLA de Atendimento',
+                    'Treinamento em Excelência no Atendimento'
                 ],
                 'kpis_essenciais' => ['NPS', 'Tempo de resposta', 'Taxa de retenção']
             ],
@@ -877,11 +934,25 @@ class SopController
                 'descricao' => 'Resolução de problemas, dúvidas técnicas, SAC',
                 'funcoes_principais' => ['Resolução de problemas técnicos', 'Suporte especializado', 'Base de conhecimento'],
                 'sops_padrao' => [
-                    'Atendimento de Chamados Técnicos',
+                    'Atendimento de Chamados Técnicos Nível 1',
+                    'Atendimento de Chamados Técnicos Nível 2',
                     'Escalação de Problemas Complexos',
-                    'Gestão de Base de Conhecimento',
-                    'Suporte Remoto e Presencial',
-                    'SLA de Atendimento'
+                    'Gestão de Base de Conhecimento Técnico',
+                    'Suporte Remoto e Acesso Seguro',
+                    'Suporte Presencial e On-site',
+                    'Controle e Cumprimento de SLA',
+                    'Diagnóstico e Troubleshooting Avançado',
+                    'Gestão de Incidentes Críticos',
+                    'Suporte a Integrações e APIs',
+                    'Documentação Técnica de Soluções',
+                    'Treinamento de Usuários Finais',
+                    'Monitoramento Preventivo de Sistemas',
+                    'Gestão de Patches e Atualizações',
+                    'Backup e Recovery de Dados',
+                    'Suporte a Migrações de Sistema',
+                    'Análise de Performance e Otimização',
+                    'Gestão de Ambiente de Desenvolvimento',
+                    'Suporte a Ferramentas de Colaboração'
                 ],
                 'kpis_essenciais' => ['Tempo médio de resolução', 'First Call Resolution', 'Satisfação suporte']
             ],
@@ -890,11 +961,25 @@ class SopController
                 'descricao' => 'Entrega do produto/serviço em si',
                 'funcoes_principais' => ['Produção/execução', 'Controle de qualidade', 'Entrega final'],
                 'sops_padrao' => [
-                    'Planejamento e Execução de Produção',
-                    'Controle de Qualidade de Entregas',
-                    'Gestão de Projetos/Serviços',
+                    'Planejamento e Programação de Produção',
+                    'Execução e Controle de Processos Produtivos',
+                    'Controle de Qualidade e Inspeções',
+                    'Gestão de Projetos e Entregas',
                     'Processo de Melhoria Contínua',
-                    'Gestão de Recursos e Capacidade'
+                    'Gestão de Recursos e Capacidade Produtiva',
+                    'Controle de Estoque de Matéria-Prima',
+                    'Gestão de Fornecedores e Terceirizados',
+                    'Manutenção Preventiva e Corretiva',
+                    'Controle de Custos de Produção',
+                    'Gestão de Cronogramas e Prazos',
+                    'Controle de Desperdícios e Perdas',
+                    'Padronização de Processos Operacionais',
+                    'Gestão de Equipes de Produção',
+                    'Controle de Segurança Operacional',
+                    'Gestão de Indicadores de Performance',
+                    'Otimização de Layout e Fluxos',
+                    'Controle de Documentação Técnica',
+                    'Gestão de Capacitação Operacional'
                 ],
                 'kpis_essenciais' => ['Tempo de entrega', 'Índice de qualidade', 'Produtividade']
             ],
@@ -906,8 +991,23 @@ class SopController
                     'Processo de Recrutamento e Seleção',
                     'Onboarding de Novos Colaboradores',
                     'Gestão de Performance e Avaliações',
-                    'Treinamento e Desenvolvimento',
-                    'Gestão de Clima Organizacional'
+                    'Treinamento e Desenvolvimento Profissional',
+                    'Gestão de Clima e Cultura Organizacional',
+                    'Administração de Pessoal e Folha de Pagamento',
+                    'Gestão de Benefícios e Compensação',
+                    'Controle de Frequência e Ponto Eletrônico',
+                    'Gestão de Férias e Ausências',
+                    'Processo Disciplinar e Desligamentos',
+                    'Desenvolvimento de Lideranças',
+                    'Gestão de Carreiras e Sucessão',
+                    'Pesquisas de Clima e Engajamento',
+                    'Gestão de Conflitos Interpessoais',
+                    'Compliance Trabalhista e Legal',
+                    'Gestão de Saúde e Segurança do Trabalho',
+                    'Programas de Qualidade de Vida',
+                    'Gestão de Diversidade e Inclusão',
+                    'Comunicação Interna e Endomarketing',
+                    'Gestão de Banco de Talentos'
                 ],
                 'kpis_essenciais' => ['Turnover (%)', 'Tempo de contratação', 'Satisfação colaboradores']
             ],
@@ -916,11 +1016,26 @@ class SopController
                 'descricao' => 'Compras, contratos, documentação, jurídico básico',
                 'funcoes_principais' => ['Gestão de contratos', 'Compras e suprimentos', 'Documentação legal', 'Suporte administrativo'],
                 'sops_padrao' => [
-                    'Gestão de Contratos e Documentação',
-                    'Processo de Compras e Suprimentos',
+                    'Gestão de Contratos e Documentação Legal',
+                    'Processo de Compras e Cotações',
+                    'Gestão de Suprimentos e Fornecedores',
                     'Controle de Protocolo e Arquivos',
-                    'Suporte Jurídico Básico',
-                    'Gestão de Facilities e Patrimônio'
+                    'Suporte Jurídico e Compliance Básico',
+                    'Gestão de Facilities e Infraestrutura',
+                    'Controle de Patrimônio e Ativos',
+                    'Gestão de Seguros Empresariais',
+                    'Administração de Viagens Corporativas',
+                    'Gestão de Correspondências e Malote',
+                    'Controle de Acesso e Segurança Predial',
+                    'Gestão de Licenças e Alvarás',
+                    'Administração de Frotas de Veículos',
+                    'Gestão de Telefonia e Comunicações',
+                    'Controle de Material de Escritório',
+                    'Gestão de Eventos Corporativos',
+                    'Administração de Contratos de Locação',
+                    'Gestão de Utilities (Água, Luz, Internet)',
+                    'Controle de Gastos Administrativos',
+                    'Gestão de Arquivo Morto e Digitalização'
                 ],
                 'kpis_essenciais' => ['Prazo de contratos', 'Economia em compras', 'Compliance documental']
             ],
@@ -929,11 +1044,26 @@ class SopController
                 'descricao' => 'Sistemas, ferramentas, dados',
                 'funcoes_principais' => ['Gestão de sistemas', 'Infraestrutura tecnológica', 'Segurança de dados', 'Suporte técnico'],
                 'sops_padrao' => [
-                    'Gestão de Infraestrutura de TI',
-                    'Backup e Segurança de Dados',
-                    'Suporte Técnico Interno',
-                    'Gestão de Usuários e Acessos',
-                    'Manutenção de Sistemas'
+                    'Gestão de Infraestrutura de Servidores',
+                    'Backup e Recuperação de Dados',
+                    'Suporte Técnico Interno (Help Desk)',
+                    'Gestão de Usuários e Controle de Acessos',
+                    'Manutenção Preventiva de Sistemas',
+                    'Segurança da Informação e Compliance',
+                    'Gestão de Redes e Conectividade',
+                    'Monitoramento de Performance de Sistemas',
+                    'Gestão de Banco de Dados',
+                    'Controle de Patches e Atualizações',
+                    'Gestão de Licenças de Software',
+                    'Implementação de Novos Sistemas',
+                    'Gestão de Cloud Computing',
+                    'Disaster Recovery e Continuidade de Negócio',
+                    'Gestão de Dispositivos Móveis (MDM)',
+                    'Controle de Antivírus e Anti-malware',
+                    'Gestão de Firewall e Segurança de Rede',
+                    'Auditoria e Logs de Sistemas',
+                    'Gestão de Telefonia IP e VoIP',
+                    'Gestão de Videoconferência e Colaboração'
                 ],
                 'kpis_essenciais' => ['Uptime dos sistemas', 'Tempo resolução TI', 'Incidentes de segurança']
             ],
@@ -943,10 +1073,25 @@ class SopController
                 'funcoes_principais' => ['Gestão de processos', 'Auditoria interna', 'Indicadores de qualidade', 'Melhoria contínua'],
                 'sops_padrao' => [
                     'Auditoria Interna de Processos',
-                    'Gestão de Indicadores e KPIs',
+                    'Gestão de Indicadores e Dashboards de KPIs',
                     'Tratamento de Não Conformidades',
-                    'Processo de Melhoria Contínua',
-                    'Padronização de Procedimentos'
+                    'Processo de Melhoria Contínua (Kaizen)',
+                    'Padronização e Documentação de Procedimentos',
+                    'Gestão de Certificações e Normas (ISO)',
+                    'Controle Estatístico de Processos',
+                    'Gestão de Reclamações e Feedback Interno',
+                    'Benchmarking e Análise de Concorrência',
+                    'Gestão de Projetos de Melhoria',
+                    'Treinamento em Ferramentas de Qualidade',
+                    'Gestão de Satisfação de Clientes Internos',
+                    'Análise de Causa Raiz e 5 Porquês',
+                    'Gestão de Riscos Operacionais',
+                    'Implementação de Metodologias Lean',
+                    'Controle de Documentos e Procedimentos',
+                    'Gestão de Indicadores de Produtividade',
+                    'Auditorias de Fornecedores e Terceiros',
+                    'Gestão de Planos de Ação Corretivos',
+                    'Controle de Calibração e Metrologia'
                 ],
                 'kpis_essenciais' => ['Não conformidades', 'Processos auditados', 'Melhorias implementadas']
             ]
@@ -4822,11 +4967,21 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                         'descricao' => 'Levantamento de quantitativos, BDI, cotação de insumos',
                         'funcoes_principais' => ['Levantamento quantitativo', 'Composição de BDI', 'Cotação de materiais'],
                         'sops_padrao' => [
-                            'Levantamento de Quantitativos de Obra',
+                            'Levantamento de Quantitativos de Obra Detalhado',
                             'Composição de BDI e Preços Unitários',
-                            'Cotação de Insumos e Materiais',
-                            'Elaboração de Orçamento Detalhado',
-                            'Análise de Viabilidade de Projetos'
+                            'Cotação de Insumos e Materiais de Construção',
+                            'Elaboração de Orçamento Executivo Detalhado',
+                            'Análise de Viabilidade Técnica e Financeira',
+                            'Gestão de Banco de Preços e Composições',
+                            'Orçamentação de Mão de Obra Especializada',
+                            'Análise de Produtividade e Rendimentos',
+                            'Orçamentação de Equipamentos e Ferramentas',
+                            'Gestão de Reajustes e Variações de Preço',
+                            'Orçamentação de Projetos Complementares',
+                            'Análise de Riscos em Orçamentação',
+                            'Controle de Margem e Lucratividade',
+                            'Orçamentação por Módulos e Etapas',
+                            'Gestão de Cronograma Físico-Financeiro Preliminar'
                         ],
                         'kpis_essenciais' => ['Precisão orçamentária', 'Prazo de orçamento', 'Margem de lucro']
                     ],
@@ -4835,11 +4990,19 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                         'descricao' => 'Cotação, homologação de fornecedores, prazo de entrega',
                         'funcoes_principais' => ['Compras especializadas', 'Gestão de fornecedores', 'Logística de obra'],
                         'sops_padrao' => [
-                            'Cotação e Seleção de Fornecedores',
-                            'Homologação de Fornecedores de Obra',
-                            'Controle de Prazo de Entrega',
-                            'Gestão de Estoque de Obra',
-                            'Negociação de Contratos de Fornecimento'
+                            'Cotação e Análise Comparativa de Fornecedores',
+                            'Homologação e Qualificação de Fornecedores de Obra',
+                            'Negociação de Contratos de Fornecimento',
+                            'Controle Rigoroso de Prazo de Entrega',
+                            'Gestão Estratégica de Estoque de Obra',
+                            'Recebimento e Inspeção de Materiais',
+                            'Gestão de Relacionamento com Fornecedores',
+                            'Controle de Qualidade de Insumos',
+                            'Logística de Transporte para Canteiro',
+                            'Gestão de Compras de Emergência',
+                            'Auditoria de Fornecedores e Performance',
+                            'Gestão de Contratos de Locação de Equipamentos',
+                            'Compras Sustentáveis e Compliance Ambiental'
                         ],
                         'kpis_essenciais' => ['Prazo de entrega', 'Economia em compras', 'Qualidade fornecedores']
                     ],
@@ -4921,11 +5084,22 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                         'descricao' => 'Cadastro de produto, precificação por canal',
                         'funcoes_principais' => ['Gestão multicanal', 'Precificação dinâmica', 'Catálogo de produtos'],
                         'sops_padrao' => [
-                            'Cadastro de Produtos em Marketplace',
-                            'Precificação por Canal de Venda',
-                            'Gestão de Estoque Multicanal',
-                            'Otimização de Anúncios',
-                            'Análise de Performance por Canal'
+                            'Cadastro Completo de Produtos em Marketplace',
+                            'Precificação Dinâmica por Canal de Venda',
+                            'Gestão Integrada de Estoque Multicanal',
+                            'Otimização de Anúncios e Campanhas Patrocinadas',
+                            'Análise de Performance por Canal e Produto',
+                            'Gestão de Categorização e Atributos',
+                            'Controle de Concorrência e Monitoramento de Preços',
+                            'Gestão de Promoções e Campanhas Especiais',
+                            'Otimização de SEO para Marketplace',
+                            'Gestão de Reviews e Feedback de Clientes',
+                            'Controle de Buy Box e Posicionamento',
+                            'Gestão de Frete e Políticas de Entrega',
+                            'Análise de Métricas de Conversão por Canal',
+                            'Gestão de Políticas de Troca e Devolução',
+                            'Integração com ERPs e Sistemas de Gestão',
+                            'Compliance com Regras de Marketplace'
                         ],
                         'kpis_essenciais' => ['Conversão por canal', 'Share of voice', 'Margem por marketplace']
                     ],
@@ -5007,11 +5181,23 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                         'descricao' => 'Code review, deploy, versionamento',
                         'funcoes_principais' => ['Desenvolvimento de software', 'DevOps', 'Qualidade de código'],
                         'sops_padrao' => [
-                            'Processo de Code Review',
-                            'Pipeline de Deploy e CI/CD',
-                            'Versionamento e Release',
-                            'Gestão de Ambiente',
-                            'Documentação Técnica'
+                            'Processo Rigoroso de Code Review',
+                            'Pipeline Automatizado de Deploy e CI/CD',
+                            'Gestão de Versionamento e Release Management',
+                            'Gestão de Ambientes de Desenvolvimento e Produção',
+                            'Documentação Técnica Completa de Sistemas',
+                            'Testes Automatizados e Quality Assurance',
+                            'Gestão de Configuração e Infrastructure as Code',
+                            'Monitoramento e Observabilidade de Aplicações',
+                            'Gestão de Segurança e Vulnerabilidades',
+                            'Arquitetura de Software e Design Patterns',
+                            'Gestão de Performance e Otimização',
+                            'Backup e Recovery de Código e Dados',
+                            'Gestão de Dependências e Bibliotecas',
+                            'Processo de Debugging e Troubleshooting',
+                            'Gestão de APIs e Integrações',
+                            'Desenvolvimento Mobile e Multiplataforma',
+                            'Gestão de Banco de Dados e Migrations'
                         ],
                         'kpis_essenciais' => ['Lead time', 'Bug rate', 'Deploy frequency']
                     ],
@@ -8253,7 +8439,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         $nomeSetor = $servico['nome_setor'];
         $codigoServico = $servico['codigo_servico'];
         
-        return "GERAÇÃO DE SOP (PROCEDIMENTO OPERACIONAL PADRÃO) ULTRA DETALHADO E INSTRUTIVO
+        return "GERAÇÃO DE SOP (PROCEDIMENTO OPERACIONAL PADRÃO) ULTRA TÉCNICO E INSTRUTIVO
 
 # INFORMAÇÕES DO SERVIÇO
 - **Código**: {$codigoServico}
@@ -8264,218 +8450,362 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
 # DETALHAMENTO COMPLETO DO SERVIÇO
 " . json_encode($detalhamento, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . "
 
-# INSTRUÇÕES CRÍTICAS PARA CRIAÇÃO DO SOP
+# INSTRUÇÕES CRÍTICAS PARA CRIAÇÃO DO SOP ULTRA TÉCNICO
 
-Este SOP deve ser um **GUIA COMPLETO DE TREINAMENTO E EXECUÇÃO**. Não é apenas um checklist, mas sim um **MANUAL INSTRUTIVO DETALHADO** que ensina COMO fazer cada atividade.
+Este SOP deve ser um **MANUAL TÉCNICO COMPLETO DE CAPACITAÇÃO PROFISSIONAL**. É o documento de treinamento definitivo que transforma um iniciante em um profissional competente nesta função específica.
 
-## PRINCÍPIOS OBRIGATÓRIOS:
+## PRINCÍPIOS OBRIGATÓRIOS ULTRA RIGOROSOS:
 
-### 1. **DETALHAMENTO INSTRUTIVO**
-- Cada passo deve explicar não apenas O QUE fazer, mas **COMO FAZER EXATAMENTE**
-- Incluir **contexto**, **técnicas**, **abordagens** e **scripts quando aplicável**
-- Prever **situações específicas** e como lidar com cada uma
-- Dar **exemplos práticos** e **modelos de execução**
+### 1. **MÁXIMO DETALHAMENTO TÉCNICO E INSTRUTIVO**
+- Cada passo deve explicar não apenas O QUE fazer, mas **EXATAMENTE COMO EXECUTAR** com precisão técnica
+- Incluir **metodologias profissionais**, **técnicas especializadas** e **abordagens comprovadas**
+- Fornecer **scripts completos**, **templates práticos** e **modelos de execução detalhados**
+- Prever **todos os cenários possíveis** e suas respectivas **soluções técnicas específicas**
+- Dar **exemplos técnicos reais** aplicáveis ao contexto empresarial
 
-### 2. **DIFERENCIAÇÃO POR COMPLEXIDADE**
-- **Passos simples**: Descrição direta e objetiva
-- **Passos complexos**: Detalhamento extenso com técnicas, abordagens e scripts
-- **Interação humana**: Modelos de comunicação, tom de voz, abordagens
-- **Processos técnicos**: Scripts, comandos, procedimentos passo-a-passo
+### 2. **DIFERENCIAÇÃO RIGOROSA POR NÍVEL DE COMPLEXIDADE**
+- **Passos administrativos simples**: Descrição objetiva com validações técnicas
+- **Processos técnicos médios**: Detalhamento com metodologias e ferramentas específicas
+- **Processos altamente complexos**: Detalhamento EXTENSO com técnicas avançadas, múltiplas abordagens e scripts completos
+- **Interações interpessoais**: Modelos de comunicação profissional, scripts psicológicos e técnicas de relacionamento
+- **Análises especializadas**: Metodologias técnicas, frameworks de análise e ferramentas específicas
 
-### 3. **FOCO EM CAPACITAÇÃO**
-- O SOP É o treinamento - deve ensinar completamente
-- Incluir **boas práticas**, **dicas profissionais** e **técnicas avançadas**
-- Explicar o **PORQUÊ** de cada ação quando relevante
-- Preparar para **situações reais** do dia-a-dia
+### 3. **FOCO EM EXCELÊNCIA PROFISSIONAL TÉCNICA**
+- O SOP deve capacitar para **execução de nível especialista**
+- Incluir **metodologias reconhecidas**, **frameworks profissionais** e **melhores práticas de mercado**
+- Explicar **fundamentação técnica** e **embasamento científico** quando aplicável
+- Preparar para **situações críticas** e **cenários de alta pressão**
+- Desenvolver **competências técnicas avançadas** e **expertise especializada**
 
-## ESTRUTURA OBRIGATÓRIA DO SOP EM JSON:
+### 4. **USO OBRIGATÓRIO DE TERMINOLOGIA GENÉRICA**
+- **NUNCA mencionar marcas comerciais ou nomes de produtos específicos**
+- Usar sempre **termos genéricos** e **categorias funcionais**:
+  - ❌ \"Configure no servidor da Amazon\" → ✅ \"Configure no servidor de hospedagem em nuvem\"
+  - ❌ \"Use o ChatGPT para análise\" → ✅ \"Use a ferramenta de inteligência artificial para análise\"
+  - ❌ \"Abra o Microsoft Excel\" → ✅ \"Abra a planilha eletrônica\"
+  - ❌ \"Envie pelo WhatsApp\" → ✅ \"Envie pela ferramenta de mensageria instantânea\"
+  - ❌ \"Use o Salesforce\" → ✅ \"Use o sistema de CRM (gestão de relacionamento com clientes)\"
+  - ❌ \"Configure no AWS\" → ✅ \"Configure na plataforma de computação em nuvem\"
+
+### 5. **OBRIGATORIEDADE DE CENÁRIOS CRÍTICOS E SITUAÇÕES FORA DE CONTROLE**
+- **SEMPRE prever e detalhar situações que podem fugir do controle normal**
+- Incluir **scripts específicos** e **protocolos de emergência** para cada cenário crítico:
+
+**SITUAÇÕES CRÍTICAS OBRIGATÓRIAS POR CONTEXTO:**
+
+🔥 **ATENDIMENTO E RELACIONAMENTO:**
+- Cliente extremamente irritado ou agressivo
+- Cliente ameaçando cancelar o serviço
+- Reclamação pública em redes sociais
+- Cliente exigindo falar com supervisor imediatamente
+- Situação de constrangimento ou mal-entendido
+- Cliente questionando competência da empresa
+
+💰 **FINANCEIRO E COBRANÇA:**
+- Cliente inadimplente há meses resistindo ao pagamento
+- Negociação de dívida em situação crítica
+- Cliente alegando não ter recebido o produto/serviço
+- Disputa de valores e contestação de cobrança
+- Cliente pedindo desconto emergencial
+- Situação de execução judicial ou protesto
+
+⚙️ **TÉCNICO E OPERACIONAL:**
+- Sistema principal caído durante horário crítico
+- Falha massiva que afeta múltiplos clientes
+- Perda de dados ou backup corrompido
+- Ataque de segurança ou vazamento de informações
+- Fornecedor principal paralisando entregas
+- Equipamento crítico quebrado sem backup imediato
+
+📋 **PROCESSOS E QUALIDADE:**
+- Erro grave que afetou cliente importante
+- Não conformidade descoberta em auditoria
+- Reclamação formal de órgão regulador
+- Processo trabalhista ou denúncia
+- Acidente de trabalho ou questão de segurança
+- Perda de certificação ou licença importante
+
+🚨 **GESTÃO DE CRISES:**
+- Situação viral negativa nas redes sociais
+- Greve ou paralisação de colaboradores
+- Desastre natural afetando operações
+- Saída súbita de colaborador chave
+- Concorrente copiando estratégias ou produtos
+- Mudança regulatória que impacta o negócio
+
+## ESTRUTURA OBRIGATÓRIA DO SOP ULTRA TÉCNICO EM JSON:
 
 ```json
 {
   \"sop_titulo\": \"SOP {$codigoServico} - {$nomeServico}\",
-  \"objetivo\": \"Objetivo claro explicando o propósito e resultados esperados (mínimo 3 frases detalhadas)\",
-  \"escopo\": \"Definição completa do escopo, limitações e aplicabilidade (mínimo 3 frases específicas)\",
+  \"objetivo\": \"Objetivo técnico detalhado explicando propósito, resultados mensuráveis esperados e impacto no negócio (mínimo 4 frases técnicas específicas)\",
+  \"escopo\": \"Definição técnica completa do escopo, limitações específicas, interfaces com outros processos e aplicabilidade por contexto (mínimo 4 frases técnicas detalhadas)\",
   \"responsaveis\": {
-    \"executor_principal\": \"Cargo específico de quem executa\",
-    \"supervisor\": \"Cargo de quem supervisiona e valida\",
-    \"aprovador\": \"Cargo de quem aprova o resultado final\"
+    \"executor_principal\": \"Cargo específico com competências técnicas requeridas\",
+    \"supervisor_tecnico\": \"Cargo de quem supervisiona tecnicamente e valida qualidade\",
+    \"aprovador_final\": \"Cargo de quem aprova o resultado e autoriza prosseguimento\",
+    \"escalacao_critica\": \"Cargo para escalação em situações críticas ou exceções\"
   },
-  \"pre_requisitos\": [
-    \"Pré-requisito técnico específico com detalhes\",
-    \"Conhecimento necessário explicado\",
-    \"Acesso/permissão requerida com justificativa\",
-    \"Ferramenta/sistema necessário com finalidade\"
+  \"competencias_requeridas\": [
+    \"Competência técnica específica com nível requerido\",
+    \"Conhecimento especializado detalhado com aplicação\",
+    \"Habilidade interpessoal com contexto de uso\",
+    \"Certificação ou qualificação técnica se aplicável\"
+  ],
+  \"pre_requisitos_tecnicos\": [
+    \"Pré-requisito técnico específico com validação obrigatória\",
+    \"Conhecimento técnico necessário com profundidade requerida\",
+    \"Acesso/permissão específica com justificativa de segurança\",
+    \"Ferramenta/sistema com versão e configuração mínima\"
   ],
   \"recursos_necessarios\": {
-    \"sistemas\": [\"Sistema específico com função\", \"Plataforma X para finalidade Y\"],
-    \"equipamentos\": [\"Equipamento específico com uso\", \"Ferramenta X para atividade Y\"],
-    \"documentos\": [\"Formulário específico com propósito\", \"Template X para situação Y\"],
-    \"materiais\": [\"Material físico com aplicação\", \"Insumo X para processo Y\"]
+    \"sistemas_tecnicos\": [\"Sistema específico com função detalhada e requisitos técnicos\", \"Plataforma de categoria X para finalidade Y específica\"],
+    \"equipamentos_especializados\": [\"Equipamento técnico com especificações mínimas\", \"Ferramenta profissional categoria X para atividade Y\"],
+    \"documentos_tecnicos\": [\"Formulário técnico específico com campos obrigatórios\", \"Template profissional X para situação Y com variáveis\"],
+    \"materiais_fisicos\": [\"Material físico com especificação técnica\", \"Insumo categoria X com características Y\"],
+    \"ferramentas_software\": [\"Categoria de software específica com funcionalidades requeridas\", \"Ferramenta de categoria X para processo Y\"]
   },
-  \"procedimentos\": [
+  \"procedimentos_ultra_detalhados\": [
     {
-      \"fase\": \"Preparação e Planejamento\",
-      \"descricao\": \"Descrição detalhada da importância e objetivo desta fase\",
-      \"passos\": [
+      \"fase\": \"Preparação Técnica e Planejamento Estratégico\",
+      \"descricao_tecnica\": \"Descrição técnica detalhada da importância estratégica, objetivos mensuráveis e impacto desta fase no resultado final\",
+      \"metodologia_aplicada\": \"Framework ou metodologia técnica específica utilizada nesta fase\",
+      \"passos_tecnicos\": [
         {
           \"passo\": 1,
-          \"acao\": \"Ação específica e direta (para passos simples)\",
-          \"detalhamento\": \"Para passos simples: explicação breve. Para passos complexos: detalhamento extenso com técnicas, abordagens, scripts, exemplos práticos e situações específicas\",
-          \"responsavel\": \"Cargo específico\",
-          \"tempo_estimado\": \"Tempo realista\",
-          \"criterio_qualidade\": \"Como validar se foi executado corretamente\",
-          \"scripts_modelos\": \"Para interações: scripts exatos, modelos de fala, abordagens. Para processos técnicos: comandos, códigos, procedimentos\",
-          \"situacoes_especiais\": \"Como lidar com variações, problemas ou casos específicos\",
-          \"observacoes\": \"Dicas, cuidados especiais e boas práticas\"
+          \"acao_tecnica\": \"Ação específica com metodologia técnica (para processos simples: objetiva; para complexos: detalhada)\",
+          \"detalhamento_profissional\": \"Para passos simples: explicação técnica concisa com validações. Para passos complexos: DETALHAMENTO TÉCNICO EXTENSO com metodologias profissionais, técnicas especializadas, abordagens múltiplas, scripts técnicos completos, exemplos práticos aplicáveis, troubleshooting detalhado e cenários específicos\",
+          \"responsavel_tecnico\": \"Cargo específico com nível de competência\",
+          \"tempo_estimado_realista\": \"Tempo técnico realista considerando complexidade e qualidade\",
+          \"criterios_qualidade_tecnicos\": \"Como validar tecnicamente se foi executado com padrão profissional\",
+          \"scripts_e_templates_completos\": \"Para interações: scripts psicológicos completos, modelos de abordagem profissional, técnicas de persuasão. Para processos técnicos: comandos específicos, códigos detalhados, procedimentos passo-a-passo\",
+          \"metodologias_especializadas\": \"Técnicas profissionais específicas, frameworks reconhecidos, abordagens científicas aplicáveis\",
+          \"cenarios_e_variacoes\": \"Como lidar tecnicamente com variações, exceções, problemas críticos e situações de alta complexidade\",
+          \"situacoes_criticas_especificas\": \"OBRIGATÓRIO: Detalhar como lidar com situações que fogem do controle normal específicas deste processo (cliente irritado, sistema indisponível, cobrança difícil, fornecedor atrasado, etc.) com scripts exatos e protocolos de emergência\",
+          \"protocolos_emergencia\": \"Procedimentos técnicos específicos para quando a situação sai completamente do controle, incluindo escalação e comunicação de crise\",
+          \"validacoes_tecnicas\": \"Checklist técnico de validações obrigatórias e critérios de aceitação\",
+          \"observacoes_profissionais\": \"Insights de especialistas, armadilhas comuns, dicas avançadas e melhores práticas técnicas\"
         }
       ]
     },
     {
-      \"fase\": \"Execução Principal\",
-      \"descricao\": \"Descrição da fase core com sua importância\",
-      \"passos\": [
+      \"fase\": \"Execução Técnica Principal\",
+      \"descricao_tecnica\": \"Descrição da fase core com importância técnica e metodologias aplicadas\",
+      \"metodologia_aplicada\": \"Framework técnico específico para execução profissional\",
+      \"passos_tecnicos\": [
         {
           \"passo\": 2,
-          \"acao\": \"Ação principal detalhada\",
-          \"detalhamento\": \"DETALHAMENTO EXTENSO: Para atendimento - como abordar cliente, tom de voz, técnicas de comunicação, tratamento de objeções. Para processos - passo-a-passo minucioso, verificações, validações\",
-          \"responsavel\": \"Cargo específico\",
-          \"tempo_estimado\": \"Tempo detalhado\",
-          \"criterio_qualidade\": \"Critérios específicos de qualidade\",
-          \"scripts_modelos\": \"Scripts completos de atendimento, modelos de apresentação, templates de comunicação ou códigos/comandos técnicos\",
-          \"tecnicas_avancadas\": \"Técnicas profissionais, abordagens especializadas, métodos comprovados\",
-          \"situacoes_especiais\": \"Cenários específicos e como lidar com cada um\",
-          \"observacoes\": \"Insights profissionais e melhores práticas\"
+          \"acao_tecnica\": \"Ação principal com especificação técnica detalhada\",
+          \"detalhamento_profissional\": \"DETALHAMENTO TÉCNICO MÁXIMO: Para atendimento - psicologia aplicada, técnicas de comunicação avançada, metodologias de relacionamento, scripts comportamentais, tratamento de objeções complexas. Para processos técnicos - metodologia passo-a-passo minuciosa, validações técnicas múltiplas, troubleshooting completo, otimizações de performance\",
+          \"responsavel_tecnico\": \"Cargo específico com especialização\",
+          \"tempo_estimado_realista\": \"Tempo técnico detalhado com variações\",
+          \"criterios_qualidade_tecnicos\": \"Critérios técnicos específicos de excelência profissional\",
+          \"scripts_e_templates_completos\": \"Scripts técnicos completos: para atendimento - modelos psicológicos de abordagem, templates de apresentação profissional, técnicas de fechamento; para processos - códigos/comandos específicos, templates técnicos, procedimentos detalhados\",
+          \"metodologias_especializadas\": \"Técnicas profissionais avançadas, abordagens especializadas reconhecidas, métodos científicos comprovados\",
+          \"frameworks_aplicaveis\": \"Frameworks profissionais específicos aplicáveis ao contexto com adaptações necessárias\",
+          \"cenarios_complexos\": \"Cenários técnicos específicos com soluções detalhadas para cada situação complexa\",
+          \"troubleshooting_avancado\": \"Diagnóstico e solução técnica para problemas comuns e críticos com metodologia estruturada\",
+          \"otimizacoes_performance\": \"Técnicas de otimização e melhoria de performance aplicáveis ao processo\",
+          \"observacoes_especialistas\": \"Insights técnicos de especialistas, armadilhas técnicas e soluções avançadas\"
         },
         {
           \"passo\": 3,
-          \"acao\": \"Próxima ação principal\",
-          \"detalhamento\": \"Continuação do detalhamento técnico ou interpessoal conforme necessário\",
-          \"responsavel\": \"Cargo específico\",
-          \"tempo_estimado\": \"Tempo específico\",
-          \"criterio_qualidade\": \"Validação específica\",
-          \"scripts_modelos\": \"Modelos práticos aplicáveis\",
-          \"observacoes\": \"Dicas e cuidados importantes\"
+          \"acao_tecnica\": \"Continuação da execução técnica principal\",
+          \"detalhamento_profissional\": \"Continuação do detalhamento técnico máximo conforme complexidade do processo\",
+          \"responsavel_tecnico\": \"Cargo específico\",
+          \"tempo_estimado_realista\": \"Tempo específico técnico\",
+          \"criterios_qualidade_tecnicos\": \"Validação técnica específica\",
+          \"scripts_e_templates_completos\": \"Modelos técnicos práticos aplicáveis\",
+          \"metodologias_especializadas\": \"Técnicas profissionais continuadas\",
+          \"observacoes_profissionais\": \"Dicas técnicas e cuidados especializados\"
         }
       ]
     },
     {
-      \"fase\": \"Finalização e Controle\",
-      \"descricao\": \"Fase de fechamento e validação final\",
-      \"passos\": [
+      \"fase\": \"Finalização Técnica e Controle de Qualidade\",
+      \"descricao_tecnica\": \"Fase de fechamento técnico com validações e controles profissionais\",
+      \"metodologia_aplicada\": \"Framework de controle de qualidade e validação técnica\",
+      \"passos_tecnicos\": [
         {
           \"passo\": 4,
-          \"acao\": \"Ação de finalização\",
-          \"detalhamento\": \"Como finalizar adequadamente, validações necessárias, documentação requerida\",
-          \"responsavel\": \"Cargo específico\",
-          \"tempo_estimado\": \"Tempo de finalização\",
-          \"criterio_qualidade\": \"Critérios de conclusão\",
-          \"scripts_modelos\": \"Modelos de fechamento, scripts de encerramento\",
-          \"observacoes\": \"Validações finais e próximos passos\"
+          \"acao_tecnica\": \"Ação de finalização técnica com controles\",
+          \"detalhamento_profissional\": \"Como finalizar com excelência técnica, validações obrigatórias, documentação profissional requerida, controles de qualidade\",
+          \"responsavel_tecnico\": \"Cargo específico com competência de validação\",
+          \"tempo_estimado_realista\": \"Tempo de finalização com qualidade\",
+          \"criterios_qualidade_tecnicos\": \"Critérios técnicos rigorosos de conclusão e aceitação\",
+          \"scripts_e_templates_completos\": \"Modelos de fechamento profissional, scripts de encerramento técnico, templates de documentação\",
+          \"validacoes_obrigatorias\": \"Checklist técnico obrigatório de validações finais\",
+          \"documentacao_tecnica\": \"Documentação técnica requerida com templates específicos\",
+          \"observacoes_profissionais\": \"Validações finais técnicas, próximos passos e continuidade do processo\"
         }
       ]
     }
   ],
-  \"pontos_controle\": [
+  \"pontos_controle_tecnicos\": [
     {
-      \"momento\": \"Após cada fase crítica\",
-      \"o_que_verificar\": \"Pontos específicos de validação\",
-      \"criterio_aceitacao\": \"Critérios claros de aprovação\",
-      \"acao_se_nao_conforme\": \"Ações corretivas específicas com responsáveis\"
+      \"momento_critico\": \"Após cada fase técnica crítica\",
+      \"validacoes_tecnicas\": \"Pontos técnicos específicos de validação com critérios mensuráveis\",
+      \"criterios_aceitacao_profissionais\": \"Critérios técnicos claros de aprovação com métricas específicas\",
+      \"acoes_corretivas_especificas\": \"Ações técnicas corretivas específicas com responsáveis e prazos\",
+      \"escalacao_tecnica\": \"Processo de escalação técnica para situações críticas\"
     }
   ],
-  \"procedimentos_emergencia\": {
-    \"situacoes_criticas\": [
+  \"procedimentos_emergencia_tecnicos\": {
+    \"situacoes_criticas_especificas\": [
       {
-        \"situacao\": \"Situação crítica específica do contexto\",
-        \"sinais_alerta\": [\"Indicador específico 1\", \"Sinal concreto 2\"],
-        \"acao_imediata\": \"Ação específica e detalhada\",
-        \"quem_notificar\": \"Responsável específico e como contatar\",
-        \"tempo_resposta_maximo\": \"Tempo crítico realista\",
-        \"script_comunicacao\": \"Script exato para comunicar a emergência\"
+        \"situacao_tecnica\": \"Situação crítica técnica específica do contexto profissional\",
+        \"sinais_tecnicos_alerta\": [\"Indicador técnico específico mensurável\", \"Sinal técnico concreto observável\"],
+        \"acao_tecnica_imediata\": \"Ação técnica específica e detalhada com metodologia\",
+        \"responsavel_tecnico\": \"Responsável técnico específico e canais de contato\",
+        \"tempo_resposta_critico\": \"Tempo técnico crítico realista baseado em SLA\",
+        \"script_comunicacao_tecnica\": \"Script técnico exato para comunicar a emergência com linguagem profissional\",
+        \"procedimentos_contingencia\": \"Procedimentos técnicos de contingência detalhados\"
       }
     ]
   },
-  \"checklists\": {
-    \"pre_execucao\": [
-      \"Item específico com critério de validação\",
-      \"Verificação detalhada com método\",
-      \"Conferência específica com ferramenta\"
+  \"gestao_situacoes_fora_controle\": {
+    \"cenarios_criticos_obrigatorios\": [
+      {
+        \"tipo_crise\": \"Categoria da situação crítica (atendimento, técnico, financeiro, operacional)\",
+        \"situacao_especifica\": \"Descrição detalhada da situação que fugiu do controle normal\",
+        \"sinais_identificacao\": [\"Como identificar que a situação saiu do controle\", \"Indicadores de escalada da crise\"],
+        \"acao_imediata_contencao\": \"Primeira ação para conter a situação e evitar agravamento\",
+        \"script_comunicacao_crise\": \"Script exato para comunicar com o cliente/envolvido durante a crise\",
+        \"tecnicas_desescalacao\": \"Técnicas psicológicas e comunicacionais para reduzir tensão\",
+        \"quando_escalar\": \"Critérios claros para escalação e para quem\",
+        \"procedimento_pos_crise\": \"Como proceder após resolução para evitar reincidência\",
+        \"documentacao_obrigatoria\": \"Que registros fazer sobre o incidente\",
+        \"tempo_resposta_maximo\": \"Prazo máximo para resolução ou escalação\"
+      }
     ],
-    \"durante_execucao\": [
-      \"Controle específico com frequência\",
-      \"Monitoramento detalhado com método\"
+    \"scripts_situacoes_dificeis\": {
+      \"cliente_muito_irritado\": \"Script completo para lidar com cliente agressivo ou extremamente insatisfeito\",
+      \"cobranca_resistente\": \"Abordagem e scripts para cobrança de cliente que resiste ao pagamento\",
+      \"sistema_indisponivel\": \"Como comunicar e lidar com clientes quando sistemas estão fora do ar\",
+      \"erro_grave_cometido\": \"Como comunicar e resolver quando a empresa cometeu erro significativo\",
+      \"prazo_perdido\": \"Scripts para comunicar atrasos e negociar nova data\",
+      \"qualidade_questionada\": \"Como responder quando cliente questiona qualidade do produto/serviço\"
+    }
+  },
+  \"checklists_tecnicos_detalhados\": {
+    \"pre_execucao_tecnica\": [
+      \"Item técnico específico com critério de validação mensurável\",
+      \"Verificação técnica detalhada com método específico\",
+      \"Conferência técnica específica com ferramenta e critério\"
     ],
-    \"pos_execucao\": [
-      \"Validação final específica\",
-      \"Documentação obrigatória detalhada\"
+    \"durante_execucao_tecnica\": [
+      \"Controle técnico específico com frequência e método\",
+      \"Monitoramento técnico detalhado com métricas específicas\"
+    ],
+    \"pos_execucao_tecnica\": [
+      \"Validação técnica final específica com critérios mensuráveis\",
+      \"Documentação técnica obrigatória detalhada com templates\"
     ]
   },
-  \"scripts_comunicacao\": {
-    \"atendimento_inicial\": \"Script completo para primeiro contato\",
-    \"apresentacao_servico\": \"Modelo de apresentação profissional\",
-    \"tratamento_objecoes\": \"Scripts para situações difíceis\",
-    \"finalizacao\": \"Modelo de encerramento profissional\"
+  \"scripts_comunicacao_profissionais\": {
+    \"abordagem_inicial_profissional\": \"Script técnico completo para primeiro contato profissional\",
+    \"apresentacao_tecnica_servico\": \"Modelo de apresentação técnica profissional com argumentação\",
+    \"tratamento_objecoes_avancado\": \"Scripts técnicos para situações difíceis com técnicas psicológicas\",
+    \"finalizacao_profissional\": \"Modelo de encerramento técnico profissional com próximos passos\",
+    \"comunicacao_problemas\": \"Scripts para comunicar problemas tecnicos de forma profissional\",
+    \"negociacao_avancada\": \"Modelos de negociação técnica com estratégias específicas\"
   },
-  \"indicadores_performance\": [
+  \"metodologias_frameworks_aplicados\": [
+    \"Metodologia técnica específica aplicável ao processo\",
+    \"Framework profissional reconhecido adaptado ao contexto\",
+    \"Abordagem científica comprovada para o tipo de atividade\",
+    \"Técnica especializada de mercado para otimização\"
+  ],
+  \"indicadores_performance_tecnicos\": [
     {
-      \"nome\": \"KPI específico e mensurável\",
-      \"formula\": \"Fórmula exata de cálculo\",
-      \"meta\": \"Meta numérica específica\",
-      \"frequencia_medicao\": \"Frequência realista\",
-      \"responsavel_medicao\": \"Quem mede e reporta\"
+      \"nome_kpi_tecnico\": \"KPI técnico específico e mensurável\",
+      \"formula_calculo_tecnica\": \"Fórmula matemática exata de cálculo\",
+      \"meta_tecnica_especifica\": \"Meta numérica específica com justificativa técnica\",
+      \"frequencia_medicao_tecnica\": \"Frequência realista baseada em análise técnica\",
+      \"responsavel_medicao_tecnico\": \"Quem mede tecnicamente e reporta com competência específica\",
+      \"ferramenta_medicao\": \"Ferramenta ou sistema específico para medição técnica\"
     }
   ],
-  \"anexos_referencias\": [
-    \"Template específico mencionado\",
-    \"Formulário detalhado citado\",
-    \"Script completo referenciado\",
-    \"Checklist específico usado\"
+  \"documentacao_tecnica_obrigatoria\": [
+    \"Template técnico específico mencionado com campos obrigatórios\",
+    \"Formulário técnico detalhado citado com validações\",
+    \"Script técnico completo referenciado com variáveis\",
+    \"Checklist técnico específico usado com critérios\"
   ],
-  \"versao\": \"1.0\",
+  \"capacitacao_continua\": {
+    \"competencias_desenvolver\": [\"Competência técnica específica para evolução profissional\"],
+    \"treinamentos_recomendados\": [\"Treinamento técnico específico para aperfeiçoamento\"],
+    \"certificacoes_aplicaveis\": [\"Certificação profissional relevante para a função\"],
+    \"atualizacoes_tecnicas\": [\"Área técnica para atualização contínua\"]
+  },
+  \"versao_tecnica\": \"1.0\",
   \"data_criacao\": \"" . date('d/m/Y') . "\"
 }
 ```
 
-## REQUISITOS CRÍTICOS DE QUALIDADE:
+## REQUISITOS CRÍTICOS DE MÁXIMA QUALIDADE TÉCNICA:
 
-### 🎯 **DETALHAMENTO POR TIPO DE AÇÃO**:
+### 🎯 **DETALHAMENTO ULTRA TÉCNICO POR TIPO DE AÇÃO**:
 
-1. **AÇÕES SIMPLES** (verificações, confirmações):
-   - Descrição direta e objetiva
-   - Foco no resultado esperado
+1. **AÇÕES ADMINISTRATIVAS SIMPLES** (verificações, confirmações básicas):
+   - Descrição técnica direta com validações obrigatórias
+   - Foco no resultado técnico esperado com critérios mensuráveis
 
-2. **AÇÕES COMPLEXAS** (atendimento, negociação, análise):
-   - Detalhamento EXTENSO com técnicas
-   - Scripts completos e modelos
-   - Abordagens para diferentes cenários
-   - Exemplos práticos aplicáveis
+2. **PROCESSOS TÉCNICOS MÉDIOS** (análises, configurações):
+   - Detalhamento técnico com metodologias específicas
+   - Ferramentas técnicas e procedimentos estruturados
+   - Validações técnicas intermediárias
 
-3. **INTERAÇÕES HUMANAS** (atendimento, apresentações):
-   - Scripts EXATOS de comunicação
-   - Modelos de abordagem profissional
-   - Técnicas de relacionamento
-   - Tratamento de situações específicas
+3. **PROCESSOS ALTAMENTE COMPLEXOS** (negociações, análises críticas, decisões estratégicas):
+   - Detalhamento TÉCNICO MÁXIMO com metodologias avançadas
+   - Scripts técnicos completos e modelos profissionais
+   - Múltiplas abordagens para diferentes cenários técnicos
+   - Exemplos técnicos práticos aplicáveis ao contexto
+   - Frameworks profissionais reconhecidos
 
-4. **PROCESSOS TÉCNICOS** (sistemas, análises):
-   - Passo-a-passo minucioso
-   - Comandos e scripts específicos
-   - Verificações técnicas detalhadas
-   - Troubleshooting comum
+4. **INTERAÇÕES INTERPESSOAIS PROFISSIONAIS** (atendimento especializado, negociações, apresentações):
+   - Scripts técnicos COMPLETOS de comunicação profissional
+   - Modelos de abordagem psicológica aplicada
+   - Técnicas avançadas de relacionamento e persuasão
+   - Tratamento técnico de situações específicas e objeções
+   - Metodologias de comunicação empresarial
 
-### 📋 **OBRIGATORIEDADE**:
-- **Mínimo 4-6 passos** por fase com detalhamento variável
-- **Scripts/modelos** para TODA interação humana
-- **Técnicas específicas** para processos críticos
-- **Situações especiais** previstas e solucionadas
-- **Linguagem instrutiva** que ensina, não apenas lista
+5. **PROCESSOS TÉCNICOS ESPECIALIZADOS** (sistemas, análises técnicas, operações críticas):
+   - Metodologia passo-a-passo ultra minuciosa
+   - Comandos e procedimentos técnicos específicos
+   - Verificações técnicas detalhadas com critérios
+   - Troubleshooting técnico completo e estruturado
+   - Otimizações de performance e qualidade técnica
 
-### 🎪 **CONTEXTO DA EMPRESA**:
-- Considerar o setor de atuação: {$nomeEmpresa}
-- Adaptar linguagem ao nível hierárquico do setor
-- Incluir especificidades do tipo de negócio
-- Considerar recursos disponíveis mencionados
+### 📋 **OBRIGATORIEDADE TÉCNICA RIGOROSA**:
+- **Mínimo 5-8 passos técnicos** por fase com detalhamento variável baseado em complexidade
+- **Scripts/modelos técnicos** para TODA interação humana ou processo crítico
+- **Metodologias técnicas específicas** para processos especializados críticos
+- **Cenários técnicos especiais** previstos com soluções detalhadas
+- **SITUAÇÕES FORA DE CONTROLE** obrigatoriamente mapeadas com protocolos específicos
+- **Scripts de crise** para cada tipo de situação crítica do setor/serviço
+- **Protocolos de emergência** com tempo de resposta e escalação definidos
+- **Linguagem técnica instrutiva** que capacita profissionalmente, não apenas lista tarefas
 
-**IMPORTANTE**: Este SOP será usado como TREINAMENTO COMPLETO. Deve ensinar uma pessoa a executar o serviço com excelência, mesmo sem experiência prévia na função.
+### 🚨 **OBRIGATORIEDADE DE MAPEAMENTO DE CRISES**:
+- **TODA situação que pode sair do controle** deve ter protocolo específico
+- **Scripts exatos** para comunicação em situações difíceis
+- **Técnicas de desescalação** para conflitos e tensões
+- **Critérios claros** de quando e como escalar situações críticas
+- **Procedimentos pós-crise** para evitar reincidência
+- **Documentação obrigatória** de todos os incidentes críticos
+
+### 🎪 **CONTEXTO TÉCNICO EMPRESARIAL**:
+- Considerar o setor técnico de atuação: {$nomeEmpresa}
+- Adaptar linguagem técnica ao nível hierárquico e competência do setor
+- Incluir especificidades técnicas do tipo de negócio
+- Considerar recursos técnicos disponíveis mencionados no diagnóstico
+
+**CRÍTICO**: Este SOP será usado como **MANUAL DE CAPACITAÇÃO TÉCNICA PROFISSIONAL COMPLETO**. Deve desenvolver um profissional altamente competente e técnico, capaz de executar o serviço com excelência reconhecida no mercado, mesmo partindo de conhecimento básico na função.
+
+**SITUAÇÕES CRÍTICAS**: O SOP DEVE preparar o profissional para **TODAS as situações que podem fugir do controle normal**, incluindo clientes irritados, sistemas indisponíveis, cobranças difíceis, fornecedores atrasados, erros graves, crises de qualidade e qualquer cenário adverso específico do setor. Cada situação crítica deve ter protocolo detalhado, scripts exatos e procedimentos de emergência.
+
+**TERMINOLOGIA**: Use SEMPRE terminologia genérica. NUNCA mencione marcas, produtos específicos ou nomes comerciais. Use categorias funcionais e termos técnicos genéricos.
 
 Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais.";
     }

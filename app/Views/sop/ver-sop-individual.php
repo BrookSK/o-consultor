@@ -242,6 +242,20 @@ $temErroJson = isset($data['erro_json']);
                         </div>
                         <?php endif; ?>
                         
+                        <?php if (!empty($passo['situacoes_criticas_especificas'])): ?>
+                        <div class="mb-3 p-3 bg-red-50 border-l-4 border-red-500 rounded">
+                            <h5 class="text-sm font-semibold text-red-800 mb-1">🚨 Situações Fora de Controle:</h5>
+                            <p class="text-sm text-red-700 leading-relaxed"><?= nl2br(htmlspecialchars($passo['situacoes_criticas_especificas'])) ?></p>
+                        </div>
+                        <?php endif; ?>
+                        
+                        <?php if (!empty($passo['protocolos_emergencia'])): ?>
+                        <div class="mb-3 p-3 bg-red-100 border-l-4 border-red-600 rounded">
+                            <h5 class="text-sm font-semibold text-red-900 mb-1">🆘 Protocolos de Emergência:</h5>
+                            <p class="text-sm text-red-800 leading-relaxed font-medium"><?= nl2br(htmlspecialchars($passo['protocolos_emergencia'])) ?></p>
+                        </div>
+                        <?php endif; ?>
+                        
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
                             <div><span class="text-gray-500">Responsável:</span> <span class="text-gray-700"><?= htmlspecialchars($passo['responsavel'] ?? '') ?></span></div>
                             <div><span class="text-gray-500">Tempo:</span> <span class="text-gray-700"><?= htmlspecialchars($passo['tempo_estimado'] ?? '') ?></span></div>
@@ -368,6 +382,88 @@ $temErroJson = isset($data['erro_json']);
             <?php endif; ?>
             <?php endforeach; ?>
         </div>
+    </div>
+    <?php endif; ?>
+
+    <!-- Gestão de Situações Fora de Controle -->
+    <?php if (!empty($data['gestao_situacoes_fora_controle'])): ?>
+    <div class="bg-red-50 border border-red-300 rounded-lg p-6 mb-6">
+        <h2 class="text-lg font-semibold text-red-800 mb-4">🚨 Gestão de Situações Críticas e Fora de Controle</h2>
+        
+        <!-- Cenários Críticos Obrigatórios -->
+        <?php if (!empty($data['gestao_situacoes_fora_controle']['cenarios_criticos_obrigatorios'])): ?>
+        <div class="mb-6">
+            <h3 class="text-md font-semibold text-red-700 mb-3">⚠️ Cenários Críticos e Protocolos de Emergência</h3>
+            <div class="space-y-4">
+                <?php foreach ($data['gestao_situacoes_fora_controle']['cenarios_criticos_obrigatorios'] as $cenario): ?>
+                <div class="bg-white border border-red-200 rounded-lg p-4">
+                    <div class="flex items-center mb-2">
+                        <span class="bg-red-100 text-red-800 text-xs font-semibold px-2 py-1 rounded-full mr-2">
+                            <?= htmlspecialchars($cenario['tipo_crise'] ?? 'CRISE') ?>
+                        </span>
+                        <h4 class="font-medium text-red-800"><?= htmlspecialchars($cenario['situacao_especifica'] ?? '') ?></h4>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <p class="font-medium text-red-700 mb-1">🔍 Como Identificar:</p>
+                            <?php if (!empty($cenario['sinais_identificacao'])): ?>
+                            <ul class="text-red-600 space-y-1">
+                                <?php foreach ($cenario['sinais_identificacao'] as $sinal): ?>
+                                <li>• <?= htmlspecialchars($sinal) ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                            <?php endif; ?>
+                        </div>
+                        
+                        <div>
+                            <p class="font-medium text-red-700 mb-1">⚡ Ação Imediata:</p>
+                            <p class="text-red-600"><?= htmlspecialchars($cenario['acao_imediata_contencao'] ?? '') ?></p>
+                        </div>
+                        
+                        <?php if (!empty($cenario['script_comunicacao_crise'])): ?>
+                        <div class="md:col-span-2">
+                            <p class="font-medium text-red-700 mb-1">💬 Script de Comunicação na Crise:</p>
+                            <div class="bg-red-100 p-3 rounded border font-mono text-sm text-red-800">
+                                <?= nl2br(htmlspecialchars($cenario['script_comunicacao_crise'])) ?>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+                        
+                        <?php if (!empty($cenario['tecnicas_desescalacao'])): ?>
+                        <div>
+                            <p class="font-medium text-red-700 mb-1">🎯 Técnicas de Desescalação:</p>
+                            <p class="text-red-600"><?= htmlspecialchars($cenario['tecnicas_desescalacao']) ?></p>
+                        </div>
+                        <?php endif; ?>
+                        
+                        <div>
+                            <p class="font-medium text-red-700 mb-1">📞 Quando Escalar:</p>
+                            <p class="text-red-600"><?= htmlspecialchars($cenario['quando_escalar'] ?? '') ?></p>
+                        </div>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endif; ?>
+        
+        <!-- Scripts para Situações Difíceis -->
+        <?php if (!empty($data['gestao_situacoes_fora_controle']['scripts_situacoes_dificeis'])): ?>
+        <div>
+            <h3 class="text-md font-semibold text-red-700 mb-3">📋 Scripts para Situações Difíceis</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <?php foreach ($data['gestao_situacoes_fora_controle']['scripts_situacoes_dificeis'] as $situacao => $script): ?>
+                <div class="bg-white border border-red-200 rounded-lg p-4">
+                    <h4 class="font-medium text-red-800 mb-2"><?= ucwords(str_replace('_', ' ', $situacao)) ?></h4>
+                    <div class="bg-red-50 p-3 rounded border font-mono text-sm text-red-700">
+                        <?= nl2br(htmlspecialchars($script)) ?>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endif; ?>
     </div>
     <?php endif; ?>
     
