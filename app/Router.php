@@ -118,6 +118,9 @@ class Router
         $this->get('sop/ver', 'SopController', 'ver');
         $this->get('sop/debug-api', 'SopController', 'debugApiResponse'); // DEBUG TEMPORÁRIO
         $this->get('sop/debug-situacoes-criticas', 'SopController', 'debugSituacoesCriticas'); // DEBUG: Testar geração de situações críticas
+        $this->get('sop/teste-rota', 'SopController', 'testeRota'); // TESTE: Verificar se roteamento funciona
+        $this->get('sop/debug-gerenciar-hierarquia', 'SopController', 'debugGerenciarHierarquia'); // DEBUG: Testar gerenciarHierarquia sem auth
+        $this->get('sop/debug-ver-detalhes-servico', 'SopController', 'debugVerDetalhesServico'); // DEBUG: Testar verDetalhesServico sem auth
         $this->get('sop/listar-por-diagnostico', 'SopController', 'listarSopsPorDiagnostico'); // Lista SOPs de um diagnóstico
         $this->get('sop/revisar', 'SopController', 'revisar');
         $this->post('sop/aprovar', 'SopController', 'aprovar');
