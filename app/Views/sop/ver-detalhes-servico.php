@@ -387,7 +387,29 @@
     <div class="bg-white rounded-lg p-8 text-center max-w-md w-full mx-4 shadow-xl">
         <div class="inline-block w-12 h-12 border-4 border-gray-200 border-t-primary rounded-full animate-spin mb-4"></div>
         <h3 class="text-lg font-medium text-gray-800 mb-2" id="loadingTitulo">Processando...</h3>
-        <p class="text-sm text-gray-500" id="loadingSubtitulo">Aguarde...</p>
+        <p class="text-sm text-gray-500 mb-4" id="loadingSubtitulo">Aguarde...</p>
+
+        <!-- Barra de progresso -->
+        <div class="w-full bg-gray-200 rounded-full h-3 mb-2 overflow-hidden">
+            <div id="loadingBar" class="bg-primary h-3 rounded-full transition-all duration-500 ease-out" style="width: 5%"></div>
+        </div>
+        <p class="text-xs text-gray-400" id="loadingEtapa">Etapa 0 de 3</p>
+
+        <!-- Indicadores de etapas -->
+        <div class="flex justify-between mt-4 text-xs">
+            <div id="etapa1" class="flex flex-col items-center text-gray-400 flex-1">
+                <span class="w-6 h-6 rounded-full border-2 border-gray-300 flex items-center justify-center mb-1" id="etapa1-circle">1</span>
+                <span>Resumo</span>
+            </div>
+            <div id="etapa2" class="flex flex-col items-center text-gray-400 flex-1">
+                <span class="w-6 h-6 rounded-full border-2 border-gray-300 flex items-center justify-center mb-1" id="etapa2-circle">2</span>
+                <span>Procedimentos</span>
+            </div>
+            <div id="etapa3" class="flex flex-col items-center text-gray-400 flex-1">
+                <span class="w-6 h-6 rounded-full border-2 border-gray-300 flex items-center justify-center mb-1" id="etapa3-circle">3</span>
+                <span>Situações Críticas</span>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -441,76 +463,67 @@ async function processarServico(servicoId, etapa) {
         3: 'Gerando situações críticas (3/3)...'
     };
 
-    try {
-        // 1. Iniciar a geração em background
-        mostrarLoading('Gerando SOP Completo', 'Iniciando geração...');
-
-        const respostaInicio = await fetch(URL_INICIAR, {
+    // Chama uma fase específica da geração
+    async function chamarFase(fase, sopId) {
+        const response = await fetch(URL_INICIAR, {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams({
                 servico_id: servicoId,
+                fase: fase,
+                sop_id: sopId || 0,
                 csrf_token: CSRF
             })
         });
+        return await response.json();
+    }
 
-        const dataInicio = await respostaInicio.json();
-        if (!dataInicio.sucesso) {
+    try {
+        // FASE 1: Resumo
+        mostrarLoading('Gerando SOP Completo', 'Gerando resumo e estrutura...');
+        atualizarProgresso(1, 'Gerando resumo e estrutura...');
+
+        let data = await chamarFase(1, 0);
+        if (!data.sucesso) {
             esconderLoading();
-            alert('Erro ao iniciar: ' + (dataInicio.erro || 'Erro desconhecido'));
+            alert('Erro na Fase 1: ' + (data.erro || 'Erro desconhecido'));
+            return;
+        }
+        const sopId = data.sop_id;
+
+        // FASE 2: Procedimentos operacionais
+        atualizarProgresso(2, 'Gerando procedimentos operacionais...');
+        data = await chamarFase(2, sopId);
+        if (!data.sucesso) {
+            esconderLoading();
+            alert('Erro na Fase 2: ' + (data.erro || 'Erro desconhecido') + '\n\nO resumo foi salvo. Tente regenerar para completar.');
             return;
         }
 
-        const sopId = dataInicio.sop_id;
+        // FASE 3: Situações críticas
+        atualizarProgresso(3, 'Gerando situações críticas e gestão de crises...');
+        data = await chamarFase(3, sopId);
+        if (!data.sucesso) {
+            esconderLoading();
+            alert('Erro na Fase 3: ' + (data.erro || 'Erro desconhecido') + '\n\nOs procedimentos foram salvos. Tente regenerar para completar.');
+            return;
+        }
 
-        // 2. Fazer polling do status a cada 3 segundos
-        let tentativas = 0;
-        const maxTentativas = 100; // ~5 minutos
-
-        const intervalo = setInterval(async () => {
-            tentativas++;
-
-            if (tentativas > maxTentativas) {
-                clearInterval(intervalo);
-                esconderLoading();
-                alert('A geração está demorando mais que o esperado. Verifique novamente em alguns instantes.');
-                return;
+        // Concluído
+        atualizarProgresso(3, 'SOP completo gerado com sucesso!');
+        setTimeout(() => {
+            esconderLoading();
+            if (data.redirect) {
+                window.location.href = data.redirect;
+            } else {
+                window.location.reload();
             }
-
-            try {
-                const respStatus = await fetch(URL_STATUS + '?sop_id=' + sopId);
-                const status = await respStatus.json();
-
-                if (!status.sucesso) {
-                    return; // tenta de novo no próximo ciclo
-                }
-
-                const fase = status.fase_atual || 0;
-                mostrarLoading('Gerando SOP Completo', status.mensagem || fasesLabel[fase] || 'Processando...');
-
-                if (status.status_geracao === 'concluido') {
-                    clearInterval(intervalo);
-                    esconderLoading();
-                    if (status.redirect) {
-                        window.location.href = status.redirect;
-                    } else {
-                        window.location.reload();
-                    }
-                } else if (status.status_geracao === 'erro') {
-                    clearInterval(intervalo);
-                    esconderLoading();
-                    alert('Erro na geração: ' + (status.mensagem || 'Erro desconhecido'));
-                }
-            } catch (e) {
-                // Erro de rede momentâneo - continua tentando
-                console.warn('Polling falhou, tentando novamente...', e);
-            }
-        }, 3000);
+        }, 800);
 
     } catch (error) {
         esconderLoading();
         console.error('Erro:', error);
-        alert('Erro de comunicação com o servidor');
+        alert('Erro de comunicação com o servidor. A geração pode ter demorado demais. Tente novamente.');
     }
 }
 
@@ -560,6 +573,49 @@ function mostrarLoading(titulo, subtitulo) {
 
 function esconderLoading() {
     document.getElementById('modalLoading').classList.add('hidden');
+}
+
+// Atualiza a barra de progresso e os indicadores de etapa (fase 0 a 3)
+function atualizarProgresso(fase, mensagem) {
+    const percentuais = { 0: 5, 1: 33, 2: 66, 3: 100 };
+    const pct = percentuais[fase] ?? 5;
+
+    const bar = document.getElementById('loadingBar');
+    if (bar) bar.style.width = pct + '%';
+
+    const etapaLabel = document.getElementById('loadingEtapa');
+    if (etapaLabel) etapaLabel.textContent = 'Etapa ' + fase + ' de 3';
+
+    if (mensagem) {
+        document.getElementById('loadingSubtitulo').textContent = mensagem;
+    }
+
+    // Marcar etapas concluídas/ativas
+    for (let i = 1; i <= 3; i++) {
+        const circle = document.getElementById('etapa' + i + '-circle');
+        const wrapper = document.getElementById('etapa' + i);
+        if (!circle || !wrapper) continue;
+
+        if (i < fase) {
+            // concluída
+            circle.className = 'w-6 h-6 rounded-full bg-green-500 border-2 border-green-500 text-white flex items-center justify-center mb-1';
+            circle.innerHTML = '✓';
+            wrapper.classList.remove('text-gray-400');
+            wrapper.classList.add('text-green-600');
+        } else if (i === fase) {
+            // ativa
+            circle.className = 'w-6 h-6 rounded-full bg-primary border-2 border-primary text-white flex items-center justify-center mb-1 animate-pulse';
+            circle.innerHTML = i;
+            wrapper.classList.remove('text-gray-400');
+            wrapper.classList.add('text-primary', 'font-semibold');
+        } else {
+            // pendente
+            circle.className = 'w-6 h-6 rounded-full border-2 border-gray-300 flex items-center justify-center mb-1';
+            circle.innerHTML = i;
+            wrapper.classList.add('text-gray-400');
+            wrapper.classList.remove('text-primary', 'text-green-600', 'font-semibold');
+        }
+    }
 }
 </script>
 
