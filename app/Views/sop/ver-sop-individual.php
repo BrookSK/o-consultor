@@ -214,6 +214,34 @@ $temErroJson = isset($data['erro_json']);
                     <div class="flex-1">
                         <h4 class="font-medium text-gray-800 mb-2 editavel" data-field="procedimentos[<?= $faseIndex ?>].passos[<?= key($fase['passos']) ?>].acao" contenteditable="false"><?= htmlspecialchars($passo['acao'] ?? '') ?></h4>
                         
+                        <?php if (!empty($passo['detalhamento'])): ?>
+                        <div class="mb-3 p-3 bg-blue-50 border-l-4 border-blue-400 rounded">
+                            <h5 class="text-sm font-semibold text-blue-800 mb-1">📋 Detalhamento Instrutivo:</h5>
+                            <p class="text-sm text-blue-700 leading-relaxed"><?= nl2br(htmlspecialchars($passo['detalhamento'])) ?></p>
+                        </div>
+                        <?php endif; ?>
+                        
+                        <?php if (!empty($passo['scripts_modelos'])): ?>
+                        <div class="mb-3 p-3 bg-green-50 border-l-4 border-green-400 rounded">
+                            <h5 class="text-sm font-semibold text-green-800 mb-1">🎯 Scripts e Modelos:</h5>
+                            <p class="text-sm text-green-700 leading-relaxed font-mono"><?= nl2br(htmlspecialchars($passo['scripts_modelos'])) ?></p>
+                        </div>
+                        <?php endif; ?>
+                        
+                        <?php if (!empty($passo['tecnicas_avancadas'])): ?>
+                        <div class="mb-3 p-3 bg-purple-50 border-l-4 border-purple-400 rounded">
+                            <h5 class="text-sm font-semibold text-purple-800 mb-1">⚡ Técnicas Avançadas:</h5>
+                            <p class="text-sm text-purple-700 leading-relaxed"><?= nl2br(htmlspecialchars($passo['tecnicas_avancadas'])) ?></p>
+                        </div>
+                        <?php endif; ?>
+                        
+                        <?php if (!empty($passo['situacoes_especiais'])): ?>
+                        <div class="mb-3 p-3 bg-orange-50 border-l-4 border-orange-400 rounded">
+                            <h5 class="text-sm font-semibold text-orange-800 mb-1">⚠️ Situações Especiais:</h5>
+                            <p class="text-sm text-orange-700 leading-relaxed"><?= nl2br(htmlspecialchars($passo['situacoes_especiais'])) ?></p>
+                        </div>
+                        <?php endif; ?>
+                        
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
                             <div><span class="text-gray-500">Responsável:</span> <span class="text-gray-700"><?= htmlspecialchars($passo['responsavel'] ?? '') ?></span></div>
                             <div><span class="text-gray-500">Tempo:</span> <span class="text-gray-700"><?= htmlspecialchars($passo['tempo_estimado'] ?? '') ?></span></div>
@@ -295,6 +323,25 @@ $temErroJson = isset($data['erro_json']);
                     </div>
                 </div>
             </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <?php endif; ?>
+    
+    <!-- Scripts de Comunicação -->
+    <?php if (!empty($data['scripts_comunicacao'])): ?>
+    <div class="bg-white border border-gray-200 rounded-lg p-6 mb-6">
+        <h2 class="text-lg font-semibold text-gray-800 mb-4">🎯 Scripts de Comunicação</h2>
+        <div class="space-y-4">
+            <?php foreach ($data['scripts_comunicacao'] as $tipo => $script): ?>
+            <?php if (!empty($script)): ?>
+            <div class="border border-green-200 rounded-lg p-4 bg-green-50">
+                <h4 class="font-medium text-green-900 mb-3"><?= ucwords(str_replace('_', ' ', $tipo)) ?></h4>
+                <div class="text-sm text-green-800 font-mono bg-white p-3 rounded border leading-relaxed">
+                    <?= nl2br(htmlspecialchars($script)) ?>
+                </div>
+            </div>
+            <?php endif; ?>
             <?php endforeach; ?>
         </div>
     </div>

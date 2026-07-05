@@ -7364,7 +7364,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         $servicoIndex = (int) ($_POST['servico_index'] ?? 0);
         $servicoNome = trim($_POST['servico_nome'] ?? '');
         
-        Logger::info('Iniciando geração de SOP individual', [
+        Logger::info('Iniciando geração de SOP individual COMPLETO', [
             'estrutura_id' => $estruturaId,
             'setor_index' => $setorIndex,
             'servico_index' => $servicoIndex,
@@ -7387,9 +7387,16 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             $diagnostico = Diagnostico::buscarPorId($estruturaData['diagnostico_id']);
             $empresa = Empresa::buscarPorId($diagnostico['empresa_id']);
             $respostas = json_decode($diagnostico['respostas'], true) ?? [];
-            $dadosEmpresa = $this->extrairDadosEmpresaCompletos($empresa, $diagnostico, $respostas);
             
-            // Buscar detalhamento existente (se houver)
+            // Preparar dados do serviço para o novo formato
+            $servicoData = [
+                'nome_servico' => $servicoNome,
+                'nome_setor' => $estruturaData['estrutura']['setores'][$setorIndex]['nome_setor'] ?? 'Setor Desconhecido',
+                'codigo_servico' => 'SOP-' . strtoupper(substr($servicoNome, 0, 3)) . '-001',
+                'empresa_id' => Auth::empresa()
+            ];
+            
+            // Buscar detalhamento existente (se houver) ou criar básico
             $detalhamento = Database::queryOne(
                 "SELECT * FROM servicos_detalhados WHERE estrutura_id = :estrutura_id AND servico_nome = :servico_nome ORDER BY id DESC LIMIT 1",
                 ['estrutura_id' => $estruturaId, 'servico_nome' => $servicoNome]
@@ -7398,11 +7405,26 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             $detalhamentoData = null;
             if ($detalhamento) {
                 $detalhamentoData = json_decode($detalhamento['detalhamento_json'], true);
+            } else {
+                // Criar detalhamento mínimo se não existir
+                $detalhamentoData = [
+                    'servico' => $servicoNome,
+                    'setor' => $servicoData['nome_setor'],
+                    'objetivo_principal' => 'Executar ' . $servicoNome . ' de forma eficiente e padronizada',
+                    'processos_principais' => ['Preparação', 'Execução', 'Finalização'],
+                    'recursos_necessarios' => ['Sistemas internos', 'Documentação padrão']
+                ];
             }
             
-            // Gerar SOP usando IA (com fallback automático GPT -> Claude)
-            $prompt = ApiHelper::buildPromptSOPIndividual($dadosEmpresa, $servicoNome, $detalhamentoData);
-            $resultadoIA = ApiHelper::chamarAnalise($prompt, true);
+            // Usar o MESMO prompt detalhado da regeneração
+            $prompt = $this->criarPromptSopCompletissimo($servicoData, $detalhamentoData, $empresa, $diagnostico);
+            
+            Logger::info('Chamando OpenAI para geração completa individual', [
+                'prompt_length' => strlen($prompt),
+                'servico' => $servicoNome
+            ]);
+            
+            $resultadoIA = ApiHelper::chamarOpenAI($prompt, 'gpt-4o', true);
             
             if (!$resultadoIA || !$resultadoIA['sucesso']) {
                 $erro = $resultadoIA['erro'] ?? 'Erro na comunicação com a IA.';
@@ -7410,12 +7432,17 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             }
             
             $sop = $resultadoIA['conteudo'];
-            if (is_string($sop)) {
-                $sop = json_decode($sop, true);
-            }
             
             if (!$sop) {
                 throw new Exception('Resposta inválida da IA.');
+            }
+            
+            // Validar seções obrigatórias
+            $secoesObrigatorias = ['objetivo', 'escopo', 'procedimentos', 'responsaveis'];
+            foreach ($secoesObrigatorias as $secao) {
+                if (!isset($sop[$secao]) || empty($sop[$secao])) {
+                    Logger::warning("Seção '$secao' faltando no SOP gerado, adicionando automaticamente");
+                }
             }
             
             // Salvar SOP no banco usando a tabela sops
@@ -7425,16 +7452,17 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                 [
                     'empresa_id' => Auth::empresa(),
                     'titulo' => $servicoNome,
-                    'departamento' => $estruturaData['estrutura']['setores'][$setorIndex]['nome_setor'] ?? 'Setor Desconhecido',
-                    'conteudo' => json_encode($sop, JSON_UNESCAPED_UNICODE)
+                    'departamento' => $servicoData['nome_setor'],
+                    'conteudo' => json_encode($sop, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
                 ]
             );
             
             $sopId = Database::lastInsertId();
             
-            Logger::info('SOP individual gerado', [
+            Logger::info('SOP individual COMPLETO gerado', [
                 'sop_id' => $sopId,
-                'servico' => $servicoNome
+                'servico' => $servicoNome,
+                'secoes_incluidas' => array_keys($sop)
             ]);
             
             header('Content-Type: application/json');
@@ -7444,11 +7472,12 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                 'servico_nome' => $servicoNome,
                 'total_procedimentos' => count($sop['procedimentos'] ?? []),
                 'total_checklists' => count($sop['checklists'] ?? []),
-                'mensagem' => 'SOP gerado com sucesso!'
+                'total_controles' => count($sop['pontos_controle'] ?? []),
+                'mensagem' => 'SOP COMPLETO gerado com sucesso! Inclui procedimentos detalhados, controles, checklists e KPIs.'
             ]);
             
         } catch (Exception $e) {
-            Logger::error('Erro na geração de SOP individual', [
+            Logger::error('Erro na geração de SOP individual completo', [
                 'erro' => $e->getMessage(),
                 'servico' => $servicoNome
             ]);
@@ -8154,9 +8183,31 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                         case 'procedimentos':
                             $conteudo['procedimentos'] = [
                                 [
-                                    'fase' => 'Execução Principal',
+                                    'fase' => 'Preparação e Planejamento',
+                                    'descricao' => 'Preparação inicial necessária antes da execução',
                                     'passos' => [
-                                        ['passo' => 1, 'acao' => 'Executar processo conforme definição', 'responsavel' => 'Responsável do Setor', 'tempo_estimado' => '30min']
+                                        [
+                                            'passo' => 1, 
+                                            'acao' => 'Verificar pré-requisitos e recursos necessários',
+                                            'detalhamento' => 'Confirmar se todos os recursos, acessos e pré-requisitos estão disponíveis para execução do serviço.',
+                                            'responsavel' => 'Responsável do Setor', 
+                                            'tempo_estimado' => '10min',
+                                            'criterio_qualidade' => 'Todos os recursos confirmados como disponíveis'
+                                        ]
+                                    ]
+                                ],
+                                [
+                                    'fase' => 'Execução Principal',
+                                    'descricao' => 'Execução core do serviço',
+                                    'passos' => [
+                                        [
+                                            'passo' => 2,
+                                            'acao' => 'Executar processo principal do serviço',
+                                            'detalhamento' => 'Seguir procedimentos específicos do setor com atenção aos padrões de qualidade e boas práticas. Manter comunicação clara e eficiente durante todo o processo.',
+                                            'responsavel' => 'Responsável do Setor',
+                                            'tempo_estimado' => '30min',
+                                            'criterio_qualidade' => 'Processo executado conforme padrões estabelecidos com qualidade'
+                                        ]
                                     ]
                                 ]
                             ];
@@ -8193,7 +8244,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
     }
     
     /**
-     * Criar prompt super detalhado para SOP completo
+     * Criar prompt ULTRA DETALHADO para SOP completo e instrutivo
      */
     private function criarPromptSopCompletissimo(array $servico, array $detalhamento, array $empresa, array $diagnostico): string
     {
@@ -8202,7 +8253,7 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         $nomeSetor = $servico['nome_setor'];
         $codigoServico = $servico['codigo_servico'];
         
-        return "GERAÇÃO DE SOP (PROCEDIMENTO OPERACIONAL PADRÃO) ULTRA DETALHADO
+        return "GERAÇÃO DE SOP (PROCEDIMENTO OPERACIONAL PADRÃO) ULTRA DETALHADO E INSTRUTIVO
 
 # INFORMAÇÕES DO SERVIÇO
 - **Código**: {$codigoServico}
@@ -8213,149 +8264,218 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
 # DETALHAMENTO COMPLETO DO SERVIÇO
 " . json_encode($detalhamento, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . "
 
-# INSTRUÇÕES CRÍTICAS
-Você deve criar um SOP COMPLETO, PROFISSIONAL e EXTREMAMENTE DETALHADO para este serviço.
+# INSTRUÇÕES CRÍTICAS PARA CRIAÇÃO DO SOP
 
-O SOP deve conter OBRIGATORIAMENTE todas as seções abaixo com conteúdo rico e detalhado:
+Este SOP deve ser um **GUIA COMPLETO DE TREINAMENTO E EXECUÇÃO**. Não é apenas um checklist, mas sim um **MANUAL INSTRUTIVO DETALHADO** que ensina COMO fazer cada atividade.
+
+## PRINCÍPIOS OBRIGATÓRIOS:
+
+### 1. **DETALHAMENTO INSTRUTIVO**
+- Cada passo deve explicar não apenas O QUE fazer, mas **COMO FAZER EXATAMENTE**
+- Incluir **contexto**, **técnicas**, **abordagens** e **scripts quando aplicável**
+- Prever **situações específicas** e como lidar com cada uma
+- Dar **exemplos práticos** e **modelos de execução**
+
+### 2. **DIFERENCIAÇÃO POR COMPLEXIDADE**
+- **Passos simples**: Descrição direta e objetiva
+- **Passos complexos**: Detalhamento extenso com técnicas, abordagens e scripts
+- **Interação humana**: Modelos de comunicação, tom de voz, abordagens
+- **Processos técnicos**: Scripts, comandos, procedimentos passo-a-passo
+
+### 3. **FOCO EM CAPACITAÇÃO**
+- O SOP É o treinamento - deve ensinar completamente
+- Incluir **boas práticas**, **dicas profissionais** e **técnicas avançadas**
+- Explicar o **PORQUÊ** de cada ação quando relevante
+- Preparar para **situações reais** do dia-a-dia
 
 ## ESTRUTURA OBRIGATÓRIA DO SOP EM JSON:
 
 ```json
 {
   \"sop_titulo\": \"SOP {$codigoServico} - {$nomeServico}\",
-  \"objetivo\": \"Objetivo claro e específico do procedimento (mín. 2 frases)\",
-  \"escopo\": \"Definição detalhada do escopo de aplicação (mín. 2 frases)\",
+  \"objetivo\": \"Objetivo claro explicando o propósito e resultados esperados (mínimo 3 frases detalhadas)\",
+  \"escopo\": \"Definição completa do escopo, limitações e aplicabilidade (mínimo 3 frases específicas)\",
   \"responsaveis\": {
-    \"executor_principal\": \"Cargo/função de quem executa\",
-    \"supervisor\": \"Cargo/função de quem supervisiona\",
-    \"aprovador\": \"Cargo/função de quem aprova\"
+    \"executor_principal\": \"Cargo específico de quem executa\",
+    \"supervisor\": \"Cargo de quem supervisiona e valida\",
+    \"aprovador\": \"Cargo de quem aprova o resultado final\"
   },
   \"pre_requisitos\": [
-    \"Pré-requisito 1 específico\",
-    \"Pré-requisito 2 específico\",
-    \"Pré-requisito 3 específico\"
+    \"Pré-requisito técnico específico com detalhes\",
+    \"Conhecimento necessário explicado\",
+    \"Acesso/permissão requerida com justificativa\",
+    \"Ferramenta/sistema necessário com finalidade\"
   ],
   \"recursos_necessarios\": {
-    \"equipamentos\": [\"Equipamento 1\", \"Equipamento 2\"],
-    \"sistemas\": [\"Sistema 1\", \"Sistema 2\"],
-    \"documentos\": [\"Documento 1\", \"Documento 2\"],
-    \"materiais\": [\"Material 1\", \"Material 2\"]
+    \"sistemas\": [\"Sistema específico com função\", \"Plataforma X para finalidade Y\"],
+    \"equipamentos\": [\"Equipamento específico com uso\", \"Ferramenta X para atividade Y\"],
+    \"documentos\": [\"Formulário específico com propósito\", \"Template X para situação Y\"],
+    \"materiais\": [\"Material físico com aplicação\", \"Insumo X para processo Y\"]
   },
   \"procedimentos\": [
     {
       \"fase\": \"Preparação e Planejamento\",
-      \"descricao\": \"Descrição da fase\",
+      \"descricao\": \"Descrição detalhada da importância e objetivo desta fase\",
       \"passos\": [
         {
           \"passo\": 1,
-          \"acao\": \"Ação detalhada do passo 1\",
-          \"responsavel\": \"Cargo responsável\",
-          \"tempo_estimado\": \"10min\",
-          \"criterio_qualidade\": \"Como verificar se foi feito corretamente\",
-          \"observacoes\": \"Observações importantes\"
+          \"acao\": \"Ação específica e direta (para passos simples)\",
+          \"detalhamento\": \"Para passos simples: explicação breve. Para passos complexos: detalhamento extenso com técnicas, abordagens, scripts, exemplos práticos e situações específicas\",
+          \"responsavel\": \"Cargo específico\",
+          \"tempo_estimado\": \"Tempo realista\",
+          \"criterio_qualidade\": \"Como validar se foi executado corretamente\",
+          \"scripts_modelos\": \"Para interações: scripts exatos, modelos de fala, abordagens. Para processos técnicos: comandos, códigos, procedimentos\",
+          \"situacoes_especiais\": \"Como lidar com variações, problemas ou casos específicos\",
+          \"observacoes\": \"Dicas, cuidados especiais e boas práticas\"
         }
       ]
     },
     {
       \"fase\": \"Execução Principal\",
-      \"descricao\": \"Descrição da fase principal\",
+      \"descricao\": \"Descrição da fase core com sua importância\",
       \"passos\": [
         {
           \"passo\": 2,
-          \"acao\": \"Ação detalhada do passo 2\",
-          \"responsavel\": \"Cargo responsável\",
-          \"tempo_estimado\": \"20min\",
-          \"criterio_qualidade\": \"Como verificar qualidade\",
-          \"observacoes\": \"Observações importantes\"
+          \"acao\": \"Ação principal detalhada\",
+          \"detalhamento\": \"DETALHAMENTO EXTENSO: Para atendimento - como abordar cliente, tom de voz, técnicas de comunicação, tratamento de objeções. Para processos - passo-a-passo minucioso, verificações, validações\",
+          \"responsavel\": \"Cargo específico\",
+          \"tempo_estimado\": \"Tempo detalhado\",
+          \"criterio_qualidade\": \"Critérios específicos de qualidade\",
+          \"scripts_modelos\": \"Scripts completos de atendimento, modelos de apresentação, templates de comunicação ou códigos/comandos técnicos\",
+          \"tecnicas_avancadas\": \"Técnicas profissionais, abordagens especializadas, métodos comprovados\",
+          \"situacoes_especiais\": \"Cenários específicos e como lidar com cada um\",
+          \"observacoes\": \"Insights profissionais e melhores práticas\"
         },
         {
           \"passo\": 3,
-          \"acao\": \"Ação detalhada do passo 3\",
-          \"responsavel\": \"Cargo responsável\",
-          \"tempo_estimado\": \"15min\",
-          \"criterio_qualidade\": \"Como verificar qualidade\",
-          \"observacoes\": \"Observações importantes\"
+          \"acao\": \"Próxima ação principal\",
+          \"detalhamento\": \"Continuação do detalhamento técnico ou interpessoal conforme necessário\",
+          \"responsavel\": \"Cargo específico\",
+          \"tempo_estimado\": \"Tempo específico\",
+          \"criterio_qualidade\": \"Validação específica\",
+          \"scripts_modelos\": \"Modelos práticos aplicáveis\",
+          \"observacoes\": \"Dicas e cuidados importantes\"
         }
       ]
     },
     {
       \"fase\": \"Finalização e Controle\",
-      \"descricao\": \"Descrição da fase de finalização\",
+      \"descricao\": \"Fase de fechamento e validação final\",
       \"passos\": [
         {
           \"passo\": 4,
           \"acao\": \"Ação de finalização\",
-          \"responsavel\": \"Cargo responsável\",
-          \"tempo_estimado\": \"10min\",
-          \"criterio_qualidade\": \"Como verificar conclusão\",
-          \"observacoes\": \"Observações finais\"
+          \"detalhamento\": \"Como finalizar adequadamente, validações necessárias, documentação requerida\",
+          \"responsavel\": \"Cargo específico\",
+          \"tempo_estimado\": \"Tempo de finalização\",
+          \"criterio_qualidade\": \"Critérios de conclusão\",
+          \"scripts_modelos\": \"Modelos de fechamento, scripts de encerramento\",
+          \"observacoes\": \"Validações finais e próximos passos\"
         }
       ]
     }
   ],
   \"pontos_controle\": [
     {
-      \"momento\": \"Após preparação\",
-      \"o_que_verificar\": \"O que deve ser verificado\",
-      \"criterio_aceitacao\": \"Critério para aprovar\",
-      \"acao_se_nao_conforme\": \"O que fazer se não estiver conforme\"
-    },
-    {
-      \"momento\": \"Antes da finalização\",
-      \"o_que_verificar\": \"Verificação final\",
-      \"criterio_aceitacao\": \"Critério final\",
-      \"acao_se_nao_conforme\": \"Ação corretiva\"
+      \"momento\": \"Após cada fase crítica\",
+      \"o_que_verificar\": \"Pontos específicos de validação\",
+      \"criterio_aceitacao\": \"Critérios claros de aprovação\",
+      \"acao_se_nao_conforme\": \"Ações corretivas específicas com responsáveis\"
     }
   ],
   \"procedimentos_emergencia\": {
     \"situacoes_criticas\": [
       {
-        \"situacao\": \"Situação de emergência específica\",
-        \"sinais_alerta\": [\"Sinal 1\", \"Sinal 2\"],
-        \"acao_imediata\": \"O que fazer imediatamente\",
-        \"quem_notificar\": \"Quem deve ser notificado\",
-        \"tempo_resposta_maximo\": \"30min\"
+        \"situacao\": \"Situação crítica específica do contexto\",
+        \"sinais_alerta\": [\"Indicador específico 1\", \"Sinal concreto 2\"],
+        \"acao_imediata\": \"Ação específica e detalhada\",
+        \"quem_notificar\": \"Responsável específico e como contatar\",
+        \"tempo_resposta_maximo\": \"Tempo crítico realista\",
+        \"script_comunicacao\": \"Script exato para comunicar a emergência\"
       }
     ]
   },
   \"checklists\": {
     \"pre_execucao\": [
-      \"Item de verificação 1\",
-      \"Item de verificação 2\",
-      \"Item de verificação 3\"
+      \"Item específico com critério de validação\",
+      \"Verificação detalhada com método\",
+      \"Conferência específica com ferramenta\"
     ],
     \"durante_execucao\": [
-      \"Item de controle 1\",
-      \"Item de controle 2\"
+      \"Controle específico com frequência\",
+      \"Monitoramento detalhado com método\"
     ],
     \"pos_execucao\": [
-      \"Item de finalização 1\",
-      \"Item de finalização 2\"
+      \"Validação final específica\",
+      \"Documentação obrigatória detalhada\"
     ]
+  },
+  \"scripts_comunicacao\": {
+    \"atendimento_inicial\": \"Script completo para primeiro contato\",
+    \"apresentacao_servico\": \"Modelo de apresentação profissional\",
+    \"tratamento_objecoes\": \"Scripts para situações difíceis\",
+    \"finalizacao\": \"Modelo de encerramento profissional\"
   },
   \"indicadores_performance\": [
     {
-      \"nome\": \"Nome do KPI\",
-      \"formula\": \"Como calcular\",
-      \"meta\": \"Meta esperada\",
-      \"frequencia_medicao\": \"Frequência de medição\"
+      \"nome\": \"KPI específico e mensurável\",
+      \"formula\": \"Fórmula exata de cálculo\",
+      \"meta\": \"Meta numérica específica\",
+      \"frequencia_medicao\": \"Frequência realista\",
+      \"responsavel_medicao\": \"Quem mede e reporta\"
     }
+  ],
+  \"anexos_referencias\": [
+    \"Template específico mencionado\",
+    \"Formulário detalhado citado\",
+    \"Script completo referenciado\",
+    \"Checklist específico usado\"
   ],
   \"versao\": \"1.0\",
   \"data_criacao\": \"" . date('d/m/Y') . "\"
 }
 ```
 
-## REQUISITOS CRÍTICOS:
-1. **TODOS os campos devem ser preenchidos com conteúdo relevante e específico**
-2. **Mínimo 3 fases de procedimentos com pelo menos 2 passos cada**
-3. **Cada passo deve ter ação detalhada, responsável, tempo e critério de qualidade**
-4. **Incluir situações de emergência baseadas no contexto do serviço**
-5. **Checklists práticos e aplicáveis**
-6. **KPIs mensuráveis e relevantes**
-7. **Linguagem clara, objetiva e profissional**
-8. **Considerar o contexto real da empresa {$nomeEmpresa}**
-9. **Focar na aplicabilidade prática no dia a dia**
+## REQUISITOS CRÍTICOS DE QUALIDADE:
+
+### 🎯 **DETALHAMENTO POR TIPO DE AÇÃO**:
+
+1. **AÇÕES SIMPLES** (verificações, confirmações):
+   - Descrição direta e objetiva
+   - Foco no resultado esperado
+
+2. **AÇÕES COMPLEXAS** (atendimento, negociação, análise):
+   - Detalhamento EXTENSO com técnicas
+   - Scripts completos e modelos
+   - Abordagens para diferentes cenários
+   - Exemplos práticos aplicáveis
+
+3. **INTERAÇÕES HUMANAS** (atendimento, apresentações):
+   - Scripts EXATOS de comunicação
+   - Modelos de abordagem profissional
+   - Técnicas de relacionamento
+   - Tratamento de situações específicas
+
+4. **PROCESSOS TÉCNICOS** (sistemas, análises):
+   - Passo-a-passo minucioso
+   - Comandos e scripts específicos
+   - Verificações técnicas detalhadas
+   - Troubleshooting comum
+
+### 📋 **OBRIGATORIEDADE**:
+- **Mínimo 4-6 passos** por fase com detalhamento variável
+- **Scripts/modelos** para TODA interação humana
+- **Técnicas específicas** para processos críticos
+- **Situações especiais** previstas e solucionadas
+- **Linguagem instrutiva** que ensina, não apenas lista
+
+### 🎪 **CONTEXTO DA EMPRESA**:
+- Considerar o setor de atuação: {$nomeEmpresa}
+- Adaptar linguagem ao nível hierárquico do setor
+- Incluir especificidades do tipo de negócio
+- Considerar recursos disponíveis mencionados
+
+**IMPORTANTE**: Este SOP será usado como TREINAMENTO COMPLETO. Deve ensinar uma pessoa a executar o serviço com excelência, mesmo sem experiência prévia na função.
 
 Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais.";
     }
@@ -9426,49 +9546,127 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
      */
     private function gerarSopAPartirDoDetalhamento(array $servico, array $detalhamento, array $diagnostico): array
     {
-        $prompt = $this->criarPromptGeracaoSopDetalhado($servico, $detalhamento, $diagnostico);
-        
-        // Chamar IA para gerar SOP
-        $resultadoIA = ApiHelper::chamarAnalise($prompt);
-        
-        // Verificar se houve sucesso na chamada da IA
-        if (!$resultadoIA || !is_array($resultadoIA)) {
-            return ['sucesso' => false, 'erro' => 'Erro na IA: resposta inválida'];
-        }
-        
-        if (!$resultadoIA['sucesso'] || empty($resultadoIA['conteudo'])) {
-            $erro = $resultadoIA['erro'] ?? 'não foi possível gerar o SOP';
-            return ['sucesso' => false, 'erro' => 'Erro na IA: ' . $erro];
-        }
-        
-        // Salvar SOP na nova arquitetura
-        $conteudoIA = $resultadoIA['conteudo'];
-        
-        // CONVERTER PARA STRING SE NECESSÁRIO
-        if (is_array($conteudoIA) || is_object($conteudoIA)) {
-            Logger::info('Convertendo resposta da IA de array/object para string JSON');
-            $conteudoString = json_encode($conteudoIA, JSON_UNESCAPED_UNICODE);
-        } elseif (is_string($conteudoIA)) {
-            $conteudoString = $conteudoIA;
-        } else {
-            Logger::error('ERRO CRÍTICO - conteudoIA do SOP não é string, array ou object', [
-                'tipo_real' => gettype($conteudoIA),
-                'valor' => $conteudoIA
+        try {
+            Logger::info('Iniciando geração de SOP completo a partir do detalhamento', [
+                'servico' => $servico['nome_servico'],
+                'setor' => $servico['nome_setor'] ?? 'N/A'
             ]);
-            return ['sucesso' => false, 'erro' => 'Erro interno: resposta da IA em formato inválido (conteúdo não é string)'];
+            
+            // Buscar dados da empresa
+            $empresa = Database::queryOne(
+                "SELECT * FROM empresas WHERE id = :id",
+                ['id' => $servico['empresa_id']]
+            );
+            
+            if (!$empresa) {
+                return ['sucesso' => false, 'erro' => 'Dados da empresa não encontrados'];
+            }
+            
+            // Usar o MESMO prompt detalhado da regeneração
+            $prompt = $this->criarPromptSopCompletissimo($servico, $detalhamento, $empresa, $diagnostico);
+            
+            Logger::info('Chamando API OpenAI para geração inicial completa', [
+                'prompt_length' => strlen($prompt),
+                'servico' => $servico['nome_servico']
+            ]);
+            
+            // Usar a MESMA configuração da regeneração
+            $resultadoIA = ApiHelper::chamarOpenAI($prompt, 'gpt-4o', true);
+            
+            Logger::info('Resultado da API OpenAI', [
+                'sucesso' => $resultadoIA['sucesso'] ?? false,
+                'tem_conteudo' => isset($resultadoIA['conteudo']) && !empty($resultadoIA['conteudo']),
+                'erro' => $resultadoIA['erro'] ?? null
+            ]);
+            
+            if (!$resultadoIA || !$resultadoIA['sucesso']) {
+                $erro = $resultadoIA['erro'] ?? 'Erro na comunicação com OpenAI';
+                return ['sucesso' => false, 'erro' => 'Erro na IA: ' . $erro];
+            }
+            
+            if (!$resultadoIA['conteudo']) {
+                return ['sucesso' => false, 'erro' => 'Resposta da IA vazia'];
+            }
+            
+            $conteudoIA = $resultadoIA['conteudo'];
+            
+            // Validar se o JSON tem as seções necessárias (mesmo da regeneração)
+            $secoesObrigatorias = ['objetivo', 'escopo', 'procedimentos', 'responsaveis', 'recursos_necessarios'];
+            $secoesFaltando = [];
+            
+            foreach ($secoesObrigatorias as $secao) {
+                if (!isset($conteudoIA[$secao]) || empty($conteudoIA[$secao])) {
+                    $secoesFaltando[] = $secao;
+                }
+            }
+            
+            if (!empty($secoesFaltando)) {
+                Logger::warning('SOP inicial gerado com seções faltando', [
+                    'secoes_faltando' => $secoesFaltando,
+                    'secoes_presentes' => array_keys($conteudoIA)
+                ]);
+                
+                // Adicionar seções mínimas se estiverem faltando (mesmo da regeneração)
+                foreach ($secoesFaltando as $secao) {
+                    switch ($secao) {
+                        case 'procedimentos':
+                            $conteudoIA['procedimentos'] = [
+                                [
+                                    'fase' => 'Execução Principal',
+                                    'passos' => [
+                                        ['passo' => 1, 'acao' => 'Executar processo conforme definição', 'responsavel' => 'Responsável do Setor', 'tempo_estimado' => '30min']
+                                    ]
+                                ]
+                            ];
+                            break;
+                        case 'responsaveis':
+                            $conteudoIA['responsaveis'] = [
+                                'executor_principal' => 'Colaborador do Setor ' . ($servico['nome_setor'] ?? ''),
+                                'supervisor' => 'Supervisor do Setor ' . ($servico['nome_setor'] ?? ''),
+                                'aprovador' => 'Gestor do Setor ' . ($servico['nome_setor'] ?? '')
+                            ];
+                            break;
+                        case 'recursos_necessarios':
+                            $conteudoIA['recursos_necessarios'] = [
+                                'equipamentos' => ['Computador', 'Sistema interno'],
+                                'documentos' => ['Formulários padrão', 'Checklist de verificação']
+                            ];
+                            break;
+                    }
+                }
+            }
+            
+            // Converter para string JSON
+            $conteudoString = json_encode($conteudoIA, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+            
+            Logger::info('SOP completo gerado com sucesso', [
+                'servico' => $servico['nome_servico'],
+                'secoes_incluidas' => array_keys($conteudoIA),
+                'tamanho_conteudo' => strlen($conteudoString)
+            ]);
+            
+            // Salvar no banco
+            $sopId = $this->salvarSopNaNovaArquitetura($servico, $detalhamento, $conteudoString, $diagnostico);
+            
+            if (!$sopId) {
+                return ['sucesso' => false, 'erro' => 'Erro ao salvar SOP no banco de dados'];
+            }
+            
+            return [
+                'sucesso' => true,
+                'sop_id' => $sopId,
+                'conteudo_sop' => $conteudoString
+            ];
+            
+        } catch (Exception $e) {
+            Logger::error('Erro na geração de SOP a partir do detalhamento', [
+                'erro' => $e->getMessage(),
+                'servico' => $servico['nome_servico'] ?? 'Desconhecido',
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return ['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()];
         }
-        
-        $sopId = $this->salvarSopNaNovaArquitetura($servico, $detalhamento, $conteudoString, $diagnostico);
-        
-        if (!$sopId) {
-            return ['sucesso' => false, 'erro' => 'Erro ao salvar SOP no banco de dados'];
-        }
-        
-        return [
-            'sucesso' => true,
-            'sop_id' => $sopId,
-            'conteudo_sop' => $conteudoString
-        ];
     }
     
     /**
