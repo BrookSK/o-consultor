@@ -9748,17 +9748,60 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                 'codigo_servico' => $servico['codigo_servico']
             ];
 
-            // Gerar conteúdo do SOP usando o sistema de duas fases
+            // Gerar conteúdo do SOP em duas fases, capturando o erro real da IA
             Logger::info('GERANDO CONTEÚDO DO SOP EM DUAS FASES', [
                 'servico' => $servico['nome_servico']
             ]);
 
-            $conteudoSop = $this->gerarConteudoSopCompleto($detalhamento, $empresa, $sopData);
+            // FASE 1: Procedimentos operacionais
+            $promptProcedimentos = $this->criarPromptProcedimentosOperacionais($sopData, $detalhamento, $empresa, $diagnostico);
+            $respProc = ApiHelper::chamarOpenAI($promptProcedimentos, 'gpt-4o', true);
 
-            if (!$conteudoSop) {
-                echo json_encode(['sucesso' => false, 'erro' => 'Erro ao gerar conteúdo do SOP com a IA.']);
+            if (empty($respProc['sucesso'])) {
+                $erroReal = $respProc['erro'] ?? 'Erro desconhecido na comunicação com a IA (Fase 1).';
+                Logger::error('FALHA FASE 1 - Procedimentos', ['erro' => $erroReal]);
+                echo json_encode(['sucesso' => false, 'erro' => 'Fase 1 (Procedimentos): ' . $erroReal]);
                 exit;
             }
+            $procedimentosOperacionais = $respProc['conteudo'];
+
+            // FASE 2: Situações críticas
+            $promptCriticas = $this->criarPromptSituacoesCriticas($sopData, $detalhamento, $empresa, $diagnostico);
+            $respCrit = ApiHelper::chamarOpenAI($promptCriticas, 'gpt-4o', true);
+
+            if (empty($respCrit['sucesso'])) {
+                $erroReal = $respCrit['erro'] ?? 'Erro desconhecido na comunicação com a IA (Fase 2).';
+                Logger::error('FALHA FASE 2 - Situações Críticas', ['erro' => $erroReal]);
+                echo json_encode(['sucesso' => false, 'erro' => 'Fase 2 (Situações Críticas): ' . $erroReal]);
+                exit;
+            }
+            $situacoesCriticas = $respCrit['conteudo'];
+
+            // Combinar as duas fases em um SOP completo
+            $sopCompletoArray = [
+                'sop_titulo' => $sopData['codigo_servico'] . ' - ' . $sopData['nome_servico'],
+                'objetivo' => $procedimentosOperacionais['objetivo'] ?? 'Objetivo não especificado',
+                'escopo' => $procedimentosOperacionais['escopo'] ?? 'Escopo não especificado',
+                'responsaveis' => $procedimentosOperacionais['responsaveis'] ?? [],
+                'competencias_requeridas' => $procedimentosOperacionais['competencias_operacionais_requeridas'] ?? [],
+                'pre_requisitos' => $procedimentosOperacionais['pre_requisitos_operacionais'] ?? [],
+                'recursos_necessarios' => $procedimentosOperacionais['recursos_operacionais_necessarios'] ?? [],
+                'procedimentos' => $procedimentosOperacionais['procedimentos_operacionais_detalhados'] ?? [],
+                'checklists' => $procedimentosOperacionais['checklists_operacionais'] ?? [],
+                'scripts_comunicacao' => $procedimentosOperacionais['scripts_comunicacao_operacionais'] ?? [],
+                'indicadores_performance' => $procedimentosOperacionais['indicadores_performance_operacionais'] ?? [],
+                'gestao_situacoes_fora_controle' => [
+                    'cenarios_criticos_obrigatorios' => $situacoesCriticas['gestao_situacoes_criticas']['cenarios_criticos_detalhados'] ?? [],
+                    'scripts_situacoes_dificeis' => $situacoesCriticas['gestao_situacoes_criticas']['scripts_situacoes_especificas'] ?? []
+                ],
+                'matriz_riscos_servico' => $situacoesCriticas['matriz_riscos_servico'] ?? [],
+                'treinamento_gestao_crises' => $situacoesCriticas['treinamento_gestao_crises'] ?? [],
+                'anexos_referencias' => $procedimentosOperacionais['documentacao_operacional'] ?? [],
+                'versao' => '2.0 - Duas Fases (Operacional + Críticas)',
+                'data_criacao' => date('d/m/Y H:i:s')
+            ];
+
+            $conteudoSop = json_encode($sopCompletoArray, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 
             // Salvar SOP na tabela sops (usar empresa do serviço, não Auth::empresa que pode ser null p/ admin)
             Database::execute(
