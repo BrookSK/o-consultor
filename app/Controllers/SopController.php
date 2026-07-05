@@ -8898,6 +8898,8 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
 
 Esta é a **PRIMEIRA FASE** da geração do SOP. O foco é criar **PROCEDIMENTOS OPERACIONAIS ULTRA DETALHADOS** que sirvam como manual completo de treinamento operacional.
 
+⚠️ **REGRA MAIS IMPORTANTE (NÃO IGNORE):** O array \"procedimentos_operacionais_detalhados\" DEVE conter OBRIGATORIAMENTE de 4 a 6 FASES completas (objetos), e CADA fase DEVE conter de 5 a 8 passos no array \"passos_operacionais_detalhados\". NUNCA retorne apenas uma fase ou apenas um passo. Se você gerar poucas fases/passos, a resposta será REJEITADA. Distribua o conteúdo de forma completa do início ao fim do processo (Preparação → Execução → Controle → Finalização → Pós-execução).
+
 ## INSTRUÇÕES CRÍTICAS:
 
 ### 1. **FOCO EXCLUSIVO EM PROCEDIMENTOS NORMAIS**
@@ -10057,7 +10059,9 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         if ($fase === 2) {
             Logger::info('FILA FASE 2 INICIANDO', ['sop_id' => $sopId]);
             $prompt = $this->criarPromptProcedimentosOperacionais($sopData, $detalhamento, $empresa, $diagnostico);
-            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o', true, 8000);
+            // Roda via fila (sem timeout de proxy), então usamos tokens altos
+            // para permitir MÚLTIPLAS fases e etapas detalhadas.
+            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o', true, 16000);
             if (empty($resp['sucesso'])) {
                 return ['sucesso' => false, 'erro' => 'Fase 2 (Procedimentos): ' . ($resp['erro'] ?? 'Erro na IA')];
             }
