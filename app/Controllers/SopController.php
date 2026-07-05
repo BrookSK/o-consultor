@@ -9261,7 +9261,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                 'estrutura_keys' => array_keys($estruturaData['estrutura'] ?? [])
             ]);
 
-            require_once 'app/Views/sop/gerenciar-hierarquia.php';
+            require VIEW_PATH . '/sop/gerenciar-hierarquia.php';
             
             Logger::info('VIEW CARREGADA COM SUCESSO');
             
@@ -9483,7 +9483,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             
             Logger::info('CARREGANDO VIEW ver-detalhes-servico.php');
 
-            require_once 'app/Views/sop/ver-detalhes-servico.php';
+            require VIEW_PATH . '/sop/ver-detalhes-servico.php';
             
             Logger::info('VIEW CARREGADA COM SUCESSO');
             
