@@ -1671,14 +1671,54 @@ class SopController
      * Salvar estrutura organizacional permanente
      * Usa as tabelas: estruturas_organizacionais, setores_empresa, servicos_setor
      */
+    /**
+     * Monta a estrutura de setores/serviços a partir do CATÁLOGO FIXO:
+     * 10 setores BASE (sempre) + setores específicos do nicho (do cadastro da empresa).
+     * Retorna ['nicho' => string, 'setores' => [ 'SETOR' => ['tipo','descricao','subcategorias'=>[...]] ]]
+     */
+    private function montarEstruturaCatalogo(array $empresa): array
+    {
+        require_once ROOT_PATH . '/config/catalogo_servicos.php';
+
+        // Setores base sempre presentes
+        $setores = CatalogoServicos::base();
+
+        // Nicho vem do cadastro da empresa (campo segmento)
+        $segmento = $empresa['segmento'] ?? '';
+        $especificos = $segmento ? CatalogoServicos::porNicho($segmento) : [];
+
+        // Acrescentar os setores específicos do nicho aos base (sem substituir)
+        foreach ($especificos as $nomeSetor => $config) {
+            $setores[$nomeSetor] = $config;
+        }
+
+        Logger::info('ESTRUTURA MONTADA DO CATÁLOGO', [
+            'segmento_empresa' => $segmento,
+            'setores_base' => count(CatalogoServicos::base()),
+            'setores_especificos' => count($especificos),
+            'total_setores' => count($setores)
+        ]);
+
+        return [
+            'nicho' => $segmento ?: 'geral',
+            'setores' => $setores
+        ];
+    }
+
     private function salvarEstruturaOrganizacional(int $diagnosticoId, array $empresa, array $estruturaCompleta): int
     {
         try {
-            $todosSetores = $estruturaCompleta['setores'] ?? [];
-            
-            Logger::info('SALVANDO ESTRUTURA ORGANIZACIONAL PERMANENTE', [
+            // NOVA ABORDAGEM: montar a estrutura a partir do CATÁLOGO FIXO
+            // (10 setores base SEMPRE + setores específicos do nicho do cadastro),
+            // em vez de usar o mapeamento por IA. Formato: Setor → Subcategoria → Serviços.
+            $catalogo = $this->montarEstruturaCatalogo($empresa);
+            $todosSetores = $catalogo['setores'];
+            $nicho = $catalogo['nicho'];
+
+            Logger::info('SALVANDO ESTRUTURA ORGANIZACIONAL (CATÁLOGO FIXO)', [
                 'diagnostico_id' => $diagnosticoId,
                 'empresa_id' => $empresa['id'],
+                'nicho' => $nicho,
                 'total_setores' => count($todosSetores)
             ]);
 
@@ -1690,7 +1730,6 @@ class SopController
             
             if ($estruturaExistente) {
                 $idAntigo = (int) $estruturaExistente['id'];
-                // Remover serviços e setores antigos
                 $setoresAntigos = Database::query(
                     "SELECT id FROM setores_empresa WHERE estrutura_id = ?",
                     [$idAntigo]
@@ -1701,7 +1740,6 @@ class SopController
                 Database::execute("DELETE FROM setores_empresa WHERE estrutura_id = ?", [$idAntigo]);
                 Database::execute("DELETE FROM progresso_hierarquico WHERE estrutura_id = ?", [$idAntigo]);
                 Database::execute("DELETE FROM estruturas_organizacionais WHERE id = ?", [$idAntigo]);
-                
                 Logger::info('ESTRUTURA ANTIGA REMOVIDA PARA REGENERAÇÃO', ['estrutura_antiga_id' => $idAntigo]);
             }
 
@@ -1715,9 +1753,9 @@ class SopController
                     $diagnosticoId,
                     $empresa['id'],
                     $empresa['nome'] ?? 'Empresa',
-                    $estruturaCompleta['nicho'] ?? 'geral',
-                    $estruturaCompleta['macro_categoria'] ?? 'geral',
-                    json_encode($estruturaCompleta, JSON_UNESCAPED_UNICODE),
+                    $nicho,
+                    $empresa['segmento'] ?? 'geral',
+                    json_encode(['origem' => 'catalogo_fixo', 'nicho' => $nicho], JSON_UNESCAPED_UNICODE),
                     count($todosSetores)
                 ]
             );
@@ -1729,12 +1767,11 @@ class SopController
 
             $estruturaId = (int) Database::lastInsertId();
 
-            // 2. Salvar setores e serviços
+            // 2. Salvar setores e serviços a partir do catálogo (Setor → Subcategoria → Serviços)
             $totalServicosGeral = 0;
             foreach ($todosSetores as $nomeSetor => $configSetor) {
-                // Mapear tipo do setor para o enum válido (core, apoio, estrategico)
-                $tipoSetor = $this->mapearTipoSetor($configSetor['tipo'] ?? 'base');
-                
+                $tipoSetor = $this->mapearTipoSetor($configSetor['tipo'] ?? 'apoio');
+
                 $setorSucesso = Database::execute(
                     "INSERT INTO setores_empresa (
                         estrutura_id, empresa_id, nome_setor, tipo_setor, descricao, 
@@ -1746,8 +1783,8 @@ class SopController
                         $nomeSetor,
                         $tipoSetor,
                         $configSetor['descricao'] ?? '',
-                        implode(', ', $configSetor['funcoes_principais'] ?? []),
-                        count($configSetor['sops_padrao'] ?? [])
+                        '',
+                        0
                     ]
                 );
 
@@ -1757,39 +1794,46 @@ class SopController
                 }
 
                 $setorId = (int) Database::lastInsertId();
-
-                // Ordenar serviços alfabeticamente (A -> Z)
-                $servicos = $configSetor['sops_padrao'] ?? [];
-                sort($servicos);
-
-                // Mapear serviços do setor
                 $contador = 1;
-                foreach ($servicos as $nomeServico) {
-                    Database::execute(
-                        "INSERT INTO servicos_setor (
-                            setor_id, empresa_id, nome_servico, codigo_servico,
-                            categoria, criticidade, frequencia, complexidade, origem,
-                            status, criado_em
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'automatico', 'mapeado', NOW())",
-                        [
-                            $setorId,
-                            $empresa['id'],
-                            $nomeServico,
-                            $this->gerarCodigoServicoUnico($nomeSetor, $nomeServico, $estruturaId, $contador),
-                            $this->determinarCategoriaServico($nomeServico),
-                            $this->determinarCriticidadeServico($nomeServico),
-                            $this->determinarFrequenciaServico($nomeServico),
-                            $this->determinarComplexidadeServico($nomeServico)
-                        ]
-                    );
-                    $contador++;
-                    $totalServicosGeral++;
+                $totalNoSetor = 0;
+
+                // Iterar subcategorias → serviços
+                foreach (($configSetor['subcategorias'] ?? []) as $subcategoria => $servicos) {
+                    foreach ($servicos as $nomeServico) {
+                        Database::execute(
+                            "INSERT INTO servicos_setor (
+                                setor_id, empresa_id, nome_servico, subcategoria, codigo_servico,
+                                categoria, criticidade, frequencia, complexidade, origem,
+                                status, criado_em
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'automatico', 'mapeado', NOW())",
+                            [
+                                $setorId,
+                                $empresa['id'],
+                                $nomeServico,
+                                $subcategoria,
+                                $this->gerarCodigoServicoUnico($nomeSetor, $nomeServico, $estruturaId, $contador),
+                                $this->determinarCategoriaServico($nomeServico),
+                                $this->determinarCriticidadeServico($nomeServico),
+                                $this->determinarFrequenciaServico($nomeServico),
+                                $this->determinarComplexidadeServico($nomeServico)
+                            ]
+                        );
+                        $contador++;
+                        $totalNoSetor++;
+                        $totalServicosGeral++;
+                    }
                 }
 
-                Logger::info('SETOR SALVO COM SERVIÇOS', [
+                // Atualizar total de serviços do setor
+                Database::execute(
+                    "UPDATE setores_empresa SET total_servicos = ? WHERE id = ?",
+                    [$totalNoSetor, $setorId]
+                );
+
+                Logger::info('SETOR SALVO COM SERVIÇOS (catálogo)', [
                     'setor' => $nomeSetor,
                     'setor_id' => $setorId,
-                    'total_servicos' => count($servicos)
+                    'total_servicos' => $totalNoSetor
                 ]);
             }
 
@@ -2821,49 +2865,48 @@ class SopController
         }
 
         try {
-            // ETAPA 1: Extrair dados da empresa do diagnóstico
-            $respostas = json_decode($diagnostico['respostas'], true) ?? [];
-            $dadosEmpresa = $this->extrairDadosEmpresaCompletos($empresa, $diagnostico, $respostas);
-            
-            Logger::info('Iniciando geração de estrutura hierárquica - SISTEMA UNIFICADO', [
+            Logger::info('Iniciando geração de estrutura a partir do CATÁLOGO FIXO', [
                 'empresa_id' => $empresa['id'],
                 'diagnostico_id' => $diagnosticoIdPost,
                 'empresa_nome' => $empresa['nome'],
-                'nicho_detectado' => $dadosEmpresa['nicho']
+                'segmento' => $empresa['segmento'] ?? 'não informado'
             ]);
 
-            // CHAMADA 1: Diagnóstico e Estrutura Organizacional usando a nova estrutura profissional
-            $estruturaCompleta = $this->criarEstruturaCompletaPorNicho($dadosEmpresa['nicho'], $respostas);
-            
-            // SALVAR NA ESTRUTURA HIERÁRQUICA PERMANENTE
-            $estruturaId = $this->salvarEstruturaOrganizacional($diagnosticoIdPost, $empresa, $estruturaCompleta);
+            // Montar e salvar a estrutura a partir do catálogo fixo (base + nicho do cadastro).
+            // O 3º parâmetro é ignorado internamente (mantido por compatibilidade de assinatura).
+            $estruturaId = $this->salvarEstruturaOrganizacional($diagnosticoIdPost, $empresa, []);
             
             if (!$estruturaId) {
                 throw new Exception('Erro ao salvar estrutura organizacional');
             }
             
-            // DEBUG: Verificar se setores foram realmente criados
+            // Verificar setores e serviços realmente criados
             $setoresSalvos = Database::query(
                 "SELECT id, nome_setor, total_servicos FROM setores_empresa WHERE estrutura_id = ?",
                 [$estruturaId]
             );
+            $totalServicos = (int) (Database::queryOne(
+                "SELECT COUNT(*) as t FROM servicos_setor ss 
+                 JOIN setores_empresa se ON ss.setor_id = se.id 
+                 WHERE se.estrutura_id = ?",
+                [$estruturaId]
+            )['t'] ?? 0);
             
-            Logger::info('Estrutura hierárquica criada com sucesso - DEBUG', [
+            Logger::info('Estrutura do catálogo criada com sucesso', [
                 'estrutura_id' => $estruturaId,
-                'total_setores_esperados' => count($estruturaCompleta['setores'] ?? []),
                 'total_setores_salvos' => count($setoresSalvos),
-                'setores_salvos' => array_column($setoresSalvos, 'nome_setor'),
-                'sistema' => 'hierarquico_permanente'
+                'total_servicos' => $totalServicos,
+                'setores_salvos' => array_column($setoresSalvos, 'nome_setor')
             ]);
             
-            // RESPOSTA DE SUCESSO - Redirecionar para gerenciamento hierárquico
+            // RESPOSTA DE SUCESSO - Redirecionar para listagem
             header('Content-Type: application/json');
             echo json_encode([
                 'sucesso' => true,
                 'estrutura_id' => $estruturaId,
-                'total_setores' => count($estruturaCompleta['setores'] ?? []),
-                'total_sops' => $this->contarTotalSOPs($estruturaCompleta['setores'] ?? []),
-                'sistema' => 'hierarquico',
+                'total_setores' => count($setoresSalvos),
+                'total_servicos' => $totalServicos,
+                'sistema' => 'catalogo_fixo',
                 'redirect' => APP_URL . '/sop/listar-por-diagnostico?diagnostico_id=' . $diagnosticoIdPost
             ]);
             
@@ -4176,7 +4219,7 @@ class SopController
             $servicos = Database::query(
                 "SELECT * FROM servicos_setor 
                  WHERE setor_id = ? 
-                 ORDER BY nome_servico ASC",
+                 ORDER BY subcategoria ASC, nome_servico ASC",
                 [$setor['id']]
             );
 
@@ -4199,6 +4242,7 @@ class SopController
                 $servicosFormatados[] = [
                     'id' => $servico['id'],
                     'nome_servico' => $servico['nome_servico'],
+                    'subcategoria' => $servico['subcategoria'] ?? 'Geral',
                     'codigo_servico' => $servico['codigo_servico'],
                     'categoria' => $servico['categoria'],
                     'criticidade' => $servico['criticidade'],
@@ -9869,6 +9913,179 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
     }
 
     /**
+     * CRUD — Adicionar um serviço manualmente a um setor.
+     */
+    public function adicionarServicoManual(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $setorId = (int) ($_POST['setor_id'] ?? 0);
+        $nomeServico = trim($_POST['nome_servico'] ?? '');
+        $subcategoria = trim($_POST['subcategoria'] ?? 'Personalizado');
+        $categoria = trim($_POST['categoria'] ?? 'operacional');
+        $criticidade = trim($_POST['criticidade'] ?? 'media');
+        $frequencia = trim($_POST['frequencia'] ?? 'sob_demanda');
+        $descricao = trim($_POST['descricao'] ?? '');
+
+        if (!$setorId || $nomeServico === '') {
+            echo json_encode(['sucesso' => false, 'erro' => 'Setor e nome do serviço são obrigatórios.']);
+            exit;
+        }
+
+        // Buscar setor para obter empresa e estrutura
+        $setor = Database::queryOne(
+            "SELECT se.*, eo.id as estrutura_id FROM setores_empresa se
+             LEFT JOIN estruturas_organizacionais eo ON se.estrutura_id = eo.id
+             WHERE se.id = :id",
+            ['id' => $setorId]
+        );
+        if (!$setor) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Setor não encontrado.']);
+            exit;
+        }
+
+        $empresaUsuario = Auth::empresa();
+        if ($empresaUsuario !== null && (int) $setor['empresa_id'] !== (int) $empresaUsuario) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Sem permissão.']);
+            exit;
+        }
+
+        try {
+            Database::execute(
+                "INSERT INTO servicos_setor (
+                    setor_id, empresa_id, nome_servico, subcategoria, codigo_servico,
+                    categoria, criticidade, frequencia, complexidade, descricao_resumida,
+                    origem, status, criado_em
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'media', ?, 'manual', 'mapeado', NOW())",
+                [
+                    $setorId,
+                    $setor['empresa_id'],
+                    $nomeServico,
+                    $subcategoria,
+                    $this->gerarCodigoServicoUnico($setor['nome_setor'], $nomeServico, (int) $setor['estrutura_id'], time() % 1000),
+                    $categoria,
+                    $criticidade,
+                    $frequencia,
+                    $descricao
+                ]
+            );
+            $novoId = (int) Database::lastInsertId();
+
+            Database::execute(
+                "UPDATE setores_empresa SET total_servicos = (SELECT COUNT(*) FROM servicos_setor WHERE setor_id = ?) WHERE id = ?",
+                [$setorId, $setorId]
+            );
+
+            echo json_encode(['sucesso' => true, 'servico_id' => $novoId, 'mensagem' => 'Serviço adicionado com sucesso!']);
+        } catch (Exception $e) {
+            Logger::error('Erro ao adicionar serviço manual', ['erro' => $e->getMessage()]);
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
+        }
+        exit;
+    }
+
+    /**
+     * CRUD — Editar um serviço existente.
+     */
+    public function editarServicoManual(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $servicoId = (int) ($_POST['servico_id'] ?? 0);
+        if (!$servicoId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'ID do serviço não informado.']);
+            exit;
+        }
+
+        $servico = Database::queryOne("SELECT * FROM servicos_setor WHERE id = :id", ['id' => $servicoId]);
+        if (!$servico) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Serviço não encontrado.']);
+            exit;
+        }
+
+        $empresaUsuario = Auth::empresa();
+        if ($empresaUsuario !== null && (int) $servico['empresa_id'] !== (int) $empresaUsuario) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Sem permissão.']);
+            exit;
+        }
+
+        try {
+            Database::execute(
+                "UPDATE servicos_setor SET
+                    nome_servico = ?, subcategoria = ?, categoria = ?, criticidade = ?,
+                    frequencia = ?, descricao_resumida = ?, atualizado_em = NOW()
+                 WHERE id = ?",
+                [
+                    trim($_POST['nome_servico'] ?? $servico['nome_servico']),
+                    trim($_POST['subcategoria'] ?? $servico['subcategoria'] ?? ''),
+                    trim($_POST['categoria'] ?? $servico['categoria']),
+                    trim($_POST['criticidade'] ?? $servico['criticidade']),
+                    trim($_POST['frequencia'] ?? $servico['frequencia']),
+                    trim($_POST['descricao'] ?? $servico['descricao_resumida'] ?? ''),
+                    $servicoId
+                ]
+            );
+            echo json_encode(['sucesso' => true, 'mensagem' => 'Serviço atualizado com sucesso!']);
+        } catch (Exception $e) {
+            Logger::error('Erro ao editar serviço', ['erro' => $e->getMessage()]);
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
+        }
+        exit;
+    }
+
+    /**
+     * CRUD — Excluir um serviço (e o SOP vinculado, se houver).
+     */
+    public function excluirServico(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $servicoId = (int) ($_POST['servico_id'] ?? 0);
+        if (!$servicoId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'ID do serviço não informado.']);
+            exit;
+        }
+
+        $servico = Database::queryOne("SELECT * FROM servicos_setor WHERE id = :id", ['id' => $servicoId]);
+        if (!$servico) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Serviço não encontrado.']);
+            exit;
+        }
+
+        $empresaUsuario = Auth::empresa();
+        if ($empresaUsuario !== null && (int) $servico['empresa_id'] !== (int) $empresaUsuario) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Sem permissão.']);
+            exit;
+        }
+
+        try {
+            // Remover SOP vinculado, se houver
+            if (!empty($servico['sop_id'])) {
+                Database::execute("DELETE FROM sops WHERE id = ?", [$servico['sop_id']]);
+            }
+            Database::execute("DELETE FROM servicos_setor WHERE id = ?", [$servicoId]);
+
+            // Atualizar contadores do setor
+            Database::execute(
+                "UPDATE setores_empresa SET total_servicos = (SELECT COUNT(*) FROM servicos_setor WHERE setor_id = ?) WHERE id = ?",
+                [$servico['setor_id'], $servico['setor_id']]
+            );
+
+            echo json_encode(['sucesso' => true, 'mensagem' => 'Serviço excluído com sucesso!']);
+        } catch (Exception $e) {
+            Logger::error('Erro ao excluir serviço', ['erro' => $e->getMessage()]);
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
+        }
+        exit;
+    }
+
+    /**
      * Endpoint HTTP para processar UMA fase da fila (fallback quando não há cron).
      * O navegador chama isto repetidamente. Cada chamada faz apenas uma chamada
      * de IA, cabendo dentro do timeout do proxy.
@@ -10450,23 +10667,66 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
     }
 
     /**
+     * Monta um BLOCO DE CONTEXTO com o perfil da empresa (do cadastro + diagnóstico),
+     * para personalizar os SOPs ao perfil, objetivos, dores e cultura da empresa.
+     * É injetado no cabeçalho de todos os prompts de geração de SOP.
+     */
+    private function montarContextoEmpresa(array $empresa, array $diagnostico): string
+    {
+        $respostas = [];
+        if (!empty($diagnostico['respostas'])) {
+            $respostas = json_decode($diagnostico['respostas'], true) ?? [];
+        }
+
+        // Reaproveita o extrator de dados completos já existente
+        $dados = $this->extrairDadosEmpresaCompletos($empresa, $diagnostico, $respostas);
+
+        // Campos adicionais de objetivos/cultura, quando existirem no diagnóstico
+        $objetivos = $respostas['objetivo_12_meses'] ?? $respostas['objetivos'] ?? $respostas['metas'] ?? 'Não informado';
+        $cultura = $respostas['cultura'] ?? $respostas['valores'] ?? $respostas['tom_comunicacao'] ?? 'Não informado';
+        $diferenciais = $respostas['diferenciais'] ?? $respostas['proposta_valor'] ?? 'Não informado';
+
+        $linhas = [];
+        $linhas[] = "# PERFIL DA EMPRESA (use para personalizar TODO o conteúdo)";
+        $linhas[] = "- Empresa: " . ($empresa['nome'] ?? 'Empresa');
+        $linhas[] = "- Segmento/Nicho: " . ($empresa['segmento'] ?? $dados['nicho'] ?? 'Geral');
+        $linhas[] = "- Porte: " . ($dados['porte'] ?? 'Não informado') . " | Estágio: " . ($dados['estagio'] ?? 'Não informado');
+        $linhas[] = "- Modelo de negócio: " . $dados['modelo_negocio'];
+        $linhas[] = "- Produtos/Serviços: " . $dados['produtos_servicos'];
+        $linhas[] = "- Público-alvo: " . $dados['publico_alvo'];
+        $linhas[] = "- Nº de colaboradores: " . $dados['num_funcionarios'];
+        $linhas[] = "- Canais de venda: " . $dados['canais_venda'];
+        $linhas[] = "- Ferramentas/sistemas atuais: " . $dados['ferramentas_atuais'];
+        $linhas[] = "- Localização: " . $dados['localizacao'];
+        $linhas[] = "- Principais dores/desafios: " . (is_array($dados['dores_desafios']) ? implode('; ', $dados['dores_desafios']) : $dados['dores_desafios']);
+        $linhas[] = "- Objetivos (12 meses): " . (is_array($objetivos) ? implode('; ', $objetivos) : $objetivos);
+        $linhas[] = "- Cultura/tom de comunicação: " . (is_array($cultura) ? implode('; ', $cultura) : $cultura);
+        $linhas[] = "- Diferenciais/proposta de valor: " . (is_array($diferenciais) ? implode('; ', $diferenciais) : $diferenciais);
+        $linhas[] = "";
+        $linhas[] = "INSTRUÇÃO DE PERSONALIZAÇÃO: Adapte linguagem, exemplos, ferramentas citadas, tom de voz, prioridades e nível de complexidade ao PERFIL acima. O SOP deve refletir a realidade, os objetivos, as dores e a cultura desta empresa específica — não pode ser genérico. Quando o porte for pequeno, evite estruturas corporativas complexas; quando for grande, contemple governança e escala.";
+
+        return implode("\n", $linhas);
+    }
+
+    /**
      * Criar prompt curto para o RESUMO do SOP (Fase 1 - rápido)
      */
     private function criarPromptResumoSop(array $servico, array $detalhamento, array $empresa, array $diagnostico): string
     {
-        $nomeEmpresa = json_decode($diagnostico['respostas'], true)['nome_empresa'] ?? $empresa['nome'] ?? 'Empresa';
         $nomeServico = $servico['nome_servico'];
         $nomeSetor = $servico['nome_setor'];
+        $contextoEmpresa = $this->montarContextoEmpresa($empresa, $diagnostico);
 
         return "Você é um especialista em processos empresariais. Gere o RESUMO INICIAL de um SOP (Procedimento Operacional Padrão).
 
-# CONTEXTO
-- Empresa: {$nomeEmpresa}
+{$contextoEmpresa}
+
+# CONTEXTO DO SOP
 - Setor: {$nomeSetor}
 - Serviço: {$nomeServico}
 
 # TAREFA
-Gere APENAS o cabeçalho/resumo deste SOP. Seja objetivo e profissional. NÃO gere os procedimentos passo a passo (isso será feito depois).
+Gere APENAS o cabeçalho/resumo deste SOP, PERSONALIZADO ao perfil da empresa acima. Seja objetivo e profissional. NÃO gere os procedimentos passo a passo (isso será feito depois).
 
 Use SEMPRE terminologia genérica. NUNCA mencione marcas comerciais (ex: use 'ferramenta de gestão' em vez de nome de produto).
 
@@ -10512,22 +10772,23 @@ Responda APENAS com o JSON válido, sem explicações adicionais.";
      */
     private function criarPromptFaseUnica(array $servico, array $detalhamento, array $empresa, array $diagnostico, int $indiceFase): string
     {
-        $nomeEmpresa = json_decode($diagnostico['respostas'], true)['nome_empresa'] ?? $empresa['nome'] ?? 'Empresa';
         $nomeServico = $servico['nome_servico'];
         $nomeSetor = $servico['nome_setor'];
         $info = $this->getFaseOperacionalInfo($indiceFase);
         $nomeFase = $info['nome'];
         $focoFase = $info['foco'];
+        $contextoEmpresa = $this->montarContextoEmpresa($empresa, $diagnostico);
 
         return "Você é especialista em processos operacionais e roteiros de atendimento. Gere UMA fase de procedimento operacional em MÁXIMA PROFUNDIDADE para um SOP de treinamento.
 
-# CONTEXTO
-- Empresa: {$nomeEmpresa}
+{$contextoEmpresa}
+
+# CONTEXTO DO SOP
 - Setor: {$nomeSetor}
 - Serviço: {$nomeServico}
 
 # TAREFA
-Gere APENAS a fase operacional: **\"{$nomeFase}\"**
+Gere APENAS a fase operacional: **\"{$nomeFase}\"**, TOTALMENTE PERSONALIZADA ao perfil da empresa acima.
 Foco desta fase: {$focoFase}.
 
 Esta fase deve conter EXATAMENTE de 3 a 4 passos operacionais. Gere POUCOS passos, porém cada um EXTREMAMENTE completo. O objetivo é qualidade e profundidade, não quantidade. Use terminologia genérica. NUNCA mencione marcas comerciais.
@@ -10583,19 +10844,20 @@ Responda APENAS com o JSON válido desta única fase.";
      */
     private function criarPromptSituacoesCriticasLeve(array $servico, array $detalhamento, array $empresa, array $diagnostico): string
     {
-        $nomeEmpresa = json_decode($diagnostico['respostas'], true)['nome_empresa'] ?? $empresa['nome'] ?? 'Empresa';
         $nomeServico = $servico['nome_servico'];
         $nomeSetor = $servico['nome_setor'];
+        $contextoEmpresa = $this->montarContextoEmpresa($empresa, $diagnostico);
 
         return "Você é especialista em gestão de crises operacionais. Gere a seção de SITUAÇÕES CRÍTICAS e PROBLEMAS DE ROTINA para um SOP.
 
-# CONTEXTO
-- Empresa: {$nomeEmpresa}
+{$contextoEmpresa}
+
+# CONTEXTO DO SOP
 - Setor: {$nomeSetor}
 - Serviço: {$nomeServico}
 
 # TAREFA
-Gere de 4 a 6 cenários críticos/problemas reais que podem ocorrer neste serviço, e como lidar com cada um.
+Gere de 4 a 6 cenários críticos/problemas reais que podem ocorrer neste serviço nesta empresa específica, e como lidar com cada um.
 Inclua também de 3 a 4 scripts práticos para situações difíceis (cliente irritado, erro grave, prazo estourado, etc.).
 Seja prático e direto. Use terminologia genérica. NUNCA mencione marcas comerciais.
 
