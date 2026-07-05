@@ -52,19 +52,17 @@
         <button onclick="editarServico()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
             ✏️ Editar
         </button>
-        <?php if ($servico['status'] === 'mapeado'): ?>
-        <button onclick="processarServico(<?= $servico['id'] ?>, 'detalhar')" class="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700">
-            🔍 Detalhar
-        </button>
-        <?php elseif ($servico['status'] === 'detalhado'): ?>
-        <button onclick="processarServico(<?= $servico['id'] ?>, 'gerar_sop')" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">
-            📝 Gerar SOP
-        </button>
-        <?php endif; ?>
-        <?php if ($servico['sop_id']): ?>
+        <?php if (!empty($servico['sop_id'])): ?>
         <a href="<?= APP_URL ?>/sop/ver-sop-individual?id=<?= $servico['sop_id'] ?>" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">
             📋 Ver SOP
         </a>
+        <button onclick="processarServico(<?= $servico['id'] ?>, 'processo_completo')" class="px-4 py-2 bg-orange-600 text-white rounded-lg text-sm hover:bg-orange-700">
+            🔄 Regenerar SOP
+        </button>
+        <?php else: ?>
+        <button onclick="processarServico(<?= $servico['id'] ?>, 'processo_completo')" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">
+            📝 Gerar SOP Completo
+        </button>
         <?php endif; ?>
         <button onclick="excluirServico()" class="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700">
             🗑️ Excluir
@@ -430,14 +428,9 @@ async function salvarEdicao() {
     }
 }
 
-// Processar serviço (detalhar/gerar SOP)
+// Processar serviço (gerar SOP completo)
 async function processarServico(servicoId, etapa) {
-    const etapaTitulos = {
-        'detalhar': 'Detalhando Serviço',
-        'gerar_sop': 'Gerando SOP'
-    };
-    
-    mostrarLoading(etapaTitulos[etapa], 'Processando...');
+    mostrarLoading('Gerando SOP Completo', 'Isso pode levar alguns minutos. Aguarde...');
     
     try {
         const response = await fetch('<?= APP_URL ?>/sop/processar-servico-completo', {
@@ -456,8 +449,12 @@ async function processarServico(servicoId, etapa) {
         
         if (data.sucesso) {
             esconderLoading();
-            alert(data.mensagem);
-            window.location.reload();
+            // Redirecionar direto para o SOP gerado
+            if (data.redirect) {
+                window.location.href = data.redirect;
+            } else {
+                window.location.reload();
+            }
         } else {
             esconderLoading();
             alert('Erro no processamento: ' + (data.erro || 'Erro desconhecido'));

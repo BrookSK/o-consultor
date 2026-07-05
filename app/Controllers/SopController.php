@@ -1669,86 +1669,150 @@ class SopController
     
     /**
      * Salvar estrutura organizacional permanente
+     * Usa as tabelas: estruturas_organizacionais, setores_empresa, servicos_setor
      */
     private function salvarEstruturaOrganizacional(int $diagnosticoId, array $empresa, array $estruturaCompleta): int
     {
         try {
+            $todosSetores = $estruturaCompleta['setores'] ?? [];
+            
             Logger::info('SALVANDO ESTRUTURA ORGANIZACIONAL PERMANENTE', [
                 'diagnostico_id' => $diagnosticoId,
                 'empresa_id' => $empresa['id'],
-                'total_setores' => count($estruturaCompleta['todos_setores'] ?? [])
+                'total_setores' => count($todosSetores)
             ]);
 
-            // Salvar estrutura hierárquica principal
-            $estruturaId = Database::execute(
-                "INSERT INTO estruturas_hierarquicas (
-                    diagnostico_id, empresa_id, nicho, setores_base, setores_especificos, 
-                    total_setores, criado_em, sistema
-                ) VALUES (?, ?, ?, ?, ?, ?, NOW(), 'hierarquico')",
+            // Verificar se já existe estrutura para este diagnóstico e removê-la (regeneração)
+            $estruturaExistente = Database::queryOne(
+                "SELECT id FROM estruturas_organizacionais WHERE diagnostico_id = ? AND empresa_id = ?",
+                [$diagnosticoId, $empresa['id']]
+            );
+            
+            if ($estruturaExistente) {
+                $idAntigo = (int) $estruturaExistente['id'];
+                // Remover serviços e setores antigos
+                $setoresAntigos = Database::query(
+                    "SELECT id FROM setores_empresa WHERE estrutura_id = ?",
+                    [$idAntigo]
+                );
+                foreach ($setoresAntigos as $setorAntigo) {
+                    Database::execute("DELETE FROM servicos_setor WHERE setor_id = ?", [$setorAntigo['id']]);
+                }
+                Database::execute("DELETE FROM setores_empresa WHERE estrutura_id = ?", [$idAntigo]);
+                Database::execute("DELETE FROM progresso_hierarquico WHERE estrutura_id = ?", [$idAntigo]);
+                Database::execute("DELETE FROM estruturas_organizacionais WHERE id = ?", [$idAntigo]);
+                
+                Logger::info('ESTRUTURA ANTIGA REMOVIDA PARA REGENERAÇÃO', ['estrutura_antiga_id' => $idAntigo]);
+            }
+
+            // 1. Salvar estrutura organizacional principal
+            $sucesso = Database::execute(
+                "INSERT INTO estruturas_organizacionais (
+                    diagnostico_id, empresa_id, nome_empresa, nicho, macro_categoria,
+                    estrutura_completa_json, total_setores, status, criado_em
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ativo', NOW())",
                 [
                     $diagnosticoId,
                     $empresa['id'],
-                    $estruturaCompleta['nicho_identificado'] ?? 'geral',
-                    json_encode($estruturaCompleta['setores_base'] ?? []),
-                    json_encode($estruturaCompleta['setores_especificos'] ?? []),
-                    count($estruturaCompleta['todos_setores'] ?? [])
+                    $empresa['nome'] ?? 'Empresa',
+                    $estruturaCompleta['nicho'] ?? 'geral',
+                    $estruturaCompleta['macro_categoria'] ?? 'geral',
+                    json_encode($estruturaCompleta, JSON_UNESCAPED_UNICODE),
+                    count($todosSetores)
                 ]
             );
 
-            if (!$estruturaId) {
-                Logger::error('FALHA AO SALVAR ESTRUTURA HIERÁRQUICA');
+            if (!$sucesso) {
+                Logger::error('FALHA AO SALVAR ESTRUTURA ORGANIZACIONAL');
                 return 0;
             }
 
-            // Salvar setores organizacionais
-            foreach ($estruturaCompleta['todos_setores'] as $nomeSetor => $configSetor) {
-                $setorId = Database::execute(
-                    "INSERT INTO setores_organizacionais (
-                        estrutura_id, nome_setor, tipo_setor, descricao, 
-                        funcoes_principais, sops_padrao, kpis_essenciais, criado_em
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())",
+            $estruturaId = (int) Database::lastInsertId();
+
+            // 2. Salvar setores e serviços
+            $totalServicosGeral = 0;
+            foreach ($todosSetores as $nomeSetor => $configSetor) {
+                // Mapear tipo do setor para o enum válido (core, apoio, estrategico)
+                $tipoSetor = $this->mapearTipoSetor($configSetor['tipo'] ?? 'base');
+                
+                $setorSucesso = Database::execute(
+                    "INSERT INTO setores_empresa (
+                        estrutura_id, empresa_id, nome_setor, tipo_setor, descricao, 
+                        funcao_principal, total_servicos, status, criado_em
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'mapeado', NOW())",
                     [
                         $estruturaId,
+                        $empresa['id'],
                         $nomeSetor,
-                        $configSetor['tipo'],
-                        $configSetor['descricao'],
-                        json_encode($configSetor['funcoes_principais'] ?? []),
-                        json_encode($configSetor['sops_padrao'] ?? []),
-                        json_encode($configSetor['kpis_essenciais'] ?? [])
+                        $tipoSetor,
+                        $configSetor['descricao'] ?? '',
+                        implode(', ', $configSetor['funcoes_principais'] ?? []),
+                        count($configSetor['sops_padrao'] ?? [])
                     ]
                 );
 
-                // Mapear serviços básicos para cada setor
-                foreach ($configSetor['sops_padrao'] as $index => $nomeServico) {
+                if (!$setorSucesso) {
+                    Logger::warning('Falha ao salvar setor', ['setor' => $nomeSetor]);
+                    continue;
+                }
+
+                $setorId = (int) Database::lastInsertId();
+
+                // Ordenar serviços alfabeticamente (A -> Z)
+                $servicos = $configSetor['sops_padrao'] ?? [];
+                sort($servicos);
+
+                // Mapear serviços do setor
+                $contador = 1;
+                foreach ($servicos as $nomeServico) {
                     Database::execute(
-                        "INSERT INTO servicos_mapeados (
-                            estrutura_id, setor_id, empresa_id, nome_servico, codigo_servico,
+                        "INSERT INTO servicos_setor (
+                            setor_id, empresa_id, nome_servico, codigo_servico,
                             categoria, criticidade, frequencia, complexidade, origem,
                             status, criado_em
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'automatico', 'mapeado', NOW())",
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'automatico', 'mapeado', NOW())",
                         [
-                            $estruturaId,
                             $setorId,
                             $empresa['id'],
                             $nomeServico,
-                            $this->gerarCodigoServico($nomeSetor, $nomeServico),
+                            $this->gerarCodigoServicoUnico($nomeSetor, $nomeServico, $estruturaId, $contador),
                             $this->determinarCategoriaServico($nomeServico),
                             $this->determinarCriticidadeServico($nomeServico),
+                            $this->determinarFrequenciaServico($nomeServico),
                             $this->determinarComplexidadeServico($nomeServico)
                         ]
                     );
+                    $contador++;
+                    $totalServicosGeral++;
                 }
 
                 Logger::info('SETOR SALVO COM SERVIÇOS', [
                     'setor' => $nomeSetor,
                     'setor_id' => $setorId,
-                    'total_servicos' => count($configSetor['sops_padrao'] ?? [])
+                    'total_servicos' => count($servicos)
                 ]);
             }
 
+            // 3. Criar registro de progresso
+            Database::execute(
+                "INSERT INTO progresso_hierarquico (
+                    estrutura_id, empresa_id, setores_mapeados, setores_total,
+                    servicos_mapeados, servicos_total, etapa_atual, criado_em
+                ) VALUES (?, ?, ?, ?, ?, ?, 'mapeamento_servicos', NOW())",
+                [
+                    $estruturaId,
+                    $empresa['id'],
+                    count($todosSetores),
+                    count($todosSetores),
+                    $totalServicosGeral,
+                    $totalServicosGeral
+                ]
+            );
+
             Logger::info('ESTRUTURA ORGANIZACIONAL SALVA COM SUCESSO', [
                 'estrutura_id' => $estruturaId,
-                'total_setores' => count($estruturaCompleta['todos_setores'])
+                'total_setores' => count($todosSetores),
+                'total_servicos' => $totalServicosGeral
             ]);
 
             return $estruturaId;
@@ -1760,6 +1824,34 @@ class SopController
             ]);
             return 0;
         }
+    }
+
+    /**
+     * Mapear tipo de setor para enum válido (core, apoio, estrategico)
+     */
+    private function mapearTipoSetor(string $tipo): string
+    {
+        switch (strtolower($tipo)) {
+            case 'core':
+                return 'core';
+            case 'estrategico':
+            case 'específico':
+            case 'especifico':
+                return 'estrategico';
+            case 'base':
+            case 'apoio':
+            default:
+                return 'apoio';
+        }
+    }
+
+    /**
+     * Gerar código único de serviço com contador para evitar duplicatas
+     */
+    private function gerarCodigoServicoUnico(string $setor, string $servico, int $estruturaId, int $contador): string
+    {
+        $prefixoSetor = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $setor), 0, 3));
+        return sprintf('SRV-%d-%s-%03d', $estruturaId, $prefixoSetor, $contador);
     }
 
     /**
@@ -2772,7 +2864,7 @@ class SopController
                 'total_setores' => count($estruturaCompleta['setores'] ?? []),
                 'total_sops' => $this->contarTotalSOPs($estruturaCompleta['setores'] ?? []),
                 'sistema' => 'hierarquico',
-                'redirect' => APP_URL . '/sop/gerenciar-hierarquia?estrutura_id=' . $estruturaId . '&diagnostico_id=' . $diagnosticoIdPost
+                'redirect' => APP_URL . '/sop/listar-por-diagnostico?diagnostico_id=' . $diagnosticoIdPost
             ]);
             
         } catch (Exception $e) {
@@ -4034,251 +4126,127 @@ class SopController
             'empresa_id' => $empresa['id']
         ]);
 
-        // ABORDAGEM FLEXÍVEL: Verificar quais tabelas existem e adaptar
-        try {
-            // Tentar usar nova estrutura hierárquica primeiro
-            $estruturaHierarquica = Database::queryOne(
-                "SELECT * FROM estruturas_hierarquicas WHERE diagnostico_id = ? AND empresa_id = ?",
-                [$diagnosticoId, $empresa['id']]
-            );
-            
-            if ($estruturaHierarquica) {
-                Logger::info('USANDO NOVA ESTRUTURA HIERÁRQUICA');
-                $dados = $this->carregarDadosEstruturalHierarquica($diagnostico, $empresa, $estruturaHierarquica);
-            } else {
-                Logger::info('USANDO ESTRUTURA TRADICIONAL - SOPS DIRETOS');
-                $dados = $this->carregarDadosSOPsTradicional($diagnostico, $empresa);
-            }
+        // Buscar estrutura organizacional deste diagnóstico
+        $estrutura = Database::queryOne(
+            "SELECT * FROM estruturas_organizacionais WHERE diagnostico_id = ? AND empresa_id = ? AND status = 'ativo' ORDER BY criado_em DESC LIMIT 1",
+            [$diagnosticoId, $empresa['id']]
+        );
 
-            Logger::info('DADOS PREPARADOS PARA FLUXO LINEAR', [
-                'total_setores' => count($dados['setores_organizados'] ?? []),
-                'usando_estrutura' => isset($estruturaHierarquica) ? 'hierarquica' : 'tradicional'
-            ]);
-
+        if (!$estrutura) {
+            Logger::info('NENHUMA ESTRUTURA ENCONTRADA - EXIBINDO TELA VAZIA');
+            $dados = [
+                'diagnostico' => $diagnostico,
+                'empresa' => $empresa,
+                'setores_organizados' => [],
+                'estatisticas' => [
+                    'total_setores' => 0,
+                    'total_servicos' => 0,
+                    'total_sops' => 0,
+                    'percentual_conclusao' => 0
+                ],
+                'usar_fluxo_linear' => true
+            ];
             require VIEW_PATH . '/sop/listar-por-diagnostico.php';
-            
-        } catch (Exception $e) {
-            Logger::error('ERRO na listagem de SOPs', [
-                'erro' => $e->getMessage(),
-                'diagnostico_id' => $diagnosticoId
-            ]);
-            
-            // Fallback: usar método tradicional simples
-            $dados = $this->carregarDadosSOPsSimples($diagnostico, $empresa);
-            require VIEW_PATH . '/sop/listar-por-diagnostico.php';
+            return;
         }
-    }
 
-    /**
-     * Carregar dados usando estrutura hierárquica (se disponível)
-     */
-    private function carregarDadosEstruturalHierarquica(array $diagnostico, array $empresa, array $estrutura): array
-    {
-        // Buscar setores da estrutura hierárquica
-        $setoresComServicos = Database::query(
-            "SELECT DISTINCT
-                so.id as setor_id,
-                so.nome_setor,
-                so.tipo_setor,
-                so.descricao as setor_descricao,
-                COUNT(sm.id) as total_servicos,
-                COUNT(CASE WHEN s.id IS NOT NULL THEN 1 END) as total_sops
-             FROM setores_organizacionais so
-             LEFT JOIN servicos_mapeados sm ON so.id = sm.setor_id
-             LEFT JOIN sops s ON sm.id = s.servico_id
-             WHERE so.estrutura_id = :estrutura_id
-             GROUP BY so.id, so.nome_setor, so.tipo_setor, so.descricao
+        $estruturaId = (int) $estrutura['id'];
+
+        // Buscar setores da estrutura, ordenados por tipo e nome
+        $setores = Database::query(
+            "SELECT * FROM setores_empresa 
+             WHERE estrutura_id = ? 
              ORDER BY 
-                CASE so.tipo_setor
+                CASE tipo_setor
                     WHEN 'core' THEN 1
                     WHEN 'apoio' THEN 2
                     WHEN 'estrategico' THEN 3
                     ELSE 4
                 END,
-                so.nome_setor",
-            ['estrutura_id' => $estrutura['id']]
+                nome_setor",
+            [$estruturaId]
         );
 
-        // Para cada setor, buscar seus serviços com SOPs
+        // Para cada setor, buscar serviços ordenados alfabeticamente (A -> Z)
         $setoresOrganizados = [];
-        foreach ($setoresComServicos as $setor) {
-            $servicosDoSetor = Database::query(
-                "SELECT 
-                    sm.id,
-                    sm.nome_servico,
-                    sm.codigo_servico,
-                    sm.categoria,
-                    sm.criticidade,
-                    sm.frequencia,
-                    sm.status as servico_status,
-                    s.id as sop_id,
-                    s.nome as sop_nome,
-                    s.status as sop_status,
-                    s.criado_em as sop_criado_em,
-                    CASE 
-                        WHEN s.id IS NOT NULL THEN 'sop_gerado'
-                        WHEN sm.detalhamento IS NOT NULL THEN 'detalhado'
-                        ELSE 'mapeado'
-                    END as status_final
-                 FROM servicos_mapeados sm
-                 LEFT JOIN sops s ON sm.id = s.servico_id
-                 WHERE sm.setor_id = :setor_id
-                 ORDER BY sm.categoria, sm.nome_servico",
-                ['setor_id' => $setor['setor_id']]
+        $totalServicos = 0;
+        $totalSops = 0;
+
+        foreach ($setores as $setor) {
+            $servicos = Database::query(
+                "SELECT * FROM servicos_setor 
+                 WHERE setor_id = ? 
+                 ORDER BY nome_servico ASC",
+                [$setor['id']]
             );
-            
-            $setoresOrganizados[] = [
-                'setor' => $setor,
-                'servicos' => $servicosDoSetor
-            ];
-        }
 
-        // Estatísticas
-        $estatisticas = [
-            'total_setores' => count($setoresOrganizados),
-            'total_servicos' => array_sum(array_column($setoresComServicos, 'total_servicos')),
-            'total_sops' => array_sum(array_column($setoresComServicos, 'total_sops')),
-            'percentual_conclusao' => 0
-        ];
-
-        if ($estatisticas['total_servicos'] > 0) {
-            $estatisticas['percentual_conclusao'] = round(
-                ($estatisticas['total_sops'] / $estatisticas['total_servicos']) * 100, 1
-            );
-        }
-
-        return [
-            'diagnostico' => $diagnostico,
-            'empresa' => $empresa,
-            'setores_organizados' => $setoresOrganizados,
-            'estatisticas' => $estatisticas,
-            'usar_fluxo_linear' => true
-        ];
-    }
-
-    /**
-     * Carregar dados usando abordagem tradicional (SOPs diretos)
-     */
-    private function carregarDadosSOPsTradicional(array $diagnostico, array $empresa): array
-    {
-        // Buscar todos os SOPs deste diagnóstico
-        $sopsExistentes = Database::query(
-            "SELECT 
-                s.*,
-                'SOP Tradicional' as setor_nome,
-                'tradicional' as tipo_setor
-             FROM sops s
-             WHERE s.diagnostico_id = :diagnostico_id 
-               AND s.empresa_id = :empresa_id
-             ORDER BY s.sop_codigo, s.criado_em DESC",
-            [
-                'diagnostico_id' => $diagnostico['id'],
-                'empresa_id' => $empresa['id']
-            ]
-        );
-
-        // Organizar como se fosse um setor único
-        $setoresOrganizados = [];
-        if (!empty($sopsExistentes)) {
             $servicosFormatados = [];
-            foreach ($sopsExistentes as $sop) {
+            $sopsNoSetor = 0;
+            foreach ($servicos as $servico) {
+                $temSop = !empty($servico['sop_id']) || $servico['status'] === 'sop_gerado' || $servico['status'] === 'aprovado';
+                if ($temSop) {
+                    $sopsNoSetor++;
+                    $totalSops++;
+                }
+
+                $statusFinal = 'mapeado';
+                if ($temSop) {
+                    $statusFinal = 'sop_gerado';
+                } elseif ($servico['status'] === 'detalhado') {
+                    $statusFinal = 'detalhado';
+                }
+
                 $servicosFormatados[] = [
-                    'id' => $sop['servico_id'] ?? $sop['id'],
-                    'nome_servico' => $sop['sop_codigo'] ?? ('SOP-' . $sop['id']),
-                    'codigo_servico' => $sop['sop_codigo'] ?? 'SOP-' . $sop['id'],
-                    'categoria' => 'operacional',
-                    'criticidade' => 'media',
-                    'frequencia' => 'diaria',
-                    'servico_status' => $sop['status'],
-                    'sop_id' => $sop['id'],
-                    'sop_nome' => $sop['sop_codigo'] ?? ('SOP-' . $sop['id']),
-                    'sop_status' => $sop['status'],
-                    'sop_criado_em' => $sop['criado_em'],
-                    'status_final' => 'sop_gerado'
+                    'id' => $servico['id'],
+                    'nome_servico' => $servico['nome_servico'],
+                    'codigo_servico' => $servico['codigo_servico'],
+                    'categoria' => $servico['categoria'],
+                    'criticidade' => $servico['criticidade'],
+                    'frequencia' => $servico['frequencia'],
+                    'sop_id' => $servico['sop_id'],
+                    'sop_criado_em' => $servico['sop_gerado_em'],
+                    'status_final' => $statusFinal
                 ];
+                $totalServicos++;
             }
 
             $setoresOrganizados[] = [
                 'setor' => [
-                    'setor_id' => 1,
-                    'nome_setor' => 'SOPs Gerados',
-                    'tipo_setor' => 'tradicional',
-                    'setor_descricao' => 'SOPs criados pelo sistema tradicional',
-                    'total_servicos' => count($sopsExistentes),
-                    'total_sops' => count($sopsExistentes)
+                    'setor_id' => $setor['id'],
+                    'nome_setor' => $setor['nome_setor'],
+                    'tipo_setor' => $setor['tipo_setor'],
+                    'setor_descricao' => $setor['descricao'],
+                    'total_servicos' => count($servicos),
+                    'total_sops' => $sopsNoSetor
                 ],
                 'servicos' => $servicosFormatados
             ];
         }
 
         $estatisticas = [
-            'total_setores' => 1,
-            'total_servicos' => count($sopsExistentes),
-            'total_sops' => count($sopsExistentes),
-            'percentual_conclusao' => count($sopsExistentes) > 0 ? 100 : 0
+            'total_setores' => count($setoresOrganizados),
+            'total_servicos' => $totalServicos,
+            'total_sops' => $totalSops,
+            'percentual_conclusao' => $totalServicos > 0 ? round(($totalSops / $totalServicos) * 100, 1) : 0
         ];
 
-        return [
+        $dados = [
             'diagnostico' => $diagnostico,
             'empresa' => $empresa,
+            'estrutura_id' => $estruturaId,
             'setores_organizados' => $setoresOrganizados,
             'estatisticas' => $estatisticas,
             'usar_fluxo_linear' => true
         ];
-    }
 
-    /**
-     * Carregar dados de forma mais simples (fallback)
-     */
-    private function carregarDadosSOPsSimples(array $diagnostico, array $empresa): array
-    {
-        Logger::info('USANDO MÉTODO SIMPLES - FALLBACK');
-        
-        // Buscar SOPs básicos
-        $sops = Database::query(
-            "SELECT * FROM sops WHERE empresa_id = ? ORDER BY sop_codigo, criado_em DESC LIMIT 50",
-            [$empresa['id']]
-        );
+        Logger::info('DADOS PREPARADOS PARA FLUXO LINEAR', [
+            'estrutura_id' => $estruturaId,
+            'total_setores' => $estatisticas['total_setores'],
+            'total_servicos' => $estatisticas['total_servicos'],
+            'total_sops' => $estatisticas['total_sops']
+        ]);
 
-        $setoresOrganizados = [];
-        if (!empty($sops)) {
-            $servicosFormatados = array_map(function($sop) {
-                return [
-                    'id' => $sop['id'],
-                    'nome_servico' => $sop['sop_codigo'] ?? ('SOP-' . $sop['id']),
-                    'codigo_servico' => $sop['sop_codigo'] ?? 'SOP-' . $sop['id'],
-                    'categoria' => 'operacional',
-                    'criticidade' => 'media', 
-                    'frequencia' => 'diaria',
-                    'sop_id' => $sop['id'],
-                    'sop_criado_em' => $sop['criado_em'] ?? date('Y-m-d'),
-                    'status_final' => 'sop_gerado'
-                ];
-            }, $sops);
-
-            $setoresOrganizados[] = [
-                'setor' => [
-                    'nome_setor' => 'Todos os SOPs',
-                    'tipo_setor' => 'geral',
-                    'total_servicos' => count($sops),
-                    'total_sops' => count($sops)
-                ],
-                'servicos' => $servicosFormatados
-            ];
-        }
-
-        return [
-            'diagnostico' => $diagnostico,
-            'empresa' => $empresa,
-            'setores_organizados' => $setoresOrganizados,
-            'estatisticas' => [
-                'total_setores' => count($setoresOrganizados),
-                'total_servicos' => count($sops),
-                'total_sops' => count($sops),
-                'percentual_conclusao' => count($sops) > 0 ? 100 : 0
-            ],
-            'usar_fluxo_linear' => true
-        ];
+        require VIEW_PATH . '/sop/listar-por-diagnostico.php';
     }
 
     /**
@@ -9697,6 +9665,150 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
     }
     
     /**
+     * Processar serviço completo: detalhar + gerar SOP em uma etapa
+     * Trabalha com a tabela servicos_setor
+     */
+    public function processarServicoCompleto(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+
+        header('Content-Type: application/json');
+
+        $servicoId = (int) ($_POST['servico_id'] ?? 0);
+        $etapa = trim($_POST['etapa'] ?? 'processo_completo');
+
+        Logger::info('PROCESSANDO SERVIÇO COMPLETO', [
+            'servico_id' => $servicoId,
+            'etapa' => $etapa
+        ]);
+
+        if (!$servicoId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'ID do serviço não informado.']);
+            exit;
+        }
+
+        try {
+            // Buscar serviço com dados do setor e estrutura
+            $servico = Database::queryOne(
+                "SELECT 
+                    ss.*,
+                    se.nome_setor,
+                    se.tipo_setor,
+                    eo.nicho,
+                    eo.diagnostico_id
+                 FROM servicos_setor ss
+                 LEFT JOIN setores_empresa se ON ss.setor_id = se.id
+                 LEFT JOIN estruturas_organizacionais eo ON se.estrutura_id = eo.id
+                 WHERE ss.id = :id AND ss.empresa_id = :empresa_id",
+                ['id' => $servicoId, 'empresa_id' => Auth::empresa()]
+            );
+
+            if (!$servico) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Serviço não encontrado.']);
+                exit;
+            }
+
+            $diagnostico = Diagnostico::buscarPorId((int) $servico['diagnostico_id']);
+            $empresa = Empresa::buscarPorId((int) $servico['empresa_id']);
+
+            if (!$diagnostico || !$empresa) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Diagnóstico ou empresa não encontrados.']);
+                exit;
+            }
+
+            // Preparar dados do detalhamento (usar existente ou criar básico)
+            $detalhamento = [];
+            if (!empty($servico['detalhamento_completo'])) {
+                $detalhamento = json_decode($servico['detalhamento_completo'], true) ?? [];
+            }
+
+            if (empty($detalhamento)) {
+                $detalhamento = [
+                    'servico' => $servico['nome_servico'],
+                    'setor' => $servico['nome_setor'],
+                    'objetivo_principal' => 'Executar ' . $servico['nome_servico'] . ' de forma eficiente e padronizada',
+                    'processos_principais' => ['Preparação', 'Execução', 'Finalização'],
+                    'recursos_necessarios' => ['Sistemas internos', 'Documentação padrão']
+                ];
+            }
+
+            // Dados do serviço para o gerador de SOP
+            $sopData = [
+                'nome_servico' => $servico['nome_servico'],
+                'nome_setor' => $servico['nome_setor'],
+                'codigo_servico' => $servico['codigo_servico']
+            ];
+
+            // Gerar conteúdo do SOP usando o sistema de duas fases
+            Logger::info('GERANDO CONTEÚDO DO SOP EM DUAS FASES', [
+                'servico' => $servico['nome_servico']
+            ]);
+
+            $conteudoSop = $this->gerarConteudoSopCompleto($detalhamento, $empresa, $sopData);
+
+            if (!$conteudoSop) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Erro ao gerar conteúdo do SOP com a IA.']);
+                exit;
+            }
+
+            // Salvar SOP na tabela sops
+            Database::execute(
+                "INSERT INTO sops (empresa_id, diagnostico_id, titulo, sop_codigo, departamento, conteudo, versao, status, gerado_por_ia, criado_em, atualizado_em)
+                 VALUES (:empresa_id, :diagnostico_id, :titulo, :sop_codigo, :departamento, :conteudo, '1.0', 'ativo', 1, NOW(), NOW())",
+                [
+                    'empresa_id' => Auth::empresa(),
+                    'diagnostico_id' => $servico['diagnostico_id'],
+                    'titulo' => $servico['nome_servico'],
+                    'sop_codigo' => $servico['codigo_servico'],
+                    'departamento' => $servico['nome_setor'],
+                    'conteudo' => $conteudoSop
+                ]
+            );
+
+            $sopId = (int) Database::lastInsertId();
+
+            // Atualizar o serviço com o sop_id e status
+            Database::execute(
+                "UPDATE servicos_setor 
+                 SET sop_id = :sop_id, tem_sop = 1, status = 'sop_gerado', sop_gerado_em = NOW(), atualizado_em = NOW()
+                 WHERE id = :id",
+                ['sop_id' => $sopId, 'id' => $servicoId]
+            );
+
+            // Atualizar contador de SOPs no setor
+            Database::execute(
+                "UPDATE setores_empresa 
+                 SET total_sops = (SELECT COUNT(*) FROM servicos_setor WHERE setor_id = :setor_id AND tem_sop = 1)
+                 WHERE id = :setor_id",
+                ['setor_id' => $servico['setor_id']]
+            );
+
+            Logger::info('SOP GERADO E SALVO COM SUCESSO', [
+                'sop_id' => $sopId,
+                'servico_id' => $servicoId
+            ]);
+
+            echo json_encode([
+                'sucesso' => true,
+                'mensagem' => 'SOP gerado com sucesso!',
+                'sop_id' => $sopId,
+                'redirect' => APP_URL . '/sop/ver-sop-individual?id=' . $sopId
+            ]);
+
+        } catch (Exception $e) {
+            Logger::error('ERRO ao processar serviço completo', [
+                'erro' => $e->getMessage(),
+                'servico_id' => $servicoId,
+                'trace' => $e->getTraceAsString()
+            ]);
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
+        }
+
+        exit;
+    }
+
+    /**
      * Ver detalhes completos de um serviço
      */
     public function verDetalhesServico(): void
@@ -9723,71 +9835,35 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
 
             Logger::info('BUSCANDO DADOS DO SERVIÇO');
             
-            // Buscar dados do serviço completo com JOINs para obter todas as informações necessárias
+            // Buscar dados do serviço na tabela servicos_setor com JOINs
             $servico = Database::queryOne(
                 "SELECT 
-                    sm.*,
-                    so.nome_setor,
-                    so.tipo_setor,
-                    eh.nicho,
+                    ss.*,
+                    se.nome_setor,
+                    se.tipo_setor,
+                    eo.nicho,
+                    eo.diagnostico_id,
                     e.nome as nome_empresa,
-                    s.id as sop_id,
-                    s.status as sop_status,
-                    s.criado_em as sop_gerado_em,
-                    COALESCE(sd.detalhamento, '') as detalhamento_json_raw
-                 FROM servicos_mapeados sm
-                 LEFT JOIN setores_organizacionais so ON sm.setor_id = so.id
-                 LEFT JOIN estruturas_hierarquicas eh ON so.estrutura_id = eh.id
-                 LEFT JOIN empresas e ON sm.empresa_id = e.id
-                 LEFT JOIN sops s ON sm.id = s.servico_id
-                 LEFT JOIN servicos_detalhados sd ON sm.id = sd.servico_id
-                 WHERE sm.id = :id 
-                   AND sm.empresa_id = :empresa_id",
+                    ss.detalhamento_completo as detalhamento_json_raw
+                 FROM servicos_setor ss
+                 LEFT JOIN setores_empresa se ON ss.setor_id = se.id
+                 LEFT JOIN estruturas_organizacionais eo ON se.estrutura_id = eo.id
+                 LEFT JOIN empresas e ON ss.empresa_id = e.id
+                 WHERE ss.id = :id 
+                   AND ss.empresa_id = :empresa_id",
                 [
                     'id' => $servicoId,
                     'empresa_id' => Auth::empresa()
                 ]
             );
             
-            Logger::info('BUSCA COMPLETA EM servicos_mapeados', [
+            Logger::info('BUSCA EM servicos_setor', [
                 'encontrado' => !empty($servico),
                 'empresa_id' => Auth::empresa()
             ]);
             
-            // Se não encontrar em servicos_mapeados, tentar em servicos_detalhados
             if (!$servico) {
-                Logger::info('TENTANDO servicos_detalhados');
-                $servico = Database::queryOne(
-                    "SELECT 
-                        sd.*,
-                        so.nome_setor,
-                        so.tipo_setor,
-                        eh.nicho,
-                        e.nome as nome_empresa,
-                        s.id as sop_id,
-                        s.status as sop_status,
-                        s.criado_em as sop_gerado_em,
-                        sd.detalhamento as detalhamento_json_raw
-                     FROM servicos_detalhados sd
-                     LEFT JOIN setores_organizacionais so ON sd.setor_id = so.id
-                     LEFT JOIN estruturas_hierarquicas eh ON so.estrutura_id = eh.id
-                     LEFT JOIN empresas e ON sd.empresa_id = e.id
-                     LEFT JOIN sops s ON sd.servico_id = s.servico_id
-                     WHERE sd.id = :id 
-                       AND sd.empresa_id = :empresa_id",
-                    [
-                        'id' => $servicoId,
-                        'empresa_id' => Auth::empresa()
-                    ]
-                );
-                
-                Logger::info('BUSCA EM servicos_detalhados', [
-                    'encontrado' => !empty($servico)
-                ]);
-            }
-            
-            if (!$servico) {
-                Logger::warning('SERVIÇO NÃO ENCONTRADO EM NENHUMA TABELA', [
+                Logger::warning('SERVIÇO NÃO ENCONTRADO', [
                     'servico_id' => $servicoId,
                     'empresa_id' => Auth::empresa()
                 ]);
@@ -9831,7 +9907,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                 'detalhado_em' => null,
                 'sop_gerado_em' => null,
                 'atualizado_em' => null,
-                'diagnostico_id' => $servico['estrutura_id'] ?? 0
+                'diagnostico_id' => $servico['diagnostico_id'] ?? 0
             ], $servico);
             
             Logger::info('DADOS DO SERVIÇO PROCESSADOS', [
@@ -9844,9 +9920,9 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             
             Logger::info('BUSCANDO SOP RELACIONADO');
 
-            // Buscar SOP relacionado se existir
+            // Buscar SOP relacionado se existir (relação via servicos_setor.sop_id)
             $sop = null;
-            if ($servico['sop_id']) {
+            if (!empty($servico['sop_id'])) {
                 $sop = Database::queryOne(
                     "SELECT * FROM sops WHERE id = :sop_id AND empresa_id = :empresa_id",
                     [
@@ -9857,22 +9933,6 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                 
                 Logger::info('BUSCA DE SOP POR ID', [
                     'sop_id' => $servico['sop_id'],
-                    'sop_encontrado' => !empty($sop)
-                ]);
-            }
-            
-            // Se não encontrou pelo ID, tentar buscar por servico_id
-            if (!$sop) {
-                $sop = Database::queryOne(
-                    "SELECT * FROM sops WHERE servico_id = :servico_id AND empresa_id = :empresa_id",
-                    [
-                        'servico_id' => $servicoId,
-                        'empresa_id' => Auth::empresa()
-                    ]
-                );
-                
-                Logger::info('BUSCA DE SOP POR SERVICO_ID', [
-                    'servico_id' => $servicoId,
                     'sop_encontrado' => !empty($sop)
                 ]);
             }
