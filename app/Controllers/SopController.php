@@ -10086,6 +10086,83 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
     }
 
     /**
+     * CRUD — Excluir VÁRIOS serviços de uma vez (e os SOPs vinculados, se houver).
+     * Recebe 'servico_ids' como lista separada por vírgula ou array em POST.
+     */
+    public function excluirServicosEmLote(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        // Aceitar array (servico_ids[]) ou string separada por vírgula
+        $raw = $_POST['servico_ids'] ?? [];
+        if (is_string($raw)) {
+            $raw = explode(',', $raw);
+        }
+        $ids = array_values(array_unique(array_filter(array_map('intval', (array) $raw))));
+
+        if (empty($ids)) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Nenhum serviço informado.']);
+            exit;
+        }
+
+        $empresaUsuario = Auth::empresa();
+        $excluidos = 0;
+        $falhas = [];
+        $setoresAfetados = [];
+
+        try {
+            foreach ($ids as $servicoId) {
+                $servico = Database::queryOne("SELECT * FROM servicos_setor WHERE id = :id", ['id' => $servicoId]);
+                if (!$servico) {
+                    $falhas[] = ['id' => $servicoId, 'erro' => 'não encontrado'];
+                    continue;
+                }
+
+                // Permissão: ADMIN_HOLDING (empresa null) acessa tudo; outros só a própria empresa
+                if ($empresaUsuario !== null && (int) $servico['empresa_id'] !== (int) $empresaUsuario) {
+                    $falhas[] = ['id' => $servicoId, 'erro' => 'sem permissão'];
+                    continue;
+                }
+
+                if (!empty($servico['sop_id'])) {
+                    Database::execute("DELETE FROM sops WHERE id = ?", [$servico['sop_id']]);
+                }
+                Database::execute("DELETE FROM servicos_setor WHERE id = ?", [$servicoId]);
+
+                $setoresAfetados[$servico['setor_id']] = true;
+                $excluidos++;
+            }
+
+            // Atualizar contadores de cada setor afetado uma única vez
+            foreach (array_keys($setoresAfetados) as $setorId) {
+                Database::execute(
+                    "UPDATE setores_empresa SET total_servicos = (SELECT COUNT(*) FROM servicos_setor WHERE setor_id = ?) WHERE id = ?",
+                    [$setorId, $setorId]
+                );
+            }
+
+            Logger::info('EXCLUSÃO EM LOTE DE SERVIÇOS', [
+                'solicitados' => count($ids),
+                'excluidos' => $excluidos,
+                'falhas' => count($falhas)
+            ]);
+
+            echo json_encode([
+                'sucesso' => true,
+                'excluidos' => $excluidos,
+                'falhas' => $falhas,
+                'mensagem' => $excluidos . ' serviço(s) excluído(s) com sucesso!'
+            ]);
+        } catch (Exception $e) {
+            Logger::error('Erro ao excluir serviços em lote', ['erro' => $e->getMessage()]);
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
+        }
+        exit;
+    }
+
+    /**
      * Endpoint HTTP para processar UMA fase da fila (fallback quando não há cron).
      * O navegador chama isto repetidamente. Cada chamada faz apenas uma chamada
      * de IA, cabendo dentro do timeout do proxy.

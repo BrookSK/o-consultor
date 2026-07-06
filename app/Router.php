@@ -117,6 +117,7 @@ class Router
         $this->get('sop/ver-detalhes-servico', 'SopController', 'verDetalhesServico');           // Ver detalhes completos do serviço
         $this->post('sop/editar-servico-manual', 'SopController', 'editarServicoManual');        // Editar serviço
         $this->post('sop/excluir-servico', 'SopController', 'excluirServico');                   // Excluir serviço
+        $this->post('sop/excluir-servicos-lote', 'SopController', 'excluirServicosEmLote');      // Excluir vários serviços de uma vez
         
         $this->get('sop/ver', 'SopController', 'ver');
         $this->get('sop/debug-api', 'SopController', 'debugApiResponse'); // DEBUG TEMPORÁRIO

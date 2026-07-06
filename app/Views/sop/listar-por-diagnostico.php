@@ -59,7 +59,9 @@
 #sops-view .az-tag{font-size:11px;color:var(--sv-ink-mute);letter-spacing:0.03em;}
 #sops-view .stack{display:flex;flex-direction:column;gap:8px;padding-bottom:18px;}
 
-#sops-view .bar{display:grid;grid-template-columns:34px 116px 1fr auto auto auto;align-items:center;gap:14px;background:var(--sv-surface);border:1px solid var(--sv-line);border-left:3px solid var(--sv-lane);border-radius:10px;padding:11px 16px;transition:border-color .15s, background .15s;}
+#sops-view .bar{display:grid;grid-template-columns:18px 34px 116px 1fr auto auto auto;align-items:center;gap:14px;background:var(--sv-surface);border:1px solid var(--sv-line);border-left:3px solid var(--sv-lane);border-radius:10px;padding:11px 16px;transition:border-color .15s, background .15s;}
+#sops-view .bar .sv-check{width:16px;height:16px;cursor:pointer;accent-color:var(--sv-lane);margin:0;}
+#sops-view .bar.selected{border-color:var(--sv-lane);border-left-color:var(--sv-lane-deep);background:var(--sv-lane-soft);}
 #sops-view .bar:hover{border-color:var(--sv-lane);border-left-color:var(--sv-lane-deep);background:var(--sv-lane-soft);}
 #sops-view .letter{width:26px;height:26px;border-radius:8px;background:var(--sv-lane);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;}
 #sops-view .code{font-size:11px;color:var(--sv-ink-mute);white-space:nowrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}
@@ -80,9 +82,19 @@
 #sops-view .lane-empty{font-size:12.5px;color:var(--sv-ink-mute);padding:0 0 16px;}
 #sops-view .footer-note{text-align:center;font-size:12px;color:var(--sv-ink-mute);margin-top:20px;}
 
+#sops-view .bulk-bar{position:sticky;bottom:16px;z-index:20;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;background:var(--sv-surface);border:1px solid var(--sv-line);border-left:4px solid var(--sv-accent);border-radius:12px;padding:14px 20px;box-shadow:0 6px 20px rgba(23,27,51,0.12);margin-top:8px;}
+#sops-view .bulk-info{font-size:13.5px;color:var(--sv-ink-soft);}
+#sops-view .bulk-info strong{color:var(--sv-ink);}
+#sops-view .bulk-actions{display:flex;align-items:center;gap:10px;}
+#sops-view .bulk-clear{font-size:12.5px;font-weight:500;color:var(--sv-ink-soft);background:none;border:1px solid var(--sv-line);padding:8px 14px;border-radius:9px;cursor:pointer;}
+#sops-view .bulk-clear:hover{border-color:var(--sv-ink-mute);color:var(--sv-ink);}
+#sops-view .bulk-delete{font-size:12.5px;font-weight:600;color:#fff;background:#c0392b;border:1px solid #c0392b;padding:8px 16px;border-radius:9px;cursor:pointer;}
+#sops-view .bulk-delete:hover{background:#a93226;}
+
 @media (max-width:820px){
     #sops-view .stats{grid-template-columns:repeat(2,1fr);}
-    #sops-view .bar{grid-template-columns:28px 1fr auto;grid-template-areas:"letter code status" "letter title title" "letter tag actions";row-gap:6px;}
+    #sops-view .bar{grid-template-columns:18px 28px 1fr auto;grid-template-areas:"chk letter code status" "chk letter title title" "chk letter tag actions";row-gap:6px;}
+    #sops-view .bar .sv-check{grid-area:chk;align-self:start;margin-top:4px;}
     #sops-view .letter{grid-area:letter;}
     #sops-view .code{grid-area:code;}
     #sops-view .status{grid-area:status;justify-self:end;}
@@ -192,6 +204,7 @@
                             $temSop = ($servico['status_final'] ?? '') === 'sop_gerado';
                         ?>
                         <div class="bar">
+                            <input type="checkbox" class="sv-check" value="<?= $servico['id'] ?>" data-nome="<?= htmlspecialchars($nome, ENT_QUOTES) ?>" onclick="event.stopPropagation()" onchange="onToggleCheck(this)">
                             <div class="letter"><?= htmlspecialchars($letra) ?></div>
                             <span class="code"><?= htmlspecialchars($servico['codigo_servico'] ?? 'N/A') ?></span>
                             <span class="bar-title" onclick="acessarServico(<?= $servico['id'] ?>)"><?= htmlspecialchars($nome) ?></span>
@@ -225,6 +238,15 @@
         </div>
         </div>
         <?php endforeach; ?>
+
+        <!-- Barra de ações em massa -->
+        <div id="bulk-bar" class="bulk-bar" hidden>
+            <span class="bulk-info"><strong id="bulk-count">0</strong> serviço(s) selecionado(s)</span>
+            <div class="bulk-actions">
+                <button class="bulk-clear" onclick="limparSelecao()">Limpar seleção</button>
+                <button class="bulk-delete" onclick="excluirSelecionados()">🗑 Excluir selecionados</button>
+            </div>
+        </div>
 
         <p class="footer-note">Serviços empilhados verticalmente dentro de cada categoria, sempre em ordem alfabética (A → Z).</p>
 
@@ -333,6 +355,61 @@ function toggleSetor(head) {
     const wrap = head.nextElementSibling; // .lanes-wrap
     const colapsado = head.classList.toggle('collapsed');
     if (wrap) wrap.hidden = colapsado;
+}
+
+// ---- Seleção múltipla (persiste ao recolher, pois os checkboxes ficam no DOM) ----
+const selecionados = new Map(); // id -> nome
+
+function onToggleCheck(cb) {
+    const id = cb.value;
+    if (cb.checked) {
+        selecionados.set(id, cb.dataset.nome || ('#' + id));
+    } else {
+        selecionados.delete(id);
+    }
+    cb.closest('.bar')?.classList.toggle('selected', cb.checked);
+    atualizarBulkBar();
+}
+
+function atualizarBulkBar() {
+    const bar = document.getElementById('bulk-bar');
+    const count = document.getElementById('bulk-count');
+    if (count) count.textContent = selecionados.size;
+    if (bar) bar.hidden = selecionados.size === 0;
+}
+
+function limparSelecao() {
+    selecionados.clear();
+    document.querySelectorAll('#sops-view .sv-check').forEach(cb => {
+        cb.checked = false;
+        cb.closest('.bar')?.classList.remove('selected');
+    });
+    atualizarBulkBar();
+}
+
+async function excluirSelecionados() {
+    const ids = Array.from(selecionados.keys());
+    if (ids.length === 0) return;
+    if (!confirm('Excluir ' + ids.length + ' serviço(s) selecionado(s)? Esta ação não pode ser desfeita.')) return;
+
+    const btn = document.querySelector('#bulk-bar .bulk-delete');
+    if (btn) { btn.disabled = true; btn.textContent = 'Excluindo...'; }
+
+    try {
+        const body = new URLSearchParams({ servico_ids: ids.join(','), csrf_token: CSRF_TOKEN });
+        const r = await fetch('<?= APP_URL ?>/sop/excluir-servicos-lote', { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body });
+        const d = await r.json();
+        if (d.sucesso) {
+            if (d.falhas && d.falhas.length > 0) alert(d.falhas.length + ' serviço(s) não puderam ser excluídos.');
+            location.reload();
+        } else {
+            alert('Erro: ' + (d.erro || 'desconhecido'));
+            if (btn) { btn.disabled = false; btn.textContent = '🗑 Excluir selecionados'; }
+        }
+    } catch (e) {
+        alert('Erro de comunicação com o servidor.');
+        if (btn) { btn.disabled = false; btn.textContent = '🗑 Excluir selecionados'; }
+    }
 }
 
 // Acessar o serviço: abre a página de detalhes (ver/gerar SOP inline)
