@@ -10864,10 +10864,20 @@ Este NÃO é um manual de atendimento ao cliente. Foque em ADVERSIDADES REAIS QU
 - Retrabalho, não-conformidade detectada, resultado fora da tolerância técnica.
 - Dependência de terceiros ou de aprovação que trava o andamento.
 
+# POSTURA TÁTICA (ESSENCIAL — DÊ 'MALÍCIA' PROFISSIONAL)
+Não basta ser um guia técnico: seja um MANUAL TÁTICO de como agir com inteligência de campo. Cada solução deve ensinar o profissional a ser assertivo, eficiente, seguro e discreto, fazendo um 'serviço limpo' e sempre jogando estrategicamente a favor da segurança e do progresso do serviço. Incorpore, quando fizer sentido:
+- JOGO DE CINTURA E ANTECIPAÇÃO: como se antecipar ao problema antes de ele estourar, ter plano B pronto e nunca ficar refém de um único fornecedor/recurso/decisão.
+- PROTEÇÃO E RESPALDO: como registrar/documentar tudo para se resguardar (fotos, medições, prints, e-mails, aceite por escrito), transferindo o ônus para quem causou o atraso/erro sem criar atrito desnecessário.
+- ASSERTIVIDADE ESTRATÉGICA: como cobrar terceiros/fornecedores com firmeza e profissionalismo, criando urgência real (prazos, escalonamento, alternativas visíveis) sem queimar a relação nem parar o serviço.
+- PRESERVAR O PROGRESSO: como manter o serviço avançando em paralelo enquanto o problema é resolvido (reordenar etapas, adiantar o que não depende do bloqueio), nunca deixar a equipe/serviço parado à toa.
+- SEGURANÇA PRIMEIRO: quando a jogada certa é PARAR (risco à segurança, risco de comprometer o resultado) em vez de improvisar — deixe claro esse limite.
+- DISCRIÇÃO E POSTURA: resolver com o mínimo de exposição e ruído, mantendo a imagem profissional intacta.
+Tudo sempre dentro da ética, da legalidade e das normas técnicas — 'malícia' aqui significa esperteza tática e proteção profissional, nunca desonestidade.
+
 # TAREFA
-Gere de 4 a 6 cenários de adversidade TÉCNICA reais que podem ocorrer durante a EXECUÇÃO deste serviço nesta empresa, e como resolver cada um de forma prática e técnica.
+Gere de 4 a 6 cenários de adversidade TÉCNICA reais que podem ocorrer durante a EXECUÇÃO deste serviço nesta empresa, e como resolver cada um de forma prática, técnica E TÁTICA.
 Inclua também de 3 a 4 procedimentos objetivos para problemas específicos recorrentes.
-Seja prático, técnico e direto. Use terminologia genérica. NUNCA mencione marcas comerciais.
+Seja prático, técnico, direto e estrategicamente esperto. Use terminologia genérica. NUNCA mencione marcas comerciais.
 
 # FORMATO (JSON):
 ```json
@@ -10878,15 +10888,15 @@ Seja prático, técnico e direto. Use terminologia genérica. NUNCA mencione mar
         \"tipo_crise\": \"CATEGORIA TÉCNICA (ex: FALHA TÉCNICA, FORNECEDOR, MATERIAL/INSUMO, PRAZO, NÃO-CONFORMIDADE, EQUIPAMENTO)\",
         \"situacao_especifica\": \"Descrição clara do problema técnico que ocorre durante a execução\",
         \"sinais_identificacao\": [\"Sinal técnico 1 de que o problema está ocorrendo\", \"Sinal técnico 2\"],
-        \"acao_imediata_contencao\": \"O que fazer tecnicamente de imediato para conter/contornar e não travar o serviço (passos práticos)\",
-        \"tecnicas_desescalacao\": \"Solução técnica ou plano B para resolver o problema (ex: método alternativo, substituição de insumo, fornecedor reserva, ajuste do parâmetro)\",
-        \"quando_escalar\": \"Critério técnico claro de quando parar/escalar e para quem (ex: responsável técnico, engenharia, gestor), e o que documentar\"
+        \"acao_imediata_contencao\": \"A jogada imediata: o que fazer tecnicamente AGORA para conter/contornar sem travar o serviço, o que registrar na hora para se respaldar, e como manter o progresso em paralelo (passos práticos e táticos)\",
+        \"tecnicas_desescalacao\": \"A estratégia de resolução: plano B técnico (método alternativo, substituição de insumo, fornecedor reserva, ajuste de parâmetro) + a jogada de cintura para cobrar/pressionar quem falhou com firmeza e profissionalismo, criar urgência real e proteger o serviço e a própria imagem\",
+        \"quando_escalar\": \"O limite: critério técnico claro de quando insistir, quando parar por segurança e quando escalar (para quem), sempre com o que documentar para transferir o ônus a quem causou o problema\"
       }
     ],
     \"scripts_situacoes_especificas\": {
-      \"falha_tecnica_execucao\": \"Procedimento objetivo, passo a passo, para diagnosticar e corrigir uma falha técnica comum durante a execução deste serviço\",
-      \"fornecedor_nao_responde\": \"Procedimento para quando um fornecedor/terceiro atrasa, não responde ou some: como contornar tecnicamente, acionar alternativa e manter o serviço andando\",
-      \"material_insumo_indisponivel\": \"Procedimento para falta de material/peça/insumo/ferramenta no meio da execução: substituição técnica válida, contenção e como retomar\"
+      \"falha_tecnica_execucao\": \"Procedimento tático passo a passo para diagnosticar e corrigir uma falha técnica comum durante a execução: como isolar a causa rápido, corrigir com segurança, evitar retrabalho e registrar para respaldo\",
+      \"fornecedor_nao_responde\": \"Jogada completa para fornecedor/terceiro que atrasa, some ou entrega errado: como cobrar com firmeza criando urgência e paper trail, acionar alternativa já pronta, contornar tecnicamente e manter o serviço andando sem virar refém\",
+      \"material_insumo_indisponivel\": \"Procedimento tático para falta de material/peça/insumo/ferramenta no meio da execução: substituição técnica válida e segura, o que adiantar em paralelo, contenção e como retomar sem comprometer o resultado\"
     }
   },
   \"matriz_riscos_servico\": [
