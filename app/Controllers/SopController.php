@@ -10717,7 +10717,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         $nomeSetor = $servico['nome_setor'];
         $contextoEmpresa = $this->montarContextoEmpresa($empresa, $diagnostico);
 
-        return "Você é um especialista em processos empresariais. Gere o RESUMO INICIAL de um SOP (Procedimento Operacional Padrão).
+        return "Você é um engenheiro de processos e redator técnico. Gere o RESUMO INICIAL de um SOP (Procedimento Operacional Padrão) com foco TÉCNICO na EXECUÇÃO do serviço.
 
 {$contextoEmpresa}
 
@@ -10725,25 +10725,28 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
 - Setor: {$nomeSetor}
 - Serviço: {$nomeServico}
 
+# FOCO DO CONTEÚDO (MUITO IMPORTANTE)
+Este é um MANUAL TÉCNICO DE COMO EXECUTAR O SERVIÇO, e NÃO um manual de atendimento ao cliente (isso é tratado em outro setor). O objetivo/escopo/pré-requisitos/recursos devem tratar da EXECUÇÃO TÉCNICA: como o serviço é feito, o que é necessário para executá-lo com qualidade e segurança, e o resultado técnico esperado.
+
 # TAREFA
-Gere APENAS o cabeçalho/resumo deste SOP, PERSONALIZADO ao perfil da empresa acima. Seja objetivo e profissional. NÃO gere os procedimentos passo a passo (isso será feito depois).
+Gere APENAS o cabeçalho/resumo deste SOP, PERSONALIZADO ao serviço e ao perfil da empresa acima. Seja objetivo, técnico e profissional. NÃO gere os procedimentos passo a passo (isso será feito depois).
 
 Use SEMPRE terminologia genérica. NUNCA mencione marcas comerciais (ex: use 'ferramenta de gestão' em vez de nome de produto).
 
 # FORMATO DA RESPOSTA (JSON):
 ```json
 {
-  \"objetivo\": \"Objetivo claro e específico deste serviço (2-3 frases)\",
-  \"escopo\": \"O que está incluído e o que não está no escopo deste procedimento\",
-  \"resumo_executivo\": \"Resumo executivo de 3-4 frases explicando a importância e visão geral do serviço\",
+  \"objetivo\": \"Objetivo técnico claro e específico da execução deste serviço e o resultado técnico que ele deve entregar (2-3 frases)\",
+  \"escopo\": \"O que a execução deste serviço inclui e o que NÃO inclui (deixe claro que o atendimento/relacionamento com o cliente não faz parte deste SOP técnico)\",
+  \"resumo_executivo\": \"Resumo técnico de 3-4 frases explicando em que consiste tecnicamente o serviço e sua importância\",
   \"responsaveis\": {
-    \"executor_principal\": \"Cargo do executor principal\",
-    \"supervisor\": \"Cargo do supervisor\",
-    \"aprovador\": \"Cargo do aprovador final\"
+    \"executor_principal\": \"Cargo/função técnica que executa o serviço\",
+    \"supervisor\": \"Cargo que supervisiona tecnicamente\",
+    \"aprovador\": \"Cargo que valida/aprova tecnicamente a entrega\"
   },
-  \"competencias_requeridas\": [\"Competência 1\", \"Competência 2\", \"Competência 3\"],
-  \"pre_requisitos\": [\"Pré-requisito 1\", \"Pré-requisito 2\"],
-  \"recursos_necessarios\": [\"Recurso 1\", \"Recurso 2\", \"Recurso 3\"]
+  \"competencias_requeridas\": [\"Competência técnica 1\", \"Competência técnica 2\", \"Competência técnica 3\"],
+  \"pre_requisitos\": [\"Pré-requisito técnico para iniciar (condição, habilitação, verificação)\", \"Pré-requisito técnico 2\"],
+  \"recursos_necessarios\": [\"Ferramenta/equipamento/instrumento necessário\", \"Material/insumo necessário\", \"Recurso técnico 3\"]
 }
 ```
 
@@ -10756,12 +10759,12 @@ Responda APENAS com o JSON válido, sem explicações adicionais.";
     private function getFaseOperacionalInfo(int $indice): array
     {
         $fases = [
-            1 => ['nome' => 'Preparação Operacional Inicial', 'foco' => 'preparação, verificações prévias, organização de recursos, ferramentas e ambiente antes de iniciar a execução'],
-            2 => ['nome' => 'Primeiro Contato e Abertura', 'foco' => 'abordagem inicial, primeiro contato com o cliente/demanda, apresentação, quebra-gelo e roteiro completo de abertura da conversa'],
-            3 => ['nome' => 'Levantamento e Diagnóstico', 'foco' => 'coleta de informações, perguntas de qualificação, entendimento da necessidade e roteiro completo de perguntas com ramificações'],
-            4 => ['nome' => 'Execução Principal', 'foco' => 'execução central do serviço, condução da solução, apresentação de propostas/ações e roteiro de negociação/condução'],
-            5 => ['nome' => 'Controle, Validação e Objeções', 'foco' => 'pontos de controle, validações de qualidade, tratamento de dúvidas e objeções com respostas prontas'],
-            6 => ['nome' => 'Finalização e Pós-execução', 'foco' => 'encerramento, confirmação de entrega, registros finais, follow-up, roteiro de despedida e acompanhamento pós-serviço'],
+            1 => ['nome' => 'Preparação e Requisitos Técnicos', 'foco' => 'verificação de pré-requisitos técnicos, materiais, insumos, ferramentas, equipamentos, condições do ambiente e documentação necessária antes de iniciar a execução; conferência de que tudo está apto para começar o serviço com segurança e qualidade'],
+            2 => ['nome' => 'Diagnóstico e Planejamento Técnico', 'foco' => 'levantamento técnico do que precisa ser feito, inspeção/medições iniciais, avaliação do escopo real, definição do método de execução, sequência de trabalho, parâmetros técnicos e critérios que serão seguidos'],
+            3 => ['nome' => 'Execução Técnica — Etapas Iniciais', 'foco' => 'início efetivo da execução do serviço: primeiras etapas técnicas, montagem/preparo, configurações iniciais, com parâmetros exatos, medidas, especificações técnicas e pontos de conferência'],
+            4 => ['nome' => 'Execução Técnica — Etapas Principais', 'foco' => 'núcleo técnico do serviço: os procedimentos centrais que entregam o resultado, com especificações técnicas exatas, tolerâncias, parâmetros, sequência correta e critérios técnicos de cada operação'],
+            5 => ['nome' => 'Controle de Qualidade e Validação Técnica', 'foco' => 'testes, medições, inspeções, critérios técnicos de aceitação, verificação de conformidade com a especificação e correção de não-conformidades técnicas identificadas'],
+            6 => ['nome' => 'Finalização, Entrega e Encerramento Técnico', 'foco' => 'acabamento, limpeza, organização, testes finais, documentação técnica do que foi feito, registros, garantia/recomendações de manutenção e entrega técnica formal do serviço'],
         ];
         return $fases[$indice] ?? $fases[1];
     }
@@ -10779,7 +10782,7 @@ Responda APENAS com o JSON válido, sem explicações adicionais.";
         $focoFase = $info['foco'];
         $contextoEmpresa = $this->montarContextoEmpresa($empresa, $diagnostico);
 
-        return "Você é especialista em processos operacionais e roteiros de atendimento. Gere UMA fase de procedimento operacional em MÁXIMA PROFUNDIDADE para um SOP de treinamento.
+        return "Você é um engenheiro de processos e redator técnico especializado em MANUAIS TÉCNICOS DE EXECUÇÃO DE SERVIÇO. Gere UMA fase de procedimento técnico em MÁXIMA PROFUNDIDADE para um SOP que ensina o colaborador a EXECUTAR o serviço com assertividade, do início ao fim.
 
 {$contextoEmpresa}
 
@@ -10787,49 +10790,46 @@ Responda APENAS com o JSON válido, sem explicações adicionais.";
 - Setor: {$nomeSetor}
 - Serviço: {$nomeServico}
 
+# FOCO DO CONTEÚDO (MUITO IMPORTANTE)
+Este é um MANUAL TÉCNICO DE COMO EXECUTAR O SERVIÇO, e NÃO um manual de atendimento ao cliente. O atendimento ao cliente é tratado em outro setor. Portanto:
+- FOQUE em COMO FAZER o serviço tecnicamente: o passo a passo da execução, o método correto, a ordem das operações, os parâmetros técnicos, as medidas, as especificações, as ferramentas/equipamentos e as verificações técnicas.
+- Explique QUANDO fazer cada coisa, QUAIS os critérios técnicos de cada etapa e COMO saber que a etapa foi feita corretamente.
+- EVITE roteiros de conversa/vendas/relacionamento com o cliente. Só mencione comunicação quando for estritamente técnica e necessária (ex.: confirmar com o responsável uma especificação técnica, registrar um dado obrigatório, alinhar com fornecedor um requisito técnico).
+
 # TAREFA
-Gere APENAS a fase operacional: **\"{$nomeFase}\"**, TOTALMENTE PERSONALIZADA ao perfil da empresa acima.
+Gere APENAS a fase técnica: **\"{$nomeFase}\"**, TOTALMENTE PERSONALIZADA ao serviço e ao perfil da empresa acima.
 Foco desta fase: {$focoFase}.
 
-Esta fase deve conter EXATAMENTE de 3 a 4 passos operacionais. Gere POUCOS passos, porém cada um EXTREMAMENTE completo. O objetivo é qualidade e profundidade, não quantidade. Use terminologia genérica. NUNCA mencione marcas comerciais.
+Esta fase deve conter EXATAMENTE de 3 a 4 passos técnicos. Gere POUCOS passos, porém cada um EXTREMAMENTE completo e assertivo. O objetivo é que um colaborador consiga executar seguindo o texto, sem dúvidas. Use terminologia genérica. NUNCA mencione marcas comerciais.
 
-## REGRA MAIS IMPORTANTE — SCRIPT = ROTEIRO DE CONVERSA COMPLETO (ÁRVORE DE DECISÃO):
-O campo \"scripts_operacionais_completos\" é a parte MAIS importante. Ele NÃO pode ser apenas a mensagem inicial. Deve ser o ROTEIRO COMPLETO da conversa, do 'olá' até a despedida, ensinando o colaborador a conduzir TODAS as possibilidades de diálogo. Sempre que o passo envolver comunicação (cliente, colega, fornecedor, equipe), escreva no formato de ÁRVORE DE DECISÃO passo a passo:
+## REGRA MAIS IMPORTANTE — CADA PASSO = INSTRUÇÃO TÉCNICA EXECUTÁVEL:
+O campo \"detalhamento_operacional_completo\" é a parte MAIS importante e deve ser um GUIA TÉCNICO passo a passo (150-250 palavras), no formato de sequência numerada, ensinando exatamente COMO executar:
+1. O que preparar/verificar imediatamente antes desta ação.
+2. A sequência EXATA de operações técnicas (passo 1, 2, 3...), com os parâmetros concretos (medidas, quantidades, tempos, temperaturas, tolerâncias, configurações, unidades — o que fizer sentido para este serviço).
+3. Os critérios técnicos que definem a execução correta e como conferir cada um.
+4. O que registrar/documentar e como.
+Seja concreto e específico ao serviço. Nada de frases genéricas vazias.
 
-1. **ABERTURA** — 'Você diz: \"...\"' (saudação + identificação + motivo do contato, texto exato).
-2. **PERGUNTA 1** — 'Você pergunta: \"...\"'
-   - 'SE o cliente responder [cenário A], você diz: \"...\" e prossegue para...'
-   - 'SE responder [cenário B], você diz: \"...\" e prossegue para...'
-   - 'SE responder [cenário C / não sabe / recusa], você diz: \"...\"'
-3. **PERGUNTA 2 (e seguintes)** — repita a estrutura, sempre com as ramificações (o que dizer em cada resposta possível).
-4. **OBJEÇÕES E SITUAÇÕES DIFÍCEIS** — liste as objeções/dúvidas mais comuns e a resposta EXATA para cada uma ('Se o cliente disser que está caro, responda: \"...\"').
-5. **CONFIRMAÇÃO** — 'Você confirma o entendimento dizendo: \"...\"'
-6. **FECHAMENTO** — 'Para encerrar, você diz: \"...\"' (próximos passos + despedida).
-
-Regras do script:
-- MÍNIMO de 300 palavras por script quando houver comunicação.
-- Cada pergunta DEVE ter suas ramificações (o que fazer/dizer em cada resposta possível). NUNCA deixe uma pergunta sem descrever os caminhos após ela.
-- Use frases prontas e completas, entre aspas, prontas para o colaborador ler e usar.
-- Se o passo for puramente técnico (sem interação humana), liste os comandos/ações exatas em sequência numerada.
+O campo \"scripts_operacionais_completos\" NÃO é um roteiro de conversa. Use-o para o DETALHE TÉCNICO OPERACIONAL do passo: a lista de comandos/ações exatas em sequência numerada, especificações, valores de referência, checklist de execução técnica ou fórmulas/parâmetros. Se houver comunicação estritamente técnica necessária, registre apenas a informação técnica que deve ser trocada (não roteiro de relacionamento).
 
 # FORMATO (JSON):
 ```json
 {
   \"fase\": \"{$nomeFase}\",
-  \"descricao_operacional\": \"Descrição detalhada da importância e objetivo desta fase (2-3 frases)\",
+  \"descricao_operacional\": \"Descrição técnica da importância e objetivo desta fase e do resultado técnico esperado ao final dela (2-3 frases)\",
   \"passos_operacionais_detalhados\": [
     {
       \"passo\": 1,
-      \"acao_operacional\": \"Título claro e específico da ação\",
-      \"detalhamento_operacional_completo\": \"Como executar em detalhes (120-200 palavras): o que fazer, ferramentas, validações, registros, ordem exata das ações.\",
-      \"responsavel_operacional\": \"Cargo responsável\",
-      \"tempo_operacional_estimado\": \"Tempo estimado\",
-      \"criterios_qualidade_operacionais\": \"Critérios de qualidade mensuráveis (mínimo 3)\",
-      \"scripts_operacionais_completos\": \"ROTEIRO DE CONVERSA COMPLETO em árvore de decisão (MÍNIMO 300 palavras se houver comunicação): Abertura, cada Pergunta com TODAS as ramificações ('Se responder X, diga: ...'), Objeções comuns com respostas exatas, Confirmação e Fechamento. Se técnico, comandos/ações exatas numeradas.\",
-      \"metodologias_operacionais\": \"Técnicas ou frameworks aplicáveis a este passo\",
-      \"validacoes_operacionais\": \"Checklist de validação do passo (mínimo 3 itens)\",
-      \"ferramentas_operacionais\": \"Ferramentas e sistemas usados\",
-      \"observacoes_operacionais\": \"Dicas, armadilhas comuns e boas práticas\"
+      \"acao_operacional\": \"Título técnico claro e específico da operação\",
+      \"detalhamento_operacional_completo\": \"GUIA TÉCNICO EXECUTÁVEL (150-250 palavras) em sequência numerada: o que verificar antes, as operações técnicas na ordem exata com parâmetros concretos (medidas, tempos, quantidades, tolerâncias, configurações), critérios técnicos de execução correta e o que registrar.\",
+      \"responsavel_operacional\": \"Cargo/função técnica responsável pela execução\",
+      \"tempo_operacional_estimado\": \"Tempo estimado de execução\",
+      \"criterios_qualidade_operacionais\": \"Critérios TÉCNICOS de qualidade/aceitação mensuráveis desta operação (mínimo 3, com valores/limites quando aplicável)\",
+      \"scripts_operacionais_completos\": \"DETALHE TÉCNICO OPERACIONAL: comandos/ações exatas em sequência numerada, especificações, valores de referência, parâmetros ou checklist técnico de execução. NÃO é roteiro de conversa.\",
+      \"metodologias_operacionais\": \"Normas técnicas, métodos, técnicas ou boas práticas de execução aplicáveis a este passo\",
+      \"validacoes_operacionais\": \"Checklist de verificação técnica do passo (mínimo 3 itens objetivos e conferíveis)\",
+      \"ferramentas_operacionais\": \"Ferramentas, equipamentos, instrumentos de medição, insumos e materiais usados\",
+      \"observacoes_operacionais\": \"Erros técnicos comuns nesta etapa, riscos, pontos de segurança e boas práticas para evitar retrabalho\"
     }
   ]
 }
@@ -10848,7 +10848,7 @@ Responda APENAS com o JSON válido desta única fase.";
         $nomeSetor = $servico['nome_setor'];
         $contextoEmpresa = $this->montarContextoEmpresa($empresa, $diagnostico);
 
-        return "Você é especialista em gestão de crises operacionais. Gere a seção de SITUAÇÕES CRÍTICAS e PROBLEMAS DE ROTINA para um SOP.
+        return "Você é um engenheiro de processos especializado em RESOLUÇÃO DE PROBLEMAS TÉCNICOS durante a execução de serviços. Gere a seção de ADVERSIDADES TÉCNICAS e PROBLEMAS DE EXECUÇÃO para um SOP técnico.
 
 {$contextoEmpresa}
 
@@ -10856,10 +10856,18 @@ Responda APENAS com o JSON válido desta única fase.";
 - Setor: {$nomeSetor}
 - Serviço: {$nomeServico}
 
+# FOCO DO CONTEÚDO (MUITO IMPORTANTE)
+Este NÃO é um manual de atendimento ao cliente. Foque em ADVERSIDADES REAIS QUE ATRAPALHAM A EXECUÇÃO TÉCNICA do serviço e como resolvê-las tecnicamente. Exemplos do tipo de problema a cobrir (adapte ao serviço específico):
+- Problemas técnicos comuns durante a execução (falhas, defeitos, medidas fora do padrão, material/insumo inadequado, equipamento com defeito, condição do ambiente inadequada, imprevisto técnico no meio do serviço).
+- Fornecedores/terceiros que não respondem, atrasam, somem ou entregam item errado/fora de especificação — e como contornar sem parar o serviço.
+- Ausência ou falta de um material/peça/insumo/ferramenta necessária no meio da execução.
+- Retrabalho, não-conformidade detectada, resultado fora da tolerância técnica.
+- Dependência de terceiros ou de aprovação que trava o andamento.
+
 # TAREFA
-Gere de 4 a 6 cenários críticos/problemas reais que podem ocorrer neste serviço nesta empresa específica, e como lidar com cada um.
-Inclua também de 3 a 4 scripts práticos para situações difíceis (cliente irritado, erro grave, prazo estourado, etc.).
-Seja prático e direto. Use terminologia genérica. NUNCA mencione marcas comerciais.
+Gere de 4 a 6 cenários de adversidade TÉCNICA reais que podem ocorrer durante a EXECUÇÃO deste serviço nesta empresa, e como resolver cada um de forma prática e técnica.
+Inclua também de 3 a 4 procedimentos objetivos para problemas específicos recorrentes.
+Seja prático, técnico e direto. Use terminologia genérica. NUNCA mencione marcas comerciais.
 
 # FORMATO (JSON):
 ```json
@@ -10867,26 +10875,26 @@ Seja prático e direto. Use terminologia genérica. NUNCA mencione marcas comerc
   \"gestao_situacoes_criticas\": {
     \"cenarios_criticos_detalhados\": [
       {
-        \"tipo_crise\": \"CATEGORIA (ex: OPERACIONAL, CLIENTE, PRAZO)\",
-        \"situacao_especifica\": \"Descrição clara do problema/cenário crítico\",
-        \"sinais_identificacao\": [\"Sinal 1 de que o problema está ocorrendo\", \"Sinal 2\"],
-        \"acao_imediata_contencao\": \"O que fazer imediatamente para conter (2-3 frases práticas)\",
-        \"tecnicas_desescalacao\": \"Técnicas para acalmar/resolver a situação\",
-        \"quando_escalar\": \"Critério claro de quando e para quem escalar\"
+        \"tipo_crise\": \"CATEGORIA TÉCNICA (ex: FALHA TÉCNICA, FORNECEDOR, MATERIAL/INSUMO, PRAZO, NÃO-CONFORMIDADE, EQUIPAMENTO)\",
+        \"situacao_especifica\": \"Descrição clara do problema técnico que ocorre durante a execução\",
+        \"sinais_identificacao\": [\"Sinal técnico 1 de que o problema está ocorrendo\", \"Sinal técnico 2\"],
+        \"acao_imediata_contencao\": \"O que fazer tecnicamente de imediato para conter/contornar e não travar o serviço (passos práticos)\",
+        \"tecnicas_desescalacao\": \"Solução técnica ou plano B para resolver o problema (ex: método alternativo, substituição de insumo, fornecedor reserva, ajuste do parâmetro)\",
+        \"quando_escalar\": \"Critério técnico claro de quando parar/escalar e para quem (ex: responsável técnico, engenharia, gestor), e o que documentar\"
       }
     ],
     \"scripts_situacoes_especificas\": {
-      \"cliente_insatisfeito\": \"Script word-by-word para lidar com cliente insatisfeito neste serviço\",
-      \"erro_no_processo\": \"Script para comunicar e corrigir um erro no processo\",
-      \"prazo_comprometido\": \"Script para comunicar atraso e negociar novo prazo\"
+      \"falha_tecnica_execucao\": \"Procedimento objetivo, passo a passo, para diagnosticar e corrigir uma falha técnica comum durante a execução deste serviço\",
+      \"fornecedor_nao_responde\": \"Procedimento para quando um fornecedor/terceiro atrasa, não responde ou some: como contornar tecnicamente, acionar alternativa e manter o serviço andando\",
+      \"material_insumo_indisponivel\": \"Procedimento para falta de material/peça/insumo/ferramenta no meio da execução: substituição técnica válida, contenção e como retomar\"
     }
   },
   \"matriz_riscos_servico\": [
     {
-      \"risco_identificado\": \"Risco específico deste serviço\",
+      \"risco_identificado\": \"Risco técnico específico deste serviço\",
       \"probabilidade\": \"Alta/Média/Baixa\",
       \"impacto\": \"Alto/Médio/Baixo\",
-      \"acoes_preventivas\": [\"Ação preventiva 1\", \"Ação preventiva 2\"]
+      \"acoes_preventivas\": [\"Ação preventiva técnica 1\", \"Ação preventiva técnica 2\"]
     }
   ]
 }

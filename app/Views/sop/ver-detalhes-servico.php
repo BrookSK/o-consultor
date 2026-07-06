@@ -248,8 +248,8 @@ if (!function_exists('sopTexto')) {
 
     <!-- Procedimentos operacionais -->
     <?php if (!empty($data['procedimentos'])): ?>
-    <div class="section-title"><span class="badge">▤</span><h2>Procedimentos operacionais</h2></div>
-    <p class="section-sub">Fases sequenciais do procedimento operacional padrão.</p>
+    <div class="section-title"><span class="badge">▤</span><h2>Procedimento técnico de execução</h2></div>
+    <p class="section-sub">Etapas técnicas sequenciais que guiam a execução do serviço do início ao fim, com parâmetros e critérios técnicos.</p>
 
     <?php foreach ($data['procedimentos'] as $faseIndex => $fase): ?>
         <?php
@@ -347,11 +347,11 @@ if (!function_exists('sopTexto')) {
         $scriptsDificeis = $data['gestao_situacoes_fora_controle']['scripts_situacoes_dificeis'] ?? [];
     ?>
     <?php if (!empty($cenarios) || !empty($scriptsDificeis)): ?>
-    <div class="section-title crit"><span class="badge">⚠</span><h2>Gestão de situações críticas</h2></div>
-    <p class="section-sub">Cenários críticos e protocolos de emergência para atendimentos fora do fluxo padrão.</p>
+    <div class="section-title crit"><span class="badge">⚠</span><h2>Adversidades técnicas e problemas de execução</h2></div>
+    <p class="section-sub">Problemas técnicos comuns durante o serviço, fornecedores/terceiros que falham e como resolver ou contornar cada situação.</p>
 
     <div class="crit-wrap">
-        <div class="crit-banner">⚠ Cenários críticos e protocolos de emergência</div>
+        <div class="crit-banner">⚠ Adversidades técnicas e planos de contingência</div>
         <div class="crit-body">
             <?php if (!empty($cenarios)): ?>
             <div class="scenario-grid">
@@ -399,7 +399,7 @@ if (!function_exists('sopTexto')) {
             </div>
             <?php endif; ?>
 
-            <div class="contain-note"><b>Ponto de contenção:</b> registre toda escalação crítica no sistema de gestão antes de encerrar o atendimento, mesmo quando resolvida na hora.</div>
+            <div class="contain-note"><b>Ponto de contenção:</b> registre toda adversidade técnica e a solução aplicada no sistema de gestão antes de encerrar o serviço, mesmo quando resolvida na hora — isso alimenta a melhoria contínua e evita retrabalho futuro.</div>
         </div>
     </div>
     <?php endif; ?>
