@@ -10726,7 +10726,9 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
 - Serviço: {$nomeServico}
 
 # FOCO DO CONTEÚDO (MUITO IMPORTANTE)
-Este é um MANUAL TÉCNICO DE COMO EXECUTAR O SERVIÇO, e NÃO um manual de atendimento ao cliente (isso é tratado em outro setor). O objetivo/escopo/pré-requisitos/recursos devem tratar da EXECUÇÃO TÉCNICA: como o serviço é feito, o que é necessário para executá-lo com qualidade e segurança, e o resultado técnico esperado.
+Este é um MANUAL TÉCNICO DE COMO EXECUTAR O SERVIÇO, e NÃO um manual de atendimento ao cliente (isso é tratado em outro setor). O objetivo/escopo/pré-requisitos/recursos devem tratar da SUBSTÂNCIA REAL da execução: como o serviço é feito bem-feito, o que de fato importa para entregá-lo com qualidade, e o resultado esperado.
+
+REGRA ANTI-TRIVIALIDADE: foque no que realmente diferencia um bom profissional. NÃO liste itens óbvios/triviais (ex.: 'ter internet', 'ter computador', 'saber ligar o sistema'). Pré-requisitos e recursos devem ser os que realmente condicionam a QUALIDADE do serviço (ex.: acesso às informações certas, competência específica, dados/base atualizados), não obviedades.
 
 # TAREFA
 Gere APENAS o cabeçalho/resumo deste SOP, PERSONALIZADO ao serviço e ao perfil da empresa acima. Seja objetivo, técnico e profissional. NÃO gere os procedimentos passo a passo (isso será feito depois).
@@ -10759,12 +10761,12 @@ Responda APENAS com o JSON válido, sem explicações adicionais.";
     private function getFaseOperacionalInfo(int $indice): array
     {
         $fases = [
-            1 => ['nome' => 'Preparação e Requisitos Técnicos', 'foco' => 'verificação de pré-requisitos técnicos, materiais, insumos, ferramentas, equipamentos, condições do ambiente e documentação necessária antes de iniciar a execução; conferência de que tudo está apto para começar o serviço com segurança e qualidade'],
-            2 => ['nome' => 'Diagnóstico e Planejamento Técnico', 'foco' => 'levantamento técnico do que precisa ser feito, inspeção/medições iniciais, avaliação do escopo real, definição do método de execução, sequência de trabalho, parâmetros técnicos e critérios que serão seguidos'],
-            3 => ['nome' => 'Execução Técnica — Etapas Iniciais', 'foco' => 'início efetivo da execução do serviço: primeiras etapas técnicas, montagem/preparo, configurações iniciais, com parâmetros exatos, medidas, especificações técnicas e pontos de conferência'],
-            4 => ['nome' => 'Execução Técnica — Etapas Principais', 'foco' => 'núcleo técnico do serviço: os procedimentos centrais que entregam o resultado, com especificações técnicas exatas, tolerâncias, parâmetros, sequência correta e critérios técnicos de cada operação'],
-            5 => ['nome' => 'Controle de Qualidade e Validação Técnica', 'foco' => 'testes, medições, inspeções, critérios técnicos de aceitação, verificação de conformidade com a especificação e correção de não-conformidades técnicas identificadas'],
-            6 => ['nome' => 'Finalização, Entrega e Encerramento Técnico', 'foco' => 'acabamento, limpeza, organização, testes finais, documentação técnica do que foi feito, registros, garantia/recomendações de manutenção e entrega técnica formal do serviço'],
+            1 => ['nome' => 'Planejamento e Definição de Escopo', 'foco' => 'entender o que realmente precisa ser entregue neste serviço, definir o método/abordagem correta, priorizar e planejar a execução. Foque nas DECISÕES SUBSTANTIVAS que um bom profissional toma aqui (critérios de priorização, definição de metas/escopo real, escolha do método), NÃO em preparativos triviais/óbvios'],
+            2 => ['nome' => 'Análise e Diagnóstico da Situação', 'foco' => 'ler a situação real: analisar dados/contexto/histórico, identificar o que está bom e o que precisa de ação, segmentar e diagnosticar. Foque no RACIOCÍNIO PROFISSIONAL e nos critérios de análise específicos deste serviço'],
+            3 => ['nome' => 'Execução — Núcleo do Serviço', 'foco' => 'o CORAÇÃO do trabalho: as práticas centrais que efetivamente entregam o resultado deste serviço específico, com o passo a passo real do como fazer bem-feito, as melhores práticas do ofício e os padrões de excelência'],
+            4 => ['nome' => 'Execução — Rotina, Cadência e Follow-up', 'foco' => 'a disciplina que faz o serviço dar resultado ao longo do tempo: cadência/rotina de trabalho, follow-up, acompanhamento, atualização de registros, não deixar pontas soltas e manter a consistência. Aplica-se a QUALQUER serviço (ex.: follow-up de leads, acompanhamento de tarefas, revisões periódicas)'],
+            5 => ['nome' => 'Controle de Qualidade e Consistência', 'foco' => 'como garantir que o resultado está no padrão: critérios de qualidade REAIS deste serviço, revisão, conferência, indicadores, correção de desvios e o que caracteriza um trabalho bem-feito vs. mal-feito'],
+            6 => ['nome' => 'Fechamento, Registro e Melhoria Contínua', 'foco' => 'encerrar corretamente: consolidar entregas, registrar o que foi feito e aprendido, garantir continuidade/handoff, medir resultado e alimentar a melhoria contínua. Foque no que gera valor real, não em burocracia vazia'],
         ];
         return $fases[$indice] ?? $fases[1];
     }
@@ -10802,15 +10804,23 @@ Foco desta fase: {$focoFase}.
 
 Esta fase deve conter EXATAMENTE de 3 a 4 passos técnicos. Gere POUCOS passos, porém cada um EXTREMAMENTE completo e assertivo. O objetivo é que um colaborador consiga executar seguindo o texto, sem dúvidas. Use terminologia genérica. NUNCA mencione marcas comerciais.
 
-## REGRA MAIS IMPORTANTE — CADA PASSO = INSTRUÇÃO TÉCNICA EXECUTÁVEL:
-O campo \"detalhamento_operacional_completo\" é a parte MAIS importante e deve ser um GUIA TÉCNICO passo a passo (150-250 palavras), no formato de sequência numerada, ensinando exatamente COMO executar:
-1. O que preparar/verificar imediatamente antes desta ação.
-2. A sequência EXATA de operações técnicas (passo 1, 2, 3...), com os parâmetros concretos (medidas, quantidades, tempos, temperaturas, tolerâncias, configurações, unidades — o que fizer sentido para este serviço).
-3. Os critérios técnicos que definem a execução correta e como conferir cada um.
-4. O que registrar/documentar e como.
-Seja concreto e específico ao serviço. Nada de frases genéricas vazias.
+## REGRA DE OURO — SUBSTÂNCIA REAL, ZERO ENCHIMENTO DE LINGUIÇA:
+O SOP deve ensinar a ESSÊNCIA REAL de como executar bem ESTE serviço específico — as boas práticas do ofício, o know-how que separa um profissional bom de um medíocre. É PROIBIDO gerar passos triviais, óbvios ou genéricos que serviriam para qualquer coisa.
+- PROIBIDO conteúdo trivial/óbvio: 'verificar conexão de internet', 'ligar o computador', 'checar se a ferramenta está aberta', 'abrir o sistema', 'ter energia elétrica', 'organizar a mesa', e afins. Isso NÃO entra no SOP.
+- PROIBIDO encher com preparativos/configurações banais quando o valor do serviço está em OUTRA coisa. Ex.: num serviço de 'Gerenciar CRM', o foco é a DISCIPLINA DE GESTÃO — higienização e qualificação da base, cadência de follow-up, gestão do funil/estágios, priorização de oportunidades, registro consistente de interações, análise de conversão — e NÃO 'verificar internet' ou 'abrir o CRM'.
+- Pergunte-se a cada passo: 'um profissional experiente aprenderia algo com isto ou é óbvio demais?'. Se for óbvio, SUBSTITUA por uma prática de verdade.
+- Ferramentas/configurações só aparecem quando forem DECISÃO TÉCNICA relevante (ex.: 'como estruturar os estágios do funil e por quê'), nunca como passo isolado banal.
+- Priorize: método correto, critérios de decisão, boas práticas, o que fazer bem-feito, erros que profissionais cometem e como evitá-los.
 
-O campo \"scripts_operacionais_completos\" NÃO é um roteiro de conversa. Use-o para o DETALHE TÉCNICO OPERACIONAL do passo: a lista de comandos/ações exatas em sequência numerada, especificações, valores de referência, checklist de execução técnica ou fórmulas/parâmetros. Se houver comunicação estritamente técnica necessária, registre apenas a informação técnica que deve ser trocada (não roteiro de relacionamento).
+## CADA PASSO = INSTRUÇÃO SUBSTANTIVA E EXECUTÁVEL:
+O campo \"detalhamento_operacional_completo\" é a parte MAIS importante e deve ser um GUIA passo a passo (150-250 palavras), em sequência numerada, ensinando exatamente COMO fazer bem-feito ESTE serviço:
+1. A ação real e o critério/raciocínio profissional por trás dela (por que se faz assim).
+2. A sequência EXATA do como fazer, com parâmetros concretos quando fizer sentido (quantidades, frequências, prazos, faixas, critérios de priorização, gatilhos de ação).
+3. As boas práticas do ofício e o que caracteriza a execução de qualidade aqui.
+4. O que registrar/acompanhar e como isso alimenta a continuidade do serviço.
+Seja concreto e específico ao serviço. Nada de frases genéricas vazias nem passos de encher espaço.
+
+O campo \"scripts_operacionais_completos\" NÃO é um roteiro de conversa. Use-o para o DETALHE OPERACIONAL substantivo do passo: a sequência exata de ações/decisões, critérios, faixas de referência, checklist de execução ou exemplos práticos reais. Só inclua se agregar valor real; se não houver detalhe útil, deixe vazio em vez de encher linguiça.
 
 # FORMATO (JSON):
 ```json
