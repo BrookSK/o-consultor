@@ -129,9 +129,9 @@
     <!-- Estatísticas -->
     <div class="stats">
         <div class="stat s1"><div class="lab">Setores</div><div class="val"><?= $dados['estatisticas']['total_setores'] ?></div></div>
-        <div class="stat s2"><div class="lab">Serviços</div><div class="val"><?= $dados['estatisticas']['total_servicos'] ?></div></div>
-        <div class="stat s3"><div class="lab">SOPs gerados</div><div class="val"><?= $dados['estatisticas']['total_sops'] ?></div></div>
-        <div class="stat s4"><div class="lab">Progresso</div><div class="val"><?= $dados['estatisticas']['percentual_conclusao'] ?>%</div></div>
+        <div class="stat s2"><div class="lab">Serviços</div><div class="val" id="stat-servicos"><?= $dados['estatisticas']['total_servicos'] ?></div></div>
+        <div class="stat s3"><div class="lab">SOPs gerados</div><div class="val" id="stat-sops"><?= $dados['estatisticas']['total_sops'] ?></div></div>
+        <div class="stat s4"><div class="lab">Progresso</div><div class="val" id="stat-progresso"><?= $dados['estatisticas']['percentual_conclusao'] ?>%</div></div>
     </div>
 
     <?php if (!empty($dados['setores_organizados'])): ?>
@@ -203,7 +203,7 @@
                             $letra = strtoupper(mb_substr(trim($nome), 0, 1));
                             $temSop = ($servico['status_final'] ?? '') === 'sop_gerado';
                         ?>
-                        <div class="bar">
+                        <div class="bar" data-servico-id="<?= $servico['id'] ?>" data-tem-sop="<?= $temSop ? '1' : '0' ?>">
                             <input type="checkbox" class="sv-check" value="<?= $servico['id'] ?>" data-nome="<?= htmlspecialchars($nome, ENT_QUOTES) ?>" onclick="event.stopPropagation()" onchange="onToggleCheck(this)">
                             <div class="letter"><?= htmlspecialchars($letra) ?></div>
                             <span class="code"><?= htmlspecialchars($servico['codigo_servico'] ?? 'N/A') ?></span>
@@ -400,14 +400,17 @@ async function excluirSelecionados() {
         const r = await fetch('<?= APP_URL ?>/sop/excluir-servicos-lote', { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body });
         const d = await r.json();
         if (d.sucesso) {
-            if (d.falhas && d.falhas.length > 0) alert(d.falhas.length + ' serviço(s) não puderam ser excluídos.');
-            location.reload();
+            // Remove do DOM apenas os que NÃO falharam, preservando posição/estado.
+            const idsFalha = new Set((d.falhas || []).map(f => String(f.id)));
+            const removidos = ids.filter(id => !idsFalha.has(String(id)));
+            removerServicosDoDOM(removidos);
+            if (idsFalha.size > 0) alert(idsFalha.size + ' serviço(s) não puderam ser excluídos.');
         } else {
             alert('Erro: ' + (d.erro || 'desconhecido'));
-            if (btn) { btn.disabled = false; btn.textContent = '🗑 Excluir selecionados'; }
         }
     } catch (e) {
         alert('Erro de comunicação com o servidor.');
+    } finally {
         if (btn) { btn.disabled = false; btn.textContent = '🗑 Excluir selecionados'; }
     }
 }
@@ -479,8 +482,89 @@ async function excluirServico(servicoId, nome) {
     try {
         const r = await fetch('<?= APP_URL ?>/sop/excluir-servico', { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body });
         const d = await r.json();
-        if (d.sucesso) { location.reload(); } else { alert('Erro: ' + (d.erro || 'desconhecido')); }
+        if (d.sucesso) {
+            removerServicosDoDOM([String(servicoId)]);
+        } else {
+            alert('Erro: ' + (d.erro || 'desconhecido'));
+        }
     } catch (e) { alert('Erro de comunicação com o servidor.'); }
+}
+
+// Remove as linhas dos serviços do DOM e atualiza contadores, SEM recarregar
+// a página — preserva a posição de scroll e o estado (aberto/fechado) dos setores.
+function removerServicosDoDOM(ids) {
+    const setoresAfetados = new Set();
+
+    ids.forEach(id => {
+        selecionados.delete(String(id));
+        const bar = document.querySelector('#sops-view .bar[data-servico-id="' + id + '"]');
+        if (!bar) return;
+        const block = bar.closest('.sector-block');
+        const lane = bar.closest('.lane');
+        bar.remove();
+        if (block) setoresAfetados.add(block);
+        // Se a subcategoria (lane) ficou vazia, remove a faixa inteira
+        if (lane && lane.querySelectorAll('.bar').length === 0) lane.remove();
+    });
+
+    setoresAfetados.forEach(atualizarContadoresSetor);
+    atualizarEstatisticasGlobais();
+    atualizarBulkBar();
+}
+
+// Recalcula os contadores exibidos no cabeçalho de um setor a partir do DOM.
+function atualizarContadoresSetor(block) {
+    const bars = block.querySelectorAll('.bar');
+    const total = bars.length;
+    let sops = 0;
+    bars.forEach(b => { if (b.dataset.temSop === '1') sops++; });
+
+    // Atualiza contadores por subcategoria (lane-count)
+    block.querySelectorAll('.lane').forEach(lane => {
+        const n = lane.querySelectorAll('.bar').length;
+        const c = lane.querySelector('.lane-count');
+        if (c) c.textContent = n + ' serviços';
+    });
+
+    // Atualiza a meta do setor ("X serviços · Y SOPs gerados")
+    const meta = block.querySelector('.sector-meta');
+    if (meta) {
+        const tag = meta.querySelector('.core-tag');
+        const tipo = tag ? tag.textContent.trim() : '';
+        meta.innerHTML = (tag ? '<span class="core-tag">' + tipo + '</span> ' : '') + total + ' serviços · ' + sops + ' SOPs gerados';
+    }
+
+    // Atualiza o badge de status do setor
+    const badge = block.querySelector('.badge-status');
+    if (badge) {
+        badge.classList.remove('completo', 'parcial', 'pendente');
+        if (total > 0 && sops >= total) {
+            badge.classList.add('completo');
+            badge.textContent = '✓ Completo (' + sops + '/' + total + ')';
+        } else if (sops > 0) {
+            badge.classList.add('parcial');
+            badge.textContent = '↗ Parcial (' + sops + '/' + total + ')';
+        } else {
+            badge.classList.add('pendente');
+            badge.textContent = '○ Pendente';
+        }
+    }
+}
+
+// Recalcula os cards de estatísticas globais (Serviços, SOPs, Progresso) a partir do DOM.
+function atualizarEstatisticasGlobais() {
+    const bars = document.querySelectorAll('#sops-view .bar');
+    const totalServicos = bars.length;
+    let totalSops = 0;
+    bars.forEach(b => { if (b.dataset.temSop === '1') totalSops++; });
+    const progresso = totalServicos > 0 ? Math.round((totalSops / totalServicos) * 1000) / 10 : 0;
+
+    const elServ = document.getElementById('stat-servicos');
+    const elSops = document.getElementById('stat-sops');
+    const elProg = document.getElementById('stat-progresso');
+    if (elServ) elServ.textContent = totalServicos;
+    if (elSops) elSops.textContent = totalSops;
+    if (elProg) elProg.textContent = progresso + '%';
 }
 </script>
 
