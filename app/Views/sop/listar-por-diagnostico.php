@@ -1,239 +1,238 @@
 <?php $tituloPagina = 'SOPs - ' . htmlspecialchars($dados['empresa']['nome']); ?>
 <?php ob_start(); ?>
 
-<!-- Breadcrumb -->
-<nav class="mb-6">
-    <ol class="flex items-center text-sm text-gray-500 gap-2">
-        <li><a href="<?= APP_URL ?>/dashboard" class="hover:text-primary">Dashboard</a></li>
-        <li>/</li>
-        <li><a href="<?= APP_URL ?>/diagnostico" class="hover:text-primary">Diagnósticos</a></li>
-        <li>/</li>
-        <li><a href="<?= APP_URL ?>/diagnostico/resultado/<?= $dados['diagnostico']['id'] ?>" class="hover:text-primary">Resultado</a></li>
-        <li>/</li>
-        <li class="font-medium text-primary">SOPs Gerados</li>
-    </ol>
-</nav>
+<style>
+/* ===== Estilo dos SOPs por categoria (referência sops-dashboard) — escopo #sops-view ===== */
+#sops-view{
+    --sv-page:#F3F4F8; --sv-surface:#FFFFFF; --sv-ink:#171B33; --sv-ink-soft:#565B78;
+    --sv-ink-mute:#8B8FA3; --sv-line:#E4E5EE; --sv-accent:#E8590C; --sv-accent-soft:#FDEBE0;
+    --sv-accent-deep:#9A3A08; --sv-lane:#1E3A5F; --sv-lane-soft:#E8EDF3; --sv-lane-deep:#162D4A;
+    --sv-ok:#2F9E44; --sv-ok-soft:#E4F6E8; --sv-ok-deep:#1F7A34;
+    color:var(--sv-ink);
+}
+#sops-view .crumbs{font-size:13px;color:var(--sv-ink-mute);margin-bottom:18px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+#sops-view .crumbs a{color:var(--sv-ink-mute);text-decoration:none;}
+#sops-view .crumbs a:hover{color:var(--sv-accent-deep);}
+#sops-view .crumbs .current{color:var(--sv-ink);font-weight:500;}
+#sops-view .sv-top{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:28px;flex-wrap:wrap;gap:16px;}
+#sops-view .sv-top h1{font-size:28px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em;}
+#sops-view .sv-top .sv-sub{font-size:14px;color:var(--sv-ink-soft);margin:0;max-width:560px;}
+#sops-view .date-box{text-align:right;font-size:12px;color:var(--sv-ink-mute);}
+#sops-view .date-box strong{display:block;font-size:15px;color:var(--sv-ink);margin-top:3px;}
 
-<!-- Header -->
-<div class="mb-8">
-    <div class="flex items-center justify-between mb-4">
+#sops-view .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:34px;}
+#sops-view .stat{background:var(--sv-surface);border:1px solid var(--sv-line);border-radius:14px;padding:16px 18px;position:relative;overflow:hidden;}
+#sops-view .stat::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--sv-bar,var(--sv-lane));}
+#sops-view .stat .lab{font-size:12px;color:var(--sv-ink-mute);font-weight:500;margin-bottom:6px;}
+#sops-view .stat .val{font-size:26px;font-weight:700;color:var(--sv-val,var(--sv-ink));}
+#sops-view .stat.s1{--sv-bar:#378ADD;}
+#sops-view .stat.s2{--sv-bar:var(--sv-lane);}
+#sops-view .stat.s3{--sv-bar:var(--sv-ok);}
+#sops-view .stat.s4{--sv-bar:var(--sv-accent);}
+#sops-view .stat.s4 .val{color:var(--sv-accent-deep);}
+
+#sops-view .sector-head{background:var(--sv-surface);border:1px solid var(--sv-line);border-radius:16px 16px 0 0;padding:18px 22px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;}
+#sops-view .sector-name{display:flex;align-items:center;gap:12px;}
+#sops-view .sector-name .dot{width:34px;height:34px;border-radius:9px;background:var(--sv-lane-soft);color:var(--sv-lane-deep);display:flex;align-items:center;justify-content:center;font-size:16px;}
+#sops-view .sector-name h2{font-size:19px;margin:0;letter-spacing:0.02em;font-weight:600;}
+#sops-view .sector-meta{font-size:12.5px;color:var(--sv-ink-mute);margin-top:2px;}
+#sops-view .core-tag{background:var(--sv-lane-soft);color:var(--sv-lane-deep);font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px;margin-right:8px;}
+#sops-view .badge-status{font-size:12px;font-weight:600;padding:6px 12px;border-radius:20px;}
+#sops-view .badge-status.completo{background:var(--sv-ok-soft);color:var(--sv-ok-deep);}
+#sops-view .badge-status.parcial{background:var(--sv-accent-soft);color:var(--sv-accent-deep);}
+#sops-view .badge-status.pendente{background:#EEF0F5;color:var(--sv-ink-mute);}
+#sops-view .add-servico{font-size:12px;font-weight:600;color:var(--sv-lane-deep);background:var(--sv-lane-soft);border:none;padding:6px 12px;border-radius:8px;cursor:pointer;}
+#sops-view .add-servico:hover{background:#dbe4ef;}
+
+#sops-view .lanes-wrap{background:var(--sv-surface);border:1px solid var(--sv-line);border-top:none;border-radius:0 0 16px 16px;padding:6px 0 20px;margin-bottom:36px;}
+#sops-view .lane{padding:22px 22px 4px;border-bottom:1px solid var(--sv-line);}
+#sops-view .lane:last-child{border-bottom:none;}
+#sops-view .lane-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;gap:10px;}
+#sops-view .lane-title{display:flex;align-items:center;gap:10px;}
+#sops-view .lane-title h3{font-size:13px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--sv-ink-soft);margin:0;}
+#sops-view .lane-count{font-size:11.5px;color:var(--sv-lane-deep);background:var(--sv-lane-soft);padding:2px 8px;border-radius:20px;font-weight:600;}
+#sops-view .az-tag{font-size:11px;color:var(--sv-ink-mute);letter-spacing:0.03em;}
+#sops-view .stack{display:flex;flex-direction:column;gap:8px;padding-bottom:18px;}
+
+#sops-view .bar{display:grid;grid-template-columns:34px 116px 1fr auto auto auto;align-items:center;gap:14px;background:var(--sv-surface);border:1px solid var(--sv-line);border-left:3px solid var(--sv-lane);border-radius:10px;padding:11px 16px;transition:border-color .15s, background .15s;}
+#sops-view .bar:hover{border-color:var(--sv-lane);border-left-color:var(--sv-lane-deep);background:var(--sv-lane-soft);}
+#sops-view .letter{width:26px;height:26px;border-radius:8px;background:var(--sv-lane);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;}
+#sops-view .code{font-size:11px;color:var(--sv-ink-mute);white-space:nowrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}
+#sops-view .bar-title{font-size:13.5px;font-weight:500;line-height:1.3;min-width:0;cursor:pointer;}
+#sops-view .bar-title:hover{color:var(--sv-lane-deep);}
+#sops-view .op-tag{font-size:10.5px;font-weight:600;color:var(--sv-lane-deep);background:var(--sv-lane-soft);padding:3px 9px;border-radius:6px;white-space:nowrap;}
+#sops-view .status{font-size:11px;color:var(--sv-ink-mute);display:flex;align-items:center;gap:5px;white-space:nowrap;}
+#sops-view .status .ring{width:7px;height:7px;border-radius:50%;border:1.5px solid var(--sv-ink-mute);}
+#sops-view .status.pronto{color:var(--sv-ok-deep);}
+#sops-view .status.pronto .ring{background:var(--sv-ok);border-color:var(--sv-ok);}
+#sops-view .row-actions{display:flex;align-items:center;gap:14px;white-space:nowrap;}
+#sops-view .gen-sop{font-size:11.5px;font-weight:600;color:var(--sv-accent-deep);display:flex;align-items:center;gap:4px;cursor:pointer;border:none;background:none;padding:0;}
+#sops-view .gen-sop::before{content:'⚡';font-size:10px;}
+#sops-view .see-sop{font-size:11.5px;font-weight:600;color:var(--sv-ok-deep);cursor:pointer;border:none;background:none;padding:0;}
+#sops-view .icon-link{color:var(--sv-ink-mute);cursor:pointer;font-size:12px;text-decoration:none;background:none;border:none;padding:0;}
+#sops-view .icon-link:hover{color:var(--sv-ink);}
+#sops-view .icon-link.danger{color:#c0392b;}
+#sops-view .lane-empty{font-size:12.5px;color:var(--sv-ink-mute);padding:0 0 16px;}
+#sops-view .footer-note{text-align:center;font-size:12px;color:var(--sv-ink-mute);margin-top:20px;}
+
+@media (max-width:820px){
+    #sops-view .stats{grid-template-columns:repeat(2,1fr);}
+    #sops-view .bar{grid-template-columns:28px 1fr auto;grid-template-areas:"letter code status" "letter title title" "letter tag actions";row-gap:6px;}
+    #sops-view .letter{grid-area:letter;}
+    #sops-view .code{grid-area:code;}
+    #sops-view .status{grid-area:status;justify-self:end;}
+    #sops-view .bar-title{grid-area:title;}
+    #sops-view .op-tag{grid-area:tag;justify-self:start;}
+    #sops-view .row-actions{grid-area:actions;justify-self:end;}
+}
+</style>
+
+<div id="sops-view">
+
+    <!-- Breadcrumb -->
+    <div class="crumbs">
+        <a href="<?= APP_URL ?>/dashboard">Dashboard</a> <span>/</span>
+        <a href="<?= APP_URL ?>/diagnostico">Diagnósticos</a> <span>/</span>
+        <a href="<?= APP_URL ?>/diagnostico/resultado/<?= $dados['diagnostico']['id'] ?>">Resultado</a> <span>/</span>
+        <span class="current">SOPs Gerados — por categoria</span>
+    </div>
+
+    <!-- Topo -->
+    <div class="sv-top">
         <div>
-            <h1 class="text-2xl font-bold text-gray-800">SOPs - <?= htmlspecialchars($dados['empresa']['nome']) ?></h1>
-            <p class="text-gray-600 mt-1">
-                Procedimentos Operacionais Padrão organizados por setores
-                <br><span class="text-sm text-gray-500">🎯 Clique em qualquer serviço para ver ou gerenciar seu SOP</span>
-            </p>
+            <h1>SOPs · <?= htmlspecialchars($dados['empresa']['nome']) ?></h1>
+            <p class="sv-sub">Procedimentos Operacionais Padrão, agrupados por categoria e empilhados em faixas horizontais, ordenados de A a Z dentro de cada categoria.</p>
         </div>
-        <div class="text-right">
-            <div class="text-sm text-gray-500">Diagnóstico realizado em</div>
-            <div class="font-semibold text-gray-800">
-                <?= date('d/m/Y', strtotime($dados['diagnostico']['criado_em'])) ?>
-            </div>
+        <div class="date-box">
+            Diagnóstico realizado em
+            <strong><?= date('d/m/Y', strtotime($dados['diagnostico']['criado_em'])) ?></strong>
         </div>
     </div>
 
     <!-- Estatísticas -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <div class="flex items-center justify-between">
-                <div>
-                    <div class="text-sm font-medium text-blue-600">Setores</div>
-                    <div class="text-2xl font-bold text-blue-700"><?= $dados['estatisticas']['total_setores'] ?></div>
-                </div>
-                <div class="text-blue-400">🏢</div>
-            </div>
-        </div>
-
-        <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
-            <div class="flex items-center justify-between">
-                <div>
-                    <div class="text-sm font-medium text-purple-600">Serviços</div>
-                    <div class="text-2xl font-bold text-purple-700"><?= $dados['estatisticas']['total_servicos'] ?></div>
-                </div>
-                <div class="text-purple-400">⚙️</div>
-            </div>
-        </div>
-
-        <div class="bg-green-50 border border-green-200 rounded-lg p-4">
-            <div class="flex items-center justify-between">
-                <div>
-                    <div class="text-sm font-medium text-green-600">SOPs Gerados</div>
-                    <div class="text-2xl font-bold text-green-700"><?= $dados['estatisticas']['total_sops'] ?></div>
-                </div>
-                <div class="text-green-400">📋</div>
-            </div>
-        </div>
-
-        <div class="bg-orange-50 border border-orange-200 rounded-lg p-4">
-            <div class="flex items-center justify-between">
-                <div>
-                    <div class="text-sm font-medium text-orange-600">Progresso</div>
-                    <div class="text-2xl font-bold text-orange-700"><?= $dados['estatisticas']['percentual_conclusao'] ?>%</div>
-                </div>
-                <div class="text-orange-400">📊</div>
-            </div>
-        </div>
+    <div class="stats">
+        <div class="stat s1"><div class="lab">Setores</div><div class="val"><?= $dados['estatisticas']['total_setores'] ?></div></div>
+        <div class="stat s2"><div class="lab">Serviços</div><div class="val"><?= $dados['estatisticas']['total_servicos'] ?></div></div>
+        <div class="stat s3"><div class="lab">SOPs gerados</div><div class="val"><?= $dados['estatisticas']['total_sops'] ?></div></div>
+        <div class="stat s4"><div class="lab">Progresso</div><div class="val"><?= $dados['estatisticas']['percentual_conclusao'] ?>%</div></div>
     </div>
-</div>
 
-<!-- FLUXO LINEAR: Setores > Serviços > SOPs -->
-<div class="space-y-6">
     <?php if (!empty($dados['setores_organizados'])): ?>
         <?php foreach ($dados['setores_organizados'] as $setorData): ?>
-        <?php $setor = $setorData['setor']; ?>
-        <?php $servicos = $setorData['servicos']; ?>
-        
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200">
-            <!-- Cabeçalho do Setor -->
-            <div class="bg-gray-50 px-6 py-4 border-b border-gray-200">
-                <div class="flex items-center justify-between">
-                    <div class="flex items-center gap-3">
-                        <span class="text-xl">
-                            <?php 
-                            switch($setor['tipo_setor'] ?? 'operacional') {
-                                case 'core':
-                                    echo '⚙️';
-                                    break;
-                                case 'apoio':
-                                    echo '🛠️';
-                                    break; 
-                                case 'estrategico':
-                                    echo '📋';
-                                    break;
-                                default:
-                                    echo '📁';
-                                    break;
-                            }
-                            ?>
-                        </span>
-                        <div>
-                            <h2 class="text-lg font-semibold text-gray-800"><?= htmlspecialchars($setor['nome_setor']) ?></h2>
-                            <div class="flex items-center gap-2 text-sm text-gray-500">
-                                <span class="px-2 py-1 bg-blue-100 text-blue-700 rounded"><?= ucfirst($setor['tipo_setor'] ?? 'geral') ?></span>
-                                <span><?= $setor['total_servicos'] ?? 0 ?> serviços</span>
-                                <span class="text-green-600"><?= $setor['total_sops'] ?? 0 ?> SOPs</span>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="flex items-center gap-2">
-                        <?php 
-                        $totalServicos = $setor['total_servicos'] ?? 0;
-                        $totalSops = $setor['total_sops'] ?? 0;
-                        ?>
-                        <!-- Indicador de Status do Setor -->
-                        <?php if ($totalSops == $totalServicos && $totalServicos > 0): ?>
-                        <span class="px-3 py-1 bg-green-100 text-green-700 text-sm rounded-full font-medium">✓ Completo</span>
-                        <?php elseif ($totalSops > 0): ?>
-                        <span class="px-3 py-1 bg-yellow-100 text-yellow-700 text-sm rounded-full font-medium">⚠ Parcial (<?= $totalSops ?>/<?= $totalServicos ?>)</span>
-                        <?php else: ?>
-                        <span class="px-3 py-1 bg-gray-100 text-gray-600 text-sm rounded-full font-medium">○ Pendente</span>
-                        <?php endif; ?>
+        <?php
+            $setor = $setorData['setor'];
+            $servicos = $setorData['servicos'];
+            $totalServicos = $setor['total_servicos'] ?? 0;
+            $totalSops = $setor['total_sops'] ?? 0;
+
+            $iconeSetor = '📁';
+            switch ($setor['tipo_setor'] ?? 'operacional') {
+                case 'core': $iconeSetor = '⚙'; break;
+                case 'apoio': $iconeSetor = '🛠'; break;
+                case 'estrategico': $iconeSetor = '📋'; break;
+            }
+
+            // Agrupar serviços por subcategoria (lanes)
+            $porSub = [];
+            foreach ($servicos as $sv) {
+                $sub = $sv['subcategoria'] ?? 'Geral';
+                $porSub[$sub][] = $sv;
+            }
+            ksort($porSub);
+        ?>
+
+        <!-- Cabeçalho do Setor -->
+        <div class="sector-head">
+            <div class="sector-name">
+                <div class="dot"><?= $iconeSetor ?></div>
+                <div>
+                    <h2><?= htmlspecialchars($setor['nome_setor']) ?></h2>
+                    <div class="sector-meta">
+                        <span class="core-tag"><?= ucfirst($setor['tipo_setor'] ?? 'geral') ?></span>
+                        <?= $totalServicos ?> serviços · <?= $totalSops ?> SOPs gerados
                     </div>
                 </div>
             </div>
-            
-            <!-- Lista de Serviços do Setor (agrupada por subcategoria) -->
-            <div class="p-6">
-                <!-- Botão de adicionar serviço ao setor -->
-                <div class="flex justify-end mb-4">
-                    <button onclick="abrirModalAddServico(<?= $setor['setor_id'] ?>, '<?= htmlspecialchars($setor['nome_setor'], ENT_QUOTES) ?>')"
-                            class="px-3 py-1.5 bg-primary text-white text-sm rounded-lg hover:bg-primary-700">
-                        ➕ Adicionar serviço
-                    </button>
-                </div>
-
-                <?php if (!empty($servicos)): ?>
-                    <?php
-                    // Agrupar serviços por subcategoria
-                    $porSub = [];
-                    foreach ($servicos as $sv) {
-                        $sub = $sv['subcategoria'] ?? 'Geral';
-                        $porSub[$sub][] = $sv;
-                    }
-                    ?>
-                    <?php foreach ($porSub as $subcategoria => $itens): ?>
-                    <div class="mb-6">
-                        <h4 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3 border-b border-gray-100 pb-1">
-                            <?= htmlspecialchars($subcategoria) ?>
-                            <span class="text-gray-400 font-normal">(<?= count($itens) ?>)</span>
-                        </h4>
-                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            <?php foreach ($itens as $servico): ?>
-                            <div class="border border-gray-200 rounded-lg p-4 hover:border-blue-300 hover:bg-blue-50 transition">
-                                <!-- Cabeçalho do Serviço -->
-                                <div class="flex items-center justify-between mb-3">
-                                    <code class="text-xs font-mono bg-gray-100 px-2 py-1 rounded"><?= htmlspecialchars($servico['codigo_servico'] ?? 'N/A') ?></code>
-                                    <?php
-                                    switch($servico['status_final'] ?? 'mapeado') {
-                                        case 'mapeado':
-                                            $statusConfig = ['bg' => 'bg-gray-100 text-gray-600', 'icon' => '○', 'label' => 'Mapeado'];
-                                            break;
-                                        case 'detalhado':
-                                            $statusConfig = ['bg' => 'bg-blue-100 text-blue-700', 'icon' => '◐', 'label' => 'Detalhado'];
-                                            break;
-                                        case 'sop_gerado':
-                                            $statusConfig = ['bg' => 'bg-green-100 text-green-700', 'icon' => '●', 'label' => 'SOP Pronto'];
-                                            break;
-                                        default:
-                                            $statusConfig = ['bg' => 'bg-gray-100 text-gray-500', 'icon' => '?', 'label' => 'Indefinido'];
-                                            break;
-                                    }
-                                    ?>
-                                    <span class="px-2 py-1 text-xs font-medium rounded <?= $statusConfig['bg'] ?>">
-                                        <?= $statusConfig['icon'] ?> <?= $statusConfig['label'] ?>
-                                    </span>
-                                </div>
-
-                                <!-- Nome (clicável para acessar/gerar SOP) -->
-                                <h3 class="font-medium text-gray-800 mb-2 leading-tight cursor-pointer hover:text-blue-600"
-                                    onclick="acessarServico(<?= $servico['id'] ?>, '<?= $servico['status_final'] ?>', <?= $servico['sop_id'] ?? 'null' ?>)">
-                                    <?= htmlspecialchars($servico['nome_servico'] ?? 'Serviço sem nome') ?>
-                                </h3>
-
-                                <div class="flex items-center justify-between text-xs text-gray-500 mb-3">
-                                    <span class="px-2 py-1 bg-purple-100 text-purple-700 rounded"><?= ucfirst($servico['categoria'] ?? 'geral') ?></span>
-                                    <?php if (($servico['status_final'] ?? '') === 'sop_gerado'): ?>
-                                    <span class="text-green-600 font-medium">👆 Ver SOP</span>
-                                    <?php else: ?>
-                                    <span class="text-gray-600 font-medium">👆 Gerar SOP</span>
-                                    <?php endif; ?>
-                                </div>
-
-                                <!-- Ações CRUD -->
-                                <div class="flex items-center gap-2 pt-2 border-t border-gray-100">
-                                    <button onclick="abrirModalEditServico(<?= $servico['id'] ?>, '<?= htmlspecialchars($servico['nome_servico'], ENT_QUOTES) ?>', '<?= htmlspecialchars($servico['categoria'] ?? '', ENT_QUOTES) ?>', '<?= htmlspecialchars($servico['criticidade'] ?? '', ENT_QUOTES) ?>')"
-                                            class="text-xs text-blue-600 hover:underline">✏️ Editar</button>
-                                    <button onclick="excluirServico(<?= $servico['id'] ?>, '<?= htmlspecialchars($servico['nome_servico'], ENT_QUOTES) ?>')"
-                                            class="text-xs text-red-600 hover:underline">🗑️ Excluir</button>
-                                </div>
-                            </div>
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
-                    <?php endforeach; ?>
+            <div style="display:flex;align-items:center;gap:12px;">
+                <?php if ($totalServicos > 0 && $totalSops >= $totalServicos): ?>
+                    <span class="badge-status completo">✓ Completo (<?= $totalSops ?>/<?= $totalServicos ?>)</span>
+                <?php elseif ($totalSops > 0): ?>
+                    <span class="badge-status parcial">↗ Parcial (<?= $totalSops ?>/<?= $totalServicos ?>)</span>
                 <?php else: ?>
-                <div class="text-center py-8 text-gray-500">
-                    <p>Nenhum serviço neste setor. Use "Adicionar serviço" para criar.</p>
-                </div>
+                    <span class="badge-status pendente">○ Pendente</span>
                 <?php endif; ?>
+                <button class="add-servico" onclick="abrirModalAddServico(<?= $setor['setor_id'] ?>, '<?= htmlspecialchars($setor['nome_setor'], ENT_QUOTES) ?>')">➕ Adicionar serviço</button>
             </div>
         </div>
+
+        <!-- Faixas (lanes) por subcategoria -->
+        <div class="lanes-wrap">
+            <?php if (!empty($servicos)): ?>
+                <?php foreach ($porSub as $subcategoria => $itens): ?>
+                <div class="lane">
+                    <div class="lane-head">
+                        <div class="lane-title">
+                            <h3><?= htmlspecialchars($subcategoria) ?></h3>
+                            <span class="lane-count"><?= count($itens) ?> serviços</span>
+                        </div>
+                        <span class="az-tag">A → Z</span>
+                    </div>
+                    <div class="stack">
+                        <?php foreach ($itens as $servico): ?>
+                        <?php
+                            $nome = $servico['nome_servico'] ?? 'Serviço sem nome';
+                            $letra = strtoupper(mb_substr(trim($nome), 0, 1));
+                            $temSop = ($servico['status_final'] ?? '') === 'sop_gerado';
+                        ?>
+                        <div class="bar">
+                            <div class="letter"><?= htmlspecialchars($letra) ?></div>
+                            <span class="code"><?= htmlspecialchars($servico['codigo_servico'] ?? 'N/A') ?></span>
+                            <span class="bar-title" onclick="acessarServico(<?= $servico['id'] ?>)"><?= htmlspecialchars($nome) ?></span>
+                            <span class="op-tag"><?= ucfirst($servico['categoria'] ?? 'geral') ?></span>
+                            <?php if ($temSop): ?>
+                            <span class="status pronto"><span class="ring"></span>SOP pronto</span>
+                            <?php elseif (($servico['status_final'] ?? '') === 'detalhado'): ?>
+                            <span class="status"><span class="ring"></span>Detalhado</span>
+                            <?php else: ?>
+                            <span class="status"><span class="ring"></span>Mapeado</span>
+                            <?php endif; ?>
+                            <div class="row-actions">
+                                <?php if ($temSop): ?>
+                                <button class="see-sop" onclick="acessarServico(<?= $servico['id'] ?>)">Ver SOP</button>
+                                <?php else: ?>
+                                <button class="gen-sop" onclick="acessarServico(<?= $servico['id'] ?>)">Gerar SOP</button>
+                                <?php endif; ?>
+                                <button class="icon-link" onclick="abrirModalEditServico(<?= $servico['id'] ?>, '<?= htmlspecialchars($nome, ENT_QUOTES) ?>', '<?= htmlspecialchars($servico['categoria'] ?? '', ENT_QUOTES) ?>', '<?= htmlspecialchars($servico['criticidade'] ?? '', ENT_QUOTES) ?>')">Editar</button>
+                                <button class="icon-link danger" onclick="excluirServico(<?= $servico['id'] ?>, '<?= htmlspecialchars($nome, ENT_QUOTES) ?>')">Excluir</button>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            <?php else: ?>
+                <div class="lane">
+                    <p class="lane-empty">Nenhum serviço neste setor. Use "Adicionar serviço" para criar.</p>
+                </div>
+            <?php endif; ?>
+        </div>
         <?php endforeach; ?>
+
+        <p class="footer-note">Serviços empilhados verticalmente dentro de cada categoria, sempre em ordem alfabética (A → Z).</p>
+
     <?php else: ?>
-    <!-- Se não existem setores/SOPs -->
-    <div class="text-center py-12">
-        <div class="text-6xl mb-4">📋</div>
-        <h2 class="text-xl font-semibold text-gray-800 mb-2">Nenhum SOP encontrado</h2>
-        <p class="text-gray-600 mb-6">
-            Para começar a usar SOPs, primeiro você precisa gerar a estrutura organizacional.
-        </p>
-        <a href="<?= APP_URL ?>/sop?diagnostico_id=<?= $dados['diagnostico']['id'] ?>" 
-           class="px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary-700 font-medium">
+    <!-- Sem estrutura/SOPs -->
+    <div style="text-align:center;padding:48px 0;">
+        <div style="font-size:56px;margin-bottom:12px;">📋</div>
+        <h2 style="font-size:20px;font-weight:600;color:var(--sv-ink);margin:0 0 8px;">Nenhum SOP encontrado</h2>
+        <p style="color:var(--sv-ink-soft);margin:0 0 22px;">Para começar a usar SOPs, primeiro você precisa gerar a estrutura organizacional.</p>
+        <a href="<?= APP_URL ?>/sop?diagnostico_id=<?= $dados['diagnostico']['id'] ?>"
+           style="display:inline-block;padding:12px 24px;background:var(--sv-lane);color:#fff;border-radius:10px;font-weight:600;text-decoration:none;">
             🚀 Iniciar Geração de SOPs
         </a>
     </div>
     <?php endif; ?>
+
 </div>
 
 <!-- Modal: Adicionar Serviço -->
@@ -321,8 +320,8 @@
 <script>
 const CSRF_TOKEN = '<?= Csrf::token() ?>';
 
-// Acessar o serviço: abre a página de detalhes (ver/gerar SOP)
-function acessarServico(servicoId, status, sopId) {
+// Acessar o serviço: abre a página de detalhes (ver/gerar SOP inline)
+function acessarServico(servicoId) {
     window.location.href = '<?= APP_URL ?>/sop/ver-detalhes-servico?servico_id=' + servicoId;
 }
 

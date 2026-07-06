@@ -24,14 +24,6 @@
             </svg>
             Wizard Diagnóstico
         </a>
-        
-        <a href="<?= APP_URL ?>/diagnostico/novo"
-           class="bg-accent text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-orange-700 transition flex items-center gap-2">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-            </svg>
-            Diagnóstico Completo
-        </a>
     </div>
 </div>
 
@@ -133,22 +125,6 @@
                         <div class="flex items-center gap-2">
                             <a href="<?= APP_URL ?>/diagnostico/resultado/<?= $diag['id'] ?>" 
                                class="text-primary hover:underline text-sm font-medium">Ver →</a>
-                            
-                            <?php if ($diag['status'] === 'concluido'): ?>
-                            <button type="button" 
-                                    onclick="reprocessarDiagnostico(<?= $diag['id'] ?>)"
-                                    class="text-orange-600 hover:text-orange-800 text-sm font-medium border border-orange-200 hover:border-orange-300 px-2 py-1 rounded transition"
-                                    title="Reprocessar diagnóstico com correções atualizadas">
-                                🔄 Reprocessar
-                            </button>
-                            
-                            <button type="button" 
-                                    onclick="gerarManualCompleto(<?= $diag['id'] ?>)"
-                                    class="text-purple-600 hover:text-purple-800 text-sm font-medium border border-purple-200 hover:border-purple-300 px-2 py-1 rounded transition"
-                                    title="Gerar Manual Operacional Completo (Nova Arquitetura)">
-                                🧠 Manual Completo
-                            </button>
-                            <?php endif; ?>
                         </div>
                     </td>
                 </tr>
@@ -164,123 +140,6 @@
         </div>
     </div>
 </div>
-
-<script>
-// Função para reprocessar diagnóstico
-async function reprocessarDiagnostico(diagnosticoId) {
-    if (!confirm('Deseja reprocessar este diagnóstico? Isso irá recalcular o score e corrigir possíveis erros.')) {
-        return;
-    }
-    
-    const button = event.target;
-    const originalText = button.textContent;
-    
-    try {
-        // Mostrar loading
-        button.disabled = true;
-        button.textContent = '🔄 Reprocessando...';
-        button.className = button.className.replace('text-orange-600', 'text-gray-500');
-        
-        const formData = new FormData();
-        formData.append('csrf_token', '<?= Csrf::token() ?>');
-        formData.append('diagnostico_id', diagnosticoId);
-        
-        const response = await fetch('<?= APP_URL ?>/diagnostico/reprocessar', {
-            method: 'POST',
-            body: formData
-        });
-        
-        const result = await response.json();
-        
-        if (result.sucesso) {
-            showToast('Diagnóstico reprocessado com sucesso!', 'success');
-            
-            // Redirecionar após sucesso
-            setTimeout(() => {
-                if (result.redirect) {
-                    window.location.href = result.redirect;
-                } else {
-                    window.location.reload();
-                }
-            }, 1500);
-        } else {
-            showToast(result.mensagem || 'Erro ao reprocessar diagnóstico', 'error');
-        }
-    } catch (error) {
-        console.error('Erro no reprocessamento:', error);
-        showToast('Erro de conexão. Tente novamente.', 'error');
-    } finally {
-        // Restaurar botão
-        button.disabled = false;
-        button.textContent = originalText;
-        button.className = button.className.replace('text-gray-500', 'text-orange-600');
-    }
-}
-
-// NOVA FUNÇÃO: Gerar Manual Completo com Nova Arquitetura
-async function gerarManualCompleto(diagnosticoId) {
-    if (!confirm('Deseja gerar um Manual Operacional Completo usando a Nova Arquitetura? Isso criará 50-70 SOPs profissionais baseados no diagnóstico.')) {
-        return;
-    }
-    
-    const button = event.target;
-    const originalText = button.textContent;
-    
-    try {
-        // Mostrar loading
-        button.disabled = true;
-        button.textContent = '🧠 Gerando...';
-        button.className = button.className.replace('text-purple-600', 'text-gray-500');
-        
-        const formData = new FormData();
-        formData.append('csrf_token', '<?= Csrf::token() ?>');
-        formData.append('diagnostico_id', diagnosticoId);
-        
-        const response = await fetch('<?= APP_URL ?>/sop/gerar-manual-completo', {
-            method: 'POST',
-            body: formData
-        });
-        
-        const result = await response.json();
-        
-        if (result.sucesso) {
-            showToast(`Estrutura organizacional criada! ${result.total_sops} SOPs serão gerados.`, 'success');
-            
-            // Redirecionar para a tela de processamento
-            setTimeout(() => {
-                window.location.href = result.redirect;
-            }, 1500);
-        } else {
-            showToast(result.erro || 'Erro ao iniciar geração do manual', 'error');
-        }
-    } catch (error) {
-        console.error('Erro na geração do manual:', error);
-        showToast('Erro de conexão. Tente novamente.', 'error');
-    } finally {
-        // Restaurar botão
-        button.disabled = false;
-        button.textContent = originalText;
-        button.className = button.className.replace('text-gray-500', 'text-purple-600');
-    }
-}
-
-// Função auxiliar para mostrar notificações
-function showToast(message, type = 'success') {
-    const toast = document.createElement('div');
-    toast.className = `fixed top-4 right-4 z-50 px-6 py-3 rounded-lg text-white shadow-lg transition-opacity duration-300 ${
-        type === 'success' ? 'bg-green-500' : 'bg-red-500'
-    }`;
-    toast.textContent = message;
-    
-    document.body.appendChild(toast);
-    
-    // Fade out e remover após 4 segundos
-    setTimeout(() => {
-        toast.style.opacity = '0';
-        setTimeout(() => toast.remove(), 300);
-    }, 4000);
-}
-</script>
 
 <?php $conteudo = ob_get_clean(); ?>
 <?php require VIEW_PATH . '/layouts/layout.php'; ?>
