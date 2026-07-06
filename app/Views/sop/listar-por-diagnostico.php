@@ -31,7 +31,12 @@
 #sops-view .stat.s4{--sv-bar:var(--sv-accent);}
 #sops-view .stat.s4 .val{color:var(--sv-accent-deep);}
 
-#sops-view .sector-head{background:var(--sv-surface);border:1px solid var(--sv-line);border-radius:16px 16px 0 0;padding:18px 22px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;}
+#sops-view .sector-block{margin-bottom:36px;}
+#sops-view .sector-head{background:var(--sv-surface);border:1px solid var(--sv-line);border-radius:16px 16px 0 0;padding:18px 22px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;cursor:pointer;user-select:none;}
+#sops-view .sector-head.collapsed{border-radius:16px;}
+#sops-view .sector-head:hover{background:#FAFBFD;}
+#sops-view .sector-chev{color:var(--sv-ink-mute);font-size:12px;transition:transform .15s;flex-shrink:0;}
+#sops-view .sector-head:not(.collapsed) .sector-chev{transform:rotate(90deg);}
 #sops-view .sector-name{display:flex;align-items:center;gap:12px;}
 #sops-view .sector-name .dot{width:34px;height:34px;border-radius:9px;background:var(--sv-lane-soft);color:var(--sv-lane-deep);display:flex;align-items:center;justify-content:center;font-size:16px;}
 #sops-view .sector-name h2{font-size:19px;margin:0;letter-spacing:0.02em;font-weight:600;}
@@ -44,7 +49,7 @@
 #sops-view .add-servico{font-size:12px;font-weight:600;color:var(--sv-lane-deep);background:var(--sv-lane-soft);border:none;padding:6px 12px;border-radius:8px;cursor:pointer;}
 #sops-view .add-servico:hover{background:#dbe4ef;}
 
-#sops-view .lanes-wrap{background:var(--sv-surface);border:1px solid var(--sv-line);border-top:none;border-radius:0 0 16px 16px;padding:6px 0 20px;margin-bottom:36px;}
+#sops-view .lanes-wrap{background:var(--sv-surface);border:1px solid var(--sv-line);border-top:none;border-radius:0 0 16px 16px;padding:6px 0 20px;}
 #sops-view .lane{padding:22px 22px 4px;border-bottom:1px solid var(--sv-line);}
 #sops-view .lane:last-child{border-bottom:none;}
 #sops-view .lane-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;gap:10px;}
@@ -141,9 +146,11 @@
             ksort($porSub);
         ?>
 
-        <!-- Cabeçalho do Setor -->
-        <div class="sector-head">
+        <!-- Cabeçalho do Setor (clicável para expandir/recolher) -->
+        <div class="sector-block" data-setor-block>
+        <div class="sector-head collapsed" onclick="toggleSetor(this)" role="button" tabindex="0">
             <div class="sector-name">
+                <span class="sector-chev">▶</span>
                 <div class="dot"><?= $iconeSetor ?></div>
                 <div>
                     <h2><?= htmlspecialchars($setor['nome_setor']) ?></h2>
@@ -161,12 +168,12 @@
                 <?php else: ?>
                     <span class="badge-status pendente">○ Pendente</span>
                 <?php endif; ?>
-                <button class="add-servico" onclick="abrirModalAddServico(<?= $setor['setor_id'] ?>, '<?= htmlspecialchars($setor['nome_setor'], ENT_QUOTES) ?>')">➕ Adicionar serviço</button>
+                <button class="add-servico" onclick="event.stopPropagation(); abrirModalAddServico(<?= $setor['setor_id'] ?>, '<?= htmlspecialchars($setor['nome_setor'], ENT_QUOTES) ?>')">➕ Adicionar serviço</button>
             </div>
         </div>
 
         <!-- Faixas (lanes) por subcategoria -->
-        <div class="lanes-wrap">
+        <div class="lanes-wrap" hidden>
             <?php if (!empty($servicos)): ?>
                 <?php foreach ($porSub as $subcategoria => $itens): ?>
                 <div class="lane">
@@ -215,6 +222,7 @@
                     <p class="lane-empty">Nenhum serviço neste setor. Use "Adicionar serviço" para criar.</p>
                 </div>
             <?php endif; ?>
+        </div>
         </div>
         <?php endforeach; ?>
 
@@ -319,6 +327,13 @@
 
 <script>
 const CSRF_TOKEN = '<?= Csrf::token() ?>';
+
+// Expandir/recolher setor (carrega minimizado por padrão)
+function toggleSetor(head) {
+    const wrap = head.nextElementSibling; // .lanes-wrap
+    const colapsado = head.classList.toggle('collapsed');
+    if (wrap) wrap.hidden = colapsado;
+}
 
 // Acessar o serviço: abre a página de detalhes (ver/gerar SOP inline)
 function acessarServico(servicoId) {
