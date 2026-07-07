@@ -11027,6 +11027,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         }
 
         $blocos[] = "\nREGRA DE CONSOLIDAÇÃO: gere um SOP que seja o PADRÃO do serviço + estas especificidades. Não descarte boas práticas do padrão, mas adapte-as à realidade descrita. Se o documento trouxer passos/critérios próprios, eles têm prioridade.";
+        $blocos[] = "\nFERRAMENTAS/SISTEMAS CITADOS: se a descrição ou o documento mencionarem ferramentas, sistemas, plataformas ou metodologias COMERCIAIS pelo nome (ex.: nomes de softwares, painéis, IDEs, serviços), você DEVE citá-los pelo nome exato no SOP — são os sistemas reais que a empresa usa nos seus procedimentos internos. NÃO substitua por termos genéricos e NÃO invente ferramentas que não foram citadas. Use cada ferramenta no mesmo contexto em que aparece no material.";
 
         return implode("\n", $blocos);
     }
@@ -11070,7 +11071,7 @@ O campo \"resumo_executivo_topicos\" é o RESUMO EXECUTIVO DIDÁTICO do topo da 
 - O ÚLTIMO tópico obrigatoriamente inicia com 'Resultado:' descrevendo o entregável/estado final que caracteriza a conclusão bem-sucedida.
 - Assertivo e específico ao serviço; nada de enrolação ou passo genérico de encher.
 
-Use SEMPRE terminologia genérica. NUNCA mencione marcas comerciais (ex: use 'ferramenta de gestão' em vez de nome de produto).
+Evite inventar marcas comerciais (use termos neutros como 'ferramenta de gestão'), MAS cite pelo nome exato as ferramentas/sistemas que o material de personalização do cliente mencionar.
 
 # FORMATO DA RESPOSTA (JSON):
 ```json
@@ -11115,7 +11116,7 @@ Alguém SEM conhecimento prévio do processo deve conseguir executá-lo usando A
 - Explicite TODO ponto de decisão sem ambiguidade: 'Se X, faça A; se Y, faça B.'
 - Critérios de conclusão devem ser MENSURÁVEIS e verificáveis, nunca subjetivos ('está pronto porque X, Y e Z foram verificados', não 'parece pronto').
 - Erros comuns devem ser REAIS e específicos deste processo, nunca genéricos.
-- NUNCA use nome de marca, produto ou serviço comercial. O manual é documentação interna neutra (use 'ferramenta de gestão', não o nome do produto).
+- Como regra geral, evite inventar nome de marca, produto ou serviço comercial — use termos neutros (ex.: 'ferramenta de gestão'). EXCEÇÃO IMPORTANTE: se o material de personalização do cliente (descrição ou documento anexado) citar ferramentas/sistemas/plataformas comerciais pelo nome, você DEVE citá-los pelo nome exato, pois são os sistemas reais que a empresa usa. A proibição vale apenas para marcas que VOCÊ inventaria, nunca para as que o cliente forneceu.
 - Se faltar contexto específico da empresa, gere a versão de referência (padrão de mercado) e mantenha o conteúdo aplicável e adaptável à realidade dela.";
     }
 
@@ -11173,7 +11174,7 @@ Este é um MANUAL TÉCNICO DE COMO EXECUTAR O SERVIÇO, e NÃO um manual de aten
 Gere APENAS a fase técnica: **\"{$nomeFase}\"**, TOTALMENTE PERSONALIZADA ao serviço e ao perfil da empresa acima.
 Foco desta fase: {$focoFase}.
 
-Esta fase deve conter EXATAMENTE de 3 a 4 passos técnicos. Gere POUCOS passos, porém cada um EXTREMAMENTE completo e assertivo. O objetivo é que um colaborador consiga executar seguindo o texto, sem dúvidas. Use terminologia genérica. NUNCA mencione marcas comerciais.
+Esta fase deve conter EXATAMENTE de 3 a 4 passos técnicos. Gere POUCOS passos, porém cada um EXTREMAMENTE completo e assertivo. O objetivo é que um colaborador consiga executar seguindo o texto, sem dúvidas. Evite inventar marcas comerciais (use termos neutros), MAS cite pelo nome exato as ferramentas/sistemas que o material de personalização do cliente mencionar — são os sistemas reais usados pela empresa.
 
 ## REGRA DE OURO — SUBSTÂNCIA REAL, ZERO ENCHIMENTO DE LINGUIÇA:
 O SOP deve ensinar a ESSÊNCIA REAL de como executar bem ESTE serviço específico — as boas práticas do ofício, o know-how que separa um profissional bom de um medíocre. É PROIBIDO gerar passos triviais, óbvios ou genéricos que serviriam para qualquer coisa.
@@ -11265,7 +11266,7 @@ Tudo sempre dentro da ética, da legalidade e das normas técnicas — 'malícia
 # TAREFA
 Gere de 4 a 6 cenários de adversidade TÉCNICA reais que podem ocorrer durante a EXECUÇÃO deste serviço nesta empresa, e como resolver cada um de forma prática, técnica E TÁTICA.
 Inclua também de 3 a 4 procedimentos objetivos para problemas específicos recorrentes.
-Seja prático, técnico, direto e estrategicamente esperto. Use terminologia genérica. NUNCA mencione marcas comerciais.
+Seja prático, técnico, direto e estrategicamente esperto. Evite inventar marcas comerciais, MAS cite pelo nome exato as ferramentas/sistemas que o material de personalização do cliente mencionar.
 
 # FORMATO (JSON):
 ```json
