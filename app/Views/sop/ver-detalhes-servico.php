@@ -204,6 +204,39 @@ if (!function_exists('sopRenderTexto')) {
 @media (max-width:900px){
     #sop-detail-view .grid-2,#sop-detail-view .scenario-grid{grid-template-columns:1fr;}
 }
+
+/* ===== Impressão / Exportar PDF ===== */
+@media print {
+    /* Esconde tudo que não é o SOP: sidebar, topbar, botões, modais, toasts */
+    body * { visibility: hidden !important; }
+    #sop-detail-view, #sop-detail-view * { visibility: visible !important; }
+    #sop-detail-view {
+        position: absolute; left: 0; top: 0; width: 100%;
+        padding: 0 !important; margin: 0 !important;
+    }
+    /* Layout: remover deslocamento da sidebar e paddings do main */
+    header, aside, nav, .no-print, #modalPersonalizar, #modalLoading, .actions-row,
+    #sop-detail-view .actions-row, #toast-container { display: none !important; }
+    main, main > div { margin: 0 !important; padding: 0 !important; }
+
+    /* Abrir todos os accordions e mostrar seu conteúdo */
+    #sop-detail-view details { display: block !important; }
+    #sop-detail-view details > *:not(summary) { display: block !important; }
+    #sop-detail-view .phase-body { display: flex !important; }
+    #sop-detail-view .chev { display: none !important; }
+
+    /* Evitar cortes feios entre páginas */
+    #sop-detail-view .card,
+    #sop-detail-view .phase,
+    #sop-detail-view .step,
+    #sop-detail-view .scenario,
+    #sop-detail-view .crit-wrap { break-inside: avoid; page-break-inside: avoid; }
+    #sop-detail-view .section-title { break-after: avoid; page-break-after: avoid; }
+
+    /* Cores/sombras mais leves para papel */
+    #sop-detail-view * { box-shadow: none !important; }
+    @page { margin: 14mm; }
+}
 </style>
 
 <div id="sop-detail-view">
@@ -248,8 +281,8 @@ if (!function_exists('sopRenderTexto')) {
             <button class="btn" onclick="abrirPersonalizar()">🎛 Personalizar</button>
             <?php if ($temSop): ?>
             <button class="btn" onclick="processarServico(<?= $servico['id'] ?>)">↻ Regenerar SOP</button>
-            <button class="btn" onclick="window.print()">🖨 Imprimir</button>
-            <button class="btn primary spacer" onclick="window.print()">⤓ Exportar PDF</button>
+            <button class="btn" onclick="imprimirSop()">🖨 Imprimir</button>
+            <button class="btn primary spacer" onclick="imprimirSop()">⤓ Exportar PDF</button>
             <?php else: ?>
             <button class="btn gen spacer" onclick="processarServico(<?= $servico['id'] ?>)">⚡ Gerar SOP Completo</button>
             <?php endif; ?>
@@ -592,6 +625,18 @@ if (!function_exists('sopRenderTexto')) {
 </div>
 
 <script>
+// Imprimir/Exportar PDF: abre todos os accordions antes de imprimir e restaura depois.
+function imprimirSop() {
+    const abertos = [];
+    document.querySelectorAll('#sop-detail-view details').forEach(d => {
+        abertos.push([d, d.open]);
+        d.open = true;
+    });
+    const restaurar = () => { abertos.forEach(([d, estava]) => { d.open = estava; }); window.removeEventListener('afterprint', restaurar); };
+    window.addEventListener('afterprint', restaurar);
+    setTimeout(() => window.print(), 150);
+}
+
 // Abrir/fechar modal de personalização
 function abrirPersonalizar() { document.getElementById('modalPersonalizar').classList.remove('hidden'); }
 function fecharPersonalizar() { document.getElementById('modalPersonalizar').classList.add('hidden'); }
