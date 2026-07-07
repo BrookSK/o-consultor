@@ -11952,7 +11952,8 @@ Alguém SEM conhecimento prévio do processo deve conseguir executá-lo usando A
 # REGRA DE COBERTURA OBRIGATÓRIA (NUNCA VIOLAR — TEM PRIORIDADE SOBRE QUALQUER CORTE)
 - Toda ação listada no resumo executivo (resumo_executivo_topicos, definido na Fase 1) DEVE corresponder a pelo menos um passo (acao_operacional) em algum lugar do corpo técnico (Fases 2 a 7). Nenhuma ação do resumo pode ficar sem instrução executável correspondente.
 - Cortar volume, mesclar passos ou reduzir detalhamento é aceitável. Omitir uma ação inteira do processo NUNCA é aceitável, mesmo sob restrição de tamanho ou orçamento de passos.
-- Em caso de conflito entre \"reduzir quantidade de passos\" e \"cobrir todas as ações do resumo executivo\", a COBERTURA sempre vence. Reduza o detalhamento de cada passo antes de reduzir a quantidade de ações cobertas.";
+- Em caso de conflito entre \"reduzir quantidade de passos\" e \"cobrir todas as ações do resumo executivo\", a COBERTURA sempre vence. Reduza o detalhamento de cada passo antes de reduzir a quantidade de ações cobertas.
+- AÇÃO ÚNICA ≠ AÇÃO RECORRENTE: quando uma ação do resumo executivo é um EVENTO ÚNICO (executado uma vez, para realizar/entregar aquilo pela primeira vez), ela NÃO é considerada coberta por um passo que trate do MESMO TEMA de forma RECORRENTE/PERIÓDICA (revisar, reavaliar, monitorar, atualizar de tempos em tempos). São ações distintas: a ação única de fazer/executar deve ter SEU PRÓPRIO passo, na fase de execução, ainda que exista depois uma rotina de acompanhamento numa fase posterior. Não use a rotina periódica como substituta da execução inicial. Isso vale para QUALQUER tipo de serviço (interno, técnico, de produção, analítico, etc.), não só serviços com entrega a cliente — aplique apenas quando o resumo de fato tiver uma ação de execução única e outra recorrente sobre o mesmo tema.";
     }
 
     /**
@@ -12031,7 +12032,8 @@ Alguém SEM conhecimento prévio do processo deve conseguir executá-lo usando A
                 . implode("\n", $listaPrometidas)
                 . "\n\nAÇÕES JÁ COBERTAS NAS FASES ANTERIORES:\n"
                 . $listaCobertas
-                . "\n\nAntes de finalizar esta fase, verifique: alguma ação prometida acima ainda NÃO aparece nas fases anteriores E é tematicamente compatível com o foco desta fase (ex.: configurar rede/acesso pertence a uma fase de execução)? Se sim, INCLUA um passo para ela AGORA, mesmo que ultrapasse o teto de 2-3 passos — a cobertura tem prioridade sobre o teto de quantidade. Se esta é uma das últimas fases de execução e restam ações prometidas sem dono, esta fase deve absorvê-las.\n";
+                . "\n\nAntes de finalizar esta fase, verifique: alguma ação prometida acima ainda NÃO aparece nas fases anteriores E é tematicamente compatível com o foco desta fase (ex.: configurar rede/acesso pertence a uma fase de execução)? Se sim, INCLUA um passo para ela AGORA, mesmo que ultrapasse o teto de 2-3 passos — a cobertura tem prioridade sobre o teto de quantidade. Se esta é uma das últimas fases de execução e restam ações prometidas sem dono, esta fase deve absorvê-las.\n"
+                . "ATENÇÃO: se uma ação do resumo é um EVENTO ÚNICO (fazer/executar aquilo pela primeira vez), ela só é considerada COBERTA por um passo que realize essa ação única DE FATO. Um passo que trate do MESMO TEMA de forma recorrente/periódica (revisar, reavaliar, monitorar, atualizar periodicamente) NÃO cobre a ação única — nesse caso ela continua DESCOBERTA e precisa do seu próprio passo na fase de execução dona dela. (Só aplique esta distinção quando existir de fato essa dupla ação única × recorrente no resumo.)\n";
         }
 
         $blocoContextoCruzado = '';
@@ -12164,7 +12166,8 @@ Responda APENAS com o JSON válido desta única fase.";
                 . implode("\n", $prometidas)
                 . "\n\nAÇÕES EFETIVAMENTE COBERTAS NAS FASES DE EXECUÇÃO (2-7):\n"
                 . $cobertas
-                . "\n\nCompare as duas listas. Se ALGUMA ação prometida NÃO tiver passo correspondente em nenhuma fase de execução, adicione ao seu JSON um campo \\\"alertas_cobertura_incompleta\\\" (array de strings), listando cada ação faltante em texto simples. Se todas estiverem cobertas, NÃO inclua esse campo (ou deixe-o como array vazio).\n";
+                . "\n\nCompare as duas listas. Se ALGUMA ação prometida NÃO tiver passo correspondente em nenhuma fase de execução, adicione ao seu JSON um campo \\\"alertas_cobertura_incompleta\\\" (array de strings), listando cada ação faltante em texto simples. Se todas estiverem cobertas, NÃO inclua esse campo (ou deixe-o como array vazio).\n"
+                . "REGRA AÇÃO ÚNICA × RECORRENTE: ao comparar, uma ação do resumo que seja EVENTO ÚNICO (executar/realizar aquilo pela primeira vez) só conta como coberta se houver um passo que faça essa ação única. Um passo que trate do mesmo tema de forma recorrente/periódica (revisar, reavaliar, monitorar, atualizar de tempos em tempos) NÃO satisfaz a ação única — nesse caso trate-a como FALTANTE e inclua-a em alertas_cobertura_incompleta. Aplique isso somente quando o resumo realmente tiver essa dupla; não force a distinção em serviços onde ela não existe.\n";
         }
 
         return "{$diretrizes}
