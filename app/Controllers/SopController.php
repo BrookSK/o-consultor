@@ -11170,19 +11170,27 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
 {$resumoSopTxt}
 
 # TAREFA
-Gere scripts de comunicação profissionais e prontos para copiar, cobrindo as situações reais de comunicação com o cliente/contato que ESTE serviço exige. Adapte tudo ao tipo de serviço:
+Gere scripts de comunicação profissionais e prontos para copiar, cobrindo TODA a jornada de comunicação com o cliente/contato que ESTE serviço exige — do primeiro contato à despedida. Adapte tudo ao tipo de serviço:
 - Se for atendimento/relacionamento: boas-vindas, captação/prospecção, follow-up, suporte, comunicação proativa, cobrança educada, pós-atendimento.
 - Se for entrega/setup (ex.: credenciais, acesso, documento): mensagem de entrega, instruções de primeiro acesso, confirmação de recebimento.
 - Se for técnico/operacional: aviso de início, atualização de andamento, comunicação de conclusão, aviso de imprevisto/atraso.
 - Sempre inclua, quando fizer sentido, o manejo de situações difíceis do SOP (atraso, problema, insatisfação).
 
+# CATEGORIAS OBRIGATÓRIAS DE RELACIONAMENTO HUMANO (INCLUA SEMPRE, além das específicas do serviço)
+Estas categorias tratam do lado humano do atendimento e NÃO podem faltar:
+- ACOLHIMENTO / RECEPÇÃO: mensagens que recebem o cliente com atenção genuína, fazendo-o se sentir bem-vindo e ouvido, sem frieza nem formalidade excessiva. NA MENSAGEM DE BOAS-VINDAS/PRIMEIRO CONTATO é OBRIGATÓRIO o interlocutor se APRESENTAR: dizer o próprio nome e função de forma calorosa (ex.: 'Oi [nome], aqui é a [Ana], do time da [Empresa] 😊' ou 'Olá [nome], me chamo [Ana] e vou acompanhar você por aqui'). Uma boa-vinda sem apresentação de quem fala é considerada ERRADA.
+- ESCUTA E COMPREENSÃO: mensagens que demonstram que a equipe entendeu a necessidade/situação do cliente, reformulando o que ele trouxe com empatia (ex.: 'Entendi, você precisa de [X] por causa de [Y]. Vamos resolver isso.'). Inclua também acolhimento em momento de frustração/insatisfação — reconhecer o incômodo com empatia antes de propor solução.
+- CONFIRMAÇÃO DE ENTENDIMENTO / ALINHAMENTO: mensagens curtas que validam com o cliente se o que foi entendido está correto antes de agir ('Só confirmando para não haver ruído: você quer [X], certo?').
+- DESPEDIDA / ENCERRAMENTO: mensagens de fechamento cordiais e elegantes ao final de um atendimento ou da entrega — agradecer de forma natural (sem clichê), deixar o canal aberto e encerrar com leveza, sem soar como despacho automático.
+
 # REGRAS DE REDAÇÃO (LEIA COM ATENÇÃO — A COMUNICAÇÃO PRECISA SER ELEGANTE E NATURAL)
-- Escreva como um profissional experiente escreveria de verdade a um cliente: claro, cordial, seguro e ELEGANTE. Nada de texto robótico, forçado ou 'de manual'.
+- Escreva como uma PESSOA real e simpática escreveria a um cliente de quem gosta: caloroso, humano, próximo, seguro e ELEGANTE ao mesmo tempo. O texto deve ter CALOR e personalidade — jamais soar robótico, frio, protocolar ou 'de manual'. Se ao reler parecer um comunicado automático de sistema, reescreva até soar como uma conversa real entre pessoas.
+- Traga leveza e humanidade: uma pergunta genuína, um reconhecimento sincero, uma frase que mostra que há uma pessoa (não um robô) do outro lado. Emojis são bem-vindos com parcimônia (1, no máximo 2) quando combinarem com o tom da empresa — nunca em excesso.
 - PROIBIDO citar o nome interno do serviço ou o jargão de processo dentro da mensagem ao cliente. O cliente NÃO quer ouvir 'nosso serviço de tecnologia', 'triagem de leads', 'gestão de CRM', 'processo de onboarding' etc. Fale do BENEFÍCIO ou do assunto concreto, não do nome do processo interno. Ex.: em vez de 'Como podemos te ajudar com nossos serviços de tecnologia?', escreva 'Como podemos ajudar?' ou 'Conte com a gente no que precisar.'
 - PROIBIDA autorreferência redundante e frases de preenchimento: 'estamos muito felizes em receber seu contato', 'agradecemos a sua paciência', 'só passando para saber', 'fico à disposição' repetido em toda mensagem. Use variação e naturalidade; corte tudo que não agrega.
 - Vá direto ao ponto com gentileza. Uma boa mensagem de negócio é curta, específica e respeita o tempo do cliente.
 - Não prometa nem invente detalhes que não existem (prazos, resultados). Quando um dado é específico, use variável entre colchetes: [nome], [data], [link], [valor], [prazo].
-- Português do Brasil impecável, com pontuação e concordância corretas. Sem gírias, sem excesso de exclamações (no máximo uma, e só quando couber), sem emojis a menos que o tom da empresa peça.
+- Português do Brasil impecável, com pontuação e concordância corretas. Evite excesso de exclamações e formalidade dura; prefira um tom próximo e natural, como uma conversa real.
 - Trate o cliente pelo primeiro nome quando fizer sentido; tom 'você', próximo mas profissional.
 - Cada mensagem deve soar única e utilizável de imediato — não repita a mesma estrutura ('Olá [nome], ...') em todas.
 - Cite ferramentas/sistemas pelo nome APENAS se o material do cliente os mencionar; nunca invente.
@@ -11190,7 +11198,7 @@ Gere scripts de comunicação profissionais e prontos para copiar, cobrindo as s
 
 # EXEMPLOS DO PADRÃO ESPERADO (use como referência de TOM, não copie literalmente)
 - Ruim: 'Olá [nome], seja bem-vindo à [Empresa]! Estamos muito felizes em receber seu contato. Como podemos ajudá-lo com nossos serviços de tecnologia?'
-- Bom: 'Olá [nome], que bom ter você por aqui. Me conta rapidamente o que você precisa resolver que eu já te direciono da melhor forma.'
+- Bom (boas-vindas COM apresentação de quem fala): 'Oi [nome], tudo bem? Aqui é a [Ana], do time da [Empresa] 😊 Vou te acompanhar por aqui. Me conta rapidinho o que você precisa que já te ajudo.'
 - Ruim: 'Olá [nome], gostaria de informar que seu interesse em nossos serviços está sendo analisado. Agradecemos pela sua paciência!'
 - Bom: 'Oi [nome], seguimos avançando por aqui. Assim que eu tiver a próxima definição, te aviso — deve ser até [prazo].'
 
@@ -11214,7 +11222,7 @@ Gere scripts de comunicação profissionais e prontos para copiar, cobrindo as s
 }
 ```
 
-Gere de 4 a 7 categorias, cada uma com 1 a 3 mensagens. Responda APENAS com o JSON válido.";
+Gere de 6 a 9 categorias, cada uma com 1 a 3 mensagens. As 4 categorias obrigatórias de relacionamento humano (acolhimento, escuta/compreensão, confirmação de entendimento e despedida) devem SEMPRE estar presentes, somadas às categorias específicas deste serviço. Responda APENAS com o JSON válido.";
     }
 
     /**
