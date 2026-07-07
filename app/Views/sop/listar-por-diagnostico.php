@@ -265,45 +265,55 @@
 
 </div>
 
-<!-- Modal: Adicionar Serviço -->
+<!-- Modal: Adicionar Serviço (fluxo por IA) -->
 <div id="modalAddServico" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-    <div class="bg-white rounded-lg p-6 max-w-lg w-full mx-4 shadow-xl">
-        <div class="flex items-center justify-between mb-4">
+    <div class="bg-white rounded-lg p-6 max-w-lg w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between mb-1">
             <h3 class="text-lg font-semibold" id="addServicoTitulo">Adicionar Serviço</h3>
             <button onclick="fecharModal('modalAddServico')" class="text-gray-400 hover:text-gray-600">✕</button>
         </div>
+        <p class="text-sm text-gray-500 mb-4">Descreva o serviço por texto ou voz, e/ou anexe um documento. A IA vai nomear, categorizar, definir a criticidade e gerar o SOP automaticamente.</p>
         <input type="hidden" id="add_setor_id">
-        <div class="space-y-3">
+
+        <div class="space-y-4">
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Nome do Serviço *</label>
-                <input type="text" id="add_nome" class="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="Ex: Controle de estoque de insumos">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Descrição do serviço</label>
+                <div class="relative">
+                    <textarea id="add_descricao" rows="5"
+                              class="w-full px-3 py-2 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:border-primary"
+                              placeholder="Explique o que é o serviço, como é feito, por onde passa, ferramentas usadas... ou clique no microfone e fale."></textarea>
+                    <button type="button" id="add_btn_mic" onclick="alternarGravacaoAdd()" title="Gravar por voz"
+                            class="absolute right-2 bottom-2 w-9 h-9 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary-700">
+                        🎤
+                    </button>
+                </div>
+                <p id="add_mic_status" class="text-xs text-gray-400 mt-1 hidden"></p>
             </div>
+
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Subcategoria</label>
-                <input type="text" id="add_subcategoria" class="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="Ex: Personalizado" value="Personalizado">
-            </div>
-            <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Categoria</label>
-                    <select id="add_categoria" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                        <option value="operacional">Operacional</option>
-                        <option value="core">Core</option>
-                        <option value="estrategico">Estratégico</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Criticidade</label>
-                    <select id="add_criticidade" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                        <option value="media">Média</option>
-                        <option value="baixa">Baixa</option>
-                        <option value="alta">Alta</option>
-                    </select>
-                </div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Documento de apoio (opcional)</label>
+                <input type="file" id="add_documento"
+                       accept=".pdf,.doc,.docx,.txt,.md,.rtf,.csv,.html"
+                       class="w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-primary file:text-white file:cursor-pointer hover:file:bg-primary-700 border border-gray-300 rounded-lg p-1">
+                <p class="text-xs text-gray-400 mt-1">PDF, DOC, DOCX, TXT, MD, RTF, CSV ou HTML. A IA lê o conteúdo como base do SOP.</p>
             </div>
         </div>
+
         <div class="flex gap-3 mt-6">
             <button onclick="fecharModal('modalAddServico')" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg">Cancelar</button>
-            <button onclick="salvarNovoServico()" class="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-700">Adicionar</button>
+            <button id="add_btn_criar" onclick="criarServicoInteligente()" class="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-700">✨ Criar e gerar SOP</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de progresso (criação + geração de SOP) -->
+<div id="modalProgressoSop" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-lg p-8 text-center max-w-md w-full mx-4 shadow-xl">
+        <div class="inline-block w-12 h-12 border-4 border-gray-200 border-t-primary rounded-full animate-spin mb-4"></div>
+        <h3 class="text-lg font-medium text-gray-800 mb-2" id="progTitulo">Criando serviço...</h3>
+        <p class="text-sm text-gray-500 mb-4" id="progSub">Analisando as informações com IA...</p>
+        <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+            <div id="progBar" class="bg-primary h-3 rounded-full transition-all duration-500" style="width:8%"></div>
         </div>
     </div>
 </div>
@@ -422,31 +432,180 @@ function acessarServico(servicoId) {
 
 function fecharModal(id) { document.getElementById(id).classList.add('hidden'); }
 
-// ---- Adicionar ----
+// ---- Adicionar (fluxo por IA) ----
 function abrirModalAddServico(setorId, nomeSetor) {
     document.getElementById('add_setor_id').value = setorId;
-    document.getElementById('add_nome').value = '';
-    document.getElementById('add_subcategoria').value = 'Personalizado';
+    document.getElementById('add_descricao').value = '';
+    document.getElementById('add_documento').value = '';
+    const st = document.getElementById('add_mic_status');
+    st.classList.add('hidden'); st.textContent = '';
     document.getElementById('addServicoTitulo').textContent = 'Adicionar Serviço — ' + nomeSetor;
     document.getElementById('modalAddServico').classList.remove('hidden');
 }
 
-async function salvarNovoServico() {
-    const nome = document.getElementById('add_nome').value.trim();
-    if (!nome) { alert('Informe o nome do serviço.'); return; }
-    const body = new URLSearchParams({
-        setor_id: document.getElementById('add_setor_id').value,
-        nome_servico: nome,
-        subcategoria: document.getElementById('add_subcategoria').value.trim() || 'Personalizado',
-        categoria: document.getElementById('add_categoria').value,
-        criticidade: document.getElementById('add_criticidade').value,
-        csrf_token: CSRF_TOKEN
-    });
+// ---- Gravação de voz (transcrição via Whisper) ----
+let addMediaRecorder = null;
+let addAudioChunks = [];
+
+async function alternarGravacaoAdd() {
+    const btn = document.getElementById('add_btn_mic');
+    const status = document.getElementById('add_mic_status');
+
+    // Parar se já estiver gravando
+    if (addMediaRecorder && addMediaRecorder.state === 'recording') {
+        addMediaRecorder.stop();
+        return;
+    }
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('Seu navegador não suporta gravação de áudio.');
+        return;
+    }
+
     try {
-        const r = await fetch('<?= APP_URL ?>/sop/adicionar-servico-manual', { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body });
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        addAudioChunks = [];
+        addMediaRecorder = new MediaRecorder(stream, {
+            mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4'
+        });
+        addMediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) addAudioChunks.push(e.data); };
+        addMediaRecorder.onstop = async () => {
+            stream.getTracks().forEach(t => t.stop());
+            btn.innerHTML = '🎤';
+            btn.classList.remove('animate-pulse');
+            status.textContent = 'Transcrevendo áudio...';
+            await transcreverAudioAdd();
+        };
+        addMediaRecorder.start();
+        btn.innerHTML = '⏹';
+        btn.classList.add('animate-pulse');
+        status.classList.remove('hidden');
+        status.textContent = 'Gravando... clique para parar.';
+    } catch (e) {
+        alert('Não foi possível acessar o microfone.');
+    }
+}
+
+async function transcreverAudioAdd() {
+    const status = document.getElementById('add_mic_status');
+    try {
+        const blob = new Blob(addAudioChunks, { type: 'audio/webm' });
+        const fd = new FormData();
+        fd.append('audio', blob, 'gravacao.webm');
+        fd.append('csrf_token', CSRF_TOKEN);
+        const r = await fetch('<?= APP_URL ?>/api/transcricao', { method: 'POST', body: fd });
         const d = await r.json();
-        if (d.sucesso) { location.reload(); } else { alert('Erro: ' + (d.erro || 'desconhecido')); }
-    } catch (e) { alert('Erro de comunicação com o servidor.'); }
+        if (d.sucesso && d.transcricao) {
+            const ta = document.getElementById('add_descricao');
+            ta.value = (ta.value ? ta.value.trim() + '\n' : '') + d.transcricao.trim();
+            status.textContent = 'Transcrição adicionada.';
+            setTimeout(() => status.classList.add('hidden'), 2500);
+        } else {
+            status.textContent = 'Não foi possível transcrever: ' + (d.erro || 'erro');
+        }
+    } catch (e) {
+        status.textContent = 'Erro ao transcrever o áudio.';
+    }
+}
+
+// ---- Criar serviço inteligente + gerar SOP + redirecionar ----
+async function criarServicoInteligente() {
+    const descricao = document.getElementById('add_descricao').value.trim();
+    const fileInput = document.getElementById('add_documento');
+    const temArquivo = fileInput.files && fileInput.files.length > 0;
+
+    if (!descricao && !temArquivo) {
+        alert('Descreva o serviço (texto ou voz) ou anexe um documento.');
+        return;
+    }
+
+    const btn = document.getElementById('add_btn_criar');
+    btn.disabled = true;
+
+    const fd = new FormData();
+    fd.append('setor_id', document.getElementById('add_setor_id').value);
+    fd.append('descricao', descricao);
+    fd.append('csrf_token', CSRF_TOKEN);
+    if (temArquivo) {
+        fd.append('documento', fileInput.files[0]);
+        fd.append('documento_nome', fileInput.files[0].name);
+    }
+
+    fecharModal('modalAddServico');
+    mostrarProgresso('Criando serviço...', 'Analisando as informações com IA...', 10);
+
+    try {
+        const r = await fetch('<?= APP_URL ?>/sop/criar-servico-inteligente', { method: 'POST', body: fd });
+        const d = await r.json();
+        if (!d.sucesso) {
+            esconderProgresso();
+            btn.disabled = false;
+            alert('Erro: ' + (d.erro || 'desconhecido'));
+            return;
+        }
+        atualizarProgresso(25, 'Serviço "' + (d.nome_servico || '') + '" criado. Gerando SOP...');
+        await acompanharGeracaoSopModal(d.sop_id, d.servico_id);
+    } catch (e) {
+        esconderProgresso();
+        btn.disabled = false;
+        alert('Erro de comunicação com o servidor.');
+    }
+}
+
+function mostrarProgresso(titulo, sub, pct) {
+    document.getElementById('progTitulo').textContent = titulo;
+    document.getElementById('progSub').textContent = sub;
+    document.getElementById('progBar').style.width = (pct || 8) + '%';
+    document.getElementById('modalProgressoSop').classList.remove('hidden');
+}
+function atualizarProgresso(pct, sub) {
+    document.getElementById('progBar').style.width = pct + '%';
+    if (sub) document.getElementById('progSub').textContent = sub;
+}
+function esconderProgresso() { document.getElementById('modalProgressoSop').classList.add('hidden'); }
+
+// Processa a fila fase a fase e redireciona para a página de detalhes do serviço ao concluir.
+async function acompanharGeracaoSopModal(sopId, servicoId) {
+    const URL_STATUS = '<?= APP_URL ?>/sop/status-servico-sop';
+    const URL_PROCESSAR = '<?= APP_URL ?>/sop/processar-fila';
+    const esperar = (ms) => new Promise(res => setTimeout(res, ms));
+    const pctFase = { 1: 30, 2: 40, 3: 50, 4: 62, 5: 72, 6: 82, 7: 90, 8: 98 };
+
+    async function status() {
+        try { const r = await fetch(URL_STATUS + '?sop_id=' + sopId + '&_=' + Date.now()); return await r.json(); }
+        catch (e) { return null; }
+    }
+
+    let concluido = false;
+    for (let t = 0; t < 32 && !concluido; t++) {
+        const st = await status();
+        if (st && st.sucesso) {
+            if (st.status_geracao === 'concluido') { concluido = true; break; }
+            if (st.status_geracao === 'erro') { esconderProgresso(); alert('Erro na geração: ' + (st.mensagem || 'desconhecido')); return; }
+            const prox = (st.fase_atual || 0) + 1;
+            atualizarProgresso(pctFase[prox] || 30, 'Gerando SOP (etapa ' + Math.min(prox, 8) + ' de 8)...');
+        }
+        try {
+            const rp = await fetch(URL_PROCESSAR + '?_=' + Date.now());
+            const proc = await rp.json();
+            if (proc && proc.sucesso === false) { esconderProgresso(); alert('Erro na geração: ' + (proc.erro || 'desconhecido')); return; }
+            if (proc && (proc.concluido || (proc.fase && proc.fase >= 8))) { concluido = true; break; }
+        } catch (e) { await esperar(3000); }
+    }
+
+    if (!concluido) {
+        const st = await status();
+        if (st && st.status_geracao === 'concluido') concluido = true;
+    }
+
+    if (concluido) {
+        atualizarProgresso(100, 'SOP gerado! Redirecionando...');
+        window.location.href = '<?= APP_URL ?>/sop/ver-detalhes-servico?servico_id=' + servicoId;
+    } else {
+        esconderProgresso();
+        // Mesmo sem concluir 100% no navegador, o serviço já existe: leva para a página dele.
+        window.location.href = '<?= APP_URL ?>/sop/ver-detalhes-servico?servico_id=' + servicoId;
+    }
 }
 
 // ---- Editar ----

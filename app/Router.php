@@ -80,6 +80,9 @@ class Router
         
         // NOVA ARQUITETURA: Manual Completo em 4 Etapas Detalhadas
         $this->post('sop/gerar-manual-completo', 'SopController', 'gerarManualCompleto');         // Etapa 1: Diagnóstico e Estrutura
+        $this->get('sop/estrutura-existe', 'SopController', 'estruturaExiste');                   // Verifica se já há estrutura (recriar?)
+        $this->get('sop/selecionar-servicos', 'SopController', 'selecionarServicos');             // Tela de seleção (draft) de serviços
+        $this->post('sop/salvar-selecao-servicos', 'SopController', 'salvarSelecaoServicos');     // Salva seleção de serviços
         $this->get('sop/mapear-servicos', 'SopController', 'mapearServicos');                     // Etapa 2A: View mapeamento
         $this->post('sop/executar-mapeamento-setor', 'SopController', 'executarMapeamentoSetor'); // Etapa 2A: AJAX por setor
         $this->post('sop/regenerar-csrf', 'SopController', 'regenerarTokenCSRF');               // Debug: Regenerar CSRF
@@ -113,6 +116,7 @@ class Router
         $this->get('sop/processar-fila', 'SopController', 'processarFilaHttp');                    // Processa 1 fase da fila (fallback sem cron)
         $this->get('sop/debug-fila', 'SopController', 'debugFila');                                // DEBUG: inspecionar estado da fila
         $this->post('sop/adicionar-servico-manual', 'SopController', 'adicionarServicoManual');  // Adicionar serviço manualmente
+        $this->post('sop/criar-servico-inteligente', 'SopController', 'criarServicoInteligente'); // IA: cria serviço (nome/cat/crit) + gera SOP
         $this->post('sop/adicionar-servico-audio', 'SopController', 'adicionarServicoAudio');    // Adicionar serviço por áudio
         $this->get('sop/ver-detalhes-servico', 'SopController', 'verDetalhesServico');           // Ver detalhes completos do serviço
         $this->post('sop/editar-servico-manual', 'SopController', 'editarServicoManual');        // Editar serviço

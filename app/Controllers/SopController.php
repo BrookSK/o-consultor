@@ -2899,7 +2899,8 @@ class SopController
                 'setores_salvos' => array_column($setoresSalvos, 'nome_setor')
             ]);
             
-            // RESPOSTA DE SUCESSO - Redirecionar para listagem
+            // RESPOSTA DE SUCESSO - Redirecionar para a TELA DE SELEÇÃO (draft),
+            // onde o usuário escolhe quais serviços de cada setor entram nos SOPs.
             header('Content-Type: application/json');
             echo json_encode([
                 'sucesso' => true,
@@ -2907,7 +2908,7 @@ class SopController
                 'total_setores' => count($setoresSalvos),
                 'total_servicos' => $totalServicos,
                 'sistema' => 'catalogo_fixo',
-                'redirect' => APP_URL . '/sop/listar-por-diagnostico?diagnostico_id=' . $diagnosticoIdPost
+                'redirect' => APP_URL . '/sop/selecionar-servicos?diagnostico_id=' . $diagnosticoIdPost
             ]);
             
         } catch (Exception $e) {
@@ -2924,6 +2925,219 @@ class SopController
         }
         
         exit;
+    }
+
+    /**
+     * Verifica se já existe estrutura organizacional para o diagnóstico.
+     * Usado pelo botão "Manual Completo" para perguntar se deseja recriar.
+     */
+    public function estruturaExiste(): void
+    {
+        Auth::proteger();
+        header('Content-Type: application/json');
+
+        $diagnosticoId = (int) ($_GET['diagnostico_id'] ?? $_POST['diagnostico_id'] ?? 0);
+        if (!$diagnosticoId) {
+            echo json_encode(['sucesso' => false, 'existe' => false, 'erro' => 'Diagnóstico não informado.']);
+            exit;
+        }
+
+        $diagnostico = Diagnostico::buscarPorId($diagnosticoId);
+        if (!$diagnostico) {
+            echo json_encode(['sucesso' => false, 'existe' => false, 'erro' => 'Diagnóstico não encontrado.']);
+            exit;
+        }
+
+        $estrutura = Database::queryOne(
+            "SELECT id FROM estruturas_organizacionais WHERE diagnostico_id = ? AND empresa_id = ? AND status = 'ativo' ORDER BY criado_em DESC LIMIT 1",
+            [$diagnosticoId, $diagnostico['empresa_id']]
+        );
+
+        echo json_encode([
+            'sucesso' => true,
+            'existe' => !empty($estrutura),
+            'redirect_selecao' => APP_URL . '/sop/selecionar-servicos?diagnostico_id=' . $diagnosticoId
+        ]);
+        exit;
+    }
+
+    /**
+     * TELA DE SELEÇÃO (DRAFT) — Mostra setores e serviços em rascunho com checkboxes
+     * para o usuário escolher quais serviços realmente comporão os SOPs.
+     */
+    public function selecionarServicos(): void
+    {
+        Auth::proteger();
+
+        $diagnosticoId = (int) ($_GET['diagnostico_id'] ?? 0);
+        if (!$diagnosticoId) {
+            Flash::set('erro', 'Diagnóstico não informado.');
+            header('Location: ' . APP_URL . '/diagnostico');
+            exit;
+        }
+
+        $diagnostico = Diagnostico::buscarPorId($diagnosticoId);
+        if (!$diagnostico) {
+            Flash::set('erro', 'Diagnóstico não encontrado.');
+            header('Location: ' . APP_URL . '/diagnostico');
+            exit;
+        }
+
+        if (Auth::perfil() !== 'ADMIN_HOLDING' && $diagnostico['usuario_id'] != Auth::id()) {
+            Flash::set('erro', 'Sem permissão para acessar este diagnóstico.');
+            header('Location: ' . APP_URL . '/diagnostico');
+            exit;
+        }
+
+        $empresa = Empresa::buscarPorId($diagnostico['empresa_id']);
+
+        $this->garantirColunaSelecionado();
+
+        $estrutura = Database::queryOne(
+            "SELECT * FROM estruturas_organizacionais WHERE diagnostico_id = ? AND empresa_id = ? AND status = 'ativo' ORDER BY criado_em DESC LIMIT 1",
+            [$diagnosticoId, $empresa['id']]
+        );
+
+        if (!$estrutura) {
+            Flash::set('erro', 'Nenhuma estrutura encontrada. Gere o Manual Completo primeiro.');
+            header('Location: ' . APP_URL . '/diagnostico/resultado/' . $diagnosticoId);
+            exit;
+        }
+
+        $setores = Database::query(
+            "SELECT * FROM setores_empresa WHERE estrutura_id = ?
+             ORDER BY CASE tipo_setor WHEN 'core' THEN 1 WHEN 'apoio' THEN 2 WHEN 'estrategico' THEN 3 ELSE 4 END, nome_setor",
+            [$estrutura['id']]
+        );
+
+        $setoresOrganizados = [];
+        $totalServicos = 0;
+        foreach ($setores as $setor) {
+            $servicos = Database::query(
+                "SELECT id, nome_servico, subcategoria, codigo_servico, categoria, criticidade, selecionado
+                 FROM servicos_setor WHERE setor_id = ? ORDER BY subcategoria ASC, nome_servico ASC",
+                [$setor['id']]
+            );
+            $totalServicos += count($servicos);
+            $setoresOrganizados[] = ['setor' => $setor, 'servicos' => $servicos];
+        }
+
+        $dados = [
+            'diagnostico' => $diagnostico,
+            'empresa' => $empresa,
+            'estrutura_id' => (int) $estrutura['id'],
+            'setores' => $setoresOrganizados,
+            'total_servicos' => $totalServicos
+        ];
+
+        require VIEW_PATH . '/sop/selecionar-servicos.php';
+    }
+
+    /**
+     * Salva a seleção de serviços (draft). Marca selecionado=1 para os IDs escolhidos
+     * e selecionado=0 para os demais da mesma estrutura. Depois redireciona para a lista.
+     */
+    public function salvarSelecaoServicos(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $diagnosticoId = (int) ($_POST['diagnostico_id'] ?? 0);
+        $raw = $_POST['servico_ids'] ?? [];
+        if (is_string($raw)) {
+            $raw = $raw === '' ? [] : explode(',', $raw);
+        }
+        $ids = array_values(array_unique(array_filter(array_map('intval', (array) $raw))));
+
+        if (!$diagnosticoId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Diagnóstico não informado.']);
+            exit;
+        }
+
+        $diagnostico = Diagnostico::buscarPorId($diagnosticoId);
+        if (!$diagnostico) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Diagnóstico não encontrado.']);
+            exit;
+        }
+
+        $empresaId = (int) $diagnostico['empresa_id'];
+        $empresaUsuario = Auth::empresa();
+        if ($empresaUsuario !== null && $empresaId !== (int) $empresaUsuario) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Sem permissão.']);
+            exit;
+        }
+
+        if (empty($ids)) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Selecione ao menos um serviço.']);
+            exit;
+        }
+
+        try {
+            $this->garantirColunaSelecionado();
+
+            $estrutura = Database::queryOne(
+                "SELECT id FROM estruturas_organizacionais WHERE diagnostico_id = ? AND empresa_id = ? AND status = 'ativo' ORDER BY criado_em DESC LIMIT 1",
+                [$diagnosticoId, $empresaId]
+            );
+            if (!$estrutura) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Estrutura não encontrada.']);
+                exit;
+            }
+            $estruturaId = (int) $estrutura['id'];
+
+            // Zerar seleção de todos os serviços da estrutura, depois marcar os escolhidos.
+            Database::execute(
+                "UPDATE servicos_setor SET selecionado = 0
+                 WHERE setor_id IN (SELECT id FROM setores_empresa WHERE estrutura_id = ?)",
+                [$estruturaId]
+            );
+
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $params = array_merge($ids, [$estruturaId]);
+            Database::execute(
+                "UPDATE servicos_setor SET selecionado = 1
+                 WHERE id IN ($placeholders)
+                 AND setor_id IN (SELECT id FROM setores_empresa WHERE estrutura_id = ?)",
+                $params
+            );
+
+            // Atualizar contadores dos setores (apenas serviços selecionados contam).
+            Database::execute(
+                "UPDATE setores_empresa se SET total_servicos = (
+                    SELECT COUNT(*) FROM servicos_setor ss WHERE ss.setor_id = se.id AND ss.selecionado = 1
+                 ) WHERE se.estrutura_id = ?",
+                [$estruturaId]
+            );
+
+            Logger::info('SELEÇÃO DE SERVIÇOS SALVA', [
+                'diagnostico_id' => $diagnosticoId,
+                'estrutura_id' => $estruturaId,
+                'selecionados' => count($ids)
+            ]);
+
+            echo json_encode([
+                'sucesso' => true,
+                'selecionados' => count($ids),
+                'redirect' => APP_URL . '/sop/listar-por-diagnostico?diagnostico_id=' . $diagnosticoId
+            ]);
+            exit;
+
+        } catch (Exception $e) {
+            Logger::error('Erro ao salvar seleção de serviços', ['erro' => $e->getMessage()]);
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
+            exit;
+        }
+    }
+
+    /**
+     * Garante a coluna 'selecionado' em servicos_setor (idempotente).
+     */
+    private function garantirColunaSelecionado(): void
+    {
+        try {
+            Database::execute("ALTER TABLE servicos_setor ADD COLUMN selecionado TINYINT(1) NOT NULL DEFAULT 1");
+        } catch (Exception $e) { /* já existe */ }
     }
 
     // ===== NOVA ARQUITETURA DETALHADA - ETAPA 2A =====
@@ -4216,9 +4430,11 @@ class SopController
         $totalSops = 0;
 
         foreach ($setores as $setor) {
+            // Apenas serviços SELECIONADOS pelo usuário aparecem na lista de SOPs.
+            // (coluna 'selecionado' default 1, então estruturas antigas continuam completas)
             $servicos = Database::query(
                 "SELECT * FROM servicos_setor 
-                 WHERE setor_id = ? 
+                 WHERE setor_id = ? AND COALESCE(selecionado, 1) = 1
                  ORDER BY subcategoria ASC, nome_servico ASC",
                 [$setor['id']]
             );
@@ -10007,6 +10223,209 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
         }
         exit;
+    }
+
+    /**
+     * CRIAR SERVIÇO INTELIGENTE — A partir de uma descrição (texto/transcrição de áudio)
+     * e/ou um documento anexado, a IA define nome, categoria e criticidade, cria o serviço,
+     * guarda o contexto de personalização e ENFILEIRA a geração do SOP.
+     * Retorna servico_id e sop_id para o front acompanhar a geração e redirecionar.
+     */
+    public function criarServicoInteligente(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $setorId = (int) ($_POST['setor_id'] ?? 0);
+        $descricao = trim($_POST['descricao'] ?? '');
+
+        if (!$setorId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Setor não informado.']);
+            exit;
+        }
+
+        $setor = Database::queryOne(
+            "SELECT se.*, eo.id as estrutura_id FROM setores_empresa se
+             LEFT JOIN estruturas_organizacionais eo ON se.estrutura_id = eo.id
+             WHERE se.id = :id",
+            ['id' => $setorId]
+        );
+        if (!$setor) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Setor não encontrado.']);
+            exit;
+        }
+
+        $empresaUsuario = Auth::empresa();
+        if ($empresaUsuario !== null && (int) $setor['empresa_id'] !== (int) $empresaUsuario) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Sem permissão.']);
+            exit;
+        }
+
+        try {
+            $this->garantirColunasPersonalizacao();
+
+            // ---- Documento anexado (opcional) ----
+            $contextoDoc = '';
+            $nomeDoc = null;
+            if (!empty($_FILES['documento']) && ($_FILES['documento']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+                $res = $this->processarDocumentoUpload($_FILES['documento'], (int) $setor['empresa_id']);
+                $contextoDoc = $res['texto'];
+                $nomeDoc = $res['nome'];
+            }
+
+            // Precisa de pelo menos descrição OU documento legível
+            if ($descricao === '' && trim($contextoDoc) === '') {
+                echo json_encode(['sucesso' => false, 'erro' => 'Descreva o serviço (texto/áudio) ou anexe um documento legível.']);
+                exit;
+            }
+
+            // ---- Classificar com IA: nome, subcategoria, categoria, criticidade ----
+            $baseTexto = trim($descricao . "\n\n" . mb_substr($contextoDoc, 0, 8000));
+            $classificacao = $this->classificarServicoComIA($baseTexto, $setor['nome_setor']);
+
+            $nomeServico = $classificacao['nome'] ?: 'Novo serviço';
+            $subcategoria = $classificacao['subcategoria'] ?: 'Personalizado';
+            $categoria = $classificacao['categoria'] ?: 'operacional';
+            $criticidade = $classificacao['criticidade'] ?: 'media';
+
+            // ---- Criar o serviço ----
+            Database::execute(
+                "INSERT INTO servicos_setor (
+                    setor_id, empresa_id, nome_servico, subcategoria, codigo_servico,
+                    categoria, criticidade, frequencia, complexidade, descricao_resumida,
+                    contexto_personalizacao, documento_personalizacao_nome, personalizado_em,
+                    origem, status, criado_em
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'sob_demanda', 'media', ?, ?, ?, NOW(), 'manual', 'mapeado', NOW())",
+                [
+                    $setorId,
+                    $setor['empresa_id'],
+                    $nomeServico,
+                    $subcategoria,
+                    $this->gerarCodigoServicoUnico($setor['nome_setor'], $nomeServico, (int) $setor['estrutura_id'], time() % 1000),
+                    $categoria,
+                    $criticidade,
+                    $descricao,
+                    $contextoDoc,
+                    $nomeDoc
+                ]
+            );
+            $servicoId = (int) Database::lastInsertId();
+
+            Database::execute(
+                "UPDATE setores_empresa SET total_servicos = (SELECT COUNT(*) FROM servicos_setor WHERE setor_id = ?) WHERE id = ?",
+                [$setorId, $setorId]
+            );
+
+            Logger::info('SERVIÇO INTELIGENTE CRIADO', [
+                'servico_id' => $servicoId,
+                'nome' => $nomeServico,
+                'categoria' => $categoria,
+                'criticidade' => $criticidade,
+                'tem_documento' => $nomeDoc !== null,
+                'tamanho_contexto' => mb_strlen($contextoDoc)
+            ]);
+
+            // ---- Enfileirar a geração do SOP ----
+            $sopId = $this->enfileirarGeracaoSop($servicoId);
+
+            echo json_encode([
+                'sucesso' => true,
+                'servico_id' => $servicoId,
+                'sop_id' => $sopId,
+                'nome_servico' => $nomeServico,
+                'mensagem' => 'Serviço criado. Gerando SOP...'
+            ]);
+            exit;
+
+        } catch (Exception $e) {
+            Logger::error('Erro ao criar serviço inteligente', ['erro' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
+            exit;
+        }
+    }
+
+    /**
+     * Processa um upload de documento: salva, extrai texto (com fallback por IA para PDF),
+     * remove o binário e retorna ['texto'=>..., 'nome'=>...]. Reutilizado por personalizar/criar.
+     */
+    private function processarDocumentoUpload(array $arquivo, int $empresaId): array
+    {
+        $veioComprimido = false; // uploads do modal de criação não comprimem
+        $nomeDoc = trim($_POST['documento_nome'] ?? $arquivo['name']);
+        $ext = strtolower(pathinfo($nomeDoc, PATHINFO_EXTENSION));
+        $permitidos = ['pdf', 'doc', 'docx', 'txt', 'md', 'rtf', 'csv', 'html', 'htm'];
+        if (!in_array($ext, $permitidos, true)) {
+            return ['texto' => '', 'nome' => null];
+        }
+
+        $baseDir = (defined('UPLOAD_PATH') ? UPLOAD_PATH : (ROOT_PATH . '/public/uploads/'))
+            . 'documentos/' . $empresaId . '/personalizacao';
+        if (!is_dir($baseDir)) {
+            @mkdir($baseDir, 0755, true);
+        }
+        $destino = $baseDir . '/perso_' . uniqid() . '.' . $ext;
+        if (!move_uploaded_file($arquivo['tmp_name'], $destino)) {
+            return ['texto' => '', 'nome' => null];
+        }
+
+        $texto = DocumentoProcessor::extrairTextoDeArquivoAbsoluto($destino, $nomeDoc);
+        if ($ext === 'pdf' && !DocumentoProcessor::textoEhLegivel($texto)) {
+            $viaIA = ApiHelper::extrairTextoDocumentoViaIA($destino, $nomeDoc);
+            if (!empty($viaIA['sucesso']) && mb_strlen(trim($viaIA['texto'])) >= 30) {
+                $texto = $viaIA['texto'];
+            }
+        }
+        @unlink($destino);
+
+        if (mb_strlen($texto) > 40000) {
+            $texto = mb_substr($texto, 0, 40000);
+        }
+        return ['texto' => trim($texto), 'nome' => $nomeDoc];
+    }
+
+    /**
+     * Usa a IA para classificar um serviço a partir da descrição/documento.
+     * Retorna ['nome','subcategoria','categoria','criticidade'] (com fallbacks).
+     */
+    private function classificarServicoComIA(string $texto, string $nomeSetor): array
+    {
+        $padrao = ['nome' => '', 'subcategoria' => 'Personalizado', 'categoria' => 'operacional', 'criticidade' => 'media'];
+
+        if (trim($texto) === '') {
+            return $padrao;
+        }
+
+        $prompt = "Você organiza serviços empresariais. Com base na descrição abaixo (que pode vir de um áudio transcrito e/ou de um documento), CLASSIFIQUE o serviço.\n\n"
+            . "Setor: {$nomeSetor}\n\n"
+            . "DESCRIÇÃO/CONTEÚDO:\n\"\"\"\n" . mb_substr($texto, 0, 6000) . "\n\"\"\"\n\n"
+            . "Responda APENAS em JSON com:\n"
+            . "{\n"
+            . "  \"nome\": \"Nome curto e claro do serviço (máx 80 caracteres, sem aspas)\",\n"
+            . "  \"subcategoria\": \"Agrupamento curto dentro do setor (ex.: 'Manutenção', 'Atendimento automatizado')\",\n"
+            . "  \"categoria\": \"um de: core, operacional, estrategico\",\n"
+            . "  \"criticidade\": \"um de: baixa, media, alta\"\n"
+            . "}";
+
+        try {
+            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 300, 40);
+            if (!empty($resp['sucesso']) && is_array($resp['conteudo'])) {
+                $c = $resp['conteudo'];
+                $cat = strtolower(trim($c['categoria'] ?? 'operacional'));
+                if (!in_array($cat, ['core', 'operacional', 'estrategico'], true)) $cat = 'operacional';
+                $crit = strtolower(trim($c['criticidade'] ?? 'media'));
+                if (!in_array($crit, ['baixa', 'media', 'alta'], true)) $crit = 'media';
+                return [
+                    'nome' => trim(mb_substr((string) ($c['nome'] ?? ''), 0, 120)),
+                    'subcategoria' => trim((string) ($c['subcategoria'] ?? 'Personalizado')) ?: 'Personalizado',
+                    'categoria' => $cat,
+                    'criticidade' => $crit,
+                ];
+            }
+        } catch (Exception $e) {
+            Logger::warning('Falha ao classificar serviço com IA', ['erro' => $e->getMessage()]);
+        }
+        return $padrao;
     }
 
     /**

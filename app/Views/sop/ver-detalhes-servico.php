@@ -25,6 +25,59 @@ if (!function_exists('sopTexto')) {
         return '';
     }
 }
+
+/**
+ * Renderiza um texto respeitando enumerações. Se o texto contiver itens
+ * numerados inline (ex.: "1. ... 2. ... 3. ..."), converte em <ol> com <li>.
+ * Caso contrário, devolve o texto com quebras de linha (nl2br).
+ */
+if (!function_exists('sopRenderTexto')) {
+    function sopRenderTexto($valor): string {
+        $texto = trim(sopTexto($valor));
+        if ($texto === '') return '';
+
+        // Detecta ao menos "1." e "2." para considerar como lista numerada.
+        if (preg_match('/(^|\s)1[\.\)]\s+.*\s2[\.\)]\s+/s', $texto)) {
+            // Quebra antes de cada "N." / "N)" (número seguido de . ou ) e espaço)
+            $normalizado = preg_replace('/\s*(?<![\d])(\d{1,2})[\.\)]\s+/u', "\n$1. ", $texto);
+            $linhas = preg_split('/\n+/', trim($normalizado));
+
+            $itens = [];
+            $introducao = '';
+            $fecho = '';
+            foreach ($linhas as $linha) {
+                $linha = trim($linha);
+                if ($linha === '') continue;
+                if (preg_match('/^\d{1,2}\.\s+(.*)$/s', $linha, $m)) {
+                    $itens[] = $m[1];
+                } elseif (empty($itens)) {
+                    $introducao .= ($introducao ? ' ' : '') . $linha;
+                } else {
+                    // texto após o último item numerado (ex.: "O resultado esperado...")
+                    $fecho .= ($fecho ? ' ' : '') . $linha;
+                }
+            }
+
+            if (count($itens) >= 2) {
+                $html = '';
+                if ($introducao !== '') {
+                    $html .= '<p style="margin:0 0 8px;">' . nl2br(htmlspecialchars($introducao)) . '</p>';
+                }
+                $html .= '<ol class="sop-ol">';
+                foreach ($itens as $it) {
+                    $html .= '<li>' . nl2br(htmlspecialchars(trim($it))) . '</li>';
+                }
+                $html .= '</ol>';
+                if ($fecho !== '') {
+                    $html .= '<p style="margin:8px 0 0;">' . nl2br(htmlspecialchars($fecho)) . '</p>';
+                }
+                return $html;
+            }
+        }
+
+        return nl2br(htmlspecialchars($texto));
+    }
+}
 ?>
 <?php ob_start(); ?>
 
@@ -122,6 +175,9 @@ if (!function_exists('sopTexto')) {
 #sop-detail-view .sub-label{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--sd-ink-mute);}
 #sop-detail-view .sub-label .dot{width:6px;height:6px;border-radius:50%;background:var(--sd-accent);}
 #sop-detail-view .sub-text{font-size:13px;line-height:1.65;color:var(--sd-ink-soft);margin:0;}
+#sop-detail-view .sop-ol{margin:4px 0 0;padding-left:22px;display:flex;flex-direction:column;gap:7px;}
+#sop-detail-view .sop-ol li{font-size:13px;line-height:1.6;color:var(--sd-ink-soft);}
+#sop-detail-view .sop-ol li::marker{color:var(--sd-accent);font-weight:700;}
 #sop-detail-view .script-block{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.7;color:var(--sd-ink);background:var(--sd-page);border-left:3px solid var(--sd-accent);border-radius:0 8px 8px 0;padding:12px 14px;white-space:pre-line;}
 #sop-detail-view .meta-strip{display:flex;gap:22px;font-size:12px;color:var(--sd-ink-mute);padding-top:10px;border-top:1px solid var(--sd-line);flex-wrap:wrap;}
 #sop-detail-view .meta-strip b{color:var(--sd-ink-soft);font-weight:500;}
@@ -226,11 +282,11 @@ if (!function_exists('sopTexto')) {
         <div class="grid-2">
             <div>
                 <p><b>Objetivo</b></p>
-                <p><?= nl2br(htmlspecialchars(sopTexto($data['objetivo'] ?? $servico['descricao_resumida'] ?? '—'))) ?></p>
+                <div><?= sopRenderTexto($data['objetivo'] ?? $servico['descricao_resumida'] ?? '—') ?></div>
             </div>
             <div>
                 <p><b>Escopo</b></p>
-                <p><?= nl2br(htmlspecialchars(sopTexto($data['escopo'] ?? '—'))) ?></p>
+                <div><?= sopRenderTexto($data['escopo'] ?? '—') ?></div>
             </div>
         </div>
         <?php if (!empty($data['responsaveis'])): ?>
@@ -301,7 +357,7 @@ if (!function_exists('sopTexto')) {
             </summary>
             <div class="phase-body">
                 <?php if (!empty($descFase)): ?>
-                <p class="phase-desc"><?= nl2br(htmlspecialchars(sopTexto($descFase))) ?></p>
+                <div class="phase-desc"><?= sopRenderTexto($descFase) ?></div>
                 <?php endif; ?>
 
                 <?php foreach ($passosDaFase as $pIndex => $passo): ?>
@@ -315,7 +371,7 @@ if (!function_exists('sopTexto')) {
                         <?php if (!empty($detalhamento)): ?>
                         <div class="sub">
                             <div class="sub-label"><span class="dot"></span>Detalhamento operacional</div>
-                            <p class="sub-text"><?= nl2br(htmlspecialchars(sopTexto($detalhamento))) ?></p>
+                            <div class="sub-text"><?= sopRenderTexto($detalhamento) ?></div>
                         </div>
                         <?php endif; ?>
 
@@ -331,7 +387,7 @@ if (!function_exists('sopTexto')) {
                         <?php if (!empty($metodologias)): ?>
                         <div class="sub">
                             <div class="sub-label"><span class="dot"></span>Metodologias operacionais</div>
-                            <p class="sub-text"><?= nl2br(htmlspecialchars(sopTexto($metodologias))) ?></p>
+                            <div class="sub-text"><?= sopRenderTexto($metodologias) ?></div>
                         </div>
                         <?php endif; ?>
 
@@ -339,7 +395,7 @@ if (!function_exists('sopTexto')) {
                         <?php if (!empty($validacoes)): ?>
                         <div class="sub">
                             <div class="sub-label"><span class="dot"></span>Validações operacionais</div>
-                            <p class="sub-text"><?= nl2br(htmlspecialchars(sopTexto($validacoes))) ?></p>
+                            <div class="sub-text"><?= sopRenderTexto($validacoes) ?></div>
                         </div>
                         <?php endif; ?>
 
@@ -347,7 +403,7 @@ if (!function_exists('sopTexto')) {
                         <?php if (!empty($ferramentas)): ?>
                         <div class="sub">
                             <div class="sub-label"><span class="dot"></span>Ferramentas operacionais</div>
-                            <p class="sub-text"><?= nl2br(htmlspecialchars(sopTexto($ferramentas))) ?></p>
+                            <div class="sub-text"><?= sopRenderTexto($ferramentas) ?></div>
                         </div>
                         <?php endif; ?>
 

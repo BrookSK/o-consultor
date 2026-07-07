@@ -195,33 +195,55 @@
 <script>
 // NOVA ARQUITETURA: Gerar Manual Completo
 async function gerarManualCompleto(diagnosticoId) {
-    if (!confirm('Deseja gerar um Manual Operacional Completo usando a Nova Arquitetura?\n\n✨ Isso criará 50-70 SOPs profissionais baseados no diagnóstico\n🧠 Estrutura N1/N2/N3 com máxima profundidade\n📋 Procedimentos auto-suficientes\n⚡ Conteúdo específico da empresa (não genérico)')) {
-        return;
+    // 1. Verificar se já existe estrutura para este diagnóstico
+    try {
+        const chk = await fetch('<?= APP_URL ?>/sop/estrutura-existe?diagnostico_id=' + diagnosticoId);
+        const info = await chk.json();
+
+        if (info.sucesso && info.existe) {
+            // Já existe: perguntar se quer recriar ou apenas revisar a seleção
+            const recriar = confirm(
+                'Já existe uma estrutura de serviços para este diagnóstico.\n\n' +
+                'OK = Recriar do zero (a estrutura atual e as seleções serão substituídas)\n' +
+                'Cancelar = Apenas revisar/selecionar os serviços atuais'
+            );
+            if (!recriar) {
+                // Ir direto para a tela de seleção (draft) sem recriar
+                window.location.href = info.redirect_selecao;
+                return;
+            }
+            // Se optou por recriar, segue para regenerar abaixo
+        } else {
+            // Não existe ainda: confirmar a criação
+            if (!confirm('Deseja gerar o Manual Operacional Completo?\n\nSerá montada a estrutura de setores e serviços e, em seguida, você escolhe quais serviços realmente comporão seus SOPs.')) {
+                return;
+            }
+        }
+    } catch (e) {
+        // Se a verificação falhar, seguimos com o fluxo padrão de geração
     }
-    
-    // Mostrar modal de loading
+
+    // 2. Gerar/recriar a estrutura e ir para a tela de seleção (draft)
     document.getElementById('modal-loading-manual').classList.remove('hidden');
-    
+    document.getElementById('modal-titulo-manual').textContent = 'Montando estrutura...';
+    document.getElementById('modal-subtitulo-manual').textContent = 'Preparando setores e serviços...';
+
     try {
         const formData = new FormData();
         formData.append('csrf_token', '<?= Csrf::token() ?>');
         formData.append('diagnostico_id', diagnosticoId);
-        
+
         const response = await fetch('<?= APP_URL ?>/sop/gerar-manual-completo', {
             method: 'POST',
             body: formData
         });
-        
+
         const result = await response.json();
-        
+
         if (result.sucesso) {
-            document.getElementById('modal-titulo-manual').textContent = 'Estrutura Criada com Sucesso!';
-            document.getElementById('modal-subtitulo-manual').textContent = `${result.total_sops} SOPs serão gerados. Redirecionando...`;
-            
-            // Redirecionar para a tela de processamento
-            setTimeout(() => {
-                window.location.href = result.redirect;
-            }, 2000);
+            document.getElementById('modal-titulo-manual').textContent = 'Estrutura criada!';
+            document.getElementById('modal-subtitulo-manual').textContent = 'Agora escolha os serviços do seu Manual...';
+            setTimeout(() => { window.location.href = result.redirect; }, 1200);
         } else {
             document.getElementById('modal-loading-manual').classList.add('hidden');
             alert('Erro ao iniciar geração do manual: ' + (result.erro || 'Erro desconhecido'));
