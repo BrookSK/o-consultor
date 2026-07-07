@@ -222,20 +222,39 @@ if (!function_exists('sopRenderTexto')) {
     /* Abrir todos os accordions e mostrar seu conteúdo */
     #sop-detail-view details { display: block !important; }
     #sop-detail-view details > *:not(summary) { display: block !important; }
-    #sop-detail-view .phase-body { display: flex !important; }
+    #sop-detail-view .phase-body { display: block !important; }
+    #sop-detail-view .phase-body > * { margin-bottom: 12px; }
     #sop-detail-view .chev { display: none !important; }
 
-    /* Evitar cortes feios entre páginas */
+    /* Containers grandes NÃO usam avoid (senão saltam a página inteira e deixam vácuos).
+       Deixamos que quebrem naturalmente entre páginas. */
     #sop-detail-view .card,
     #sop-detail-view .phase,
+    #sop-detail-view .phase-body { break-inside: auto !important; page-break-inside: auto !important; }
+
+    /* Apenas unidades pequenas evitam corte no meio */
     #sop-detail-view .step,
+    #sop-detail-view .sub,
     #sop-detail-view .scenario,
     #sop-detail-view .crit-wrap { break-inside: avoid; page-break-inside: avoid; }
-    #sop-detail-view .section-title { break-after: avoid; page-break-after: avoid; }
+
+    /* Títulos não ficam órfãos no fim da página */
+    #sop-detail-view .section-title,
+    #sop-detail-view .sub-label,
+    #sop-detail-view .step-head { break-after: avoid; page-break-after: avoid; }
+
+    /* Evita linhas soltas isoladas no topo/fim de página */
+    #sop-detail-view p, #sop-detail-view li { orphans: 3; widows: 3; }
+
+    /* Remove margens/paddings excessivos que ampliam vácuos no papel */
+    #sop-detail-view .card,
+    #sop-detail-view .phase,
+    #sop-detail-view .exec-summary { margin-bottom: 12px !important; }
+    #sop-detail-view .phase { overflow: visible !important; }
 
     /* Cores/sombras mais leves para papel */
     #sop-detail-view * { box-shadow: none !important; }
-    @page { margin: 14mm; }
+    @page { margin: 12mm; }
 }
 </style>
 
