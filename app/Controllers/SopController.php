@@ -11963,20 +11963,24 @@ Alguém SEM conhecimento prévio do processo deve conseguir executá-lo usando A
 
         // Contexto cruzado entre fases (montado em memória, nada persistido):
         // lista de ações já geradas + orçamento de passos restantes.
+        // É posicionado logo antes da TAREFA e escrito como um GATE obrigatório,
+        // porque quando fica enterrado após as diretrizes o modelo o ignora.
         $restante = max(2, self::TETO_PASSOS_TOTAL - $passosUsadosAteAgora);
         $blocoContextoCruzado = '';
-        if (!empty($acoesJaCobertas) || $passosUsadosAteAgora > 0) {
-            $listaAcoes = !empty($acoesJaCobertas)
-                ? implode("\n", array_map(fn($a) => '- ' . $a, $acoesJaCobertas))
-                : '- (nenhuma ainda)';
-            $blocoContextoCruzado = "\n# ACOES JA DESCRITAS EM FASES ANTERIORES (nao repetir, nao redescrever):\n"
+        if (!empty($acoesJaCobertas)) {
+            $listaAcoes = implode("\n", array_map(fn($a) => '- ' . $a, $acoesJaCobertas));
+            $blocoContextoCruzado = "\n# ⛔ GATE OBRIGATÓRIO — AÇÕES JÁ DOCUMENTADAS EM FASES ANTERIORES\n"
+                . "As ações abaixo JÁ FORAM escritas neste mesmo SOP e NÃO podem ser repetidas, nem com outro título, nem com outras palavras:\n"
                 . $listaAcoes
-                . "\n\nEste servico ja tem {$passosUsadosAteAgora} passos gerados nas fases anteriores. Restam no maximo {$restante} passos para todas as fases que ainda faltam, incluindo esta.\n"
-                . "Se a acao que esta fase cobriria ja estiver na lista acima, NAO gere um passo novo para ela. Gere apenas passos com acao tecnicamente distinta do que ja foi coberto. Se nao houver acao distinta suficiente para esta fase, gere menos passos (minimo 2) - nunca repita conteudo para atingir uma quantidade.\n";
+                . "\n\nREGRAS DO GATE (aplicar ANTES de escrever qualquer passo):\n"
+                . "1. É PROIBIDO gerar um passo cuja essência já esteja na lista acima. Reescrever 'Crie o servidor' como 'Realize a criação do servidor' é REPETIÇÃO e está proibido.\n"
+                . "2. É PROIBIDO repetir um TÍTULO (acao_operacional) já usado antes, mesmo que o conteúdo mude um pouco.\n"
+                . "3. Esta fase só existe para acrescentar o seu ÂNGULO PRÓPRIO. Se a ação concreta já foi feita numa fase anterior, NÃO a refaça — traga apenas o recorte específico desta fase (ex.: se 'criar servidor' já foi coberto na execução, a fase de qualidade NÃO recria o servidor, ela apenas define como CONFERIR se ficou correto).\n"
+                . "4. Já existem {$passosUsadosAteAgora} passos no SOP. Restam no máximo {$restante} passos para TODAS as fases seguintes juntas. Se esta fase não tiver ângulo realmente novo, gere só 2 passos (ou 0 e devolva lista vazia) em vez de repetir.\n"
+                . "5. Prefira SEMPRE menos passos e distintos a mais passos redundantes.\n";
         }
 
         return "{$diretrizes}
-{$blocoContextoCruzado}
 
 Gere agora UMA fase do PASSO A PASSO DE EXECUÇÃO (equivale aos Blocos 4/Planejamento e 6/Passo a passo do modelo) em MÁXIMA PROFUNDIDADE, ensinando o colaborador a EXECUTAR o serviço com assertividade, do início ao fim.
 
@@ -11994,9 +11998,20 @@ Este é um MANUAL TÉCNICO DE COMO EXECUTAR O SERVIÇO, e NÃO um manual de aten
 - Explique QUANDO fazer cada coisa, QUAIS os critérios técnicos de cada etapa e COMO saber que a etapa foi feita corretamente.
 - EVITE roteiros de conversa/vendas/relacionamento com o cliente. Só mencione comunicação quando for estritamente técnica e necessária (ex.: confirmar com o responsável uma especificação técnica, registrar um dado obrigatório, alinhar com fornecedor um requisito técnico).
 
+{$blocoContextoCruzado}
 # TAREFA
 Gere APENAS a fase técnica: **\"{$nomeFase}\"**, TOTALMENTE PERSONALIZADA ao serviço e ao perfil da empresa acima.
 Foco desta fase: {$focoFase}.
+
+## O QUE ESTA FASE ACRESCENTA (ÂNGULO EXCLUSIVO — NÃO INVADA OUTRAS FASES)
+Cada fase tem um papel distinto e NÃO deve reexecutar a ação de outra:
+- Planejamento e Definição de Escopo → apenas DECIDE o que será feito e como (requisitos, método, critérios). NÃO executa nada.
+- Análise e Diagnóstico → apenas LÊ e interpreta a situação/dados. NÃO executa a entrega.
+- Execução (Núcleo) → é a ÚNICA fase que realiza a ação técnica central (ex.: criar/configurar/produzir de fato). É AQUI que a ação principal acontece — uma única vez.
+- Execução (Rotina/Follow-up) → apenas MANTÉM ao longo do tempo (monitorar, acompanhar, revisar periodicamente). NÃO recria o que a execução já fez.
+- Controle de Qualidade → apenas CONFERE/VALIDA o que já foi executado (checar, medir, aprovar). NÃO refaz nem redocumenta a execução.
+- Fechamento e Melhoria → apenas ENCERRA e REGISTRA formalmente (handoff, documentação final, lições). O registro aqui é o CONSOLIDADO final, não a documentação técnica de cada passo.
+Se você perceber que o passo que ia escrever pertence a OUTRA fase, NÃO o escreva.
 
 Gere de 2 a 3 passos técnicos por fase (nunca 4), e apenas os que tiverem substância real e distinta — quantidade menor com conteúdo específico é preferível a mais passos genéricos. Cada passo deve ser completo e assertivo. O objetivo é que um colaborador consiga executar seguindo o texto, sem dúvidas. Evite inventar marcas comerciais (use termos neutros), MAS cite pelo nome exato as ferramentas/sistemas que o material de personalização do cliente mencionar — são os sistemas reais usados pela empresa.
 
@@ -12016,13 +12031,13 @@ O campo \"detalhamento_operacional_completo\" é a parte MAIS importante e deve 
 4. O que registrar/acompanhar e como isso alimenta a continuidade do serviço.
 Seja concreto e específico ao serviço. Nada de frases genéricas vazias nem passos de encher espaço.
 
-O campo \"scripts_operacionais_completos\" NÃO é um roteiro de conversa. Use-o para o DETALHE OPERACIONAL substantivo do passo: a sequência exata de ações/decisões, critérios, faixas de referência, checklist de execução ou exemplos práticos reais. Só inclua se agregar valor real; se não houver detalhe útil, deixe vazio em vez de encher linguiça.
+O campo \"scripts_operacionais_completos\" deve, POR PADRÃO, vir VAZIO (\"\"). Só preencha se ele trouxer algo que o detalhamento NÃO tem: uma sequência literal de comandos/parâmetros, um checklist com valores exatos, ou uma tabela de faixas de referência. Se for apenas reformular o detalhamento em bullets, deixe VAZIO. Reformular o detalhamento aqui é repetição proibida.
 
 # FORMATO (JSON):
 ```json
 {
   \"fase\": \"{$nomeFase}\",
-  \"descricao_operacional\": \"Descrição técnica da importância e objetivo desta fase e do resultado técnico esperado ao final dela (2-3 frases)\",
+  \"descricao_operacional\": \"1-2 frases diretas sobre o resultado técnico esperado ao final desta fase. PROIBIDO começar com 'Nesta fase', 'É fundamental', 'É importante' ou qualquer preâmbulo — vá direto ao ponto.\",
   \"passos_operacionais_detalhados\": [
     {
       \"passo\": 1,
@@ -12031,7 +12046,7 @@ O campo \"scripts_operacionais_completos\" NÃO é um roteiro de conversa. Use-o
       \"responsavel_operacional\": \"Cargo/função técnica responsável pela execução\",
       \"tempo_operacional_estimado\": \"Tempo estimado de execução\",
       \"criterios_qualidade_operacionais\": \"Critérios de qualidade/aceitação MENSURÁVEIS desta etapa (mínimo 3, com valores/limites quando aplicável) — o resultado esperado que confirma que a etapa ficou correta\",
-      \"scripts_operacionais_completos\": \"DETALHE OPERACIONAL substantivo: comandos/ações exatas em sequência numerada, especificações, valores de referência, pontos de decisão ('se...então...') ou checklist de execução. NÃO é roteiro de conversa. Deixe vazio se não houver detalhe útil.\",
+      \"scripts_operacionais_completos\": \"VAZIO (\\\"\\\") por padrão. Preencha SOMENTE com o que não está no detalhamento: comandos literais, checklist com valores exatos ou faixas de referência. NUNCA reformule o detalhamento aqui — se for repetir, deixe vazio.\",
       \"metodologias_operacionais\": \"Métodos, técnicas ou práticas recomendadas (padrão esperado) aplicáveis a este passo\",
       \"validacoes_operacionais\": \"Checklist de verificação da etapa (mínimo 3 itens objetivos e conferíveis) — o que precisa estar OK antes de prosseguir\",
       \"ferramentas_operacionais\": \"Ferramentas, equipamentos, instrumentos, insumos e materiais usados (termos genéricos, sem marca)\",
