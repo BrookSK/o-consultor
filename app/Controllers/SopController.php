@@ -11422,7 +11422,13 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                 }
             }
 
-            $prompt = $this->criarPromptFaseUnica($sopData, $detalhamento, $empresa, $diagnostico, $indiceFase, $acoesJaCobertas, $passosUsadosAteAgora);
+            // PLANO MESTRE: a sequência ordenada do serviço inteiro já foi definida na Fase 1
+            // (resumo_executivo_topicos). É a fonte da ordem correta de dependências.
+            // Passamos para cada fase para que ela cubra só o SEU trecho, na ordem certa,
+            // sem reexecutar ação de outra fase nem inverter dependências.
+            $planoMestre = $conteudo['resumo_executivo_topicos'] ?? [];
+
+            $prompt = $this->criarPromptFaseUnica($sopData, $detalhamento, $empresa, $diagnostico, $indiceFase, $acoesJaCobertas, $passosUsadosAteAgora, $planoMestre);
             $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 7000, 55);
             if (empty($resp['sucesso'])) {
                 return ['sucesso' => false, 'erro' => 'Fase ' . $fase . ' (' . $info['nome'] . '): ' . ($resp['erro'] ?? 'Erro na IA')];
@@ -11905,6 +11911,7 @@ Você é um redator técnico especializado em MANUAIS OPERACIONAIS. Sua missão 
 Alguém SEM conhecimento prévio do processo deve conseguir executá-lo usando APENAS este conteúdo. Antes de escrever cada parte, pergunte-se: 'isto tira uma dúvida real de execução ou é enchimento?'.
 
 # REGRAS DE TOM E ESTILO (OBRIGATÓRIAS)
+- IDIOMA: escreva 100% em PORTUGUÊS DO BRASIL. É PROIBIDO qualquer palavra ou frase em inglês ou outro idioma dentro de qualquer campo (títulos, detalhamento, critérios, checklists). Ex.: nunca 'Must keep report updated' — escreva 'Manter o relatório atualizado'.
 - Linguagem instrucional e objetiva; frases curtas; verbos no IMPERATIVO nas etapas ('Verifique', 'Documente', 'Envie', 'Valide').
 - ZERO adjetivação de venda. Nunca 'melhor prática do mercado' — use 'prática recomendada' ou 'padrão esperado'.
 - NUNCA pule etapas para encurtar. Se o processo real tem 12 passos, descreva os 12. A extensão é proporcional à complexidade real.
@@ -11921,7 +11928,7 @@ Alguém SEM conhecimento prévio do processo deve conseguir executá-lo usando A
 - Nunca reafirme o objetivo ou a importância do passo mais de uma vez dentro do mesmo passo (não repita \"isso é essencial para...\" no início e de novo no fim).
 
 # REGRA DE CONCISÃO
-- Proibidas frases de transição sem conteúdo técnico: \"é importante ressaltar\", \"vale destacar\", \"deve-se atentar\", \"é fundamental\", \"cabe salientar\", \"certifique-se de\". Vá direto à instrução no imperativo.
+- Proibidas frases de transição/justificativa sem conteúdo técnico. Lista negra (não use nenhuma variação): \"é importante ressaltar\", \"vale destacar\", \"deve-se atentar\", \"é fundamental\", \"é essencial\", \"cabe salientar\", \"certifique-se de\", \"é importante comunicar\", \"para evitar problemas futuros\", \"a fim de garantir\". Vá direto à instrução no imperativo. NÃO justifique a importância do passo — só diga o que fazer e como.
 - detalhamento_operacional_completo: 80 a 140 palavras. Frases curtas e diretas, sem parágrafo explicativo antes da instrução.
 - Listas (validacoes_operacionais, criterios_qualidade_operacionais): apenas itens distintos entre si. Nunca reformule o mesmo critério duas vezes.
 
@@ -11949,7 +11956,7 @@ Alguém SEM conhecimento prévio do processo deve conseguir executá-lo usando A
      * Prompt que gera UMA ÚNICA fase operacional em PROFUNDIDADE (cabe em <55s).
      * Como gera só uma fase por chamada, há espaço para scripts completos e ricos.
      */
-    private function criarPromptFaseUnica(array $servico, array $detalhamento, array $empresa, array $diagnostico, int $indiceFase, array $acoesJaCobertas = [], int $passosUsadosAteAgora = 0): string
+    private function criarPromptFaseUnica(array $servico, array $detalhamento, array $empresa, array $diagnostico, int $indiceFase, array $acoesJaCobertas = [], int $passosUsadosAteAgora = 0, array $planoMestre = []): string
     {
         $nomeServico = $servico['nome_servico'];
         $nomeSetor = $servico['nome_setor'];
@@ -11966,18 +11973,46 @@ Alguém SEM conhecimento prévio do processo deve conseguir executá-lo usando A
         // É posicionado logo antes da TAREFA e escrito como um GATE obrigatório,
         // porque quando fica enterrado após as diretrizes o modelo o ignora.
         $restante = max(2, self::TETO_PASSOS_TOTAL - $passosUsadosAteAgora);
+
+        // Bloco do PLANO MESTRE ORDENADO (sequência de dependências do serviço inteiro).
+        $blocoPlanoMestre = '';
+        if (!empty($planoMestre)) {
+            $linhasPlano = [];
+            $n = 1;
+            foreach ($planoMestre as $etapa) {
+                $etapa = trim((string) $etapa);
+                if ($etapa !== '') { $linhasPlano[] = $n++ . '. ' . $etapa; }
+            }
+            if (!empty($linhasPlano)) {
+                $blocoPlanoMestre = "\n# 🧭 PLANO MESTRE DO SERVIÇO (ORDEM OFICIAL DAS DEPENDÊNCIAS — NÃO ALTERAR)\n"
+                    . "Esta é a sequência correta do serviço inteiro, do início ao fim. TODAS as fases seguem esta ordem:\n"
+                    . implode("\n", $linhasPlano)
+                    . "\n\nREGRAS DE ORDEM (OBRIGATÓRIAS):\n"
+                    . "- Cada ação do plano tem UM DONO: aparece em UMA ÚNICA fase, aquela cujo foco corresponde a ela. Nunca execute a mesma ação em duas fases.\n"
+                    . "- Respeite as DEPENDÊNCIAS: uma ação que depende de outra (ex.: 'criar o servidor do cliente' depende de 'cadastrar o cliente') só pode ser descrita DEPOIS que a ação da qual depende já foi descrita numa fase anterior. NUNCA descreva um passo que pressupõe algo que ainda não foi feito na cadeia.\n"
+                    . "- Se o foco desta fase corresponde a uma etapa que, na ordem, vem ANTES de outra já coberta, isso indica que a etapa já foi tratada fora de ordem: NÃO a repita — apenas complemente com o ângulo próprio desta fase.\n"
+                    . "- IP/DNS/acessos e afins são atribuídos UMA vez, na fase de execução dona dessa etapa. Nenhuma outra fase reatribui.\n";
+            }
+        }
+
         $blocoContextoCruzado = '';
         if (!empty($acoesJaCobertas)) {
             $listaAcoes = implode("\n", array_map(fn($a) => '- ' . $a, $acoesJaCobertas));
-            $blocoContextoCruzado = "\n# ⛔ GATE OBRIGATÓRIO — AÇÕES JÁ DOCUMENTADAS EM FASES ANTERIORES\n"
+            $blocoContextoCruzado = $blocoPlanoMestre
+                . "\n# ⛔ GATE OBRIGATÓRIO — AÇÕES JÁ DOCUMENTADAS EM FASES ANTERIORES\n"
                 . "As ações abaixo JÁ FORAM escritas neste mesmo SOP e NÃO podem ser repetidas, nem com outro título, nem com outras palavras:\n"
                 . $listaAcoes
                 . "\n\nREGRAS DO GATE (aplicar ANTES de escrever qualquer passo):\n"
-                . "1. É PROIBIDO gerar um passo cuja essência já esteja na lista acima. Reescrever 'Crie o servidor' como 'Realize a criação do servidor' é REPETIÇÃO e está proibido.\n"
+                . "1. É PROIBIDO gerar um passo cuja essência já esteja na lista acima. Reescrever 'Crie o servidor' como 'Realize a criação do servidor' é REPETIÇÃO e está proibido. Atribuir IP/DNS de novo depois de já ter sido atribuído também é repetição proibida.\n"
                 . "2. É PROIBIDO repetir um TÍTULO (acao_operacional) já usado antes, mesmo que o conteúdo mude um pouco.\n"
                 . "3. Esta fase só existe para acrescentar o seu ÂNGULO PRÓPRIO. Se a ação concreta já foi feita numa fase anterior, NÃO a refaça — traga apenas o recorte específico desta fase (ex.: se 'criar servidor' já foi coberto na execução, a fase de qualidade NÃO recria o servidor, ela apenas define como CONFERIR se ficou correto).\n"
                 . "4. Já existem {$passosUsadosAteAgora} passos no SOP. Restam no máximo {$restante} passos para TODAS as fases seguintes juntas. Se esta fase não tiver ângulo realmente novo, gere só 2 passos (ou 0 e devolva lista vazia) em vez de repetir.\n"
-                . "5. Prefira SEMPRE menos passos e distintos a mais passos redundantes.\n";
+                . "5. Prefira SEMPRE menos passos e distintos a mais passos redundantes.\n"
+                . "6. Respeite a ordem do PLANO MESTRE: não descreva um passo que dependa de uma etapa ainda não coberta na cadeia.\n";
+        } elseif ($blocoPlanoMestre !== '') {
+            // Primeira fase operacional: ainda não há ações cobertas, mas já entregamos o plano mestre.
+            $blocoContextoCruzado = $blocoPlanoMestre
+                . "\nEsta é a PRIMEIRA fase de execução. Cubra apenas as PRIMEIRAS etapas do plano mestre que correspondem ao foco desta fase, na ordem, sem adiantar etapas que serão de fases posteriores.\n";
         }
 
         return "{$diretrizes}
