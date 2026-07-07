@@ -10816,7 +10816,12 @@ REGRA ANTI-TRIVIALIDADE: foque no que realmente diferencia um bom profissional. 
 # TAREFA
 Gere APENAS o cabeçalho/resumo deste SOP, PERSONALIZADO ao serviço e ao perfil da empresa acima. Seja objetivo, técnico e profissional. NÃO gere os procedimentos passo a passo (isso será feito depois).
 
-O campo \"resumo_executivo_topicos\" é o RESUMO EXECUTIVO ASSERTIVO do topo da página: uma lista curta e direta que, batendo o olho, já diz o que fazer e qual o resultado. Gere de 3 a 5 tópicos — os primeiros no IMPERATIVO (o que faz, na ordem), e o ÚLTIMO obrigatoriamente iniciando com 'Resultado:' descrevendo o que caracteriza a conclusão bem-sucedida. Cada tópico deve ter no máximo 1 linha. Nada de enrolação.
+O campo \"resumo_executivo_topicos\" é o RESUMO EXECUTIVO DIDÁTICO do topo da página: um passo a passo macro que, batendo o olho, ensina o caminho completo do serviço do início ao fim. Regras:
+- Gere de 6 a 10 tópicos (conte o RESULTADO como um deles). NÃO gere menos de 6 — se o serviço parecer simples, quebre em passos menores para ficar didático.
+- Cada passo de ação começa com VERBO NO IMPERATIVO e traz também o 'como' resumido ou o critério-chave (não só 'Faça X', mas 'Faça X fazendo Y / observando Z'). 1 a 2 linhas por tópico.
+- Coloque os passos na ORDEM REAL de execução, cobrindo do começo (planejar/levantar) até o fim (validar/entregar).
+- O ÚLTIMO tópico obrigatoriamente inicia com 'Resultado:' descrevendo o entregável/estado final que caracteriza a conclusão bem-sucedida.
+- Assertivo e específico ao serviço; nada de enrolação ou passo genérico de encher.
 
 Use SEMPRE terminologia genérica. NUNCA mencione marcas comerciais (ex: use 'ferramenta de gestão' em vez de nome de produto).
 
@@ -10825,7 +10830,7 @@ Use SEMPRE terminologia genérica. NUNCA mencione marcas comerciais (ex: use 'fe
 {
   \"objetivo\": \"BLOCO 1 (O que é) + objetivo: defina o serviço em 2-4 frases diretas, diferencie de processos vizinhos que geram confusão (se houver) e deixe claro o resultado/entrega esperada\",
   \"escopo\": \"O que a execução deste serviço inclui e o que NÃO inclui (deixe claro que o atendimento/relacionamento com o cliente não faz parte deste SOP técnico)\",
-  \"resumo_executivo_topicos\": [\"AÇÃO 1 no imperativo — o primeiro grande passo do serviço em 1 linha assertiva (ex.: 'Higienize e qualifique a base de contatos')\", \"AÇÃO 2 no imperativo — o passo seguinte em 1 linha\", \"AÇÃO 3 no imperativo — o passo seguinte em 1 linha\", \"RESULTADO ESPERADO — comece com 'Resultado:' e descreva o entregável/estado final que caracteriza sucesso\"],
+  \"resumo_executivo_topicos\": [\"AÇÃO 1 no imperativo, DIDÁTICA — o primeiro grande passo (verbo + o quê + como/critério em poucas palavras), ex.: 'Levante e documente os requisitos ouvindo as áreas envolvidas e registrando cada regra de negócio'\", \"AÇÃO 2 no imperativo, também com o 'como' resumido\", \"AÇÃO 3...\", \"AÇÃO 4...\", \"AÇÃO 5... (continue na ordem real do serviço)\", \"RESULTADO ESPERADO — comece com 'Resultado:' e descreva o entregável/estado final que caracteriza sucesso\"],
   \"resumo_executivo\": \"BLOCO 2 (Por que existe): explique o propósito real do processo — o que acontece se ele NÃO for feito, ou for feito mal (consequências concretas). Isso orienta o executor a decidir bem em situações não previstas. 3-4 frases\",
   \"responsaveis\": {
     \"executor_principal\": \"Cargo/função técnica que executa o serviço\",
