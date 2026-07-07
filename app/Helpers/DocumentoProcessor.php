@@ -405,41 +405,103 @@ class DocumentoProcessor
             }
         }
 
-        // 2) Fallback: parser nativo simples de streams do PDF
+        // 2) Fallback: parser nativo dos streams do PDF (sem dependências)
         $conteudo = (string) file_get_contents($caminho);
         $texto = '';
 
-        if (preg_match_all('/stream(.*?)endstream/s', $conteudo, $streams)) {
+        // Descomprimir todos os streams (FlateDecode) e concatenar o conteúdo
+        // descomprimido + o conteúdo bruto (alguns PDFs têm texto não comprimido).
+        $blocos = [];
+        if (preg_match_all('/stream\r?\n(.*?)\r?\nendstream/s', $conteudo, $streams)) {
             foreach ($streams[1] as $stream) {
-                $stream = ltrim($stream, "\r\n");
-                $stream = rtrim($stream, "\r\n");
                 $decodificado = @gzuncompress($stream);
-                if ($decodificado === false) {
-                    $decodificado = @gzinflate($stream);
+                if ($decodificado === false) $decodificado = @gzinflate($stream);
+                if ($decodificado === false) $decodificado = @gzdecode($stream);
+                if ($decodificado !== false && $decodificado !== '') {
+                    $blocos[] = $decodificado;
                 }
-                $alvo = $decodificado !== false ? $decodificado : $stream;
+            }
+        }
+        // Sempre analisar também o conteúdo bruto (cobre PDFs sem compressão)
+        $blocos[] = $conteudo;
 
-                // Extrair texto entre parênteses dos operadores Tj/TJ
-                if (preg_match_all('/\(((?:\\\\.|[^\\\\()])*)\)\s*T[jJ]/', $alvo, $m)) {
-                    foreach ($m[1] as $trecho) {
-                        $texto .= self::decodePdfString($trecho) . ' ';
+        foreach ($blocos as $alvo) {
+            $texto .= self::extrairOperadoresTextoPdf($alvo);
+        }
+
+        // Se ainda não veio nada útil, tentar extrair strings legíveis do arquivo todo
+        if (trim($texto) === '') {
+            $texto = self::extrairStringsLegiveis($conteudo);
+        }
+
+        return $texto;
+    }
+
+    /**
+     * Extrai texto dos operadores de texto de um bloco PDF (Tj, TJ, ', "),
+     * suportando strings entre parênteses (…) e strings hexadecimais <…>.
+     */
+    private static function extrairOperadoresTextoPdf(string $alvo): string
+    {
+        $texto = '';
+
+        // 1) Strings entre parênteses seguidas de Tj / TJ / ' / "
+        if (preg_match_all('/\(((?:\\\\.|[^\\\\()])*)\)\s*(?:T[jJ]|\'|")/', $alvo, $m)) {
+            foreach ($m[1] as $trecho) {
+                $texto .= self::decodePdfString($trecho) . ' ';
+            }
+        }
+
+        // 2) Arrays TJ: [(a) -10 (b) 5 (c)] TJ  — inclusive com strings hex
+        if (preg_match_all('/\[(.*?)\]\s*TJ/s', $alvo, $arr)) {
+            foreach ($arr[1] as $bloco) {
+                // parênteses dentro do array
+                if (preg_match_all('/\(((?:\\\\.|[^\\\\()])*)\)/', $bloco, $mm)) {
+                    foreach ($mm[1] as $trecho) {
+                        $texto .= self::decodePdfString($trecho);
                     }
                 }
-                // Também capturar arrays de texto TJ: [(a) -10 (b)] TJ
-                if (preg_match_all('/\[(.*?)\]\s*TJ/s', $alvo, $arr)) {
-                    foreach ($arr[1] as $bloco) {
-                        if (preg_match_all('/\(((?:\\\\.|[^\\\\()])*)\)/', $bloco, $mm)) {
-                            foreach ($mm[1] as $trecho) {
-                                $texto .= self::decodePdfString($trecho);
-                            }
-                            $texto .= ' ';
-                        }
+                // strings hex dentro do array
+                if (preg_match_all('/<([0-9A-Fa-f\s]+)>/', $bloco, $hh)) {
+                    foreach ($hh[1] as $hex) {
+                        $texto .= self::hexPdfParaTexto($hex);
                     }
                 }
+                $texto .= ' ';
+            }
+        }
+
+        // 3) Strings hexadecimais seguidas de Tj/TJ: <0048...> Tj
+        if (preg_match_all('/<([0-9A-Fa-f\s]+)>\s*T[jJ]/', $alvo, $hx)) {
+            foreach ($hx[1] as $hex) {
+                $texto .= self::hexPdfParaTexto($hex) . ' ';
             }
         }
 
         return $texto;
+    }
+
+    /**
+     * Converte uma string hexadecimal de PDF em texto (UTF-16BE ou Latin/ASCII).
+     */
+    private static function hexPdfParaTexto(string $hex): string
+    {
+        $hex = preg_replace('/\s+/', '', $hex);
+        if ($hex === '' || strlen($hex) % 2 !== 0) {
+            return '';
+        }
+        $bin = @hex2bin($hex);
+        if ($bin === false) {
+            return '';
+        }
+        // Heurística: se parecer UTF-16BE (bytes altos zero alternados), converter
+        if (strlen($bin) >= 2 && $bin[0] === "\x00") {
+            $conv = @mb_convert_encoding($bin, 'UTF-8', 'UTF-16BE');
+            if ($conv !== false && trim($conv) !== '') {
+                return $conv;
+            }
+        }
+        return $bin;
     }
 
     /**

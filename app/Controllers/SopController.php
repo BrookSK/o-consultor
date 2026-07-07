@@ -10163,10 +10163,32 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                     $contextoDoc = mb_substr($contextoDoc, 0, 40000);
                 }
 
-                if (trim($contextoDoc) === '') {
+                Logger::info('PERSONALIZAÇÃO: texto extraído do documento', [
+                    'servico_id' => $servicoId,
+                    'arquivo' => $nomeDoc,
+                    'extensao' => $ext,
+                    'tamanho_texto' => mb_strlen($contextoDoc),
+                    'amostra' => mb_substr($contextoDoc, 0, 200)
+                ]);
+
+                // Se não foi possível extrair texto útil do documento, NÃO seguir de forma
+                // silenciosa gerando conteúdo genérico. Avisar o usuário para que ele
+                // possa enviar um formato legível (ou colar o conteúdo na descrição).
+                if (mb_strlen(trim($contextoDoc)) < 30) {
                     Logger::warning('PERSONALIZAÇÃO: documento sem texto extraível', [
-                        'servico_id' => $servicoId, 'arquivo' => $nomeDoc
+                        'servico_id' => $servicoId, 'arquivo' => $nomeDoc, 'extensao' => $ext
                     ]);
+                    if ($descricao === '') {
+                        echo json_encode([
+                            'sucesso' => false,
+                            'erro' => 'Não consegui ler o texto do documento "' . $nomeDoc . '". '
+                                . 'Se for um PDF escaneado (imagem), ele não contém texto selecionável. '
+                                . 'Envie o arquivo em PDF com texto real, DOCX ou TXT — ou cole as informações no campo Descrição.'
+                        ]);
+                        exit;
+                    }
+                    // Há descrição preenchida: seguimos usando ao menos a descrição.
+                    $contextoDoc = '';
                 }
             }
 
@@ -11015,8 +11037,13 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         }
 
         $blocos = [];
-        $blocos[] = "# PERSONALIZAÇÃO DO CLIENTE (PRIORIDADE MÁXIMA)";
-        $blocos[] = "Este serviço foi PERSONALIZADO. Você DEVE consolidar o PADRÃO técnico do serviço COM as informações específicas abaixo. Onde houver conflito, PREVALECE o que está descrito aqui — são o jeito real de trabalhar desta empresa. Incorpore nomes de etapas, ferramentas, critérios, prazos, responsáveis e regras citados, sem inventar o que não foi dito.";
+        $blocos[] = "# PERSONALIZAÇÃO DO CLIENTE (PRIORIDADE MÁXIMA — USO OBRIGATÓRIO)";
+        $blocos[] = "Este serviço foi PERSONALIZADO com material REAL desta empresa. Você é OBRIGADO a usar o conteúdo abaixo como base principal do SOP — ele NÃO é opcional nem apenas 'contexto de fundo'. Extraia dele e incorpore no SOP, de forma concreta e fiel:";
+        $blocos[] = "- O QUE É: como a empresa define/entende este serviço ou processo.";
+        $blocos[] = "- COMO FAZER: o passo a passo real descrito no material (etapas, ordem, decisões).";
+        $blocos[] = "- POR ONDE PASSA / FLUXO: as etapas, áreas, sistemas e caminhos pelos quais o trabalho percorre do início ao fim.";
+        $blocos[] = "- FERRAMENTAS/SISTEMAS e METODOLOGIAS citadas pelo nome, critérios, parâmetros, prazos, responsáveis e regras.";
+        $blocos[] = "REGRAS: (1) Onde houver conflito com o padrão genérico, PREVALECE o material do cliente. (2) Reproduza os termos, nomes de etapas e exemplos que aparecem no material — não os substitua por versões genéricas. (3) NÃO invente o que não está no material, mas complemente com boas práticas quando o material for omisso. (4) Se o material descreve um fluxo/sequência específica, o passo a passo do SOP deve SEGUIR essa sequência.";
 
         if ($descricao !== '') {
             $blocos[] = "\n## Descrição fornecida pelo responsável:\n" . $descricao;
