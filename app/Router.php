@@ -83,6 +83,7 @@ class Router
         $this->get('sop/estrutura-existe', 'SopController', 'estruturaExiste');                   // Verifica se já há estrutura (recriar?)
         $this->get('sop/selecionar-servicos', 'SopController', 'selecionarServicos');             // Tela de seleção (draft) de serviços
         $this->post('sop/salvar-selecao-servicos', 'SopController', 'salvarSelecaoServicos');     // Salva seleção de serviços
+        $this->post('sop/gerar-servicos-setor-voz', 'SopController', 'gerarServicosSetorPorVoz'); // IA: cria serviços de um setor por voz/texto
         $this->get('sop/mapear-servicos', 'SopController', 'mapearServicos');                     // Etapa 2A: View mapeamento
         $this->post('sop/executar-mapeamento-setor', 'SopController', 'executarMapeamentoSetor'); // Etapa 2A: AJAX por setor
         $this->post('sop/regenerar-csrf', 'SopController', 'regenerarTokenCSRF');               // Debug: Regenerar CSRF

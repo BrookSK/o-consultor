@@ -3140,6 +3140,161 @@ class SopController
         } catch (Exception $e) { /* já existe */ }
     }
 
+    /**
+     * GERAR SERVIÇOS POR VOZ/TEXTO num SETOR (tela de seleção/draft).
+     * Recebe a descrição de como o processo é feito hoje e usa a IA para
+     * transformar isso em uma lista de serviços daquele setor. Os serviços
+     * criados já entram selecionados. Retorna a lista criada para atualizar a tela.
+     */
+    public function gerarServicosSetorPorVoz(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $setorId = (int) ($_POST['setor_id'] ?? 0);
+        $descricao = trim($_POST['descricao'] ?? '');
+
+        if (!$setorId || $descricao === '') {
+            echo json_encode(['sucesso' => false, 'erro' => 'Setor e descrição são obrigatórios.']);
+            exit;
+        }
+
+        $setor = Database::queryOne(
+            "SELECT se.*, eo.id AS estrutura_id, eo.nicho
+             FROM setores_empresa se
+             LEFT JOIN estruturas_organizacionais eo ON se.estrutura_id = eo.id
+             WHERE se.id = :id",
+            ['id' => $setorId]
+        );
+        if (!$setor) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Setor não encontrado.']);
+            exit;
+        }
+
+        $empresaUsuario = Auth::empresa();
+        if ($empresaUsuario !== null && (int) $setor['empresa_id'] !== (int) $empresaUsuario) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Sem permissão.']);
+            exit;
+        }
+
+        try {
+            $this->garantirColunaSelecionado();
+
+            // Serviços já existentes no setor (para evitar duplicatas)
+            $existentes = Database::query(
+                "SELECT nome_servico FROM servicos_setor WHERE setor_id = ?",
+                [$setorId]
+            );
+            $nomesExistentes = array_map(fn($r) => mb_strtolower(trim($r['nome_servico'])), $existentes);
+
+            // Pedir à IA a lista de serviços do setor com base na descrição do usuário
+            $novos = $this->gerarListaServicosComIA($descricao, $setor['nome_setor'], $setor['nicho'] ?? 'geral');
+
+            if (empty($novos)) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Não consegui identificar serviços na sua descrição. Tente detalhar mais.']);
+                exit;
+            }
+
+            $criados = [];
+            $contadorBase = time() % 1000;
+            foreach ($novos as $i => $item) {
+                $nome = trim($item['nome'] ?? '');
+                if ($nome === '') continue;
+                // Evitar duplicar serviço já existente (mesmo nome)
+                if (in_array(mb_strtolower($nome), $nomesExistentes, true)) continue;
+
+                $subcategoria = trim($item['subcategoria'] ?? 'Personalizado') ?: 'Personalizado';
+                $categoria = strtolower(trim($item['categoria'] ?? 'operacional'));
+                if (!in_array($categoria, ['core', 'operacional', 'estrategico'], true)) $categoria = 'operacional';
+                $criticidade = strtolower(trim($item['criticidade'] ?? 'media'));
+                if (!in_array($criticidade, ['baixa', 'media', 'alta'], true)) $criticidade = 'media';
+
+                Database::execute(
+                    "INSERT INTO servicos_setor (
+                        setor_id, empresa_id, nome_servico, subcategoria, codigo_servico,
+                        categoria, criticidade, frequencia, complexidade, origem,
+                        status, selecionado, criado_em
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'sob_demanda', 'media', 'manual', 'mapeado', 1, NOW())",
+                    [
+                        $setorId,
+                        $setor['empresa_id'],
+                        $nome,
+                        $subcategoria,
+                        $this->gerarCodigoServicoUnico($setor['nome_setor'], $nome, (int) $setor['estrutura_id'], $contadorBase + $i),
+                        $categoria,
+                        $criticidade
+                    ]
+                );
+                $novoId = (int) Database::lastInsertId();
+                $nomesExistentes[] = mb_strtolower($nome);
+                $criados[] = [
+                    'id' => $novoId,
+                    'nome_servico' => $nome,
+                    'subcategoria' => $subcategoria,
+                    'categoria' => $categoria,
+                    'criticidade' => $criticidade
+                ];
+            }
+
+            // Atualizar contador do setor (apenas selecionados)
+            Database::execute(
+                "UPDATE setores_empresa SET total_servicos = (SELECT COUNT(*) FROM servicos_setor WHERE setor_id = ? AND selecionado = 1) WHERE id = ?",
+                [$setorId, $setorId]
+            );
+
+            Logger::info('SERVIÇOS GERADOS POR VOZ NO SETOR', [
+                'setor_id' => $setorId,
+                'setor' => $setor['nome_setor'],
+                'criados' => count($criados)
+            ]);
+
+            echo json_encode([
+                'sucesso' => true,
+                'setor_id' => $setorId,
+                'criados' => $criados,
+                'total_criados' => count($criados),
+                'mensagem' => count($criados) . ' serviço(s) adicionado(s) ao setor.'
+            ]);
+            exit;
+
+        } catch (Exception $e) {
+            Logger::error('Erro ao gerar serviços por voz', ['erro' => $e->getMessage()]);
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
+            exit;
+        }
+    }
+
+    /**
+     * Usa a IA para transformar a descrição de um processo em uma LISTA de serviços
+     * de um setor. Retorna array de ['nome','subcategoria','categoria','criticidade'].
+     */
+    private function gerarListaServicosComIA(string $descricao, string $nomeSetor, string $nicho): array
+    {
+        $prompt = "Você organiza a estrutura operacional de empresas. Com base na descrição de como o processo é feito hoje (que pode ser um áudio transcrito), gere a LISTA DE SERVIÇOS/ATIVIDADES que compõem o setor.\n\n"
+            . "Setor: {$nomeSetor}\n"
+            . "Nicho da empresa: {$nicho}\n\n"
+            . "DESCRIÇÃO DO PROCESSO ATUAL:\n\"\"\"\n" . mb_substr($descricao, 0, 6000) . "\n\"\"\"\n\n"
+            . "Extraia de 3 a 15 serviços concretos e específicos citados ou implícitos na descrição. "
+            . "Cada serviço deve ser uma atividade objetiva do setor (ex.: 'Follow-up de leads', 'Conciliação bancária'). "
+            . "Não invente atividades que não têm relação com a descrição.\n\n"
+            . "Responda APENAS em JSON no formato:\n"
+            . "{\n  \"servicos\": [\n    {\"nome\": \"...\", \"subcategoria\": \"agrupamento curto\", \"categoria\": \"core|operacional|estrategico\", \"criticidade\": \"baixa|media|alta\"}\n  ]\n}";
+
+        try {
+            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 1500, 55);
+            if (!empty($resp['sucesso']) && is_array($resp['conteudo'])) {
+                $lista = $resp['conteudo']['servicos'] ?? [];
+                if (is_array($lista)) {
+                    return $lista;
+                }
+            }
+        } catch (Exception $e) {
+            Logger::warning('Falha ao gerar lista de serviços com IA', ['erro' => $e->getMessage()]);
+        }
+        return [];
+    }
+
     // ===== NOVA ARQUITETURA DETALHADA - ETAPA 2A =====
 
     /**
