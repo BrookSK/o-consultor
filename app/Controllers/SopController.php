@@ -10,6 +10,13 @@
 class SopController
 {
     /**
+     * Teto total de passos técnicos por serviço, somando todas as fases operacionais.
+     * Usado apenas na montagem do prompt (em memória) para orçar o volume de conteúdo.
+     * Não é persistido nem altera schema/fluxo.
+     */
+    private const TETO_PASSOS_TOTAL = 12;
+
+    /**
      * Tela principal — Cards por departamento (F-05 Implementation)
      */
     public function index(): void
@@ -11401,7 +11408,21 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             $info = $this->getFaseOperacionalInfo($indiceFase);
             Logger::info('FILA FASE ' . $fase . ' (fase operacional ' . $indiceFase . ') INICIANDO', ['sop_id' => $sopId]);
 
-            $prompt = $this->criarPromptFaseUnica($sopData, $detalhamento, $empresa, $diagnostico, $indiceFase);
+            // Contexto cruzado (em memória, sem query/persistência nova): percorre os
+            // procedimentos já acumulados para listar ações cobertas e contar passos.
+            $acoesJaCobertas = [];
+            $passosUsadosAteAgora = 0;
+            foreach (($conteudo['procedimentos'] ?? []) as $faseAnterior) {
+                foreach (($faseAnterior['passos_operacionais_detalhados'] ?? []) as $passoAnterior) {
+                    $passosUsadosAteAgora++;
+                    $acao = trim((string) ($passoAnterior['acao_operacional'] ?? ''));
+                    if ($acao !== '') {
+                        $acoesJaCobertas[] = $acao;
+                    }
+                }
+            }
+
+            $prompt = $this->criarPromptFaseUnica($sopData, $detalhamento, $empresa, $diagnostico, $indiceFase, $acoesJaCobertas, $passosUsadosAteAgora);
             $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 7000, 55);
             if (empty($resp['sucesso'])) {
                 return ['sucesso' => false, 'erro' => 'Fase ' . $fase . ' (' . $info['nome'] . '): ' . ($resp['erro'] ?? 'Erro na IA')];
@@ -11892,7 +11913,20 @@ Alguém SEM conhecimento prévio do processo deve conseguir executá-lo usando A
 - Critérios de conclusão devem ser MENSURÁVEIS e verificáveis, nunca subjetivos ('está pronto porque X, Y e Z foram verificados', não 'parece pronto').
 - Erros comuns devem ser REAIS e específicos deste processo, nunca genéricos.
 - Como regra geral, evite inventar nome de marca, produto ou serviço comercial — use termos neutros (ex.: 'ferramenta de gestão'). EXCEÇÃO IMPORTANTE: se o material de personalização do cliente (descrição ou documento anexado) citar ferramentas/sistemas/plataformas comerciais pelo nome, você DEVE citá-los pelo nome exato, pois são os sistemas reais que a empresa usa. A proibição vale apenas para marcas que VOCÊ inventaria, nunca para as que o cliente forneceu.
-- Se faltar contexto específico da empresa, gere a versão de referência (padrão de mercado) e mantenha o conteúdo aplicável e adaptável à realidade dela.";
+- Se faltar contexto específico da empresa, gere a versão de referência (padrão de mercado) e mantenha o conteúdo aplicável e adaptável à realidade dela.
+
+# REGRA DE NÃO-REPETIÇÃO ENTRE CAMPOS (dentro de um mesmo passo)
+- Cada informação aparece em UM único campo. Antes de preencher scripts_operacionais_completos, verifique se o conteúdo já está coberto em detalhamento_operacional_completo. Se estiver, deixe scripts_operacionais_completos como string vazia \"\". Só preencha esse campo se ele agregar algo que o detalhamento não tem (sequência de comandos, checklist com valores exatos, faixas de referência).
+- O mesmo vale para metodologias_operacionais e ferramentas_operacionais: se o valor for genérico e já implícito no contexto (ex.: \"plataforma de gestão\" repetido em quase todos os passos), omita ou reduza a uma linha.
+- Nunca reafirme o objetivo ou a importância do passo mais de uma vez dentro do mesmo passo (não repita \"isso é essencial para...\" no início e de novo no fim).
+
+# REGRA DE CONCISÃO
+- Proibidas frases de transição sem conteúdo técnico: \"é importante ressaltar\", \"vale destacar\", \"deve-se atentar\", \"é fundamental\", \"cabe salientar\", \"certifique-se de\". Vá direto à instrução no imperativo.
+- detalhamento_operacional_completo: 80 a 140 palavras. Frases curtas e diretas, sem parágrafo explicativo antes da instrução.
+- Listas (validacoes_operacionais, criterios_qualidade_operacionais): apenas itens distintos entre si. Nunca reformule o mesmo critério duas vezes.
+
+# REGRA DE ORÇAMENTO DE CONTEÚDO
+- Você receberá, quando aplicável, um \"orçamento de passos restantes\" e um resumo das ações já cobertas em fases anteriores. Respeite esse orçamento: não gere mais passos do que o restante disponível, e nunca redescreva uma ação já listada como coberta — se a fase atual só teria conteúdo redundante, gere menos passos (mínimo 2) em vez de preencher por obrigação de quantidade.";
     }
 
     /**
@@ -11915,7 +11949,7 @@ Alguém SEM conhecimento prévio do processo deve conseguir executá-lo usando A
      * Prompt que gera UMA ÚNICA fase operacional em PROFUNDIDADE (cabe em <55s).
      * Como gera só uma fase por chamada, há espaço para scripts completos e ricos.
      */
-    private function criarPromptFaseUnica(array $servico, array $detalhamento, array $empresa, array $diagnostico, int $indiceFase): string
+    private function criarPromptFaseUnica(array $servico, array $detalhamento, array $empresa, array $diagnostico, int $indiceFase, array $acoesJaCobertas = [], int $passosUsadosAteAgora = 0): string
     {
         $nomeServico = $servico['nome_servico'];
         $nomeSetor = $servico['nome_setor'];
@@ -11927,7 +11961,22 @@ Alguém SEM conhecimento prévio do processo deve conseguir executá-lo usando A
         $diretrizes = $this->diretrizesManualTecnico();
         $contextoPersonalizacao = $this->montarContextoPersonalizacao($servico);
 
+        // Contexto cruzado entre fases (montado em memória, nada persistido):
+        // lista de ações já geradas + orçamento de passos restantes.
+        $restante = max(2, self::TETO_PASSOS_TOTAL - $passosUsadosAteAgora);
+        $blocoContextoCruzado = '';
+        if (!empty($acoesJaCobertas) || $passosUsadosAteAgora > 0) {
+            $listaAcoes = !empty($acoesJaCobertas)
+                ? implode("\n", array_map(fn($a) => '- ' . $a, $acoesJaCobertas))
+                : '- (nenhuma ainda)';
+            $blocoContextoCruzado = "\n# ACOES JA DESCRITAS EM FASES ANTERIORES (nao repetir, nao redescrever):\n"
+                . $listaAcoes
+                . "\n\nEste servico ja tem {$passosUsadosAteAgora} passos gerados nas fases anteriores. Restam no maximo {$restante} passos para todas as fases que ainda faltam, incluindo esta.\n"
+                . "Se a acao que esta fase cobriria ja estiver na lista acima, NAO gere um passo novo para ela. Gere apenas passos com acao tecnicamente distinta do que ja foi coberto. Se nao houver acao distinta suficiente para esta fase, gere menos passos (minimo 2) - nunca repita conteudo para atingir uma quantidade.\n";
+        }
+
         return "{$diretrizes}
+{$blocoContextoCruzado}
 
 Gere agora UMA fase do PASSO A PASSO DE EXECUÇÃO (equivale aos Blocos 4/Planejamento e 6/Passo a passo do modelo) em MÁXIMA PROFUNDIDADE, ensinando o colaborador a EXECUTAR o serviço com assertividade, do início ao fim.
 
@@ -11949,7 +11998,7 @@ Este é um MANUAL TÉCNICO DE COMO EXECUTAR O SERVIÇO, e NÃO um manual de aten
 Gere APENAS a fase técnica: **\"{$nomeFase}\"**, TOTALMENTE PERSONALIZADA ao serviço e ao perfil da empresa acima.
 Foco desta fase: {$focoFase}.
 
-Esta fase deve conter EXATAMENTE de 3 a 4 passos técnicos. Gere POUCOS passos, porém cada um EXTREMAMENTE completo e assertivo. O objetivo é que um colaborador consiga executar seguindo o texto, sem dúvidas. Evite inventar marcas comerciais (use termos neutros), MAS cite pelo nome exato as ferramentas/sistemas que o material de personalização do cliente mencionar — são os sistemas reais usados pela empresa.
+Gere de 2 a 3 passos técnicos por fase (nunca 4), e apenas os que tiverem substância real e distinta — quantidade menor com conteúdo específico é preferível a mais passos genéricos. Cada passo deve ser completo e assertivo. O objetivo é que um colaborador consiga executar seguindo o texto, sem dúvidas. Evite inventar marcas comerciais (use termos neutros), MAS cite pelo nome exato as ferramentas/sistemas que o material de personalização do cliente mencionar — são os sistemas reais usados pela empresa.
 
 ## REGRA DE OURO — SUBSTÂNCIA REAL, ZERO ENCHIMENTO DE LINGUIÇA:
 O SOP deve ensinar a ESSÊNCIA REAL de como executar bem ESTE serviço específico — as boas práticas do ofício, o know-how que separa um profissional bom de um medíocre. É PROIBIDO gerar passos triviais, óbvios ou genéricos que serviriam para qualquer coisa.
@@ -11960,7 +12009,7 @@ O SOP deve ensinar a ESSÊNCIA REAL de como executar bem ESTE serviço específi
 - Priorize: método correto, critérios de decisão, boas práticas, o que fazer bem-feito, erros que profissionais cometem e como evitá-los.
 
 ## CADA PASSO = INSTRUÇÃO SUBSTANTIVA E EXECUTÁVEL:
-O campo \"detalhamento_operacional_completo\" é a parte MAIS importante e deve ser um GUIA passo a passo (150-250 palavras), em sequência numerada, ensinando exatamente COMO fazer bem-feito ESTE serviço:
+O campo \"detalhamento_operacional_completo\" é a parte MAIS importante e deve ser um GUIA passo a passo (80-140 palavras), em sequência numerada, ensinando exatamente COMO fazer bem-feito ESTE serviço:
 1. A ação real e o critério/raciocínio profissional por trás dela (por que se faz assim).
 2. A sequência EXATA do como fazer, com parâmetros concretos quando fizer sentido (quantidades, frequências, prazos, faixas, critérios de priorização, gatilhos de ação).
 3. As boas práticas do ofício e o que caracteriza a execução de qualidade aqui.
@@ -11978,7 +12027,7 @@ O campo \"scripts_operacionais_completos\" NÃO é um roteiro de conversa. Use-o
     {
       \"passo\": 1,
       \"acao_operacional\": \"Título de AÇÃO no IMPERATIVO, claro e específico (ex.: 'Valide os dados de entrada', 'Higienize a base')\",
-      \"detalhamento_operacional_completo\": \"GUIA EXECUTÁVEL (150-250 palavras) em sequência numerada: o que verificar antes, as operações na ordem exata com parâmetros concretos, os PONTOS DE DECISÃO explícitos ('Se X, faça A; se Y, faça B'), e o RESULTADO ESPERADO desta etapa antes de seguir para a próxima. Se a etapa exigir julgamento humano, sinalize 'exige validação de [responsável] antes de prosseguir'.\",
+      \"detalhamento_operacional_completo\": \"GUIA EXECUTÁVEL (80-140 palavras) em sequência numerada: o que verificar antes, as operações na ordem exata com parâmetros concretos, os PONTOS DE DECISÃO explícitos ('Se X, faça A; se Y, faça B'), e o RESULTADO ESPERADO desta etapa antes de seguir para a próxima. Se a etapa exigir julgamento humano, sinalize 'exige validação de [responsável] antes de prosseguir'.\",
       \"responsavel_operacional\": \"Cargo/função técnica responsável pela execução\",
       \"tempo_operacional_estimado\": \"Tempo estimado de execução\",
       \"criterios_qualidade_operacionais\": \"Critérios de qualidade/aceitação MENSURÁVEIS desta etapa (mínimo 3, com valores/limites quando aplicável) — o resultado esperado que confirma que a etapa ficou correta\",
@@ -12039,8 +12088,8 @@ Não basta ser um guia técnico: seja um MANUAL TÁTICO de como agir com intelig
 Tudo sempre dentro da ética, da legalidade e das normas técnicas — 'malícia' aqui significa esperteza tática e proteção profissional, nunca desonestidade.
 
 # TAREFA
-Gere de 4 a 6 cenários de adversidade TÉCNICA reais que podem ocorrer durante a EXECUÇÃO deste serviço nesta empresa, e como resolver cada um de forma prática, técnica E TÁTICA.
-Inclua também de 3 a 4 procedimentos objetivos para problemas específicos recorrentes.
+Gere de 3 a 4 cenários de adversidade técnica (os mais prováveis e específicos para este serviço, não genéricos) e 2 a 3 procedimentos para problemas recorrentes.
+Em cada cenário, \"ação imediata\" e \"técnicas de desescalada\" devem ser complementares, nunca redundantes: acao_imediata_contencao = o que fazer nos primeiros minutos; tecnicas_desescalacao = o que fazer se o problema persistir além disso. Não repita a mesma instrução nos dois campos.
 Seja prático, técnico, direto e estrategicamente esperto. Evite inventar marcas comerciais, MAS cite pelo nome exato as ferramentas/sistemas que o material de personalização do cliente mencionar.
 
 # FORMATO (JSON):
