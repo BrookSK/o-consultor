@@ -311,6 +311,7 @@ class Router
 
         // API Interna
         $this->post('api/transcricao', 'ApiController', 'transcricao');
+        $this->get('api/csrf-token', 'ApiController', 'csrfToken');
     }
 
     /**

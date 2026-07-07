@@ -245,20 +245,31 @@ class MicrofoneTranscricao {
      * Envia áudio para API de transcrição
      */
     async enviarParaTranscricao(audioBlob) {
+        // Buscar um token CSRF fresco (evita 403 quando o token da página rotacionou)
+        let token = '';
+        try {
+            const tr = await fetch('/api/csrf-token', { headers: { 'Accept': 'application/json' } });
+            if (tr.ok) { const td = await tr.json(); token = td.token || ''; }
+        } catch (e) { /* segue com fallback abaixo */ }
+        if (!token) {
+            token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+                || document.querySelector('input[name="csrf_token"]')?.value || '';
+        }
+
         const formData = new FormData();
         formData.append('audio', audioBlob, 'gravacao.webm');
-        formData.append('csrf_token', document.querySelector('input[name="csrf_token"]')?.value || '');
+        formData.append('csrf_token', token);
 
         const response = await fetch('/api/transcricao', {
             method: 'POST',
+            headers: { 'X-CSRF-Token': token },
             body: formData
         });
 
-        if (!response.ok) {
-            throw new Error('Erro na API de transcrição');
+        const result = await response.json().catch(() => ({ sucesso: false, erro: 'Resposta inválida do servidor' }));
+        if (!response.ok || !result.sucesso) {
+            throw new Error(result.erro || ('Erro na API de transcrição (HTTP ' + response.status + ')'));
         }
-
-        const result = await response.json();
         return result.transcricao;
     }
 

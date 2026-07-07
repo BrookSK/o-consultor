@@ -9,6 +9,22 @@ class ApiController
     /**
      * Transcreve áudio para texto usando OpenAI Whisper
      */
+    /**
+     * Retorna o token CSRF atual da sessão (para clientes que precisam de um token fresco
+     * antes de enviar uploads, evitando 403 por token rotacionado).
+     */
+    public function csrfToken(): void
+    {
+        header('Content-Type: application/json');
+        if (!Auth::check()) {
+            http_response_code(401);
+            echo json_encode(['sucesso' => false, 'erro' => 'Não autenticado']);
+            exit;
+        }
+        echo json_encode(['sucesso' => true, 'token' => Csrf::token()]);
+        exit;
+    }
+
     public function transcricao(): void
     {
         header('Content-Type: application/json');

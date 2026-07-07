@@ -653,14 +653,23 @@ async function alternarGravacaoAdd() {
     }
 }
 
+async function tokenFrescoAdd() {
+    try {
+        const tr = await fetch('<?= APP_URL ?>/api/csrf-token', { headers: { 'Accept': 'application/json' } });
+        if (tr.ok) { const td = await tr.json(); if (td.token) return td.token; }
+    } catch (e) {}
+    return CSRF_TOKEN;
+}
+
 async function transcreverAudioAdd() {
     const status = document.getElementById('add_mic_status');
     try {
+        const token = await tokenFrescoAdd();
         const blob = new Blob(addAudioChunks, { type: 'audio/webm' });
         const fd = new FormData();
         fd.append('audio', blob, 'gravacao.webm');
-        fd.append('csrf_token', CSRF_TOKEN);
-        const r = await fetch('<?= APP_URL ?>/api/transcricao', { method: 'POST', body: fd });
+        fd.append('csrf_token', token);
+        const r = await fetch('<?= APP_URL ?>/api/transcricao', { method: 'POST', headers: { 'X-CSRF-Token': token }, body: fd });
         const d = await r.json();
         if (d.sucesso && d.transcricao) {
             const ta = document.getElementById('add_descricao');
