@@ -124,6 +124,7 @@ class Router
         $this->get('sop/ver-detalhes-servico', 'SopController', 'verDetalhesServico');           // Ver detalhes completos do serviço
         $this->post('sop/editar-servico-manual', 'SopController', 'editarServicoManual');        // Editar serviço
         $this->post('sop/personalizar-servico', 'SopController', 'personalizarServico');         // Personalizar serviço (upload doc + regenerar SOP)
+        $this->post('sop/gerar-scripts-comunicacao', 'SopController', 'gerarScriptsComunicacao'); // IA: gera scripts de comunicação a partir do SOP
         $this->post('sop/excluir-servico', 'SopController', 'excluirServico');                   // Excluir serviço
         $this->post('sop/excluir-servicos-lote', 'SopController', 'excluirServicosEmLote');      // Excluir vários serviços de uma vez
         

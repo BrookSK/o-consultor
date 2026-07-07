@@ -11023,6 +11023,190 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
     }
 
     /**
+     * Gera (ou regenera/personaliza) os SCRIPTS DE COMUNICAÇÃO do serviço a partir do SOP.
+     * Produz mensagens/diálogos modelo profissionais cobrindo as situações do SOP.
+     * O resultado é salvo dentro do próprio conteúdo do SOP em 'scripts_comunicacao_gerados'.
+     * Chamada síncrona (uma requisição à IA) — mais leve que a geração do SOP.
+     */
+    public function gerarScriptsComunicacao(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $servicoId = (int) ($_POST['servico_id'] ?? 0);
+        if (!$servicoId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'ID do serviço não informado.']);
+            exit;
+        }
+
+        $servico = Database::queryOne(
+            "SELECT ss.*, se.nome_setor, eo.nicho, eo.diagnostico_id
+             FROM servicos_setor ss
+             LEFT JOIN setores_empresa se ON ss.setor_id = se.id
+             LEFT JOIN estruturas_organizacionais eo ON se.estrutura_id = eo.id
+             WHERE ss.id = :id",
+            ['id' => $servicoId]
+        );
+        if (!$servico) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Serviço não encontrado.']);
+            exit;
+        }
+
+        $empresaUsuario = Auth::empresa();
+        if ($empresaUsuario !== null && (int) $servico['empresa_id'] !== (int) $empresaUsuario) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Sem permissão.']);
+            exit;
+        }
+
+        if (empty($servico['sop_id'])) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Gere o SOP antes de criar os scripts de comunicação.']);
+            exit;
+        }
+
+        try {
+            $sopRow = Database::queryOne("SELECT conteudo FROM sops WHERE id = :id", ['id' => $servico['sop_id']]);
+            $conteudo = $sopRow ? (json_decode($sopRow['conteudo'], true) ?? []) : [];
+            if (empty($conteudo)) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Conteúdo do SOP não encontrado.']);
+                exit;
+            }
+
+            $diagnostico = !empty($servico['diagnostico_id']) ? Diagnostico::buscarPorId((int) $servico['diagnostico_id']) : [];
+            $empresa = Empresa::buscarPorId((int) $servico['empresa_id']);
+
+            // Instrução extra de personalização vinda do modal (tom de voz, regras da empresa).
+            $instrucaoPersonalizacao = trim($_POST['instrucao_personalizacao'] ?? '');
+
+            $prompt = $this->criarPromptScriptsComunicacao($servico, $conteudo, $empresa ?: [], $diagnostico ?: [], $instrucaoPersonalizacao);
+            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 6000, 55);
+            if (empty($resp['sucesso'])) {
+                echo json_encode(['sucesso' => false, 'erro' => 'IA: ' . ($resp['erro'] ?? 'falha ao gerar scripts')]);
+                exit;
+            }
+
+            $r = $resp['conteudo'];
+            $categorias = $r['categorias'] ?? ($r['scripts'] ?? []);
+            if (empty($categorias)) {
+                echo json_encode(['sucesso' => false, 'erro' => 'A IA não retornou scripts. Tente novamente.']);
+                exit;
+            }
+
+            $scriptsGerados = [
+                'categorias' => $categorias,
+                'gerado_em' => date('d/m/Y H:i'),
+                'instrucao_personalizacao' => $instrucaoPersonalizacao
+            ];
+
+            $conteudo['scripts_comunicacao_gerados'] = $scriptsGerados;
+            $this->salvarConteudoSop((int) $servico['sop_id'], $conteudo, 'ativo');
+
+            echo json_encode(['sucesso' => true, 'scripts' => $scriptsGerados]);
+            exit;
+
+        } catch (Exception $e) {
+            Logger::error('Erro ao gerar scripts de comunicação', ['erro' => $e->getMessage(), 'servico_id' => $servicoId]);
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
+            exit;
+        }
+    }
+
+    /**
+     * Monta o prompt de geração dos scripts de comunicação a partir do SOP.
+     */
+    private function criarPromptScriptsComunicacao(array $servico, array $conteudo, array $empresa, array $diagnostico, string $instrucaoPersonalizacao = ''): string
+    {
+        $nomeServico = $servico['nome_servico'] ?? 'Serviço';
+        $nomeSetor = $servico['nome_setor'] ?? '';
+        $contextoEmpresa = $this->montarContextoEmpresa($empresa, $diagnostico);
+        $contextoPersonalizacao = $this->montarContextoPersonalizacao($servico);
+
+        // Resumo do SOP para a IA saber quais situações de comunicação existem.
+        $resumoSop = [];
+        if (!empty($conteudo['objetivo'])) { $resumoSop[] = 'Objetivo: ' . (is_array($conteudo['objetivo']) ? json_encode($conteudo['objetivo'], JSON_UNESCAPED_UNICODE) : $conteudo['objetivo']); }
+        if (!empty($conteudo['escopo'])) { $resumoSop[] = 'Escopo: ' . (is_array($conteudo['escopo']) ? json_encode($conteudo['escopo'], JSON_UNESCAPED_UNICODE) : $conteudo['escopo']); }
+        if (!empty($conteudo['resumo_executivo_topicos'])) {
+            $tops = array_map(fn($t) => is_array($t) ? implode(' ', $t) : (string) $t, (array) $conteudo['resumo_executivo_topicos']);
+            $resumoSop[] = "Etapas do serviço:\n- " . implode("\n- ", $tops);
+        }
+        if (!empty($conteudo['procedimentos'])) {
+            $acoes = [];
+            foreach ((array) $conteudo['procedimentos'] as $fase) {
+                $nomeF = $fase['fase'] ?? '';
+                foreach ((array) ($fase['passos_operacionais_detalhados'] ?? []) as $p) {
+                    $a = trim((string) ($p['acao_operacional'] ?? ''));
+                    if ($a !== '') { $acoes[] = ($nomeF ? $nomeF . ': ' : '') . $a; }
+                }
+            }
+            if (!empty($acoes)) { $resumoSop[] = "Ações do procedimento:\n- " . implode("\n- ", array_slice($acoes, 0, 20)); }
+        }
+        if (!empty($conteudo['gestao_situacoes_fora_controle']['cenarios_criticos_obrigatorios'])) {
+            $crises = [];
+            foreach ((array) $conteudo['gestao_situacoes_fora_controle']['cenarios_criticos_obrigatorios'] as $c) {
+                $crises[] = trim((string) ($c['situacao_especifica'] ?? $c['tipo_crise'] ?? ''));
+            }
+            $crises = array_filter($crises);
+            if (!empty($crises)) { $resumoSop[] = "Situações críticas a comunicar:\n- " . implode("\n- ", $crises); }
+        }
+        $resumoSopTxt = implode("\n\n", $resumoSop);
+
+        $blocoPersonalizacaoManual = '';
+        if ($instrucaoPersonalizacao !== '') {
+            $blocoPersonalizacaoManual = "\n# INSTRUÇÃO DE PERSONALIZAÇÃO DA COMUNICAÇÃO (PRIORIDADE — alinhe TODO o tom/estilo a isto)\n"
+                . $instrucaoPersonalizacao . "\n";
+        }
+
+        return "Você é um especialista em COMUNICAÇÃO PROFISSIONAL e redação de mensagens corporativas. Sua tarefa é criar SCRIPTS DE COMUNICAÇÃO prontos para uso, específicos para este serviço, que a equipe possa copiar e enviar ao cliente/contato.
+
+{$contextoEmpresa}
+
+{$contextoPersonalizacao}
+{$blocoPersonalizacaoManual}
+# SERVIÇO
+- Setor: {$nomeSetor}
+- Serviço: {$nomeServico}
+
+# BASE (o SOP deste serviço — cubra as situações de comunicação que ele implica)
+{$resumoSopTxt}
+
+# TAREFA
+Gere scripts de comunicação profissionais e prontos para copiar, cobrindo as situações reais de comunicação com o cliente/contato que ESTE serviço exige. Adapte tudo ao tipo de serviço:
+- Se for atendimento/relacionamento: boas-vindas, captação/prospecção, follow-up, suporte, comunicação proativa, cobrança educada, pós-atendimento.
+- Se for entrega/setup (ex.: credenciais, acesso, documento): mensagem de entrega, instruções de primeiro acesso, confirmação de recebimento.
+- Se for técnico/operacional: aviso de início, atualização de andamento, comunicação de conclusão, aviso de imprevisto/atraso.
+- Sempre inclua, quando fizer sentido, o manejo de situações difíceis do SOP (atraso, problema, insatisfação).
+
+# REGRAS
+- Mensagens curtas, claras, profissionais e cordiais, prontas para enviar (WhatsApp/e-mail).
+- Use marcadores de variável entre colchetes quando algo é específico: [nome do cliente], [data], [link], [nome do responsável].
+- Português do Brasil. Tom profissional e humano, sem robotização e sem exageros.
+- Cada script deve ser realista e diretamente utilizável, não genérico.
+- Cite pelo nome as ferramentas/sistemas apenas se o material do cliente os mencionar.
+
+# FORMATO (JSON):
+```json
+{
+  \"categorias\": [
+    {
+      \"categoria\": \"Nome da categoria (ex.: Boas-vindas, Follow-up, Entrega de acesso, Suporte, Imprevisto/Atraso)\",
+      \"descricao\": \"1 frase sobre quando usar esta categoria\",
+      \"mensagens\": [
+        {
+          \"titulo\": \"Título curto do modelo (ex.: 'Primeiro contato após contratação')\",
+          \"canal\": \"WhatsApp | E-mail | Telefone\",
+          \"quando_usar\": \"Situação exata em que esta mensagem é enviada\",
+          \"mensagem\": \"O texto completo da mensagem, pronto para copiar, com [variáveis] entre colchetes\"
+        }
+      ]
+    }
+  ]
+}
+```
+
+Gere de 4 a 7 categorias, cada uma com 1 a 3 mensagens. Responda APENAS com o JSON válido.";
+    }
+
+    /**
      * CRUD — Excluir um serviço (e o SOP vinculado, se houver).
      */
     public function excluirServico(): void
@@ -12383,6 +12567,7 @@ Responda APENAS com o JSON válido.";
                 ]);
             }
 
+            $scriptsComunicacao = null;
             if ($sop && !empty($sop['conteudo'])) {
                 $sopConteudo = json_decode($sop['conteudo'], true);
                 if ($sopConteudo) {
@@ -12390,12 +12575,17 @@ Responda APENAS com o JSON válido.";
                     Logger::info('CONTEÚDO SOP DECODIFICADO', [
                         'sop_keys' => array_keys($sopConteudo)
                     ]);
+                    // Scripts de comunicação (gerados sob demanda) ficam dentro do próprio conteúdo do SOP.
+                    if (!empty($sopConteudo['scripts_comunicacao_gerados'])) {
+                        $scriptsComunicacao = $sopConteudo['scripts_comunicacao_gerados'];
+                    }
                 }
             }
 
             $dados = [
                 'servico' => $servico,
                 'sop' => $sop,
+                'scripts_comunicacao' => $scriptsComunicacao,
                 'csrf_token' => Csrf::gerar()
             ];
             

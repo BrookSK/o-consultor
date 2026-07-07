@@ -276,7 +276,39 @@ if (!function_exists('sopTemConteudo')) {
     /* Cores/sombras mais leves para papel */
     #sop-detail-view * { box-shadow: none !important; }
     @page { margin: 12mm; }
+    /* Na impressão, mostrar sempre o SOP e esconder a aba de scripts */
+    #sop-detail-view #aba-sop { display: block !important; }
+    #sop-detail-view #aba-scripts { display: none !important; }
 }
+
+/* ===== Abas SOP / Scripts ===== */
+#sop-detail-view .sop-tabs{display:flex;gap:6px;margin:0 0 18px;border-bottom:2px solid var(--sd-line);}
+#sop-detail-view .sop-tab{background:none;border:none;padding:10px 18px;font-size:14px;font-weight:600;color:var(--sd-ink-mute);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;border-radius:6px 6px 0 0;transition:all .15s;}
+#sop-detail-view .sop-tab:hover{color:var(--sd-ink-soft);background:var(--sd-accent-soft);}
+#sop-detail-view .sop-tab.active{color:var(--sd-accent);border-bottom-color:var(--sd-accent);}
+
+/* ===== Scripts de comunicação ===== */
+#sop-detail-view .scripts-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px;flex-wrap:wrap;}
+#sop-detail-view .scripts-title{font-size:18px;font-weight:700;color:var(--sd-ink);margin:0;}
+#sop-detail-view .scripts-sub{font-size:13px;color:var(--sd-ink-mute);margin:4px 0 0;max-width:640px;}
+#sop-detail-view .scripts-actions{display:flex;gap:8px;flex-wrap:wrap;}
+#sop-detail-view .scripts-meta{font-size:12px;color:var(--sd-ink-mute);margin:0 0 14px;}
+#sop-detail-view .script-cat{background:var(--sd-surface);border:1px solid var(--sd-line);border-radius:14px;padding:16px 18px;margin-bottom:16px;}
+#sop-detail-view .script-cat-head h3{font-size:15px;font-weight:700;color:var(--sd-accent-deep);margin:0;}
+#sop-detail-view .script-cat-head p{font-size:12.5px;color:var(--sd-ink-mute);margin:2px 0 12px;}
+#sop-detail-view .script-msg{border:1px solid var(--sd-line);border-radius:12px;padding:12px 14px;margin-top:10px;background:var(--sd-page);}
+#sop-detail-view .script-msg-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;}
+#sop-detail-view .script-msg-title{font-size:13.5px;font-weight:600;color:var(--sd-ink);}
+#sop-detail-view .script-chip{display:inline-block;font-size:11px;font-weight:600;color:var(--sd-accent-deep);background:var(--sd-accent-soft);padding:2px 8px;border-radius:10px;margin-left:8px;}
+#sop-detail-view .script-quando{font-size:12px;color:var(--sd-ink-soft);margin:0 0 8px;}
+#sop-detail-view .script-texto{font-size:13px;line-height:1.6;color:var(--sd-ink);white-space:pre-line;background:var(--sd-surface);border-left:3px solid var(--sd-accent);border-radius:0 8px 8px 0;padding:10px 12px;}
+#sop-detail-view .btn-copiar{background:var(--sd-accent);color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .15s;}
+#sop-detail-view .btn-copiar:hover{background:var(--sd-accent-deep);}
+#sop-detail-view .btn-copiar.copiado{background:var(--sd-ok);}
+#sop-detail-view .scripts-empty{text-align:center;padding:48px 20px;color:var(--sd-ink-mute);}
+#sop-detail-view .scripts-empty .ico{font-size:40px;margin-bottom:10px;}
+#sop-detail-view .scripts-empty h3{font-size:16px;color:var(--sd-ink-soft);margin:0 0 6px;}
+#sop-detail-view .scripts-empty p{font-size:13px;max-width:460px;margin:0 auto 16px;}
 </style>
 
 <div id="sop-detail-view">
@@ -321,6 +353,7 @@ if (!function_exists('sopTemConteudo')) {
             <button class="btn" onclick="abrirPersonalizar()">🎛 Personalizar</button>
             <?php if ($temSop): ?>
             <button class="btn" onclick="processarServico(<?= $servico['id'] ?>)">↻ Regenerar SOP</button>
+            <button class="btn" onclick="gerarScriptsComunicacao()">💬 Gerar scripts de comunicação</button>
             <button class="btn" onclick="imprimirSop()">🖨 Imprimir</button>
             <button class="btn primary spacer" onclick="imprimirSop()">⤓ Exportar PDF</button>
             <?php else: ?>
@@ -329,6 +362,16 @@ if (!function_exists('sopTemConteudo')) {
             <button class="btn danger" onclick="excluirServico()">🗑 Excluir</button>
         </div>
     </div>
+
+<?php if ($temSop): ?>
+    <!-- Abas: SOP / Scripts de comunicação -->
+    <div class="sop-tabs no-print">
+        <button class="sop-tab active" data-tab="sop" onclick="trocarAba('sop')">📋 SOP</button>
+        <button class="sop-tab" data-tab="scripts" onclick="trocarAba('scripts')">💬 Scripts de comunicação</button>
+    </div>
+<?php endif; ?>
+
+    <div id="aba-sop">
 
 <?php if ($temSop): ?>
     <?php $data = $sopData; ?>
@@ -578,6 +621,59 @@ if (!function_exists('sopTemConteudo')) {
         <button class="btn gen" style="margin:0 auto;" onclick="processarServico(<?= $servico['id'] ?>)">⚡ Gerar SOP Completo</button>
     </div>
 <?php endif; ?>
+    </div><!-- /#aba-sop -->
+
+<?php if ($temSop): ?>
+    <!-- Aba: Scripts de comunicação -->
+    <div id="aba-scripts" class="hidden">
+        <div class="scripts-head">
+            <div>
+                <h2 class="scripts-title">💬 Scripts de comunicação</h2>
+                <p class="scripts-sub">Mensagens e diálogos modelo, prontos para copiar, cobrindo as situações de comunicação deste serviço.</p>
+            </div>
+            <div class="scripts-actions">
+                <button class="btn" onclick="abrirPersonalizarScripts()">🎛 Personalizar</button>
+                <button class="btn primary" onclick="gerarScriptsComunicacao()" id="btnRegerarScripts">↻ Regenerar</button>
+            </div>
+        </div>
+        <div id="scriptsContainer">
+            <?php $scriptsCom = $dados['scripts_comunicacao'] ?? null; ?>
+            <?php if (!empty($scriptsCom['categorias'])): ?>
+                <p class="scripts-meta">Gerado em <?= htmlspecialchars($scriptsCom['gerado_em'] ?? '') ?></p>
+                <?php foreach ((array) $scriptsCom['categorias'] as $cat): ?>
+                <div class="script-cat">
+                    <div class="script-cat-head">
+                        <h3><?= htmlspecialchars(sopTexto($cat['categoria'] ?? 'Categoria')) ?></h3>
+                        <?php if (!empty($cat['descricao'])): ?><p><?= htmlspecialchars(sopTexto($cat['descricao'])) ?></p><?php endif; ?>
+                    </div>
+                    <?php foreach ((array) ($cat['mensagens'] ?? []) as $msg): ?>
+                    <div class="script-msg">
+                        <div class="script-msg-head">
+                            <div>
+                                <span class="script-msg-title"><?= htmlspecialchars(sopTexto($msg['titulo'] ?? 'Mensagem')) ?></span>
+                                <?php if (!empty($msg['canal'])): ?><span class="script-chip"><?= htmlspecialchars(sopTexto($msg['canal'])) ?></span><?php endif; ?>
+                            </div>
+                            <button class="btn-copiar" onclick="copiarScript(this)">📋 Copiar</button>
+                        </div>
+                        <?php if (!empty($msg['quando_usar'])): ?>
+                        <p class="script-quando"><b>Quando usar:</b> <?= htmlspecialchars(sopTexto($msg['quando_usar'])) ?></p>
+                        <?php endif; ?>
+                        <div class="script-texto"><?= nl2br(htmlspecialchars(sopTexto($msg['mensagem'] ?? ''))) ?></div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php endforeach; ?>
+            <?php else: ?>
+                <div class="scripts-empty">
+                    <div class="ico">💬</div>
+                    <h3>Nenhum script de comunicação gerado ainda</h3>
+                    <p>Clique em "Gerar scripts de comunicação" para que a IA crie mensagens e diálogos modelo cobrindo as situações deste serviço.</p>
+                    <button class="btn primary" style="margin:0 auto;" onclick="gerarScriptsComunicacao()">💬 Gerar scripts de comunicação</button>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+<?php endif; ?>
 
 </div>
 
@@ -644,6 +740,29 @@ if (!function_exists('sopTemConteudo')) {
                 <button type="button" id="btnSalvarPersonalizar" onclick="salvarPersonalizacao()" class="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-700">Salvar e regenerar SOP</button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- Modal Personalizar Scripts de Comunicação -->
+<div id="modalPersonalizarScripts" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-lg p-6 max-w-lg w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between mb-1">
+            <h3 class="text-lg font-semibold">🎛 Personalizar comunicação</h3>
+            <button onclick="fecharPersonalizarScripts()" class="text-gray-400 hover:text-gray-600">✕</button>
+        </div>
+        <p class="text-sm text-gray-500 mb-4">Defina o tom de voz, saudações, assinatura e regras de comunicação da empresa. Ao aplicar, os scripts são regenerados alinhados a estas diretrizes.</p>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Diretrizes de comunicação</label>
+                <textarea id="scripts_instrucao" rows="5"
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-primary"
+                          placeholder="Ex.: tom cordial e próximo; sempre chamar o cliente pelo primeiro nome; assinar como 'Equipe [Empresa]'; usar 'você' e não 'senhor'; evitar gírias; incluir link de agendamento quando fizer sentido."><?= htmlspecialchars($dados['scripts_comunicacao']['instrucao_personalizacao'] ?? '') ?></textarea>
+            </div>
+        </div>
+        <div class="flex gap-3 mt-6">
+            <button type="button" onclick="fecharPersonalizarScripts()" class="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">Cancelar</button>
+            <button type="button" id="btnAplicarScripts" onclick="aplicarPersonalizarScripts()" class="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-700">Aplicar e regenerar</button>
+        </div>
     </div>
 </div>
 
@@ -785,6 +904,94 @@ function atualizarProgresso(fase, mensagem) {
 }
 
 const SERVICO_ID = <?= (int) $servico['id'] ?>;
+
+// ===== Abas SOP / Scripts =====
+function trocarAba(aba) {
+    document.querySelectorAll('.sop-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === aba));
+    const abaSop = document.getElementById('aba-sop');
+    const abaScripts = document.getElementById('aba-scripts');
+    if (abaSop) abaSop.classList.toggle('hidden', aba !== 'sop');
+    if (abaScripts) abaScripts.classList.toggle('hidden', aba !== 'scripts');
+}
+
+// ===== Scripts de comunicação =====
+async function gerarScriptsComunicacao(instrucao) {
+    const CSRF = '<?= Csrf::token() ?>';
+    trocarAba('scripts');
+    mostrarLoading('Gerando scripts de comunicação', 'A IA está criando as mensagens modelo...');
+    try {
+        const body = { servico_id: SERVICO_ID, csrf_token: CSRF };
+        if (typeof instrucao === 'string' && instrucao.trim() !== '') body.instrucao_personalizacao = instrucao.trim();
+        const resp = await fetch('<?= APP_URL ?>/sop/gerar-scripts-comunicacao', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams(body)
+        });
+        const data = await resp.json();
+        esconderLoading();
+        if (!data.sucesso) { alert(data.erro || 'Falha ao gerar os scripts.'); return; }
+        renderizarScripts(data.scripts);
+    } catch (e) {
+        esconderLoading();
+        alert('Erro ao gerar os scripts de comunicação.');
+    }
+}
+
+function renderizarScripts(scripts) {
+    const cont = document.getElementById('scriptsContainer');
+    if (!cont || !scripts || !scripts.categorias) return;
+    const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    let html = '';
+    if (scripts.gerado_em) html += '<p class="scripts-meta">Gerado em ' + esc(scripts.gerado_em) + '</p>';
+    scripts.categorias.forEach(cat => {
+        html += '<div class="script-cat"><div class="script-cat-head"><h3>' + esc(cat.categoria || 'Categoria') + '</h3>';
+        if (cat.descricao) html += '<p>' + esc(cat.descricao) + '</p>';
+        html += '</div>';
+        (cat.mensagens || []).forEach(msg => {
+            html += '<div class="script-msg"><div class="script-msg-head"><div>'
+                + '<span class="script-msg-title">' + esc(msg.titulo || 'Mensagem') + '</span>'
+                + (msg.canal ? '<span class="script-chip">' + esc(msg.canal) + '</span>' : '')
+                + '</div><button class="btn-copiar" onclick="copiarScript(this)">📋 Copiar</button></div>';
+            if (msg.quando_usar) html += '<p class="script-quando"><b>Quando usar:</b> ' + esc(msg.quando_usar) + '</p>';
+            html += '<div class="script-texto">' + esc(msg.mensagem || '').replace(/\n/g, '<br>') + '</div></div>';
+        });
+        html += '</div>';
+    });
+    cont.innerHTML = html;
+}
+
+function copiarScript(btn) {
+    const bloco = btn.closest('.script-msg');
+    const texto = bloco ? (bloco.querySelector('.script-texto')?.innerText || '') : '';
+    const finalizar = () => {
+        const original = btn.innerHTML;
+        btn.innerHTML = '✓ Copiado';
+        btn.classList.add('copiado');
+        setTimeout(() => { btn.innerHTML = original; btn.classList.remove('copiado'); }, 1800);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(texto).then(finalizar).catch(() => fallbackCopiar(texto, finalizar));
+    } else {
+        fallbackCopiar(texto, finalizar);
+    }
+}
+function fallbackCopiar(texto, cb) {
+    const ta = document.createElement('textarea');
+    ta.value = texto; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+    if (cb) cb();
+}
+
+// Personalizar comunicação (modal)
+function abrirPersonalizarScripts() { document.getElementById('modalPersonalizarScripts').classList.remove('hidden'); }
+function fecharPersonalizarScripts() { document.getElementById('modalPersonalizarScripts').classList.add('hidden'); }
+function aplicarPersonalizarScripts() {
+    const instrucao = document.getElementById('scripts_instrucao').value || '';
+    fecharPersonalizarScripts();
+    gerarScriptsComunicacao(instrucao);
+}
 
 // Gerar/Regenerar SOP — enfileira e acompanha a geração.
 async function processarServico(servicoId) {
