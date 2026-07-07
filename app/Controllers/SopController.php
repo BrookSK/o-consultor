@@ -10158,21 +10158,29 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                 // FALLBACK: se a leitura local falhar (PDF com fontes subset/CID, sem
                 // pdftotext no servidor), pedir para a própria IA ler o documento (apenas PDF).
                 $erroLeituraIA = null;
-                if ($ext === 'pdf' && !DocumentoProcessor::textoEhLegivel($contextoDoc)) {
+                $textoConfiavel = DocumentoProcessor::textoEhLegivel($contextoDoc); // leitura local legível
+                if ($ext === 'pdf' && !$textoConfiavel) {
                     Logger::info('PERSONALIZAÇÃO: leitura local falhou, tentando via IA', [
                         'servico_id' => $servicoId, 'arquivo' => $nomeDoc, 'extensao' => $ext
                     ]);
+                    error_log('[O CONSULTOR][PERSONALIZACAO] Leitura local falhou, tentando via IA. servico=' . $servicoId . ' arquivo=' . $nomeDoc);
                     $viaIA = ApiHelper::extrairTextoDocumentoViaIA($destino, $nomeDoc);
-                    if (!empty($viaIA['sucesso']) && DocumentoProcessor::textoEhLegivel($viaIA['texto'])) {
-                        $contextoDoc = $viaIA['texto'];
+                    $textoIA = trim($viaIA['texto'] ?? '');
+                    // Confiar no texto que a IA devolveu (não reaplicar o filtro de fontes CID).
+                    // Basta ter um mínimo de conteúdo para valer como leitura do documento.
+                    if (!empty($viaIA['sucesso']) && mb_strlen($textoIA) >= 30) {
+                        $contextoDoc = $textoIA;
+                        $textoConfiavel = true; // texto veio da IA: confiar
                         Logger::info('PERSONALIZAÇÃO: texto extraído via IA', [
                             'servico_id' => $servicoId, 'tamanho_texto' => mb_strlen($contextoDoc)
                         ]);
                     } else {
-                        $erroLeituraIA = $viaIA['erro'] ?? 'A IA não retornou texto legível.';
+                        $erroLeituraIA = $viaIA['erro']
+                            ?? ('IA retornou pouco/nenhum texto (' . mb_strlen($textoIA) . ' chars). Amostra: ' . mb_substr($textoIA, 0, 200));
                         Logger::warning('PERSONALIZAÇÃO: leitura via IA também falhou', [
                             'servico_id' => $servicoId, 'erro' => $erroLeituraIA
                         ]);
+                        error_log('[O CONSULTOR][PERSONALIZACAO] Leitura via IA falhou. servico=' . $servicoId . ' erro=' . $erroLeituraIA);
                     }
                 }
 
@@ -10184,7 +10192,8 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                     $contextoDoc = mb_substr($contextoDoc, 0, 40000);
                 }
 
-                $legivel = DocumentoProcessor::textoEhLegivel($contextoDoc);
+                // Legível se a leitura local passou no filtro OU se a IA forneceu o texto.
+                $legivel = $textoConfiavel && mb_strlen(trim($contextoDoc)) >= 30;
 
                 Logger::info('PERSONALIZAÇÃO: texto extraído do documento', [
                     'servico_id' => $servicoId,
@@ -10194,6 +10203,10 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                     'legivel' => $legivel,
                     'amostra' => mb_substr($contextoDoc, 0, 200)
                 ]);
+                error_log('[O CONSULTOR][PERSONALIZACAO] Extracao final. servico=' . $servicoId
+                    . ' ext=' . $ext . ' tamanho=' . mb_strlen($contextoDoc)
+                    . ' legivel=' . ($legivel ? '1' : '0')
+                    . ' amostra=' . str_replace(["\n", "\r"], ' ', mb_substr($contextoDoc, 0, 300)));
 
                 // Se o texto não é legível (vazio, escaneado ou lixo de fonte CID),
                 // NÃO seguir gerando conteúdo genérico em silêncio: avisar o usuário.

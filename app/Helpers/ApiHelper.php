@@ -153,7 +153,15 @@ class ApiHelper
 
         $texto = self::extrairTextoRespostaResponses($resultado['dados']);
         if (trim($texto) === '') {
-            return ['sucesso' => false, 'texto' => '', 'erro' => 'A IA não retornou texto do documento.'];
+            // Devolver o payload bruto para diagnóstico (log do servidor + retorno)
+            $raw = json_encode($resultado['dados'], JSON_UNESCAPED_UNICODE);
+            self::logErro('OpenAI-Leitura', 'Resposta sem texto de saída', ['raw' => substr((string) $raw, 0, 800)]);
+            error_log('[O CONSULTOR][OpenAI-Leitura] Resposta sem texto de saida. RAW=' . substr((string) $raw, 0, 4000));
+            return [
+                'sucesso' => false,
+                'texto' => '',
+                'erro' => 'A IA respondeu, mas sem texto de saída. Resposta: ' . substr((string) $raw, 0, 300)
+            ];
         }
 
         return ['sucesso' => true, 'texto' => $texto, 'erro' => null];
@@ -172,6 +180,7 @@ class ApiHelper
         $texto = '';
         if (!empty($dados['output']) && is_array($dados['output'])) {
             foreach ($dados['output'] as $item) {
+                // partes de texto podem estar em content[].text (type output_text)
                 if (!empty($item['content']) && is_array($item['content'])) {
                     foreach ($item['content'] as $parte) {
                         if (isset($parte['text']) && is_string($parte['text'])) {
@@ -179,7 +188,16 @@ class ApiHelper
                         }
                     }
                 }
+                // fallback: alguns formatos retornam item['text'] direto
+                if (isset($item['text']) && is_string($item['text'])) {
+                    $texto .= $item['text'] . "\n";
+                }
             }
+        }
+        // Formato Chat Completions (caso o endpoint responda nesse formato)
+        if (trim($texto) === '' && isset($dados['choices'][0]['message']['content'])) {
+            $c = $dados['choices'][0]['message']['content'];
+            if (is_string($c)) $texto = $c;
         }
         return $texto;
     }
@@ -1599,6 +1617,7 @@ Responda APENAS com um array JSON de URLs válidas. Sem explicações.";
                 $dados = json_decode($resposta, true);
                 $msgErro = isset($dados['error']['message']) ? $dados['error']['message'] : (isset($dados['error']['type']) ? $dados['error']['type'] : "HTTP {$httpCode}");
                 self::logErro($provedor, "HTTP {$httpCode}: {$msgErro}", ['url' => $url, 'body' => substr($resposta, 0, 500)]);
+                error_log('[O CONSULTOR][' . $provedor . '] HTTP ' . $httpCode . ': ' . $msgErro . ' | URL=' . $url . ' | BODY=' . substr((string) $resposta, 0, 2000));
                 return ['sucesso' => false, 'conteudo' => null, 'erro' => "API {$provedor}: {$msgErro}", 'dados' => $dados];
             }
 
