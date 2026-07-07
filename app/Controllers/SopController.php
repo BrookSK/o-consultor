@@ -10397,6 +10397,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                 'resumo_executivo' => $r['resumo_executivo'] ?? '',
                 'responsaveis' => $r['responsaveis'] ?? [],
                 'competencias_requeridas' => $r['competencias_requeridas'] ?? [],
+                'gatilhos_inicio' => $r['gatilhos_inicio'] ?? [],
                 'pre_requisitos' => $r['pre_requisitos'] ?? [],
                 'recursos_necessarios' => $r['recursos_necessarios'] ?? [],
                 'mensagem_progresso' => 'Resumo concluído. Gerando procedimentos...'
@@ -10794,7 +10795,11 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         $nomeSetor = $servico['nome_setor'];
         $contextoEmpresa = $this->montarContextoEmpresa($empresa, $diagnostico);
 
-        return "Você é um engenheiro de processos e redator técnico. Gere o RESUMO INICIAL de um SOP (Procedimento Operacional Padrão) com foco TÉCNICO na EXECUÇÃO do serviço.
+        $diretrizes = $this->diretrizesManualTecnico();
+
+        return "{$diretrizes}
+
+Gere agora o RESUMO INICIAL de um SOP (Procedimento Operacional Padrão) — equivale aos Blocos 1 (O que é), 2 (Por que existe / problema que resolve) e 3 (Quando executar / pré-requisitos) do modelo de manual técnico.
 
 {$contextoEmpresa}
 
@@ -10815,21 +10820,47 @@ Use SEMPRE terminologia genérica. NUNCA mencione marcas comerciais (ex: use 'fe
 # FORMATO DA RESPOSTA (JSON):
 ```json
 {
-  \"objetivo\": \"Objetivo técnico claro e específico da execução deste serviço e o resultado técnico que ele deve entregar (2-3 frases)\",
+  \"objetivo\": \"BLOCO 1 (O que é) + objetivo: defina o serviço em 2-4 frases diretas, diferencie de processos vizinhos que geram confusão (se houver) e deixe claro o resultado/entrega esperada\",
   \"escopo\": \"O que a execução deste serviço inclui e o que NÃO inclui (deixe claro que o atendimento/relacionamento com o cliente não faz parte deste SOP técnico)\",
-  \"resumo_executivo\": \"Resumo técnico de 3-4 frases explicando em que consiste tecnicamente o serviço e sua importância\",
+  \"resumo_executivo\": \"BLOCO 2 (Por que existe): explique o propósito real do processo — o que acontece se ele NÃO for feito, ou for feito mal (consequências concretas). Isso orienta o executor a decidir bem em situações não previstas. 3-4 frases\",
   \"responsaveis\": {
     \"executor_principal\": \"Cargo/função técnica que executa o serviço\",
     \"supervisor\": \"Cargo que supervisiona tecnicamente\",
     \"aprovador\": \"Cargo que valida/aprova tecnicamente a entrega\"
   },
   \"competencias_requeridas\": [\"Competência técnica 1\", \"Competência técnica 2\", \"Competência técnica 3\"],
-  \"pre_requisitos\": [\"Pré-requisito técnico para iniciar (condição, habilitação, verificação)\", \"Pré-requisito técnico 2\"],
+  \"gatilhos_inicio\": [\"BLOCO 3: gatilho/sinal concreto que indica que é hora de iniciar este serviço\", \"Outro gatilho de início\"],
+  \"pre_requisitos\": [\"BLOCO 3 (pré-requisitos obrigatórios ANTES do passo 1): documento, acesso, aprovação, material ou informação que precisa existir — nada de obviedades como 'ter internet'\", \"Pré-requisito 2\"],
   \"recursos_necessarios\": [\"Ferramenta/equipamento/instrumento necessário\", \"Material/insumo necessário\", \"Recurso técnico 3\"]
 }
 ```
 
 Responda APENAS com o JSON válido, sem explicações adicionais.";
+    }
+
+    /**
+     * Diretrizes-mestras de redação de MANUAL TÉCNICO DE EXECUÇÃO.
+     * Baseado no modelo padrão de 10 blocos. Injetado em TODOS os prompts de
+     * geração de SOP para garantir assertividade e transferência real de conhecimento.
+     */
+    private function diretrizesManualTecnico(): string
+    {
+        return "# IDENTIDADE E FUNÇÃO
+Você é um redator técnico especializado em MANUAIS OPERACIONAIS. Sua missão é transformar este serviço/processo em um manual completo que permita a alguém EXECUTÁ-LO do início ao fim SEM depender de conhecimento tácito de terceiros. Isto NÃO é conteúdo de marketing: não há marca, oferta, CTA ou banner. O único objetivo é a transferência de conhecimento operacional completo — o que é, por que existe, quando aplicar, como planejar, como executar passo a passo, o que pode dar errado e como validar que ficou bem feito. O leitor-alvo é quem coloca a mão na massa (executor) ou quem supervisiona (gestor do processo).
+
+# PRINCÍPIO DE AUTOSSUFICIÊNCIA (O TESTE FINAL)
+Alguém SEM conhecimento prévio do processo deve conseguir executá-lo usando APENAS este conteúdo. Antes de escrever cada parte, pergunte-se: 'isto tira uma dúvida real de execução ou é enchimento?'.
+
+# REGRAS DE TOM E ESTILO (OBRIGATÓRIAS)
+- Linguagem instrucional e objetiva; frases curtas; verbos no IMPERATIVO nas etapas ('Verifique', 'Documente', 'Envie', 'Valide').
+- ZERO adjetivação de venda. Nunca 'melhor prática do mercado' — use 'prática recomendada' ou 'padrão esperado'.
+- NUNCA pule etapas para encurtar. Se o processo real tem 12 passos, descreva os 12. A extensão é proporcional à complexidade real.
+- Sempre que uma etapa depender de julgamento humano (não 100% mecânica), sinalize explicitamente: 'Esta etapa exige validação de [responsável] antes de prosseguir.'
+- Explicite TODO ponto de decisão sem ambiguidade: 'Se X, faça A; se Y, faça B.'
+- Critérios de conclusão devem ser MENSURÁVEIS e verificáveis, nunca subjetivos ('está pronto porque X, Y e Z foram verificados', não 'parece pronto').
+- Erros comuns devem ser REAIS e específicos deste processo, nunca genéricos.
+- NUNCA use nome de marca, produto ou serviço comercial. O manual é documentação interna neutra (use 'ferramenta de gestão', não o nome do produto).
+- Se faltar contexto específico da empresa, gere a versão de referência (padrão de mercado) e mantenha o conteúdo aplicável e adaptável à realidade dela.";
     }
 
     /**
@@ -10861,7 +10892,11 @@ Responda APENAS com o JSON válido, sem explicações adicionais.";
         $focoFase = $info['foco'];
         $contextoEmpresa = $this->montarContextoEmpresa($empresa, $diagnostico);
 
-        return "Você é um engenheiro de processos e redator técnico especializado em MANUAIS TÉCNICOS DE EXECUÇÃO DE SERVIÇO. Gere UMA fase de procedimento técnico em MÁXIMA PROFUNDIDADE para um SOP que ensina o colaborador a EXECUTAR o serviço com assertividade, do início ao fim.
+        $diretrizes = $this->diretrizesManualTecnico();
+
+        return "{$diretrizes}
+
+Gere agora UMA fase do PASSO A PASSO DE EXECUÇÃO (equivale aos Blocos 4/Planejamento e 6/Passo a passo do modelo) em MÁXIMA PROFUNDIDADE, ensinando o colaborador a EXECUTAR o serviço com assertividade, do início ao fim.
 
 {$contextoEmpresa}
 
@@ -10907,16 +10942,16 @@ O campo \"scripts_operacionais_completos\" NÃO é um roteiro de conversa. Use-o
   \"passos_operacionais_detalhados\": [
     {
       \"passo\": 1,
-      \"acao_operacional\": \"Título técnico claro e específico da operação\",
-      \"detalhamento_operacional_completo\": \"GUIA TÉCNICO EXECUTÁVEL (150-250 palavras) em sequência numerada: o que verificar antes, as operações técnicas na ordem exata com parâmetros concretos (medidas, tempos, quantidades, tolerâncias, configurações), critérios técnicos de execução correta e o que registrar.\",
+      \"acao_operacional\": \"Título de AÇÃO no IMPERATIVO, claro e específico (ex.: 'Valide os dados de entrada', 'Higienize a base')\",
+      \"detalhamento_operacional_completo\": \"GUIA EXECUTÁVEL (150-250 palavras) em sequência numerada: o que verificar antes, as operações na ordem exata com parâmetros concretos, os PONTOS DE DECISÃO explícitos ('Se X, faça A; se Y, faça B'), e o RESULTADO ESPERADO desta etapa antes de seguir para a próxima. Se a etapa exigir julgamento humano, sinalize 'exige validação de [responsável] antes de prosseguir'.\",
       \"responsavel_operacional\": \"Cargo/função técnica responsável pela execução\",
       \"tempo_operacional_estimado\": \"Tempo estimado de execução\",
-      \"criterios_qualidade_operacionais\": \"Critérios TÉCNICOS de qualidade/aceitação mensuráveis desta operação (mínimo 3, com valores/limites quando aplicável)\",
-      \"scripts_operacionais_completos\": \"DETALHE TÉCNICO OPERACIONAL: comandos/ações exatas em sequência numerada, especificações, valores de referência, parâmetros ou checklist técnico de execução. NÃO é roteiro de conversa.\",
-      \"metodologias_operacionais\": \"Normas técnicas, métodos, técnicas ou boas práticas de execução aplicáveis a este passo\",
-      \"validacoes_operacionais\": \"Checklist de verificação técnica do passo (mínimo 3 itens objetivos e conferíveis)\",
-      \"ferramentas_operacionais\": \"Ferramentas, equipamentos, instrumentos de medição, insumos e materiais usados\",
-      \"observacoes_operacionais\": \"Erros técnicos comuns nesta etapa, riscos, pontos de segurança e boas práticas para evitar retrabalho\"
+      \"criterios_qualidade_operacionais\": \"Critérios de qualidade/aceitação MENSURÁVEIS desta etapa (mínimo 3, com valores/limites quando aplicável) — o resultado esperado que confirma que a etapa ficou correta\",
+      \"scripts_operacionais_completos\": \"DETALHE OPERACIONAL substantivo: comandos/ações exatas em sequência numerada, especificações, valores de referência, pontos de decisão ('se...então...') ou checklist de execução. NÃO é roteiro de conversa. Deixe vazio se não houver detalhe útil.\",
+      \"metodologias_operacionais\": \"Métodos, técnicas ou práticas recomendadas (padrão esperado) aplicáveis a este passo\",
+      \"validacoes_operacionais\": \"Checklist de verificação da etapa (mínimo 3 itens objetivos e conferíveis) — o que precisa estar OK antes de prosseguir\",
+      \"ferramentas_operacionais\": \"Ferramentas, equipamentos, instrumentos, insumos e materiais usados (termos genéricos, sem marca)\",
+      \"observacoes_operacionais\": \"Erros comuns REAIS desta etapa, riscos, pontos de segurança e como evitar retrabalho\"
     }
   ]
 }
@@ -10935,7 +10970,11 @@ Responda APENAS com o JSON válido desta única fase.";
         $nomeSetor = $servico['nome_setor'];
         $contextoEmpresa = $this->montarContextoEmpresa($empresa, $diagnostico);
 
-        return "Você é um engenheiro de processos especializado em RESOLUÇÃO DE PROBLEMAS TÉCNICOS durante a execução de serviços. Gere a seção de ADVERSIDADES TÉCNICAS e PROBLEMAS DE EXECUÇÃO para um SOP técnico.
+        $diretrizes = $this->diretrizesManualTecnico();
+
+        return "{$diretrizes}
+
+Gere agora a seção de ADVERSIDADES TÉCNICAS e PROBLEMAS DE EXECUÇÃO (equivale ao Bloco 7 — Erros comuns e riscos do modelo). Os erros/adversidades devem ser REAIS e específicos DESTE processo, nunca genéricos.
 
 {$contextoEmpresa}
 

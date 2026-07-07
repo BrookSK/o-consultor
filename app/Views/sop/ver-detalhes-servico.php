@@ -218,6 +218,18 @@ if (!function_exists('sopTexto')) {
         <?php endif; ?>
     </div>
 
+    <!-- Gatilhos de início -->
+    <?php if (!empty($data['gatilhos_inicio'])): ?>
+    <div class="card">
+        <h2><span class="ic">⚑</span>Quando executar (gatilhos de início)</h2>
+        <ul class="checklist">
+            <?php foreach ((array) $data['gatilhos_inicio'] as $gatilho): ?>
+            <li><?= htmlspecialchars(is_array($gatilho) ? implode(' — ', $gatilho) : (string) $gatilho) ?></li>
+            <?php endforeach; ?>
+        </ul>
+    </div>
+    <?php endif; ?>
+
     <!-- Pré-requisitos / Recursos -->
     <?php if (!empty($data['pre_requisitos']) || !empty($data['recursos_necessarios'])): ?>
     <div class="grid-2">
