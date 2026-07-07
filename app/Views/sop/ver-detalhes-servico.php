@@ -226,31 +226,37 @@ if (!function_exists('sopRenderTexto')) {
     #sop-detail-view .phase-body > * { margin-bottom: 12px; }
     #sop-detail-view .chev { display: none !important; }
 
-    /* Containers grandes NÃO usam avoid (senão saltam a página inteira e deixam vácuos).
-       Deixamos que quebrem naturalmente entre páginas. */
+    /* CHAVE PARA ELIMINAR OS VÁCUOS:
+       Nada de "break-inside: avoid" em blocos grandes. Se um passo/fase não cabe
+       no restante da folha, o navegador o empurra inteiro e deixa um vácuo enorme.
+       Deixamos TODO o conteúdo fluir continuamente entre as páginas. */
     #sop-detail-view .card,
     #sop-detail-view .phase,
-    #sop-detail-view .phase-body { break-inside: auto !important; page-break-inside: auto !important; }
-
-    /* Apenas unidades pequenas evitam corte no meio */
+    #sop-detail-view .phase-body,
     #sop-detail-view .step,
+    #sop-detail-view .step-body,
     #sop-detail-view .sub,
     #sop-detail-view .scenario,
-    #sop-detail-view .crit-wrap { break-inside: avoid; page-break-inside: avoid; }
+    #sop-detail-view .crit-wrap,
+    #sop-detail-view .exec-summary {
+        break-inside: auto !important;
+        page-break-inside: auto !important;
+        overflow: visible !important;
+    }
 
-    /* Títulos não ficam órfãos no fim da página */
+    /* Só os títulos/rótulos evitam ficar sozinhos no fim da página */
     #sop-detail-view .section-title,
     #sop-detail-view .sub-label,
-    #sop-detail-view .step-head { break-after: avoid; page-break-after: avoid; }
+    #sop-detail-view .step-head,
+    #sop-detail-view .phase summary { break-after: avoid; page-break-after: avoid; }
 
-    /* Evita linhas soltas isoladas no topo/fim de página */
+    /* Evita 1-2 linhas soltas isoladas no topo/fim de página */
     #sop-detail-view p, #sop-detail-view li { orphans: 3; widows: 3; }
 
-    /* Remove margens/paddings excessivos que ampliam vácuos no papel */
+    /* Compacta margens para não ampliar vácuos no papel */
     #sop-detail-view .card,
     #sop-detail-view .phase,
-    #sop-detail-view .exec-summary { margin-bottom: 12px !important; }
-    #sop-detail-view .phase { overflow: visible !important; }
+    #sop-detail-view .exec-summary { margin-bottom: 10px !important; }
 
     /* Cores/sombras mais leves para papel */
     #sop-detail-view * { box-shadow: none !important; }
