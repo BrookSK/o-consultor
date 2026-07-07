@@ -11156,7 +11156,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                 . $instrucaoPersonalizacao . "\n";
         }
 
-        return "Você é um especialista em COMUNICAÇÃO PROFISSIONAL e redação de mensagens corporativas. Sua tarefa é criar SCRIPTS DE COMUNICAÇÃO prontos para uso, específicos para este serviço, que a equipe possa copiar e enviar ao cliente/contato.
+        return "Você é um redator sênior de COMUNICAÇÃO PROFISSIONAL, especialista em atendimento e relacionamento com clientes de alto padrão. Escreve com elegância, naturalidade e concisão — como as melhores empresas de serviço se comunicam. Sua tarefa é criar SCRIPTS DE COMUNICAÇÃO prontos para uso, que a equipe copia e envia ao cliente/contato. O foco é a comunicação COM O CLIENTE, não a descrição do processo interno.
 
 {$contextoEmpresa}
 
@@ -11176,12 +11176,23 @@ Gere scripts de comunicação profissionais e prontos para copiar, cobrindo as s
 - Se for técnico/operacional: aviso de início, atualização de andamento, comunicação de conclusão, aviso de imprevisto/atraso.
 - Sempre inclua, quando fizer sentido, o manejo de situações difíceis do SOP (atraso, problema, insatisfação).
 
-# REGRAS
-- Mensagens curtas, claras, profissionais e cordiais, prontas para enviar (WhatsApp/e-mail).
-- Use marcadores de variável entre colchetes quando algo é específico: [nome do cliente], [data], [link], [nome do responsável].
-- Português do Brasil. Tom profissional e humano, sem robotização e sem exageros.
-- Cada script deve ser realista e diretamente utilizável, não genérico.
-- Cite pelo nome as ferramentas/sistemas apenas se o material do cliente os mencionar.
+# REGRAS DE REDAÇÃO (LEIA COM ATENÇÃO — A COMUNICAÇÃO PRECISA SER ELEGANTE E NATURAL)
+- Escreva como um profissional experiente escreveria de verdade a um cliente: claro, cordial, seguro e ELEGANTE. Nada de texto robótico, forçado ou 'de manual'.
+- PROIBIDO citar o nome interno do serviço ou o jargão de processo dentro da mensagem ao cliente. O cliente NÃO quer ouvir 'nosso serviço de tecnologia', 'triagem de leads', 'gestão de CRM', 'processo de onboarding' etc. Fale do BENEFÍCIO ou do assunto concreto, não do nome do processo interno. Ex.: em vez de 'Como podemos te ajudar com nossos serviços de tecnologia?', escreva 'Como podemos ajudar?' ou 'Conte com a gente no que precisar.'
+- PROIBIDA autorreferência redundante e frases de preenchimento: 'estamos muito felizes em receber seu contato', 'agradecemos a sua paciência', 'só passando para saber', 'fico à disposição' repetido em toda mensagem. Use variação e naturalidade; corte tudo que não agrega.
+- Vá direto ao ponto com gentileza. Uma boa mensagem de negócio é curta, específica e respeita o tempo do cliente.
+- Não prometa nem invente detalhes que não existem (prazos, resultados). Quando um dado é específico, use variável entre colchetes: [nome], [data], [link], [valor], [prazo].
+- Português do Brasil impecável, com pontuação e concordância corretas. Sem gírias, sem excesso de exclamações (no máximo uma, e só quando couber), sem emojis a menos que o tom da empresa peça.
+- Trate o cliente pelo primeiro nome quando fizer sentido; tom 'você', próximo mas profissional.
+- Cada mensagem deve soar única e utilizável de imediato — não repita a mesma estrutura ('Olá [nome], ...') em todas.
+- Cite ferramentas/sistemas pelo nome APENAS se o material do cliente os mencionar; nunca invente.
+- Antes de finalizar cada mensagem, releia e pergunte: 'um cliente real acharia isto natural e profissional, ou soa como texto automático?'. Se soar automático, reescreva.
+
+# EXEMPLOS DO PADRÃO ESPERADO (use como referência de TOM, não copie literalmente)
+- Ruim: 'Olá [nome], seja bem-vindo à [Empresa]! Estamos muito felizes em receber seu contato. Como podemos ajudá-lo com nossos serviços de tecnologia?'
+- Bom: 'Olá [nome], que bom ter você por aqui. Me conta rapidamente o que você precisa resolver que eu já te direciono da melhor forma.'
+- Ruim: 'Olá [nome], gostaria de informar que seu interesse em nossos serviços está sendo analisado. Agradecemos pela sua paciência!'
+- Bom: 'Oi [nome], seguimos avançando por aqui. Assim que eu tiver a próxima definição, te aviso — deve ser até [prazo].'
 
 # FORMATO (JSON):
 ```json
