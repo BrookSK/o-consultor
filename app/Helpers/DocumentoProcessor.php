@@ -412,13 +412,19 @@ class DocumentoProcessor
         // Descomprimir todos os streams (FlateDecode) e concatenar o conteúdo
         // descomprimido + o conteúdo bruto (alguns PDFs têm texto não comprimido).
         $blocos = [];
-        if (preg_match_all('/stream\r?\n(.*?)\r?\nendstream/s', $conteudo, $streams)) {
+        if (preg_match_all('/stream\r?\n?(.*?)endstream/s', $conteudo, $streams)) {
             foreach ($streams[1] as $stream) {
-                $decodificado = @gzuncompress($stream);
-                if ($decodificado === false) $decodificado = @gzinflate($stream);
-                if ($decodificado === false) $decodificado = @gzdecode($stream);
-                if ($decodificado !== false && $decodificado !== '') {
-                    $blocos[] = $decodificado;
+                // Remover eventuais quebras de linha nas bordas do stream
+                $bruto = preg_replace('/\r?\n$/', '', $stream);
+                $tentativas = [$bruto, ltrim($bruto, "\r\n"), trim($bruto)];
+                foreach ($tentativas as $cand) {
+                    $decodificado = @gzuncompress($cand);
+                    if ($decodificado === false) $decodificado = @gzinflate($cand);
+                    if ($decodificado === false) $decodificado = @gzdecode($cand);
+                    if ($decodificado !== false && $decodificado !== '') {
+                        $blocos[] = $decodificado;
+                        break;
+                    }
                 }
             }
         }
@@ -543,6 +549,34 @@ class DocumentoProcessor
         $texto = preg_replace('/[ \t]+/', ' ', (string) $texto);
         $texto = preg_replace('/\n{3,}/', "\n\n", (string) $texto);
         return trim((string) $texto);
+    }
+
+    /**
+     * Avalia se o texto extraído é LEGÍVEL de verdade (contém palavras reais) ou
+     * se é lixo (ex.: glyph IDs de PDFs com fontes CID que não puderam ser decodificados).
+     * Retorna true quando o texto parece linguagem natural utilizável.
+     */
+    public static function textoEhLegivel(string $texto): bool
+    {
+        $texto = trim($texto);
+        if (mb_strlen($texto) < 30) {
+            return false;
+        }
+
+        // Proporção de caracteres "de texto" (letras, dígitos, espaço, pontuação comum).
+        $total = mb_strlen($texto);
+        $legiveis = preg_match_all('/[\p{L}\p{N}\s.,;:!?()\-\/@%]/u', $texto);
+        if ($total > 0 && ($legiveis / $total) < 0.80) {
+            return false;
+        }
+
+        // Precisa conter uma quantidade mínima de PALAVRAS reais (>=3 letras).
+        $palavras = preg_match_all('/\p{L}{3,}/u', $texto);
+        if ($palavras < 15) {
+            return false;
+        }
+
+        return true;
     }
 
     /**

@@ -10163,27 +10163,30 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                     $contextoDoc = mb_substr($contextoDoc, 0, 40000);
                 }
 
+                $legivel = DocumentoProcessor::textoEhLegivel($contextoDoc);
+
                 Logger::info('PERSONALIZAÇÃO: texto extraído do documento', [
                     'servico_id' => $servicoId,
                     'arquivo' => $nomeDoc,
                     'extensao' => $ext,
                     'tamanho_texto' => mb_strlen($contextoDoc),
+                    'legivel' => $legivel,
                     'amostra' => mb_substr($contextoDoc, 0, 200)
                 ]);
 
-                // Se não foi possível extrair texto útil do documento, NÃO seguir de forma
-                // silenciosa gerando conteúdo genérico. Avisar o usuário para que ele
-                // possa enviar um formato legível (ou colar o conteúdo na descrição).
-                if (mb_strlen(trim($contextoDoc)) < 30) {
-                    Logger::warning('PERSONALIZAÇÃO: documento sem texto extraível', [
-                        'servico_id' => $servicoId, 'arquivo' => $nomeDoc, 'extensao' => $ext
+                // Se o texto não é legível (vazio, escaneado ou lixo de fonte CID),
+                // NÃO seguir gerando conteúdo genérico em silêncio: avisar o usuário.
+                if (!$legivel) {
+                    Logger::warning('PERSONALIZAÇÃO: documento sem texto legível', [
+                        'servico_id' => $servicoId, 'arquivo' => $nomeDoc, 'extensao' => $ext,
+                        'tamanho_texto' => mb_strlen($contextoDoc)
                     ]);
                     if ($descricao === '') {
                         echo json_encode([
                             'sucesso' => false,
-                            'erro' => 'Não consegui ler o texto do documento "' . $nomeDoc . '". '
-                                . 'Se for um PDF escaneado (imagem), ele não contém texto selecionável. '
-                                . 'Envie o arquivo em PDF com texto real, DOCX ou TXT — ou cole as informações no campo Descrição.'
+                            'erro' => 'Não consegui extrair o texto do documento "' . $nomeDoc . '". '
+                                . 'Isso costuma acontecer com PDFs escaneados (imagem) ou exportados com fontes que impedem a leitura do texto. '
+                                . 'Tente: salvar/exportar como DOCX ou TXT, ou colar o conteúdo diretamente no campo Descrição.'
                         ]);
                         exit;
                     }
