@@ -10157,6 +10157,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
 
                 // FALLBACK: se a leitura local falhar (PDF com fontes subset/CID, sem
                 // pdftotext no servidor), pedir para a própria IA ler o documento (apenas PDF).
+                $erroLeituraIA = null;
                 if ($ext === 'pdf' && !DocumentoProcessor::textoEhLegivel($contextoDoc)) {
                     Logger::info('PERSONALIZAÇÃO: leitura local falhou, tentando via IA', [
                         'servico_id' => $servicoId, 'arquivo' => $nomeDoc, 'extensao' => $ext
@@ -10168,8 +10169,9 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                             'servico_id' => $servicoId, 'tamanho_texto' => mb_strlen($contextoDoc)
                         ]);
                     } else {
+                        $erroLeituraIA = $viaIA['erro'] ?? 'A IA não retornou texto legível.';
                         Logger::warning('PERSONALIZAÇÃO: leitura via IA também falhou', [
-                            'servico_id' => $servicoId, 'erro' => $viaIA['erro'] ?? 'desconhecido'
+                            'servico_id' => $servicoId, 'erro' => $erroLeituraIA
                         ]);
                     }
                 }
@@ -10201,12 +10203,13 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                         'tamanho_texto' => mb_strlen($contextoDoc)
                     ]);
                     if ($descricao === '') {
-                        echo json_encode([
-                            'sucesso' => false,
-                            'erro' => 'Não consegui extrair o texto do documento "' . $nomeDoc . '", mesmo tentando leitura por IA. '
-                                . 'Isso costuma acontecer com PDFs escaneados (imagem) ou protegidos. '
-                                . 'Tente: salvar/exportar como DOCX ou TXT, ou colar o conteúdo diretamente no campo Descrição.'
-                        ]);
+                        $msg = 'Não consegui extrair o texto do documento "' . $nomeDoc . '", mesmo tentando leitura por IA. '
+                            . 'Isso costuma acontecer com PDFs escaneados (imagem) ou protegidos. '
+                            . 'Tente: salvar/exportar como DOCX ou TXT, ou colar o conteúdo diretamente no campo Descrição.';
+                        if (!empty($erroLeituraIA)) {
+                            $msg .= "\n\n[Detalhe técnico da leitura por IA: " . $erroLeituraIA . ']';
+                        }
+                        echo json_encode(['sucesso' => false, 'erro' => $msg, 'debug_ia' => $erroLeituraIA]);
                         exit;
                     }
                     // Há descrição preenchida: seguimos usando ao menos a descrição.
