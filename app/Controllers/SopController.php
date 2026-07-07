@@ -11456,7 +11456,18 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         // ===== FASE 8: SITUAÇÕES CRÍTICAS (finaliza) =====
         if ($fase === 8) {
             Logger::info('FILA FASE 8 (situações críticas) INICIANDO', ['sop_id' => $sopId]);
-            $prompt = $this->criarPromptSituacoesCriticasLeve($sopData, $detalhamento, $empresa, $diagnostico);
+
+            // Rede de segurança de cobertura: lista de ações prometidas (resumo) x ações cobertas.
+            $planoMestre = $conteudo['resumo_executivo_topicos'] ?? [];
+            $acoesCobertas = [];
+            foreach (($conteudo['procedimentos'] ?? []) as $faseAnterior) {
+                foreach (($faseAnterior['passos_operacionais_detalhados'] ?? []) as $passoAnterior) {
+                    $acao = trim((string) ($passoAnterior['acao_operacional'] ?? ''));
+                    if ($acao !== '') { $acoesCobertas[] = $acao; }
+                }
+            }
+
+            $prompt = $this->criarPromptSituacoesCriticasLeve($sopData, $detalhamento, $empresa, $diagnostico, $planoMestre, $acoesCobertas);
             $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 5000, 55);
             if (empty($resp['sucesso'])) {
                 return ['sucesso' => false, 'erro' => 'Fase 8 (Situações Críticas): ' . ($resp['erro'] ?? 'Erro na IA')];
@@ -11468,6 +11479,9 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             ];
             $conteudo['matriz_riscos_servico'] = $c['matriz_riscos_servico'] ?? [];
             $conteudo['treinamento_gestao_crises'] = $c['treinamento_gestao_crises'] ?? [];
+            if (!empty($c['alertas_cobertura_incompleta'])) {
+                $conteudo['alertas_cobertura_incompleta'] = $c['alertas_cobertura_incompleta'];
+            }
             $conteudo['status_geracao'] = 'concluido';
             $conteudo['fase_atual'] = 8;
             $conteudo['total_fases'] = 8;
@@ -11933,7 +11947,12 @@ Alguém SEM conhecimento prévio do processo deve conseguir executá-lo usando A
 - Listas (validacoes_operacionais, criterios_qualidade_operacionais): apenas itens distintos entre si. Nunca reformule o mesmo critério duas vezes.
 
 # REGRA DE ORÇAMENTO DE CONTEÚDO
-- Você receberá, quando aplicável, um \"orçamento de passos restantes\" e um resumo das ações já cobertas em fases anteriores. Respeite esse orçamento: não gere mais passos do que o restante disponível, e nunca redescreva uma ação já listada como coberta — se a fase atual só teria conteúdo redundante, gere menos passos (mínimo 2) em vez de preencher por obrigação de quantidade.";
+- Você receberá, quando aplicável, um \"orçamento de passos restantes\" e um resumo das ações já cobertas em fases anteriores. Respeite esse orçamento: não gere mais passos do que o restante disponível, e nunca redescreva uma ação já listada como coberta — se a fase atual só teria conteúdo redundante, gere menos passos (mínimo 2) em vez de preencher por obrigação de quantidade.
+
+# REGRA DE COBERTURA OBRIGATÓRIA (NUNCA VIOLAR — TEM PRIORIDADE SOBRE QUALQUER CORTE)
+- Toda ação listada no resumo executivo (resumo_executivo_topicos, definido na Fase 1) DEVE corresponder a pelo menos um passo (acao_operacional) em algum lugar do corpo técnico (Fases 2 a 7). Nenhuma ação do resumo pode ficar sem instrução executável correspondente.
+- Cortar volume, mesclar passos ou reduzir detalhamento é aceitável. Omitir uma ação inteira do processo NUNCA é aceitável, mesmo sob restrição de tamanho ou orçamento de passos.
+- Em caso de conflito entre \"reduzir quantidade de passos\" e \"cobrir todas as ações do resumo executivo\", a COBERTURA sempre vence. Reduza o detalhamento de cada passo antes de reduzir a quantidade de ações cobertas.";
     }
 
     /**
@@ -11995,6 +12014,26 @@ Alguém SEM conhecimento prévio do processo deve conseguir executá-lo usando A
             }
         }
 
+        // Bloco de CHECAGEM DE COBERTURA: garante que nenhuma ação prometida no
+        // resumo executivo fique sem passo correspondente no corpo técnico.
+        $blocoCobertura = '';
+        if (!empty($planoMestre)) {
+            $listaCobertas = !empty($acoesJaCobertas)
+                ? implode("\n", array_map(fn($a) => '- ' . $a, $acoesJaCobertas))
+                : '- (nenhuma ainda)';
+            $listaPrometidas = [];
+            foreach ($planoMestre as $etapa) {
+                $etapa = trim((string) $etapa);
+                if ($etapa !== '') { $listaPrometidas[] = '- ' . $etapa; }
+            }
+            $blocoCobertura = "\n# ✅ CHECAGEM DE COBERTURA (COBERTURA > TETO DE QUANTIDADE)\n"
+                . "AÇÕES PROMETIDAS NO RESUMO EXECUTIVO (todas precisam de passo correspondente em alguma fase 2-7):\n"
+                . implode("\n", $listaPrometidas)
+                . "\n\nAÇÕES JÁ COBERTAS NAS FASES ANTERIORES:\n"
+                . $listaCobertas
+                . "\n\nAntes de finalizar esta fase, verifique: alguma ação prometida acima ainda NÃO aparece nas fases anteriores E é tematicamente compatível com o foco desta fase (ex.: configurar rede/acesso pertence a uma fase de execução)? Se sim, INCLUA um passo para ela AGORA, mesmo que ultrapasse o teto de 2-3 passos — a cobertura tem prioridade sobre o teto de quantidade. Se esta é uma das últimas fases de execução e restam ações prometidas sem dono, esta fase deve absorvê-las.\n";
+        }
+
         $blocoContextoCruzado = '';
         if (!empty($acoesJaCobertas)) {
             $listaAcoes = implode("\n", array_map(fn($a) => '- ' . $a, $acoesJaCobertas));
@@ -12034,6 +12073,7 @@ Este é um MANUAL TÉCNICO DE COMO EXECUTAR O SERVIÇO, e NÃO um manual de aten
 - EVITE roteiros de conversa/vendas/relacionamento com o cliente. Só mencione comunicação quando for estritamente técnica e necessária (ex.: confirmar com o responsável uma especificação técnica, registrar um dado obrigatório, alinhar com fornecedor um requisito técnico).
 
 {$blocoContextoCruzado}
+{$blocoCobertura}
 # TAREFA
 Gere APENAS a fase técnica: **\"{$nomeFase}\"**, TOTALMENTE PERSONALIZADA ao serviço e ao perfil da empresa acima.
 Foco desta fase: {$focoFase}.
@@ -12098,7 +12138,7 @@ Responda APENAS com o JSON válido desta única fase.";
      * Prompt ENXUTO de situações críticas (leve, cabe em <55s).
      * Gera cenários críticos e scripts para situações difíceis.
      */
-    private function criarPromptSituacoesCriticasLeve(array $servico, array $detalhamento, array $empresa, array $diagnostico): string
+    private function criarPromptSituacoesCriticasLeve(array $servico, array $detalhamento, array $empresa, array $diagnostico, array $planoMestre = [], array $acoesCobertas = []): string
     {
         $nomeServico = $servico['nome_servico'];
         $nomeSetor = $servico['nome_setor'];
@@ -12107,7 +12147,28 @@ Responda APENAS com o JSON válido desta única fase.";
         $diretrizes = $this->diretrizesManualTecnico();
         $contextoPersonalizacao = $this->montarContextoPersonalizacao($servico);
 
+        // Rede de segurança final: comparar o resumo executivo (ações prometidas)
+        // com as ações efetivamente cobertas nas fases 2-7.
+        $blocoRedeCobertura = '';
+        if (!empty($planoMestre)) {
+            $prometidas = [];
+            foreach ($planoMestre as $etapa) {
+                $etapa = trim((string) $etapa);
+                if ($etapa !== '') { $prometidas[] = '- ' . $etapa; }
+            }
+            $cobertas = !empty($acoesCobertas)
+                ? implode("\n", array_map(fn($a) => '- ' . $a, $acoesCobertas))
+                : '- (nenhuma)';
+            $blocoRedeCobertura = "\n# 🔎 CHECAGEM FINAL DE COBERTURA (esta é a última fase gerada pela IA)\n"
+                . "AÇÕES PROMETIDAS NO RESUMO EXECUTIVO:\n"
+                . implode("\n", $prometidas)
+                . "\n\nAÇÕES EFETIVAMENTE COBERTAS NAS FASES DE EXECUÇÃO (2-7):\n"
+                . $cobertas
+                . "\n\nCompare as duas listas. Se ALGUMA ação prometida NÃO tiver passo correspondente em nenhuma fase de execução, adicione ao seu JSON um campo \\\"alertas_cobertura_incompleta\\\" (array de strings), listando cada ação faltante em texto simples. Se todas estiverem cobertas, NÃO inclua esse campo (ou deixe-o como array vazio).\n";
+        }
+
         return "{$diretrizes}
+{$blocoRedeCobertura}
 
 Gere agora a seção de ADVERSIDADES TÉCNICAS e PROBLEMAS DE EXECUÇÃO (equivale ao Bloco 7 — Erros comuns e riscos do modelo). Os erros/adversidades devem ser REAIS e específicos DESTE processo, nunca genéricos.
 
@@ -12169,7 +12230,8 @@ Seja prático, técnico, direto e estrategicamente esperto. Evite inventar marca
       \"impacto\": \"Alto/Médio/Baixo\",
       \"acoes_preventivas\": [\"Ação preventiva técnica 1\", \"Ação preventiva técnica 2\"]
     }
-  ]
+  ],
+  \"alertas_cobertura_incompleta\": [\"(OPCIONAL) Ação prometida no resumo executivo que ficou sem passo correspondente nas fases 2-7. Inclua este campo APENAS se houver ação faltante; caso contrário omita ou deixe como [].\"]
 }
 ```
 

@@ -83,6 +83,17 @@ if (!function_exists('sopRenderTexto')) {
         return nl2br(htmlspecialchars($texto));
     }
 }
+
+/**
+ * Retorna true se o campo tem conteúdo real (trata "", aspas literais e espaços como vazio).
+ */
+if (!function_exists('sopTemConteudo')) {
+    function sopTemConteudo($valor): bool {
+        $texto = trim(sopTexto($valor));
+        $texto = trim($texto, "\"' \t\n\r");
+        return $texto !== '';
+    }
+}
 ?>
 <?php ob_start(); ?>
 
@@ -308,7 +319,7 @@ if (!function_exists('sopRenderTexto')) {
                         <?php 
                         // Scripts (novo e antigo formato)
                         $scripts = $passo['scripts_operacionais_completos'] ?? $passo['scripts_modelos'] ?? '';
-                        if (!empty($scripts)): 
+                        if (sopTemConteudo($scripts)): 
                         ?>
                         <div class="mb-3 p-3 bg-green-50 border-l-4 border-green-400 rounded">
                             <h5 class="text-sm font-semibold text-green-800 mb-1">🎯 Scripts Operacionais:</h5>
@@ -319,7 +330,7 @@ if (!function_exists('sopRenderTexto')) {
                         <?php 
                         // Metodologias/Técnicas (novo e antigo formato)
                         $metodologias = $passo['metodologias_operacionais'] ?? $passo['tecnicas_avancadas'] ?? '';
-                        if (!empty($metodologias)): 
+                        if (sopTemConteudo($metodologias)): 
                         ?>
                         <div class="mb-3 p-3 bg-purple-50 border-l-4 border-purple-400 rounded">
                             <h5 class="text-sm font-semibold text-purple-800 mb-1">⚡ Metodologias Operacionais:</h5>
@@ -330,7 +341,7 @@ if (!function_exists('sopRenderTexto')) {
                         <?php 
                         // Validações (novo formato)
                         $validacoes = $passo['validacoes_operacionais'] ?? $passo['situacoes_especiais'] ?? '';
-                        if (!empty($validacoes)): 
+                        if (sopTemConteudo($validacoes)): 
                         ?>
                         <div class="mb-3 p-3 bg-orange-50 border-l-4 border-orange-400 rounded">
                             <h5 class="text-sm font-semibold text-orange-800 mb-1">✅ Validações Operacionais:</h5>
@@ -341,7 +352,7 @@ if (!function_exists('sopRenderTexto')) {
                         <?php 
                         // Ferramentas (novo formato)
                         $ferramentas = $passo['ferramentas_operacionais'] ?? '';
-                        if (!empty($ferramentas)): 
+                        if (sopTemConteudo($ferramentas)): 
                         ?>
                         <div class="mb-3 p-3 bg-indigo-50 border-l-4 border-indigo-400 rounded">
                             <h5 class="text-sm font-semibold text-indigo-800 mb-1">🛠️ Ferramentas Operacionais:</h5>
@@ -357,7 +368,7 @@ if (!function_exists('sopRenderTexto')) {
                         
                         <?php 
                         $observacoes = $passo['observacoes_operacionais'] ?? $passo['observacoes'] ?? '';
-                        if (!empty($observacoes)): 
+                        if (sopTemConteudo($observacoes)): 
                         ?>
                         <div class="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
                             <span class="text-yellow-700">💡 <strong>Observações Operacionais:</strong> <?= htmlspecialchars(sopTexto($observacoes)) ?></span>

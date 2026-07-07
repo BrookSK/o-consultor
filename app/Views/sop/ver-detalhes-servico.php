@@ -78,6 +78,21 @@ if (!function_exists('sopRenderTexto')) {
         return nl2br(htmlspecialchars($texto));
     }
 }
+
+/**
+ * Retorna true se o campo tem conteúdo real para exibir.
+ * Trata como VAZIO: null, string vazia, só espaços, aspas literais ("\"\"", "''")
+ * e arrays vazios — casos que passaram a ocorrer com as regras de não-repetição
+ * dos SOPs (campos como scripts_operacionais_completos vindo em branco).
+ */
+if (!function_exists('sopTemConteudo')) {
+    function sopTemConteudo($valor): bool {
+        $texto = trim(sopTexto($valor));
+        // remove aspas/apóstrofos e espaços das bordas (ex.: a IA às vezes devolve "\"\"")
+        $texto = trim($texto, "\"' \t\n\r");
+        return $texto !== '';
+    }
+}
 ?>
 <?php ob_start(); ?>
 
@@ -434,7 +449,7 @@ if (!function_exists('sopRenderTexto')) {
                         <?php endif; ?>
 
                         <?php $scripts = $passo['scripts_operacionais_completos'] ?? $passo['scripts_modelos'] ?? ''; ?>
-                        <?php if (!empty($scripts)): ?>
+                        <?php if (sopTemConteudo($scripts)): ?>
                         <div class="sub">
                             <div class="sub-label"><span class="dot"></span>Script operacional</div>
                             <div class="script-block"><?= sopRenderTexto($scripts) ?></div>
@@ -442,7 +457,7 @@ if (!function_exists('sopRenderTexto')) {
                         <?php endif; ?>
 
                         <?php $metodologias = $passo['metodologias_operacionais'] ?? $passo['tecnicas_avancadas'] ?? ''; ?>
-                        <?php if (!empty($metodologias)): ?>
+                        <?php if (sopTemConteudo($metodologias)): ?>
                         <div class="sub">
                             <div class="sub-label"><span class="dot"></span>Metodologias operacionais</div>
                             <div class="sub-text"><?= sopRenderTexto($metodologias) ?></div>
@@ -450,7 +465,7 @@ if (!function_exists('sopRenderTexto')) {
                         <?php endif; ?>
 
                         <?php $validacoes = $passo['validacoes_operacionais'] ?? $passo['situacoes_especiais'] ?? ''; ?>
-                        <?php if (!empty($validacoes)): ?>
+                        <?php if (sopTemConteudo($validacoes)): ?>
                         <div class="sub">
                             <div class="sub-label"><span class="dot"></span>Validações operacionais</div>
                             <div class="sub-text"><?= sopRenderTexto($validacoes) ?></div>
@@ -458,7 +473,7 @@ if (!function_exists('sopRenderTexto')) {
                         <?php endif; ?>
 
                         <?php $ferramentas = $passo['ferramentas_operacionais'] ?? ''; ?>
-                        <?php if (!empty($ferramentas)): ?>
+                        <?php if (sopTemConteudo($ferramentas)): ?>
                         <div class="sub">
                             <div class="sub-label"><span class="dot"></span>Ferramentas operacionais</div>
                             <div class="sub-text"><?= sopRenderTexto($ferramentas) ?></div>
@@ -479,7 +494,7 @@ if (!function_exists('sopRenderTexto')) {
                         <?php endif; ?>
 
                         <?php $observacoes = $passo['observacoes_operacionais'] ?? $passo['observacoes'] ?? ''; ?>
-                        <?php if (!empty($observacoes)): ?>
+                        <?php if (sopTemConteudo($observacoes)): ?>
                         <div class="note">⚠ <?= htmlspecialchars(sopTexto($observacoes)) ?></div>
                         <?php endif; ?>
                     </div>
