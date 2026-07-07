@@ -3131,6 +3131,59 @@ class SopController
     }
 
     /**
+     * Ativa serviços (selecionado=1) — usado na aba "Setores inativos" para
+     * trazer de volta serviços/setores que o usuário quer incluir nos SOPs.
+     */
+    public function ativarServicos(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $raw = $_POST['servico_ids'] ?? [];
+        if (is_string($raw)) {
+            $raw = $raw === '' ? [] : explode(',', $raw);
+        }
+        $ids = array_values(array_unique(array_filter(array_map('intval', (array) $raw))));
+
+        if (empty($ids)) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Nenhum serviço informado.']);
+            exit;
+        }
+
+        try {
+            $this->garantirColunaSelecionado();
+            $empresaUsuario = Auth::empresa();
+
+            $setoresAfetados = [];
+            $ativados = 0;
+            foreach ($ids as $servicoId) {
+                $servico = Database::queryOne("SELECT id, setor_id, empresa_id FROM servicos_setor WHERE id = ?", [$servicoId]);
+                if (!$servico) continue;
+                if ($empresaUsuario !== null && (int) $servico['empresa_id'] !== (int) $empresaUsuario) continue;
+                Database::execute("UPDATE servicos_setor SET selecionado = 1, atualizado_em = NOW() WHERE id = ?", [$servicoId]);
+                $setoresAfetados[$servico['setor_id']] = true;
+                $ativados++;
+            }
+
+            foreach (array_keys($setoresAfetados) as $setorId) {
+                Database::execute(
+                    "UPDATE setores_empresa SET total_servicos = (SELECT COUNT(*) FROM servicos_setor WHERE setor_id = ? AND selecionado = 1) WHERE id = ?",
+                    [$setorId, $setorId]
+                );
+            }
+
+            Logger::info('SERVIÇOS ATIVADOS (setores inativos)', ['ativados' => $ativados]);
+            echo json_encode(['sucesso' => true, 'ativados' => $ativados, 'mensagem' => $ativados . ' serviço(s) ativado(s).']);
+            exit;
+        } catch (Exception $e) {
+            Logger::error('Erro ao ativar serviços', ['erro' => $e->getMessage()]);
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
+            exit;
+        }
+    }
+
+    /**
      * Garante a coluna 'selecionado' em servicos_setor (idempotente).
      */
     private function garantirColunaSelecionado(): void
@@ -4550,10 +4603,12 @@ class SopController
                 'diagnostico' => $diagnostico,
                 'empresa' => $empresa,
                 'setores_organizados' => [],
+                'setores_inativos' => [],
                 'estatisticas' => [
                     'total_setores' => 0,
                     'total_servicos' => 0,
                     'total_sops' => 0,
+                    'total_setores_inativos' => 0,
                     'percentual_conclusao' => 0
                 ],
                 'usar_fluxo_linear' => true
@@ -4579,29 +4634,30 @@ class SopController
             [$estruturaId]
         );
 
-        // Para cada setor, buscar serviços ordenados alfabeticamente (A -> Z)
-        $setoresOrganizados = [];
+        // Para cada setor, separar em ATIVOS (têm ao menos 1 serviço selecionado) e
+        // INATIVOS (nenhum serviço selecionado). Os inativos vão para uma aba própria,
+        // carregando TODOS os serviços para o usuário poder selecionar e reativar.
+        $setoresOrganizados = [];   // ativos
+        $setoresInativos = [];      // sem serviço selecionado
         $totalServicos = 0;
         $totalSops = 0;
 
         foreach ($setores as $setor) {
-            // Apenas serviços SELECIONADOS pelo usuário aparecem na lista de SOPs.
-            // (coluna 'selecionado' default 1, então estruturas antigas continuam completas)
-            $servicos = Database::query(
+            // Todos os serviços do setor, com o flag de seleção
+            $todos = Database::query(
                 "SELECT * FROM servicos_setor 
-                 WHERE setor_id = ? AND COALESCE(selecionado, 1) = 1
+                 WHERE setor_id = ?
                  ORDER BY subcategoria ASC, nome_servico ASC",
                 [$setor['id']]
             );
 
-            $servicosFormatados = [];
+            $servicosSelecionados = [];
+            $servicosTodosFmt = [];
             $sopsNoSetor = 0;
-            foreach ($servicos as $servico) {
+
+            foreach ($todos as $servico) {
+                $selecionado = ((int) ($servico['selecionado'] ?? 1)) === 1;
                 $temSop = !empty($servico['sop_id']) || $servico['status'] === 'sop_gerado' || $servico['status'] === 'aprovado';
-                if ($temSop) {
-                    $sopsNoSetor++;
-                    $totalSops++;
-                }
 
                 $statusFinal = 'mapeado';
                 if ($temSop) {
@@ -4610,7 +4666,7 @@ class SopController
                     $statusFinal = 'detalhado';
                 }
 
-                $servicosFormatados[] = [
+                $fmt = [
                     'id' => $servico['id'],
                     'nome_servico' => $servico['nome_servico'],
                     'subcategoria' => $servico['subcategoria'] ?? 'Geral',
@@ -4620,28 +4676,42 @@ class SopController
                     'frequencia' => $servico['frequencia'],
                     'sop_id' => $servico['sop_id'],
                     'sop_criado_em' => $servico['sop_gerado_em'],
-                    'status_final' => $statusFinal
+                    'status_final' => $statusFinal,
+                    'selecionado' => $selecionado
                 ];
-                $totalServicos++;
+
+                $servicosTodosFmt[] = $fmt;
+
+                if ($selecionado) {
+                    $servicosSelecionados[] = $fmt;
+                    $totalServicos++;
+                    if ($temSop) { $sopsNoSetor++; $totalSops++; }
+                }
             }
 
-            $setoresOrganizados[] = [
-                'setor' => [
-                    'setor_id' => $setor['id'],
-                    'nome_setor' => $setor['nome_setor'],
-                    'tipo_setor' => $setor['tipo_setor'],
-                    'setor_descricao' => $setor['descricao'],
-                    'total_servicos' => count($servicos),
-                    'total_sops' => $sopsNoSetor
-                ],
-                'servicos' => $servicosFormatados
+            $setorInfo = [
+                'setor_id' => $setor['id'],
+                'nome_setor' => $setor['nome_setor'],
+                'tipo_setor' => $setor['tipo_setor'],
+                'setor_descricao' => $setor['descricao'],
+                'total_servicos' => count($servicosSelecionados),
+                'total_sops' => $sopsNoSetor
             ];
+
+            if (count($servicosSelecionados) > 0) {
+                $setoresOrganizados[] = ['setor' => $setorInfo, 'servicos' => $servicosSelecionados];
+            } else {
+                // Setor inativo: leva TODOS os serviços (para selecionar/ativar depois)
+                $setorInfo['total_disponivel'] = count($servicosTodosFmt);
+                $setoresInativos[] = ['setor' => $setorInfo, 'servicos' => $servicosTodosFmt];
+            }
         }
 
         $estatisticas = [
             'total_setores' => count($setoresOrganizados),
             'total_servicos' => $totalServicos,
             'total_sops' => $totalSops,
+            'total_setores_inativos' => count($setoresInativos),
             'percentual_conclusao' => $totalServicos > 0 ? round(($totalSops / $totalServicos) * 100, 1) : 0
         ];
 
@@ -4650,6 +4720,7 @@ class SopController
             'empresa' => $empresa,
             'estrutura_id' => $estruturaId,
             'setores_organizados' => $setoresOrganizados,
+            'setores_inativos' => $setoresInativos,
             'estatisticas' => $estatisticas,
             'usar_fluxo_linear' => true
         ];

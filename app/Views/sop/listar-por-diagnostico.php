@@ -82,6 +82,28 @@
 #sops-view .lane-empty{font-size:12.5px;color:var(--sv-ink-mute);padding:0 0 16px;}
 #sops-view .footer-note{text-align:center;font-size:12px;color:var(--sv-ink-mute);margin-top:20px;}
 
+/* Abas SOPs / Setores inativos */
+#sops-view .tabs{display:flex;gap:4px;border-bottom:1px solid var(--sv-line);margin-bottom:22px;}
+#sops-view .tab{font-size:14px;font-weight:600;color:var(--sv-ink-mute);background:none;border:none;border-bottom:2px solid transparent;padding:10px 16px;cursor:pointer;margin-bottom:-1px;display:flex;align-items:center;gap:7px;}
+#sops-view .tab:hover{color:var(--sv-ink-soft);}
+#sops-view .tab.active{color:var(--sv-lane-deep);border-bottom-color:var(--sv-accent);}
+#sops-view .tab .badge{font-size:11px;font-weight:700;background:var(--sv-lane-soft);color:var(--sv-lane-deep);border-radius:20px;padding:1px 8px;}
+#sops-view .tab-inativos.active{color:var(--sv-accent-deep);border-bottom-color:var(--sv-accent);}
+#sops-view .tabpanel{display:none;}
+#sops-view .tabpanel.active{display:block;}
+#sops-view .inativo-hint{background:var(--sv-accent-soft);border:1px solid #f3d9c6;color:var(--sv-accent-deep);border-radius:12px;padding:14px 18px;font-size:13.5px;margin-bottom:18px;}
+#sops-view .inativo-servicos{padding:0 22px 18px;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px;}
+#sops-view .inativo-item{display:flex;align-items:center;gap:9px;padding:9px 12px;border:1px solid var(--sv-line);border-radius:9px;cursor:pointer;}
+#sops-view .inativo-item:hover{border-color:var(--sv-lane);background:var(--sv-lane-soft);}
+#sops-view .inativo-item.on{border-color:var(--sv-ok);background:var(--sv-ok-soft);}
+#sops-view .inativo-item input{width:16px;height:16px;accent-color:var(--sv-ok);}
+#sops-view .inativo-item .txt{font-size:13px;line-height:1.3;}
+#sops-view .inativo-item .code{font-size:10px;color:var(--sv-ink-mute);font-family:ui-monospace,Menlo,monospace;}
+#sops-view .inativo-actions{padding:0 22px 18px;display:flex;justify-content:flex-end;gap:8px;}
+#sops-view .btn-ativar{font-size:12.5px;font-weight:600;color:#fff;background:var(--sv-ok);border:none;padding:8px 16px;border-radius:9px;cursor:pointer;}
+#sops-view .btn-ativar:hover{background:var(--sv-ok-deep);}
+#sops-view .btn-ativar:disabled{opacity:.5;cursor:not-allowed;}
+
 #sops-view .bulk-bar{position:sticky;bottom:16px;z-index:20;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;background:var(--sv-surface);border:1px solid var(--sv-line);border-left:4px solid var(--sv-accent);border-radius:12px;padding:14px 20px;box-shadow:0 6px 20px rgba(23,27,51,0.12);margin-top:8px;}
 #sops-view .bulk-info{font-size:13.5px;color:var(--sv-ink-soft);}
 #sops-view .bulk-info strong{color:var(--sv-ink);}
@@ -133,6 +155,20 @@
         <div class="stat s3"><div class="lab">SOPs gerados</div><div class="val" id="stat-sops"><?= $dados['estatisticas']['total_sops'] ?></div></div>
         <div class="stat s4"><div class="lab">Progresso</div><div class="val" id="stat-progresso"><?= $dados['estatisticas']['percentual_conclusao'] ?>%</div></div>
     </div>
+
+    <?php $inativos = $dados['setores_inativos'] ?? []; ?>
+    <!-- Abas -->
+    <div class="tabs">
+        <button class="tab active" data-tab="ativos" onclick="mudarAba('ativos')">
+            📋 SOPs <span class="badge"><?= $dados['estatisticas']['total_setores'] ?></span>
+        </button>
+        <button class="tab tab-inativos" data-tab="inativos" onclick="mudarAba('inativos')">
+            💤 Setores inativos <span class="badge"><?= count($inativos) ?></span>
+        </button>
+    </div>
+
+    <!-- PAINEL: SOPs (setores ativos) -->
+    <div class="tabpanel active" id="panel-ativos">
 
     <?php if (!empty($dados['setores_organizados'])): ?>
         <?php foreach ($dados['setores_organizados'] as $setorData): ?>
@@ -250,7 +286,7 @@
 
         <p class="footer-note">Serviços empilhados verticalmente dentro de cada categoria, sempre em ordem alfabética (A → Z).</p>
 
-    <?php else: ?>
+    <?php elseif (empty($inativos)): ?>
     <!-- Sem estrutura/SOPs -->
     <div style="text-align:center;padding:48px 0;">
         <div style="font-size:56px;margin-bottom:12px;">📋</div>
@@ -261,7 +297,80 @@
             🚀 Iniciar Geração de SOPs
         </a>
     </div>
+    <?php else: ?>
+    <div style="text-align:center;padding:40px 0;">
+        <div style="font-size:48px;margin-bottom:10px;">💤</div>
+        <h2 style="font-size:18px;font-weight:600;color:var(--sv-ink);margin:0 0 6px;">Nenhum setor ativo</h2>
+        <p style="color:var(--sv-ink-soft);margin:0;">Todos os setores estão inativos. Abra a aba "Setores inativos" para ativar serviços.</p>
+    </div>
     <?php endif; ?>
+
+    </div><!-- /panel-ativos -->
+
+    <!-- PAINEL: Setores inativos -->
+    <div class="tabpanel" id="panel-inativos">
+        <?php if (empty($inativos)): ?>
+        <div style="text-align:center;padding:44px 0;color:var(--sv-ink-soft);">
+            <div style="font-size:44px;margin-bottom:10px;">✅</div>
+            <p style="margin:0;">Nenhum setor inativo. Todos os setores têm serviços selecionados.</p>
+        </div>
+        <?php else: ?>
+        <div class="inativo-hint">
+            💤 Estes setores foram deixados de fora dos SOPs (nenhum serviço selecionado). Marque os serviços desejados e clique em <b>Ativar selecionados</b> para trazê-los de volta.
+        </div>
+
+        <?php foreach ($inativos as $setorData): ?>
+        <?php
+            $setor = $setorData['setor'];
+            $servicos = $setorData['servicos'];
+            $iconeSetor = '📁';
+            switch ($setor['tipo_setor'] ?? 'operacional') {
+                case 'core': $iconeSetor = '⚙'; break;
+                case 'apoio': $iconeSetor = '🛠'; break;
+                case 'estrategico': $iconeSetor = '📋'; break;
+            }
+            $porSub = [];
+            foreach ($servicos as $sv) { $porSub[$sv['subcategoria'] ?? 'Geral'][] = $sv; }
+            ksort($porSub);
+        ?>
+        <div class="sector-block" data-inativo-block>
+            <div class="sector-head collapsed" onclick="toggleSetor(this)" role="button" tabindex="0">
+                <div class="sector-name">
+                    <span class="sector-chev">▶</span>
+                    <div class="dot"><?= $iconeSetor ?></div>
+                    <div>
+                        <h2><?= htmlspecialchars($setor['nome_setor']) ?></h2>
+                        <div class="sector-meta">
+                            <span class="core-tag"><?= ucfirst($setor['tipo_setor'] ?? 'geral') ?></span>
+                            <?= (int) ($setor['total_disponivel'] ?? count($servicos)) ?> serviços disponíveis
+                        </div>
+                    </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <span class="badge-status pendente">💤 Inativo</span>
+                    <button class="add-servico" onclick="event.stopPropagation(); marcarTodosInativo(this, <?= $setor['setor_id'] ?>)">Selecionar todos</button>
+                </div>
+            </div>
+            <div class="lanes-wrap" hidden>
+                <div class="inativo-servicos" data-setor-inativo="<?= $setor['setor_id'] ?>">
+                    <?php foreach ($servicos as $servico): ?>
+                    <label class="inativo-item">
+                        <input type="checkbox" class="inativo-check" value="<?= $servico['id'] ?>" onchange="onCheckInativo(this)">
+                        <span class="txt">
+                            <?= htmlspecialchars($servico['nome_servico'] ?? '') ?>
+                            <span class="code"><?= htmlspecialchars($servico['codigo_servico'] ?? '') ?></span>
+                        </span>
+                    </label>
+                    <?php endforeach; ?>
+                </div>
+                <div class="inativo-actions">
+                    <button class="btn-ativar" data-ativar-setor="<?= $setor['setor_id'] ?>" onclick="ativarSetor(<?= $setor['setor_id'] ?>)" disabled>✓ Ativar selecionados</button>
+                </div>
+            </div>
+        </div>
+        <?php endforeach; ?>
+        <?php endif; ?>
+    </div><!-- /panel-inativos -->
 
 </div>
 
@@ -365,6 +474,59 @@ function toggleSetor(head) {
     const wrap = head.nextElementSibling; // .lanes-wrap
     const colapsado = head.classList.toggle('collapsed');
     if (wrap) wrap.hidden = colapsado;
+}
+
+// ---- Abas SOPs / Setores inativos ----
+function mudarAba(aba) {
+    document.querySelectorAll('#sops-view .tab').forEach(t => t.classList.toggle('active', t.dataset.tab === aba));
+    document.getElementById('panel-ativos').classList.toggle('active', aba === 'ativos');
+    document.getElementById('panel-inativos').classList.toggle('active', aba === 'inativos');
+}
+
+// ---- Setores inativos: seleção e ativação ----
+function onCheckInativo(cb) {
+    cb.closest('.inativo-item')?.classList.toggle('on', cb.checked);
+    atualizarBotaoAtivar(cb.closest('[data-setor-inativo]').dataset.setorInativo);
+}
+
+function marcarTodosInativo(btn, setorId) {
+    const cont = document.querySelector('[data-setor-inativo="' + setorId + '"]');
+    const checks = cont.querySelectorAll('.inativo-check');
+    const marcarTodos = Array.from(checks).some(c => !c.checked);
+    checks.forEach(c => { c.checked = marcarTodos; c.closest('.inativo-item')?.classList.toggle('on', marcarTodos); });
+    btn.textContent = marcarTodos ? 'Limpar seleção' : 'Selecionar todos';
+    atualizarBotaoAtivar(setorId);
+}
+
+function atualizarBotaoAtivar(setorId) {
+    const cont = document.querySelector('[data-setor-inativo="' + setorId + '"]');
+    const marcados = cont.querySelectorAll('.inativo-check:checked').length;
+    const btn = document.querySelector('[data-ativar-setor="' + setorId + '"]');
+    if (btn) btn.disabled = marcados === 0;
+}
+
+async function ativarSetor(setorId) {
+    const cont = document.querySelector('[data-setor-inativo="' + setorId + '"]');
+    const ids = Array.from(cont.querySelectorAll('.inativo-check:checked')).map(c => c.value);
+    if (ids.length === 0) return;
+
+    const btn = document.querySelector('[data-ativar-setor="' + setorId + '"]');
+    btn.disabled = true; btn.textContent = 'Ativando...';
+    try {
+        const body = new URLSearchParams({ servico_ids: ids.join(','), csrf_token: CSRF_TOKEN });
+        const r = await fetch('<?= APP_URL ?>/sop/ativar-servicos', { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body });
+        const d = await r.json();
+        if (d.sucesso) {
+            // Recarrega para o setor migrar para a aba de SOPs com os serviços ativados.
+            location.reload();
+        } else {
+            alert('Erro: ' + (d.erro || 'desconhecido'));
+            btn.disabled = false; btn.textContent = '✓ Ativar selecionados';
+        }
+    } catch (e) {
+        alert('Erro de comunicação com o servidor.');
+        btn.disabled = false; btn.textContent = '✓ Ativar selecionados';
+    }
 }
 
 // ---- Seleção múltipla (persiste ao recolher, pois os checkboxes ficam no DOM) ----
