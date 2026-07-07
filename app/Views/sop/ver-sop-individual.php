@@ -35,6 +35,54 @@ if (!function_exists('sopTexto')) {
         return '';
     }
 }
+
+/**
+ * Renderiza texto convertendo listas numeradas "1. 2. 3." em <ol>.
+ */
+if (!function_exists('sopRenderTexto')) {
+    function sopRenderTexto($valor): string {
+        $texto = trim(sopTexto($valor));
+        if ($texto === '') return '';
+
+        if (preg_match('/(^|\s)1[\.\)]\s+.*\s2[\.\)]\s+/s', $texto)) {
+            $normalizado = preg_replace('/\s*(?<![\d])(\d{1,2})[\.\)]\s+/u', "\n$1. ", $texto);
+            $linhas = preg_split('/\n+/', trim($normalizado));
+
+            $itens = [];
+            $introducao = '';
+            $fecho = '';
+            foreach ($linhas as $linha) {
+                $linha = trim($linha);
+                if ($linha === '') continue;
+                if (preg_match('/^\d{1,2}\.\s+(.*)$/s', $linha, $m)) {
+                    $itens[] = $m[1];
+                } elseif (empty($itens)) {
+                    $introducao .= ($introducao ? ' ' : '') . $linha;
+                } else {
+                    $fecho .= ($fecho ? ' ' : '') . $linha;
+                }
+            }
+
+            if (count($itens) >= 2) {
+                $html = '';
+                if ($introducao !== '') {
+                    $html .= '<p style="margin:0 0 8px;">' . nl2br(htmlspecialchars($introducao)) . '</p>';
+                }
+                $html .= '<ol style="margin:0;padding-left:20px;list-style:decimal;">';
+                foreach ($itens as $it) {
+                    $html .= '<li style="margin-bottom:4px;">' . nl2br(htmlspecialchars(trim($it))) . '</li>';
+                }
+                $html .= '</ol>';
+                if ($fecho !== '') {
+                    $html .= '<p style="margin:8px 0 0;">' . nl2br(htmlspecialchars($fecho)) . '</p>';
+                }
+                return $html;
+            }
+        }
+
+        return nl2br(htmlspecialchars($texto));
+    }
+}
 ?>
 <?php ob_start(); ?>
 
@@ -264,7 +312,7 @@ if (!function_exists('sopTexto')) {
                         ?>
                         <div class="mb-3 p-3 bg-green-50 border-l-4 border-green-400 rounded">
                             <h5 class="text-sm font-semibold text-green-800 mb-1">🎯 Scripts Operacionais:</h5>
-                            <p class="text-sm text-green-700 leading-relaxed font-mono"><?= nl2br(htmlspecialchars(sopTexto($scripts))) ?></p>
+                            <div class="text-sm text-green-700 leading-relaxed"><?= sopRenderTexto($scripts) ?></div>
                         </div>
                         <?php endif; ?>
                         

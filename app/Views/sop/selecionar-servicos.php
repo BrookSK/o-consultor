@@ -286,6 +286,25 @@ function fecharVozSetor() {
     document.getElementById('modalVozSetor').classList.add('hidden');
 }
 
+const REC_LIMITE_SEG = 300; // 5 minutos
+function iniciarCronometro(statusEl, onFim) {
+    let restante = REC_LIMITE_SEG;
+    const fmt = (s) => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    statusEl.classList.remove('hidden');
+    statusEl.textContent = '🔴 Gravando... ' + fmt(restante) + ' restante · clique para parar.';
+    const timer = setInterval(() => {
+        restante--;
+        if (restante <= 0) {
+            clearInterval(timer);
+            statusEl.textContent = 'Tempo máximo atingido. Finalizando...';
+            if (typeof onFim === 'function') onFim();
+            return;
+        }
+        statusEl.textContent = '🔴 Gravando... ' + fmt(restante) + ' restante · clique para parar.';
+    }, 1000);
+    return timer;
+}
+
 async function alternarGravacaoVoz() {
     const btn = document.getElementById('voz_btn_mic');
     const st = document.getElementById('voz_status');
@@ -294,9 +313,11 @@ async function alternarGravacaoVoz() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         vozChunks = [];
+        let cron = null;
         vozRecorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4' });
         vozRecorder.ondataavailable = e => { if (e.data.size > 0) vozChunks.push(e.data); };
         vozRecorder.onstop = async () => {
+            if (cron) clearInterval(cron);
             stream.getTracks().forEach(t => t.stop());
             btn.classList.remove('rec'); btn.textContent = '🎤';
             st.classList.remove('hidden'); st.textContent = 'Transcrevendo áudio...';
@@ -304,7 +325,7 @@ async function alternarGravacaoVoz() {
         };
         vozRecorder.start();
         btn.classList.add('rec'); btn.textContent = '⏹';
-        st.classList.remove('hidden'); st.textContent = 'Gravando... clique para parar.';
+        cron = iniciarCronometro(st, () => { if (vozRecorder && vozRecorder.state === 'recording') vozRecorder.stop(); });
     } catch (e) { alert('Não foi possível acessar o microfone.'); }
 }
 

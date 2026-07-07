@@ -148,12 +148,17 @@ class MicrofoneTranscricao {
             // Atualizar UI do botão
             this.updateButtonRecordingState(button, true);
 
-            // Auto-stop após 30 segundos
-            setTimeout(() => {
+            // Cronômetro regressivo visível (5:00 -> 0:00) ao lado do botão.
+            this.iniciarCronometro(button);
+
+            // Auto-stop de segurança após 5 minutos (evita gravação infinita esquecida).
+            // Guardamos o timer para poder cancelá-lo quando o usuário parar manualmente.
+            if (this._autoStopTimer) clearTimeout(this._autoStopTimer);
+            this._autoStopTimer = setTimeout(() => {
                 if (this.isRecording) {
                     this.stopRecording();
                 }
-            }, 30000);
+            }, 300000);
 
         } catch (error) {
             console.error('Erro ao acessar microfone:', error);
@@ -166,6 +171,8 @@ class MicrofoneTranscricao {
      */
     stopRecording() {
         if (this.mediaRecorder && this.isRecording) {
+            if (this._autoStopTimer) { clearTimeout(this._autoStopTimer); this._autoStopTimer = null; }
+            this.pararCronometro();
             this.mediaRecorder.stop();
             this.isRecording = false;
             
@@ -174,6 +181,62 @@ class MicrofoneTranscricao {
                 this.updateButtonRecordingState(btn, false);
             });
         }
+    }
+
+    /**
+     * Inicia o cronômetro regressivo (5:00 -> 0:00) exibindo o tempo restante
+     * em um badge ao lado do botão de microfone.
+     */
+    iniciarCronometro(button) {
+        this.pararCronometro();
+
+        // Criar/obter o badge do cronômetro relativo ao botão
+        let badge = button.parentElement.querySelector('.microfone-cronometro');
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'microfone-cronometro';
+            badge.style.cssText = `
+                position: absolute;
+                right: 48px;
+                bottom: 10px;
+                background: #dc2626;
+                color: white;
+                font-size: 12px;
+                font-weight: 600;
+                font-family: Arial, sans-serif;
+                padding: 3px 8px;
+                border-radius: 12px;
+                z-index: 11;
+                white-space: nowrap;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+            `;
+            button.parentElement.appendChild(badge);
+        }
+
+        const fmt = (s) => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+        let restante = 300; // 5 minutos
+        badge.style.display = 'inline-block';
+        badge.textContent = '⏺ ' + fmt(restante);
+
+        this._cronometroBadge = badge;
+        this._cronometroTimer = setInterval(() => {
+            restante--;
+            if (restante <= 0) {
+                badge.textContent = '0:00';
+                // O auto-stop de segurança encerra a gravação; aqui apenas paramos o contador.
+                this.pararCronometro();
+                return;
+            }
+            badge.textContent = '⏺ ' + fmt(restante);
+        }, 1000);
+    }
+
+    /**
+     * Para e esconde o cronômetro regressivo.
+     */
+    pararCronometro() {
+        if (this._cronometroTimer) { clearInterval(this._cronometroTimer); this._cronometroTimer = null; }
+        if (this._cronometroBadge) { this._cronometroBadge.style.display = 'none'; }
     }
 
     /**

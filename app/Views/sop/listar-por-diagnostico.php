@@ -614,6 +614,26 @@ function abrirModalAddServico(setorId, nomeSetor) {
 let addMediaRecorder = null;
 let addAudioChunks = [];
 
+// ---- Cronômetro regressivo de gravação (5:00 -> 0:00) ----
+const REC_LIMITE_SEG = 300; // 5 minutos
+function iniciarCronometro(statusEl, onFim) {
+    let restante = REC_LIMITE_SEG;
+    const fmt = (s) => String(Math.floor(s / 60)).padStart(1, '0') + ':' + String(s % 60).padStart(2, '0');
+    statusEl.classList.remove('hidden');
+    statusEl.textContent = '🔴 Gravando... ' + fmt(restante) + ' restante · clique para parar.';
+    const timer = setInterval(() => {
+        restante--;
+        if (restante <= 0) {
+            clearInterval(timer);
+            statusEl.textContent = 'Tempo máximo atingido. Finalizando...';
+            if (typeof onFim === 'function') onFim();
+            return;
+        }
+        statusEl.textContent = '🔴 Gravando... ' + fmt(restante) + ' restante · clique para parar.';
+    }, 1000);
+    return timer;
+}
+
 async function alternarGravacaoAdd() {
     const btn = document.getElementById('add_btn_mic');
     const status = document.getElementById('add_mic_status');
@@ -632,11 +652,13 @@ async function alternarGravacaoAdd() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         addAudioChunks = [];
+        let cron = null;
         addMediaRecorder = new MediaRecorder(stream, {
             mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4'
         });
         addMediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) addAudioChunks.push(e.data); };
         addMediaRecorder.onstop = async () => {
+            if (cron) clearInterval(cron);
             stream.getTracks().forEach(t => t.stop());
             btn.innerHTML = '🎤';
             btn.classList.remove('animate-pulse');
@@ -646,8 +668,7 @@ async function alternarGravacaoAdd() {
         addMediaRecorder.start();
         btn.innerHTML = '⏹';
         btn.classList.add('animate-pulse');
-        status.classList.remove('hidden');
-        status.textContent = 'Gravando... clique para parar.';
+        cron = iniciarCronometro(status, () => { if (addMediaRecorder && addMediaRecorder.state === 'recording') addMediaRecorder.stop(); });
     } catch (e) {
         alert('Não foi possível acessar o microfone.');
     }

@@ -412,7 +412,7 @@ if (!function_exists('sopRenderTexto')) {
                         <?php if (!empty($scripts)): ?>
                         <div class="sub">
                             <div class="sub-label"><span class="dot"></span>Script operacional</div>
-                            <div class="script-block"><?= htmlspecialchars(sopTexto($scripts)) ?></div>
+                            <div class="script-block"><?= sopRenderTexto($scripts) ?></div>
                         </div>
                         <?php endif; ?>
 
