@@ -48,6 +48,8 @@
 #sops-view .badge-status.pendente{background:#EEF0F5;color:var(--sv-ink-mute);}
 #sops-view .add-servico{font-size:12px;font-weight:600;color:var(--sv-lane-deep);background:var(--sv-lane-soft);border:none;padding:6px 12px;border-radius:8px;cursor:pointer;}
 #sops-view .add-servico:hover{background:#dbe4ef;}
+#sops-view .inativar-setor{font-size:12px;font-weight:600;color:var(--sv-ink-mute);background:#EEF0F5;border:none;padding:6px 12px;border-radius:8px;cursor:pointer;}
+#sops-view .inativar-setor:hover{background:#e2e5ec;color:var(--sv-ink);}
 
 #sops-view .lanes-wrap{background:var(--sv-surface);border:1px solid var(--sv-line);border-top:none;border-radius:0 0 16px 16px;padding:6px 0 20px;}
 #sops-view .lane{padding:22px 22px 4px;border-bottom:1px solid var(--sv-line);}
@@ -217,6 +219,7 @@
                     <span class="badge-status pendente">○ Pendente</span>
                 <?php endif; ?>
                 <button class="add-servico" onclick="event.stopPropagation(); abrirModalAddServico(<?= $setor['setor_id'] ?>, '<?= htmlspecialchars($setor['nome_setor'], ENT_QUOTES) ?>')">➕ Adicionar serviço</button>
+                <button class="inativar-setor" onclick="event.stopPropagation(); inativarSetor(<?= $setor['setor_id'] ?>, '<?= htmlspecialchars($setor['nome_setor'], ENT_QUOTES) ?>')" title="Inativar setor (sai da lista de SOPs)">💤 Inativar setor</button>
             </div>
         </div>
 
@@ -259,6 +262,7 @@
                                 <button class="gen-sop" onclick="acessarServico(<?= $servico['id'] ?>)">Gerar SOP</button>
                                 <?php endif; ?>
                                 <button class="icon-link" onclick="abrirModalEditServico(<?= $servico['id'] ?>, '<?= htmlspecialchars($nome, ENT_QUOTES) ?>', '<?= htmlspecialchars($servico['categoria'] ?? '', ENT_QUOTES) ?>', '<?= htmlspecialchars($servico['criticidade'] ?? '', ENT_QUOTES) ?>')">Editar</button>
+                                <button class="icon-link" onclick="inativarServico(<?= $servico['id'] ?>, '<?= htmlspecialchars($nome, ENT_QUOTES) ?>')" title="Tirar da lista de SOPs (vai para Setores inativos)">Inativar</button>
                                 <button class="icon-link danger" onclick="excluirServico(<?= $servico['id'] ?>, '<?= htmlspecialchars($nome, ENT_QUOTES) ?>')">Excluir</button>
                             </div>
                         </div>
@@ -280,6 +284,7 @@
             <span class="bulk-info"><strong id="bulk-count">0</strong> serviço(s) selecionado(s)</span>
             <div class="bulk-actions">
                 <button class="bulk-clear" onclick="limparSelecao()">Limpar seleção</button>
+                <button class="bulk-clear" onclick="inativarSelecionados()">💤 Inativar selecionados</button>
                 <button class="bulk-delete" onclick="excluirSelecionados()">🗑 Excluir selecionados</button>
             </div>
         </div>
@@ -791,6 +796,39 @@ async function salvarEdicaoServico() {
     });
     try {
         const r = await fetch('<?= APP_URL ?>/sop/editar-servico-manual', { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body });
+        const d = await r.json();
+        if (d.sucesso) { location.reload(); } else { alert('Erro: ' + (d.erro || 'desconhecido')); }
+    } catch (e) { alert('Erro de comunicação com o servidor.'); }
+}
+
+// ---- Inativar (tira da lista de SOPs; vai para "Setores inativos") ----
+async function inativarServico(servicoId, nome) {
+    if (!confirm('Inativar o serviço "' + nome + '"? Ele sai da lista de SOPs e vai para "Setores inativos" (pode reativar depois).')) return;
+    try {
+        const body = new URLSearchParams({ servico_ids: servicoId, csrf_token: CSRF_TOKEN });
+        const r = await fetch('<?= APP_URL ?>/sop/inativar-servicos', { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body });
+        const d = await r.json();
+        if (d.sucesso) { location.reload(); } else { alert('Erro: ' + (d.erro || 'desconhecido')); }
+    } catch (e) { alert('Erro de comunicação com o servidor.'); }
+}
+
+async function inativarSetor(setorId, nome) {
+    if (!confirm('Inativar o setor "' + nome + '" inteiro? Todos os serviços dele saem da lista de SOPs (vão para "Setores inativos").')) return;
+    try {
+        const body = new URLSearchParams({ setor_id: setorId, csrf_token: CSRF_TOKEN });
+        const r = await fetch('<?= APP_URL ?>/sop/inativar-servicos', { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body });
+        const d = await r.json();
+        if (d.sucesso) { location.reload(); } else { alert('Erro: ' + (d.erro || 'desconhecido')); }
+    } catch (e) { alert('Erro de comunicação com o servidor.'); }
+}
+
+async function inativarSelecionados() {
+    const ids = Array.from(selecionados.keys());
+    if (ids.length === 0) return;
+    if (!confirm('Inativar ' + ids.length + ' serviço(s) selecionado(s)? Eles saem da lista de SOPs e vão para "Setores inativos".')) return;
+    try {
+        const body = new URLSearchParams({ servico_ids: ids.join(','), csrf_token: CSRF_TOKEN });
+        const r = await fetch('<?= APP_URL ?>/sop/inativar-servicos', { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body });
         const d = await r.json();
         if (d.sucesso) { location.reload(); } else { alert('Erro: ' + (d.erro || 'desconhecido')); }
     } catch (e) { alert('Erro de comunicação com o servidor.'); }

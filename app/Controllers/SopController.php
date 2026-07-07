@@ -3184,6 +3184,71 @@ class SopController
     }
 
     /**
+     * Inativa serviços (selecionado=0) — usado na aba de SOPs para tirar serviços
+     * (ou um setor inteiro) da lista sem excluí-los. Eles vão para "Setores inativos".
+     */
+    public function inativarServicos(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        // Aceita servico_ids OU setor_id (inativar setor inteiro)
+        $raw = $_POST['servico_ids'] ?? [];
+        if (is_string($raw)) {
+            $raw = $raw === '' ? [] : explode(',', $raw);
+        }
+        $ids = array_values(array_unique(array_filter(array_map('intval', (array) $raw))));
+        $setorId = (int) ($_POST['setor_id'] ?? 0);
+
+        if (empty($ids) && !$setorId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Nenhum serviço/setor informado.']);
+            exit;
+        }
+
+        try {
+            $this->garantirColunaSelecionado();
+            $empresaUsuario = Auth::empresa();
+            $setoresAfetados = [];
+            $inativados = 0;
+
+            if ($setorId) {
+                // Inativar setor inteiro
+                $setor = Database::queryOne("SELECT id, empresa_id FROM setores_empresa WHERE id = ?", [$setorId]);
+                if ($setor && ($empresaUsuario === null || (int) $setor['empresa_id'] === (int) $empresaUsuario)) {
+                    Database::execute("UPDATE servicos_setor SET selecionado = 0, atualizado_em = NOW() WHERE setor_id = ?", [$setorId]);
+                    $setoresAfetados[$setorId] = true;
+                    $inativados = (int) (Database::queryOne("SELECT COUNT(*) t FROM servicos_setor WHERE setor_id = ?", [$setorId])['t'] ?? 0);
+                }
+            } else {
+                foreach ($ids as $servicoId) {
+                    $servico = Database::queryOne("SELECT id, setor_id, empresa_id FROM servicos_setor WHERE id = ?", [$servicoId]);
+                    if (!$servico) continue;
+                    if ($empresaUsuario !== null && (int) $servico['empresa_id'] !== (int) $empresaUsuario) continue;
+                    Database::execute("UPDATE servicos_setor SET selecionado = 0, atualizado_em = NOW() WHERE id = ?", [$servicoId]);
+                    $setoresAfetados[$servico['setor_id']] = true;
+                    $inativados++;
+                }
+            }
+
+            foreach (array_keys($setoresAfetados) as $sid) {
+                Database::execute(
+                    "UPDATE setores_empresa SET total_servicos = (SELECT COUNT(*) FROM servicos_setor WHERE setor_id = ? AND selecionado = 1) WHERE id = ?",
+                    [$sid, $sid]
+                );
+            }
+
+            Logger::info('SERVIÇOS INATIVADOS', ['inativados' => $inativados, 'setor_id' => $setorId ?: null]);
+            echo json_encode(['sucesso' => true, 'inativados' => $inativados, 'mensagem' => $inativados . ' serviço(s) inativado(s).']);
+            exit;
+        } catch (Exception $e) {
+            Logger::error('Erro ao inativar serviços', ['erro' => $e->getMessage()]);
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
+            exit;
+        }
+    }
+
+    /**
      * Garante a coluna 'selecionado' em servicos_setor (idempotente).
      */
     private function garantirColunaSelecionado(): void
