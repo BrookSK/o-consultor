@@ -14,18 +14,33 @@ class ApiController
         header('Content-Type: application/json');
         
         try {
-            Auth::proteger();
-            Csrf::verificar();
-            
+            if (!Auth::check()) {
+                http_response_code(401);
+                echo json_encode(['sucesso' => false, 'erro' => 'Sessão expirada. Recarregue a página e faça login novamente.']);
+                exit;
+            }
+
+            // Validar CSRF de forma tolerante (POST field ou header), sem matar a resposta.
+            $tokenEnviado = $_POST['csrf_token'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
+            if (!Csrf::validar($tokenEnviado)) {
+                http_response_code(403);
+                echo json_encode(['sucesso' => false, 'erro' => 'Sessão de segurança expirada. Recarregue a página e tente novamente.']);
+                exit;
+            }
+
             if (!isset($_FILES['audio']) || $_FILES['audio']['error'] !== UPLOAD_ERR_OK) {
                 throw new Exception('Arquivo de áudio não recebido');
             }
             
             $audioFile = $_FILES['audio'];
-            $allowedTypes = ['audio/webm', 'audio/wav', 'audio/mp3', 'audio/ogg'];
-            
-            if (!in_array($audioFile['type'], $allowedTypes)) {
-                throw new Exception('Tipo de áudio não suportado');
+
+            // Aceitar variações de mime que o navegador envia (ex.: audio/webm;codecs=opus, audio/mp4).
+            $tipoBase = strtolower(trim(explode(';', (string) $audioFile['type'])[0]));
+            $ext = strtolower(pathinfo($audioFile['name'] ?? '', PATHINFO_EXTENSION));
+            $tiposOk = ['audio/webm', 'audio/wav', 'audio/x-wav', 'audio/mp3', 'audio/mpeg', 'audio/ogg', 'audio/mp4', 'audio/m4a', 'audio/x-m4a', 'video/webm'];
+            $extsOk = ['webm', 'wav', 'mp3', 'mpeg', 'mpga', 'ogg', 'oga', 'mp4', 'm4a'];
+            if (!in_array($tipoBase, $tiposOk, true) && !in_array($ext, $extsOk, true)) {
+                throw new Exception('Tipo de áudio não suportado (' . ($audioFile['type'] ?: 'desconhecido') . ')');
             }
             
             // Verificar tamanho (máximo 25MB)
@@ -83,7 +98,17 @@ class ApiController
         
         // Converter para formato suportado se necessário
         $audioProcessado = $this->processarAudio($audioPath, $fileName);
-        
+
+        // O Whisper exige um nome de arquivo com extensão válida e mime coerente.
+        $extProc = strtolower(pathinfo($audioProcessado, PATHINFO_EXTENSION));
+        $extEnvio = $extProc ?: (strtolower(pathinfo($fileName, PATHINFO_EXTENSION)) ?: 'webm');
+        $mimeMap = [
+            'webm' => 'audio/webm', 'wav' => 'audio/wav', 'mp3' => 'audio/mpeg', 'mpeg' => 'audio/mpeg',
+            'mpga' => 'audio/mpeg', 'ogg' => 'audio/ogg', 'oga' => 'audio/ogg', 'mp4' => 'audio/mp4', 'm4a' => 'audio/mp4'
+        ];
+        $mimeEnvio = $mimeMap[$extEnvio] ?? 'audio/webm';
+        $nomeEnvio = 'audio.' . $extEnvio;
+
         $curl = curl_init();
         
         curl_setopt_array($curl, [
@@ -94,12 +119,12 @@ class ApiController
                 'Authorization: Bearer ' . $apiKey,
             ],
             CURLOPT_POSTFIELDS => [
-                'file' => new CURLFile($audioProcessado, 'audio/webm', basename($audioProcessado)),
+                'file' => new CURLFile($audioProcessado, $mimeEnvio, $nomeEnvio),
                 'model' => 'whisper-1',
                 'language' => 'pt',
                 'response_format' => 'json'
             ],
-            CURLOPT_TIMEOUT => 30
+            CURLOPT_TIMEOUT => 60
         ]);
         
         $response = curl_exec($curl);
@@ -113,7 +138,10 @@ class ApiController
         }
         
         if ($httpCode !== 200) {
-            throw new Exception('Erro na API OpenAI: HTTP ' . $httpCode);
+            $err = json_decode((string) $response, true);
+            $msg = $err['error']['message'] ?? ('HTTP ' . $httpCode);
+            Logger::error('Whisper API erro', ['http' => $httpCode, 'body' => substr((string) $response, 0, 500)]);
+            throw new Exception('Erro na transcrição (OpenAI): ' . $msg);
         }
         
         $data = json_decode($response, true);
