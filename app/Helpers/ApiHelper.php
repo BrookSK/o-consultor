@@ -97,6 +97,94 @@ class ApiHelper
     }
 
     /**
+     * Extrai o TEXTO de um documento (PDF) usando a própria OpenAI, quando a
+     * extração local falha (ex.: PDFs com fontes subset/CID ou sem pdftotext no servidor).
+     * Envia o arquivo como base64 (input_file) para a API Responses e pede a transcrição.
+     *
+     * @param string $caminhoArquivo Caminho absoluto do arquivo no disco
+     * @param string $nomeArquivo    Nome original (com extensão)
+     * @return array ['sucesso'=>bool, 'texto'=>string, 'erro'=>string|null]
+     */
+    public static function extrairTextoDocumentoViaIA(string $caminhoArquivo, string $nomeArquivo): array
+    {
+        $apiKey = self::config('openai_key');
+        if (empty($apiKey)) {
+            return ['sucesso' => false, 'texto' => '', 'erro' => 'Chave OpenAI não configurada.'];
+        }
+        if (!file_exists($caminhoArquivo)) {
+            return ['sucesso' => false, 'texto' => '', 'erro' => 'Arquivo não encontrado.'];
+        }
+
+        // Modelo com suporte a leitura de arquivos/visão
+        $model = self::config('openai_modelo_leitura', 'gpt-4o');
+        $conteudo = base64_encode((string) file_get_contents($caminhoArquivo));
+        $dataUrl = 'data:application/pdf;base64,' . $conteudo;
+
+        $instrucao = 'Transcreva na íntegra TODO o texto deste documento, preservando a ordem, '
+            . 'os títulos, as listas e a estrutura. Não resuma, não comente, não adicione nada: '
+            . 'apenas devolva o texto integral do documento em texto puro.';
+
+        // Usa a API Responses (suporta input_file por base64)
+        $body = [
+            'model' => $model,
+            'input' => [[
+                'role' => 'user',
+                'content' => [
+                    ['type' => 'input_text', 'text' => $instrucao],
+                    ['type' => 'input_file', 'filename' => $nomeArquivo, 'file_data' => $dataUrl],
+                ],
+            ]],
+        ];
+
+        $resultado = self::executarCurl(
+            'https://api.openai.com/v1/responses',
+            [
+                'Authorization: Bearer ' . $apiKey,
+                'Content-Type: application/json',
+            ],
+            $body,
+            'OpenAI-Leitura',
+            120
+        );
+
+        if (!$resultado['sucesso']) {
+            return ['sucesso' => false, 'texto' => '', 'erro' => $resultado['erro'] ?? 'Falha na leitura via IA.'];
+        }
+
+        $texto = self::extrairTextoRespostaResponses($resultado['dados']);
+        if (trim($texto) === '') {
+            return ['sucesso' => false, 'texto' => '', 'erro' => 'A IA não retornou texto do documento.'];
+        }
+
+        return ['sucesso' => true, 'texto' => $texto, 'erro' => null];
+    }
+
+    /**
+     * Normaliza a resposta da API Responses da OpenAI extraindo o texto de saída.
+     */
+    private static function extrairTextoRespostaResponses(array $dados): string
+    {
+        // Formato mais novo: output_text agregado
+        if (!empty($dados['output_text']) && is_string($dados['output_text'])) {
+            return $dados['output_text'];
+        }
+
+        $texto = '';
+        if (!empty($dados['output']) && is_array($dados['output'])) {
+            foreach ($dados['output'] as $item) {
+                if (!empty($item['content']) && is_array($item['content'])) {
+                    foreach ($item['content'] as $parte) {
+                        if (isset($parte['text']) && is_string($parte['text'])) {
+                            $texto .= $parte['text'] . "\n";
+                        }
+                    }
+                }
+            }
+        }
+        return $texto;
+    }
+
+    /**
      * Chama a API da Anthropic (Claude)
      *
      * @param string $prompt Prompt completo

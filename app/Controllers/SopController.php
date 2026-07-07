@@ -10152,8 +10152,27 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                     }
                 }
 
-                // Extrair texto
+                // Extrair texto localmente
                 $contextoDoc = DocumentoProcessor::extrairTextoDeArquivoAbsoluto($destino, $nomeDoc);
+
+                // FALLBACK: se a leitura local falhar (PDF com fontes subset/CID, sem
+                // pdftotext no servidor), pedir para a própria IA ler o documento (apenas PDF).
+                if ($ext === 'pdf' && !DocumentoProcessor::textoEhLegivel($contextoDoc)) {
+                    Logger::info('PERSONALIZAÇÃO: leitura local falhou, tentando via IA', [
+                        'servico_id' => $servicoId, 'arquivo' => $nomeDoc, 'extensao' => $ext
+                    ]);
+                    $viaIA = ApiHelper::extrairTextoDocumentoViaIA($destino, $nomeDoc);
+                    if (!empty($viaIA['sucesso']) && DocumentoProcessor::textoEhLegivel($viaIA['texto'])) {
+                        $contextoDoc = $viaIA['texto'];
+                        Logger::info('PERSONALIZAÇÃO: texto extraído via IA', [
+                            'servico_id' => $servicoId, 'tamanho_texto' => mb_strlen($contextoDoc)
+                        ]);
+                    } else {
+                        Logger::warning('PERSONALIZAÇÃO: leitura via IA também falhou', [
+                            'servico_id' => $servicoId, 'erro' => $viaIA['erro'] ?? 'desconhecido'
+                        ]);
+                    }
+                }
 
                 // REDUÇÃO DE PESO: descartar o binário pesado — só o texto interessa à IA.
                 @unlink($destino);
@@ -10184,8 +10203,8 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                     if ($descricao === '') {
                         echo json_encode([
                             'sucesso' => false,
-                            'erro' => 'Não consegui extrair o texto do documento "' . $nomeDoc . '". '
-                                . 'Isso costuma acontecer com PDFs escaneados (imagem) ou exportados com fontes que impedem a leitura do texto. '
+                            'erro' => 'Não consegui extrair o texto do documento "' . $nomeDoc . '", mesmo tentando leitura por IA. '
+                                . 'Isso costuma acontecer com PDFs escaneados (imagem) ou protegidos. '
                                 . 'Tente: salvar/exportar como DOCX ou TXT, ou colar o conteúdo diretamente no campo Descrição.'
                         ]);
                         exit;
