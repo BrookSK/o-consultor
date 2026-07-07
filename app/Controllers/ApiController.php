@@ -30,17 +30,11 @@ class ApiController
         header('Content-Type: application/json');
         
         try {
+            // Exige apenas autenticação. A transcrição NÃO altera estado (só recebe áudio
+            // e devolve texto), então não aplicamos CSRF aqui — evita 403 por token rotacionado.
             if (!Auth::check()) {
                 http_response_code(401);
                 echo json_encode(['sucesso' => false, 'erro' => 'Sessão expirada. Recarregue a página e faça login novamente.']);
-                exit;
-            }
-
-            // Validar CSRF de forma tolerante (POST field ou header), sem matar a resposta.
-            $tokenEnviado = $_POST['csrf_token'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
-            if (!Csrf::validar($tokenEnviado)) {
-                http_response_code(403);
-                echo json_encode(['sucesso' => false, 'erro' => 'Sessão de segurança expirada. Recarregue a página e tente novamente.']);
                 exit;
             }
 
