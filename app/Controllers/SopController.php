@@ -10395,6 +10395,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
                 'objetivo' => $r['objetivo'] ?? 'Objetivo não especificado',
                 'escopo' => $r['escopo'] ?? 'Escopo não especificado',
                 'resumo_executivo' => $r['resumo_executivo'] ?? '',
+                'resumo_executivo_topicos' => $r['resumo_executivo_topicos'] ?? [],
                 'responsaveis' => $r['responsaveis'] ?? [],
                 'competencias_requeridas' => $r['competencias_requeridas'] ?? [],
                 'gatilhos_inicio' => $r['gatilhos_inicio'] ?? [],
@@ -10815,6 +10816,8 @@ REGRA ANTI-TRIVIALIDADE: foque no que realmente diferencia um bom profissional. 
 # TAREFA
 Gere APENAS o cabeçalho/resumo deste SOP, PERSONALIZADO ao serviço e ao perfil da empresa acima. Seja objetivo, técnico e profissional. NÃO gere os procedimentos passo a passo (isso será feito depois).
 
+O campo \"resumo_executivo_topicos\" é o RESUMO EXECUTIVO ASSERTIVO do topo da página: uma lista curta e direta que, batendo o olho, já diz o que fazer e qual o resultado. Gere de 3 a 5 tópicos — os primeiros no IMPERATIVO (o que faz, na ordem), e o ÚLTIMO obrigatoriamente iniciando com 'Resultado:' descrevendo o que caracteriza a conclusão bem-sucedida. Cada tópico deve ter no máximo 1 linha. Nada de enrolação.
+
 Use SEMPRE terminologia genérica. NUNCA mencione marcas comerciais (ex: use 'ferramenta de gestão' em vez de nome de produto).
 
 # FORMATO DA RESPOSTA (JSON):
@@ -10822,6 +10825,7 @@ Use SEMPRE terminologia genérica. NUNCA mencione marcas comerciais (ex: use 'fe
 {
   \"objetivo\": \"BLOCO 1 (O que é) + objetivo: defina o serviço em 2-4 frases diretas, diferencie de processos vizinhos que geram confusão (se houver) e deixe claro o resultado/entrega esperada\",
   \"escopo\": \"O que a execução deste serviço inclui e o que NÃO inclui (deixe claro que o atendimento/relacionamento com o cliente não faz parte deste SOP técnico)\",
+  \"resumo_executivo_topicos\": [\"AÇÃO 1 no imperativo — o primeiro grande passo do serviço em 1 linha assertiva (ex.: 'Higienize e qualifique a base de contatos')\", \"AÇÃO 2 no imperativo — o passo seguinte em 1 linha\", \"AÇÃO 3 no imperativo — o passo seguinte em 1 linha\", \"RESULTADO ESPERADO — comece com 'Resultado:' e descreva o entregável/estado final que caracteriza sucesso\"],
   \"resumo_executivo\": \"BLOCO 2 (Por que existe): explique o propósito real do processo — o que acontece se ele NÃO for feito, ou for feito mal (consequências concretas). Isso orienta o executor a decidir bem em situações não previstas. 3-4 frases\",
   \"responsaveis\": {
     \"executor_principal\": \"Cargo/função técnica que executa o serviço\",

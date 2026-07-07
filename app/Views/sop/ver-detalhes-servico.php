@@ -43,6 +43,14 @@ if (!function_exists('sopTexto')) {
 #sop-detail-view .crumbs .current{color:var(--sd-ink);font-weight:500;}
 
 #sop-detail-view .card{background:var(--sd-surface);border:1px solid var(--sd-line);border-radius:14px;padding:18px 20px;margin-bottom:18px;}
+#sop-detail-view .exec-summary{background:var(--sd-accent-soft);border:1px solid var(--sd-accent);border-left:4px solid var(--sd-accent);border-radius:14px;padding:18px 22px;margin-bottom:18px;}
+#sop-detail-view .exec-head{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--sd-accent-deep);margin-bottom:12px;}
+#sop-detail-view .exec-ic{font-size:14px;}
+#sop-detail-view .exec-list{list-style:none;counter-reset:exec;margin:0;padding:0;display:flex;flex-direction:column;gap:9px;}
+#sop-detail-view .exec-list li{counter-increment:exec;position:relative;padding-left:34px;font-size:14px;line-height:1.5;color:var(--sd-ink);font-weight:500;}
+#sop-detail-view .exec-list li::before{content:counter(exec);position:absolute;left:0;top:-1px;width:22px;height:22px;border-radius:6px;background:var(--sd-accent);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;}
+#sop-detail-view .exec-list li.exec-result{font-weight:700;color:var(--sd-ok-deep,#1F7A34);}
+#sop-detail-view .exec-list li.exec-result::before{content:'✓';background:var(--sd-ok);}
 #sop-detail-view .header-card{padding:22px 26px;}
 #sop-detail-view .header-top{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;}
 #sop-detail-view .eyebrow{display:flex;align-items:center;gap:8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--sd-accent-deep);background:var(--sd-accent-soft);padding:4px 10px;border-radius:7px;width:fit-content;margin-bottom:10px;}
@@ -195,6 +203,22 @@ if (!function_exists('sopTexto')) {
 
 <?php if ($temSop): ?>
     <?php $data = $sopData; ?>
+
+    <!-- Resumo executivo assertivo (topo) -->
+    <?php if (!empty($data['resumo_executivo_topicos'])): ?>
+    <div class="exec-summary">
+        <div class="exec-head"><span class="exec-ic">⚡</span>Resumo executivo</div>
+        <ol class="exec-list">
+            <?php foreach ((array) $data['resumo_executivo_topicos'] as $topico): ?>
+                <?php
+                    $txt = is_array($topico) ? implode(' — ', $topico) : (string) $topico;
+                    $isResultado = stripos(ltrim($txt), 'resultado') === 0;
+                ?>
+                <li class="<?= $isResultado ? 'exec-result' : '' ?>"><?= htmlspecialchars($txt) ?></li>
+            <?php endforeach; ?>
+        </ol>
+    </div>
+    <?php endif; ?>
 
     <!-- Informações gerais -->
     <div class="card">
