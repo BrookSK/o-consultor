@@ -189,7 +189,7 @@ if (!function_exists('sopTexto')) {
         </div>
 
         <div class="actions-row">
-            <button class="btn" onclick="editarServico()">✎ Editar serviço</button>
+            <button class="btn" onclick="abrirPersonalizar()">🎛 Personalizar</button>
             <?php if ($temSop): ?>
             <button class="btn" onclick="processarServico(<?= $servico['id'] ?>)">↻ Regenerar SOP</button>
             <button class="btn" onclick="window.print()">🖨 Imprimir</button>
@@ -452,15 +452,16 @@ if (!function_exists('sopTexto')) {
 
 </div>
 
-<!-- Modal para Editar Serviço -->
-<div id="modalEditarServico" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-    <div class="bg-white rounded-lg p-6 max-w-lg w-full mx-4 shadow-xl">
-        <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-semibold">Editar Serviço</h3>
-            <button onclick="fecharModalEditar()" class="text-gray-400 hover:text-gray-600">✕</button>
+<!-- Modal Personalizar Serviço -->
+<div id="modalPersonalizar" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-lg p-6 max-w-lg w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between mb-1">
+            <h3 class="text-lg font-semibold">🎛 Personalizar Serviço</h3>
+            <button onclick="fecharPersonalizar()" class="text-gray-400 hover:text-gray-600">✕</button>
         </div>
+        <p class="text-sm text-gray-500 mb-4">Descreva as particularidades e/ou anexe um documento. Ao salvar, o SOP será regenerado consolidando o padrão do serviço com estas informações.</p>
 
-        <form id="formEditarServico">
+        <form id="formPersonalizar">
             <input type="hidden" name="servico_id" value="<?= $servico['id'] ?>">
             <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
 
@@ -491,16 +492,27 @@ if (!function_exists('sopTexto')) {
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Descrição / instruções específicas</label>
                     <textarea name="descricao" rows="3"
                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-primary"
-                              placeholder="Descreva o serviço..."><?= htmlspecialchars($servico['descricao_resumida'] ?? '') ?></textarea>
+                              placeholder="Ex.: como este serviço é feito na sua empresa, ferramentas, etapas próprias, critérios..."><?= htmlspecialchars($servico['descricao_resumida'] ?? '') ?></textarea>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Documento de apoio (opcional)</label>
+                    <input type="file" name="documento" id="perso_documento"
+                           accept=".pdf,.doc,.docx,.txt,.md,.rtf,.csv,.html"
+                           class="w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-primary file:text-white file:cursor-pointer hover:file:bg-primary-700 border border-gray-300 rounded-lg p-1">
+                    <p class="text-xs text-gray-400 mt-1">PDF, DOC, DOCX, TXT, MD, RTF, CSV ou HTML • até 1GB. O arquivo é comprimido automaticamente no envio (sem perder informação) e a IA lê o conteúdo como base real do serviço.</p>
+                    <?php if (!empty($servico['documento_personalizacao_nome'])): ?>
+                    <p class="text-xs text-green-600 mt-1">📎 Documento atual: <?= htmlspecialchars($servico['documento_personalizacao_nome']) ?> (envie outro para substituir)</p>
+                    <?php endif; ?>
                 </div>
             </div>
 
             <div class="flex gap-3 mt-6">
-                <button type="button" onclick="fecharModalEditar()" class="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">Cancelar</button>
-                <button type="button" onclick="salvarEdicao()" class="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-700">Salvar</button>
+                <button type="button" onclick="fecharPersonalizar()" class="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">Cancelar</button>
+                <button type="button" id="btnSalvarPersonalizar" onclick="salvarPersonalizacao()" class="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-700">Salvar e regenerar SOP</button>
             </div>
         </form>
     </div>
@@ -520,25 +532,82 @@ if (!function_exists('sopTexto')) {
 </div>
 
 <script>
-// Abrir/fechar modal de edição
-function editarServico() { document.getElementById('modalEditarServico').classList.remove('hidden'); }
-function fecharModalEditar() { document.getElementById('modalEditarServico').classList.add('hidden'); }
+// Abrir/fechar modal de personalização
+function abrirPersonalizar() { document.getElementById('modalPersonalizar').classList.remove('hidden'); }
+function fecharPersonalizar() { document.getElementById('modalPersonalizar').classList.add('hidden'); }
 
-// Salvar edição
-async function salvarEdicao() {
-    const form = document.getElementById('formEditarServico');
-    const formData = new FormData(form);
+// Comprime um arquivo com gzip (lossless) usando a API nativa CompressionStream.
+// Retorna um Blob comprimido, ou null se o navegador não suportar.
+async function comprimirArquivoGzip(file) {
+    if (typeof CompressionStream === 'undefined' || !file.stream) return null;
     try {
-        const response = await fetch('<?= APP_URL ?>/sop/editar-servico-manual', { method: 'POST', body: formData });
-        const data = await response.json();
-        if (data.sucesso) {
-            fecharModalEditar();
-            window.location.reload();
-        } else {
-            alert('Erro ao atualizar serviço: ' + (data.erro || 'Erro desconhecido'));
+        const streamComprimido = file.stream().pipeThrough(new CompressionStream('gzip'));
+        const blob = await new Response(streamComprimido).blob();
+        // Só usa o comprimido se realmente reduziu o tamanho.
+        return blob.size < file.size ? blob : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+// Salvar personalização: envia dados + documento, e ao concluir regenera o SOP
+// automaticamente (mesmo fluxo de fila/polling), recarregando esta página no fim.
+async function salvarPersonalizacao() {
+    const form = document.getElementById('formPersonalizar');
+    const formData = new FormData(form);
+    const btn = document.getElementById('btnSalvarPersonalizar');
+    const fileInput = document.getElementById('perso_documento');
+    const temArquivo = fileInput && fileInput.files && fileInput.files.length > 0;
+
+    btn.disabled = true;
+    btn.textContent = temArquivo ? 'Comprimindo documento...' : 'Salvando...';
+
+    // Compressão lossless (gzip) no navegador para reduzir o peso do upload.
+    // Nenhuma informação é perdida — o servidor descomprime antes de ler.
+    if (temArquivo) {
+        try {
+            const original = fileInput.files[0];
+            const comprimido = await comprimirArquivoGzip(original);
+            if (comprimido) {
+                formData.delete('documento');
+                formData.append('documento', comprimido, original.name + '.gz');
+                formData.append('documento_gzip', '1');
+                formData.append('documento_nome', original.name);
+                formData.append('documento_tamanho_original', String(original.size));
+            }
+            btn.textContent = 'Enviando e lendo documento...';
+        } catch (e) {
+            // Se o navegador não suportar compressão, envia o arquivo original.
+            console.warn('Compressão indisponível, enviando original:', e);
+            btn.textContent = 'Enviando e lendo documento...';
         }
+    }
+
+    try {
+        const response = await fetch('<?= APP_URL ?>/sop/personalizar-servico', { method: 'POST', body: formData });
+        const data = await response.json();
+
+        if (!data.sucesso) {
+            alert('Erro ao personalizar: ' + (data.erro || 'Erro desconhecido'));
+            btn.disabled = false;
+            btn.textContent = 'Salvar e regenerar SOP';
+            return;
+        }
+
+        fecharPersonalizar();
+        btn.disabled = false;
+        btn.textContent = 'Salvar e regenerar SOP';
+
+        // Iniciar a geração do SOP a partir do sop_id já enfileirado.
+        const msg = data.documento_lido
+            ? 'Documento lido. Gerando SOP com base nas suas informações...'
+            : 'Gerando SOP com base nas suas informações...';
+        await acompanharGeracaoSop(data.sop_id, msg);
+
     } catch (error) {
-        alert('Erro de comunicação com o servidor');
+        alert('Erro de comunicação com o servidor.');
+        btn.disabled = false;
+        btn.textContent = 'Salvar e regenerar SOP';
     }
 }
 
@@ -559,41 +628,16 @@ function atualizarProgresso(fase, mensagem) {
     if (mensagem) document.getElementById('loadingSubtitulo').textContent = mensagem;
 }
 
-// Gerar/Regenerar SOP — geração em background + polling. Ao concluir,
-// RECARREGA esta mesma página de detalhes para exibir o SOP inline.
+const SERVICO_ID = <?= (int) $servico['id'] ?>;
+
+// Gerar/Regenerar SOP — enfileira e acompanha a geração.
 async function processarServico(servicoId) {
     const CSRF = '<?= Csrf::token() ?>';
-    const URL_INICIAR = '<?= APP_URL ?>/sop/processar-servico-completo';
-    const URL_STATUS = '<?= APP_URL ?>/sop/status-servico-sop';
-    const URL_PROCESSAR = '<?= APP_URL ?>/sop/processar-fila';
-
-    const fasesTexto = {
-        0: 'Preparando geração...',
-        1: 'Gerando resumo e estrutura (1/8)...',
-        2: 'Gerando fase: Preparação (2/8)...',
-        3: 'Gerando fase: Primeiro Contato (3/8)...',
-        4: 'Gerando fase: Levantamento e Diagnóstico (4/8)...',
-        5: 'Gerando fase: Execução Principal (5/8)...',
-        6: 'Gerando fase: Controle e Objeções (6/8)...',
-        7: 'Gerando fase: Finalização (7/8)...',
-        8: 'Gerando situações críticas e riscos (8/8)...'
-    };
-
-    const esperar = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-    let sopId = 0;
-
-    async function consultarStatus() {
-        try {
-            const resp = await fetch(URL_STATUS + '?sop_id=' + sopId + '&_=' + Date.now());
-            return await resp.json();
-        } catch (e) { return null; }
-    }
-
     try {
         mostrarLoading('Gerando SOP Completo', 'Preparando geração...');
         atualizarProgresso(1, 'Preparando geração...');
 
-        const respInicio = await fetch(URL_INICIAR, {
+        const respInicio = await fetch('<?= APP_URL ?>/sop/processar-servico-completo', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams({ servico_id: servicoId, csrf_token: CSRF })
@@ -604,54 +648,84 @@ async function processarServico(servicoId) {
             alert('Erro ao iniciar: ' + (dataInicio.erro || 'Erro desconhecido'));
             return;
         }
-        sopId = dataInicio.sop_id;
-
-        let concluido = false;
-        const maxTentativas = 32;
-
-        for (let t = 0; t < maxTentativas && !concluido; t++) {
-            const stAntes = await consultarStatus();
-            if (stAntes && stAntes.sucesso) {
-                if (stAntes.status_geracao === 'concluido') { concluido = true; break; }
-                if (stAntes.status_geracao === 'erro') {
-                    esconderLoading();
-                    alert('Erro na geração: ' + (stAntes.mensagem || 'Erro desconhecido'));
-                    return;
-                }
-                const proxima = (stAntes.fase_atual || 0) + 1;
-                atualizarProgresso(proxima <= 8 ? proxima : 8, fasesTexto[proxima] || 'Processando...');
-            }
-
-            try {
-                const respProc = await fetch(URL_PROCESSAR + '?_=' + Date.now());
-                const proc = await respProc.json();
-                if (proc && proc.sucesso === false) {
-                    esconderLoading();
-                    alert('Erro na geração: ' + (proc.erro || 'Erro desconhecido'));
-                    return;
-                }
-                if (proc && (proc.concluido || (proc.fase && proc.fase >= 8))) { concluido = true; break; }
-            } catch (e) {
-                await esperar(3000);
-            }
-        }
-
-        if (!concluido) {
-            const stFinal = await consultarStatus();
-            if (stFinal && stFinal.status_geracao === 'concluido') concluido = true;
-        }
-
-        if (concluido) {
-            atualizarProgresso(8, 'SOP completo gerado com sucesso!');
-            // Recarrega ESTA página de detalhes; o SOP será exibido inline.
-            window.location.href = '<?= APP_URL ?>/sop/ver-detalhes-servico?servico_id=' + servicoId;
-        } else {
-            esconderLoading();
-            alert('A geração não pôde ser concluída. Tente novamente ou verifique com o suporte.');
-        }
+        await acompanharGeracaoSop(dataInicio.sop_id, 'Gerando SOP...');
     } catch (error) {
         esconderLoading();
         alert('Erro de comunicação com o servidor.');
+    }
+}
+
+// Acompanha (polling) a geração de um SOP JÁ enfileirado (sop_id) processando a
+// fila fase a fase. Ao concluir, recarrega ESTA página para exibir o SOP inline.
+async function acompanharGeracaoSop(sopId, mensagemInicial) {
+    const URL_STATUS = '<?= APP_URL ?>/sop/status-servico-sop';
+    const URL_PROCESSAR = '<?= APP_URL ?>/sop/processar-fila';
+
+    const fasesTexto = {
+        0: 'Preparando geração...',
+        1: 'Gerando resumo e estrutura (1/8)...',
+        2: 'Gerando fase: Preparação (2/8)...',
+        3: 'Gerando fase: Diagnóstico e planejamento (3/8)...',
+        4: 'Gerando fase: Execução inicial (4/8)...',
+        5: 'Gerando fase: Execução principal (5/8)...',
+        6: 'Gerando fase: Controle de qualidade (6/8)...',
+        7: 'Gerando fase: Fechamento (7/8)...',
+        8: 'Gerando adversidades e riscos (8/8)...'
+    };
+
+    const esperar = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    async function consultarStatus() {
+        try {
+            const resp = await fetch(URL_STATUS + '?sop_id=' + sopId + '&_=' + Date.now());
+            return await resp.json();
+        } catch (e) { return null; }
+    }
+
+    mostrarLoading('Gerando SOP Completo', mensagemInicial || 'Processando...');
+    atualizarProgresso(1, mensagemInicial || 'Processando...');
+
+    let concluido = false;
+    const maxTentativas = 32;
+
+    for (let t = 0; t < maxTentativas && !concluido; t++) {
+        const stAntes = await consultarStatus();
+        if (stAntes && stAntes.sucesso) {
+            if (stAntes.status_geracao === 'concluido') { concluido = true; break; }
+            if (stAntes.status_geracao === 'erro') {
+                esconderLoading();
+                alert('Erro na geração: ' + (stAntes.mensagem || 'Erro desconhecido'));
+                return;
+            }
+            const proxima = (stAntes.fase_atual || 0) + 1;
+            atualizarProgresso(proxima <= 8 ? proxima : 8, fasesTexto[proxima] || 'Processando...');
+        }
+
+        try {
+            const respProc = await fetch(URL_PROCESSAR + '?_=' + Date.now());
+            const proc = await respProc.json();
+            if (proc && proc.sucesso === false) {
+                esconderLoading();
+                alert('Erro na geração: ' + (proc.erro || 'Erro desconhecido'));
+                return;
+            }
+            if (proc && (proc.concluido || (proc.fase && proc.fase >= 8))) { concluido = true; break; }
+        } catch (e) {
+            await esperar(3000);
+        }
+    }
+
+    if (!concluido) {
+        const stFinal = await consultarStatus();
+        if (stFinal && stFinal.status_geracao === 'concluido') concluido = true;
+    }
+
+    if (concluido) {
+        atualizarProgresso(8, 'SOP completo gerado com sucesso!');
+        window.location.href = '<?= APP_URL ?>/sop/ver-detalhes-servico?servico_id=' + SERVICO_ID;
+    } else {
+        esconderLoading();
+        alert('A geração não pôde ser concluída. Tente novamente ou verifique com o suporte.');
     }
 }
 

@@ -9755,63 +9755,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         }
 
         try {
-            // Garantir que a tabela da fila existe (evita depender de migration manual)
-            $this->garantirTabelaFila();
-
-            // Criar/reaproveitar o registro do SOP em estado "na fila"
-            $conteudoInicial = [
-                'sop_titulo' => $servico['codigo_servico'] . ' - ' . $servico['nome_servico'],
-                'status_geracao' => 'na_fila',
-                'fase_atual' => 0,
-                'total_fases' => 8,
-                'mensagem_progresso' => 'Aguardando processamento...',
-                'data_criacao' => date('d/m/Y H:i:s')
-            ];
-
-            if (!empty($servico['sop_id'])) {
-                Database::execute(
-                    "UPDATE sops SET conteudo = :conteudo, status = 'rascunho', atualizado_em = NOW() WHERE id = :id",
-                    ['conteudo' => json_encode($conteudoInicial, JSON_UNESCAPED_UNICODE), 'id' => $servico['sop_id']]
-                );
-                $sopId = (int) $servico['sop_id'];
-            } else {
-                Database::execute(
-                    "INSERT INTO sops (empresa_id, diagnostico_id, titulo, sop_codigo, departamento, conteudo, versao, status, gerado_por_ia, criado_em, atualizado_em)
-                     VALUES (:empresa_id, :diagnostico_id, :titulo, :sop_codigo, :departamento, :conteudo, '1.0', 'rascunho', 1, NOW(), NOW())",
-                    [
-                        'empresa_id' => $servico['empresa_id'],
-                        'diagnostico_id' => $servico['diagnostico_id'],
-                        'titulo' => $servico['nome_servico'],
-                        'sop_codigo' => $servico['codigo_servico'],
-                        'departamento' => $servico['nome_setor'],
-                        'conteudo' => json_encode($conteudoInicial, JSON_UNESCAPED_UNICODE)
-                    ]
-                );
-                $sopId = (int) Database::lastInsertId();
-            }
-
-            Database::execute(
-                "UPDATE servicos_setor SET sop_id = :sop_id, tem_sop = 1, atualizado_em = NOW() WHERE id = :id",
-                ['sop_id' => $sopId, 'id' => $servicoId]
-            );
-
-            // Remover pedidos antigos deste serviço e enfileirar um novo
-            Database::execute("DELETE FROM fila_geracao_sop WHERE servico_id = :id", ['id' => $servicoId]);
-            Database::execute(
-                "INSERT INTO fila_geracao_sop (sop_id, servico_id, empresa_id, status, fase_atual, total_fases, mensagem, criado_em, atualizado_em)
-                 VALUES (:sop_id, :servico_id, :empresa_id, 'pendente', 0, 8, 'Aguardando processamento...', NOW(), NOW())",
-                [
-                    'sop_id' => $sopId,
-                    'servico_id' => $servicoId,
-                    'empresa_id' => $servico['empresa_id']
-                ]
-            );
-
-            Logger::info('SOP ENFILEIRADO', ['sop_id' => $sopId, 'servico_id' => $servicoId]);
-
-            // Tentar disparar o processamento imediatamente em background (best-effort).
-            // Se não funcionar, o cron pegará o pedido na fila.
-            $this->tentarDispararProcessamentoFila();
+            $sopId = $this->enfileirarGeracaoSop($servicoId, $servico);
 
             echo json_encode([
                 'sucesso' => true,
@@ -9829,6 +9773,85 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
             exit;
         }
+    }
+
+    /**
+     * Cria/reaproveita o SOP e enfileira sua geração (8 fases). Retorna o sop_id.
+     * Reutilizado por processarServicoCompleto e por personalizarServico.
+     */
+    private function enfileirarGeracaoSop(int $servicoId, ?array $servico = null): int
+    {
+        if ($servico === null) {
+            $servico = Database::queryOne(
+                "SELECT ss.*, se.nome_setor, se.tipo_setor, eo.nicho, eo.diagnostico_id
+                 FROM servicos_setor ss
+                 LEFT JOIN setores_empresa se ON ss.setor_id = se.id
+                 LEFT JOIN estruturas_organizacionais eo ON se.estrutura_id = eo.id
+                 WHERE ss.id = :id",
+                ['id' => $servicoId]
+            );
+            if (!$servico) {
+                throw new Exception('Serviço não encontrado.');
+            }
+        }
+
+        // Garantir que a tabela da fila existe (evita depender de migration manual)
+        $this->garantirTabelaFila();
+
+        $conteudoInicial = [
+            'sop_titulo' => $servico['codigo_servico'] . ' - ' . $servico['nome_servico'],
+            'status_geracao' => 'na_fila',
+            'fase_atual' => 0,
+            'total_fases' => 8,
+            'mensagem_progresso' => 'Aguardando processamento...',
+            'data_criacao' => date('d/m/Y H:i:s')
+        ];
+
+        if (!empty($servico['sop_id'])) {
+            Database::execute(
+                "UPDATE sops SET conteudo = :conteudo, status = 'rascunho', atualizado_em = NOW() WHERE id = :id",
+                ['conteudo' => json_encode($conteudoInicial, JSON_UNESCAPED_UNICODE), 'id' => $servico['sop_id']]
+            );
+            $sopId = (int) $servico['sop_id'];
+        } else {
+            Database::execute(
+                "INSERT INTO sops (empresa_id, diagnostico_id, titulo, sop_codigo, departamento, conteudo, versao, status, gerado_por_ia, criado_em, atualizado_em)
+                 VALUES (:empresa_id, :diagnostico_id, :titulo, :sop_codigo, :departamento, :conteudo, '1.0', 'rascunho', 1, NOW(), NOW())",
+                [
+                    'empresa_id' => $servico['empresa_id'],
+                    'diagnostico_id' => $servico['diagnostico_id'] ?? null,
+                    'titulo' => $servico['nome_servico'],
+                    'sop_codigo' => $servico['codigo_servico'],
+                    'departamento' => $servico['nome_setor'] ?? '',
+                    'conteudo' => json_encode($conteudoInicial, JSON_UNESCAPED_UNICODE)
+                ]
+            );
+            $sopId = (int) Database::lastInsertId();
+        }
+
+        Database::execute(
+            "UPDATE servicos_setor SET sop_id = :sop_id, tem_sop = 1, atualizado_em = NOW() WHERE id = :id",
+            ['sop_id' => $sopId, 'id' => $servicoId]
+        );
+
+        // Remover pedidos antigos deste serviço e enfileirar um novo
+        Database::execute("DELETE FROM fila_geracao_sop WHERE servico_id = :id", ['id' => $servicoId]);
+        Database::execute(
+            "INSERT INTO fila_geracao_sop (sop_id, servico_id, empresa_id, status, fase_atual, total_fases, mensagem, criado_em, atualizado_em)
+             VALUES (:sop_id, :servico_id, :empresa_id, 'pendente', 0, 8, 'Aguardando processamento...', NOW(), NOW())",
+            [
+                'sop_id' => $sopId,
+                'servico_id' => $servicoId,
+                'empresa_id' => $servico['empresa_id']
+            ]
+        );
+
+        Logger::info('SOP ENFILEIRADO', ['sop_id' => $sopId, 'servico_id' => $servicoId]);
+
+        // Tentar disparar o processamento imediatamente em background (best-effort).
+        $this->tentarDispararProcessamentoFila();
+
+        return $sopId;
     }
 
     /**
@@ -10035,6 +10058,191 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
         }
         exit;
+    }
+
+    /**
+     * PERSONALIZAR — Atualiza dados do serviço, lê um documento anexado (até 1GB),
+     * extrai o texto para servir de contexto à IA e ENFILEIRA a regeneração do SOP
+     * consolidando o padrão do serviço + a descrição + o conteúdo do documento.
+     */
+    public function personalizarServico(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $servicoId = (int) ($_POST['servico_id'] ?? 0);
+        if (!$servicoId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'ID do serviço não informado.']);
+            exit;
+        }
+
+        $servico = Database::queryOne("SELECT * FROM servicos_setor WHERE id = :id", ['id' => $servicoId]);
+        if (!$servico) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Serviço não encontrado.']);
+            exit;
+        }
+
+        $empresaUsuario = Auth::empresa();
+        if ($empresaUsuario !== null && (int) $servico['empresa_id'] !== (int) $empresaUsuario) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Sem permissão.']);
+            exit;
+        }
+
+        try {
+            // Garantir que as colunas de personalização existem (evita depender de migration manual)
+            $this->garantirColunasPersonalizacao();
+
+            $descricao = trim($_POST['descricao'] ?? $servico['descricao_resumida'] ?? '');
+
+            // ---- Processar documento anexado (opcional) ----
+            $contextoDoc = '';
+            $nomeDoc = null;
+
+            if (!empty($_FILES['documento']) && ($_FILES['documento']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+                $arquivo = $_FILES['documento'];
+                // O arquivo pode chegar comprimido (gzip) do navegador para economizar upload.
+                $veioComprimido = (($_POST['documento_gzip'] ?? '0') === '1');
+                // Nome real do documento (o upload comprimido tem sufixo .gz)
+                $nomeDoc = trim($_POST['documento_nome'] ?? $arquivo['name']);
+                if ($veioComprimido) {
+                    $nomeDoc = preg_replace('/\.gz$/i', '', $nomeDoc);
+                }
+                $ext = strtolower(pathinfo($nomeDoc, PATHINFO_EXTENSION));
+                $permitidos = ['pdf', 'doc', 'docx', 'txt', 'md', 'rtf', 'csv', 'html', 'htm'];
+
+                // Limite de 1GB (tamanho ORIGINAL, informado pelo cliente quando comprimido)
+                $maxBytes = 1073741824;
+                $tamanhoOriginal = (int) ($_POST['documento_tamanho_original'] ?? $arquivo['size'] ?? 0);
+                if ($tamanhoOriginal > $maxBytes) {
+                    echo json_encode(['sucesso' => false, 'erro' => 'Arquivo excede o limite de 1GB.']);
+                    exit;
+                }
+                if (!in_array($ext, $permitidos, true)) {
+                    echo json_encode(['sucesso' => false, 'erro' => 'Tipo de arquivo não suportado. Use: ' . implode(', ', $permitidos)]);
+                    exit;
+                }
+
+                // Diretório temporário para o arquivo (será REMOVIDO após extrair o texto —
+                // guardamos apenas o texto, que é o que a IA usa: máxima redução de peso).
+                $baseDir = (defined('UPLOAD_PATH') ? UPLOAD_PATH : (ROOT_PATH . '/public/uploads/'))
+                    . 'documentos/' . (int) $servico['empresa_id'] . '/personalizacao';
+                if (!is_dir($baseDir)) {
+                    @mkdir($baseDir, 0755, true);
+                }
+                $nomeSeguro = 'perso_' . $servicoId . '_' . uniqid() . '.' . $ext;
+                $destino = $baseDir . '/' . $nomeSeguro;
+
+                if ($veioComprimido) {
+                    // Descomprimir o upload (gzip lossless) antes de processar
+                    $conteudoGz = file_get_contents($arquivo['tmp_name']);
+                    $conteudoOriginal = $conteudoGz !== false ? @gzdecode($conteudoGz) : false;
+                    if ($conteudoOriginal === false) {
+                        echo json_encode(['sucesso' => false, 'erro' => 'Falha ao descomprimir o documento enviado.']);
+                        exit;
+                    }
+                    if (file_put_contents($destino, $conteudoOriginal) === false) {
+                        echo json_encode(['sucesso' => false, 'erro' => 'Falha ao salvar o documento no servidor.']);
+                        exit;
+                    }
+                } else {
+                    if (!move_uploaded_file($arquivo['tmp_name'], $destino)) {
+                        echo json_encode(['sucesso' => false, 'erro' => 'Falha ao salvar o documento no servidor.']);
+                        exit;
+                    }
+                }
+
+                // Extrair texto
+                $contextoDoc = DocumentoProcessor::extrairTextoDeArquivoAbsoluto($destino, $nomeDoc);
+
+                // REDUÇÃO DE PESO: descartar o binário pesado — só o texto interessa à IA.
+                @unlink($destino);
+
+                // Limitar o tamanho enviado à IA (evita estourar o contexto do modelo)
+                if (mb_strlen($contextoDoc) > 40000) {
+                    $contextoDoc = mb_substr($contextoDoc, 0, 40000);
+                }
+
+                if (trim($contextoDoc) === '') {
+                    Logger::warning('PERSONALIZAÇÃO: documento sem texto extraível', [
+                        'servico_id' => $servicoId, 'arquivo' => $nomeDoc
+                    ]);
+                }
+            }
+
+            // ---- Atualizar dados do serviço ----
+            // Se não veio documento novo, preserva o contexto anterior.
+            if ($nomeDoc !== null) {
+                Database::execute(
+                    "UPDATE servicos_setor SET
+                        nome_servico = ?, categoria = ?, criticidade = ?,
+                        descricao_resumida = ?, contexto_personalizacao = ?,
+                        documento_personalizacao_nome = ?, personalizado_em = NOW(), atualizado_em = NOW()
+                     WHERE id = ?",
+                    [
+                        trim($_POST['nome_servico'] ?? $servico['nome_servico']),
+                        trim($_POST['categoria'] ?? $servico['categoria']),
+                        trim($_POST['criticidade'] ?? $servico['criticidade']),
+                        $descricao,
+                        $contextoDoc,
+                        $nomeDoc,
+                        $servicoId
+                    ]
+                );
+            } else {
+                Database::execute(
+                    "UPDATE servicos_setor SET
+                        nome_servico = ?, categoria = ?, criticidade = ?,
+                        descricao_resumida = ?, personalizado_em = NOW(), atualizado_em = NOW()
+                     WHERE id = ?",
+                    [
+                        trim($_POST['nome_servico'] ?? $servico['nome_servico']),
+                        trim($_POST['categoria'] ?? $servico['categoria']),
+                        trim($_POST['criticidade'] ?? $servico['criticidade']),
+                        $descricao,
+                        $servicoId
+                    ]
+                );
+            }
+
+            Logger::info('SERVIÇO PERSONALIZADO', [
+                'servico_id' => $servicoId,
+                'tem_documento' => $nomeDoc !== null,
+                'tamanho_contexto' => mb_strlen($contextoDoc)
+            ]);
+
+            // ---- Enfileirar regeneração do SOP ----
+            $sopId = $this->enfileirarGeracaoSop($servicoId);
+
+            echo json_encode([
+                'sucesso' => true,
+                'sop_id' => $sopId,
+                'documento_lido' => ($nomeDoc !== null && trim($contextoDoc) !== ''),
+                'mensagem' => 'Serviço personalizado. Regenerando SOP com base nas informações...'
+            ]);
+            exit;
+
+        } catch (Exception $e) {
+            Logger::error('Erro ao personalizar serviço', ['erro' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
+            exit;
+        }
+    }
+
+    /**
+     * Garante as colunas de personalização em servicos_setor (idempotente).
+     */
+    private function garantirColunasPersonalizacao(): void
+    {
+        try {
+            Database::execute("ALTER TABLE servicos_setor ADD COLUMN contexto_personalizacao LONGTEXT NULL");
+        } catch (Exception $e) { /* já existe */ }
+        try {
+            Database::execute("ALTER TABLE servicos_setor ADD COLUMN documento_personalizacao_nome VARCHAR(255) NULL");
+        } catch (Exception $e) { /* já existe */ }
+        try {
+            Database::execute("ALTER TABLE servicos_setor ADD COLUMN personalizado_em DATETIME NULL");
+        } catch (Exception $e) { /* já existe */ }
     }
 
     /**
@@ -10371,7 +10579,11 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         $sopData = [
             'nome_servico' => $servico['nome_servico'],
             'nome_setor' => $servico['nome_setor'],
-            'codigo_servico' => $servico['codigo_servico']
+            'codigo_servico' => $servico['codigo_servico'],
+            // Personalização: descrição do usuário + texto do documento anexado
+            'descricao_resumida' => $servico['descricao_resumida'] ?? '',
+            'contexto_personalizacao' => $servico['contexto_personalizacao'] ?? '',
+            'documento_personalizacao_nome' => $servico['documento_personalizacao_nome'] ?? ''
         ];
 
         // Carregar conteúdo atual do SOP
@@ -10788,6 +11000,38 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
     }
 
     /**
+     * Monta o bloco de PERSONALIZAÇÃO (descrição do usuário + conteúdo do documento anexado).
+     * Quando presente, instrui a IA a consolidar o padrão do serviço COM essas informações
+     * específicas da empresa, dando prioridade ao que o documento/descrição especificam.
+     */
+    private function montarContextoPersonalizacao(array $servico): string
+    {
+        $descricao = trim($servico['descricao_resumida'] ?? '');
+        $documento = trim($servico['contexto_personalizacao'] ?? '');
+        $nomeDoc = trim($servico['documento_personalizacao_nome'] ?? '');
+
+        if ($descricao === '' && $documento === '') {
+            return '';
+        }
+
+        $blocos = [];
+        $blocos[] = "# PERSONALIZAÇÃO DO CLIENTE (PRIORIDADE MÁXIMA)";
+        $blocos[] = "Este serviço foi PERSONALIZADO. Você DEVE consolidar o PADRÃO técnico do serviço COM as informações específicas abaixo. Onde houver conflito, PREVALECE o que está descrito aqui — são o jeito real de trabalhar desta empresa. Incorpore nomes de etapas, ferramentas, critérios, prazos, responsáveis e regras citados, sem inventar o que não foi dito.";
+
+        if ($descricao !== '') {
+            $blocos[] = "\n## Descrição fornecida pelo responsável:\n" . $descricao;
+        }
+        if ($documento !== '') {
+            $rotuloDoc = $nomeDoc !== '' ? " (arquivo: {$nomeDoc})" : '';
+            $blocos[] = "\n## Conteúdo do documento anexado{$rotuloDoc} — use como fonte real de como o serviço é executado nesta empresa:\n\"\"\"\n" . $documento . "\n\"\"\"";
+        }
+
+        $blocos[] = "\nREGRA DE CONSOLIDAÇÃO: gere um SOP que seja o PADRÃO do serviço + estas especificidades. Não descarte boas práticas do padrão, mas adapte-as à realidade descrita. Se o documento trouxer passos/critérios próprios, eles têm prioridade.";
+
+        return implode("\n", $blocos);
+    }
+
+    /**
      * Criar prompt curto para o RESUMO do SOP (Fase 1 - rápido)
      */
     private function criarPromptResumoSop(array $servico, array $detalhamento, array $empresa, array $diagnostico): string
@@ -10797,12 +11041,15 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         $contextoEmpresa = $this->montarContextoEmpresa($empresa, $diagnostico);
 
         $diretrizes = $this->diretrizesManualTecnico();
+        $contextoPersonalizacao = $this->montarContextoPersonalizacao($servico);
 
         return "{$diretrizes}
 
 Gere agora o RESUMO INICIAL de um SOP (Procedimento Operacional Padrão) — equivale aos Blocos 1 (O que é), 2 (Por que existe / problema que resolve) e 3 (Quando executar / pré-requisitos) do modelo de manual técnico.
 
 {$contextoEmpresa}
+
+{$contextoPersonalizacao}
 
 # CONTEXTO DO SOP
 - Setor: {$nomeSetor}
@@ -10902,10 +11149,13 @@ Alguém SEM conhecimento prévio do processo deve conseguir executá-lo usando A
         $contextoEmpresa = $this->montarContextoEmpresa($empresa, $diagnostico);
 
         $diretrizes = $this->diretrizesManualTecnico();
+        $contextoPersonalizacao = $this->montarContextoPersonalizacao($servico);
 
         return "{$diretrizes}
 
 Gere agora UMA fase do PASSO A PASSO DE EXECUÇÃO (equivale aos Blocos 4/Planejamento e 6/Passo a passo do modelo) em MÁXIMA PROFUNDIDADE, ensinando o colaborador a EXECUTAR o serviço com assertividade, do início ao fim.
+
+{$contextoPersonalizacao}
 
 {$contextoEmpresa}
 
@@ -10980,12 +11230,15 @@ Responda APENAS com o JSON válido desta única fase.";
         $contextoEmpresa = $this->montarContextoEmpresa($empresa, $diagnostico);
 
         $diretrizes = $this->diretrizesManualTecnico();
+        $contextoPersonalizacao = $this->montarContextoPersonalizacao($servico);
 
         return "{$diretrizes}
 
 Gere agora a seção de ADVERSIDADES TÉCNICAS e PROBLEMAS DE EXECUÇÃO (equivale ao Bloco 7 — Erros comuns e riscos do modelo). Os erros/adversidades devem ser REAIS e específicos DESTE processo, nunca genéricos.
 
 {$contextoEmpresa}
+
+{$contextoPersonalizacao}
 
 # CONTEXTO DO SOP
 - Setor: {$nomeSetor}

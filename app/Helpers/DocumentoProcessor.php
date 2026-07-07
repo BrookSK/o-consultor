@@ -314,6 +314,176 @@ class DocumentoProcessor
     }
     
     /**
+     * Extrai texto de um arquivo pelo CAMINHO ABSOLUTO no disco.
+     * Suporta txt, md, rtf, csv, html, docx e pdf (best-effort, sem dependências externas).
+     * Usado pela personalização de serviço (upload direto para geração de SOP).
+     */
+    public static function extrairTextoDeArquivoAbsoluto(string $caminhoCompleto, string $nomeOriginal = ''): string
+    {
+        if (!file_exists($caminhoCompleto)) {
+            return '';
+        }
+
+        $nome = $nomeOriginal !== '' ? $nomeOriginal : $caminhoCompleto;
+        $extensao = strtolower(pathinfo($nome, PATHINFO_EXTENSION));
+
+        switch ($extensao) {
+            case 'txt':
+            case 'md':
+            case 'csv':
+            case 'log':
+                return self::limparTexto((string) file_get_contents($caminhoCompleto));
+
+            case 'rtf':
+                return self::limparTexto(self::rtfParaTexto((string) file_get_contents($caminhoCompleto)));
+
+            case 'html':
+            case 'htm':
+                return self::limparTexto(strip_tags((string) file_get_contents($caminhoCompleto)));
+
+            case 'docx':
+                return self::limparTexto(self::extrairTextoDocx($caminhoCompleto));
+
+            case 'pdf':
+                return self::limparTexto(self::extrairTextoPdf($caminhoCompleto));
+
+            case 'doc':
+                // .doc binário antigo: tentativa best-effort de extrair strings legíveis
+                return self::limparTexto(self::extrairStringsLegiveis((string) file_get_contents($caminhoCompleto)));
+
+            default:
+                return '';
+        }
+    }
+
+    /**
+     * Extrai texto de DOCX (é um ZIP com word/document.xml).
+     */
+    private static function extrairTextoDocx(string $caminho): string
+    {
+        if (!class_exists('ZipArchive')) {
+            return '';
+        }
+        $zip = new ZipArchive();
+        if ($zip->open($caminho) !== true) {
+            return '';
+        }
+        $xml = $zip->getFromName('word/document.xml');
+        $zip->close();
+        if ($xml === false) {
+            return '';
+        }
+        // Preservar quebras de parágrafo/linha antes de remover tags
+        $xml = str_replace(['</w:p>', '<w:br/>', '<w:br />'], "\n", $xml);
+        return strip_tags($xml);
+    }
+
+    /**
+     * Extração best-effort de texto de PDF SEM dependências externas.
+     * 1) Tenta 'pdftotext' (poppler) se disponível no servidor (melhor resultado).
+     * 2) Caso contrário, faz parsing dos streams do PDF descomprimindo com gzuncompress.
+     */
+    private static function extrairTextoPdf(string $caminho): string
+    {
+        // 1) pdftotext (se instalado)
+        if (function_exists('exec')) {
+            $disabled = explode(',', str_replace(' ', '', (string) ini_get('disable_functions')));
+            if (!in_array('exec', $disabled, true)) {
+                $saidaTmp = tempnam(sys_get_temp_dir(), 'pdftxt_') . '.txt';
+                $cmd = 'pdftotext -q -enc UTF-8 ' . escapeshellarg($caminho) . ' ' . escapeshellarg($saidaTmp) . ' 2>/dev/null';
+                @exec($cmd, $out, $code);
+                if ($code === 0 && file_exists($saidaTmp)) {
+                    $texto = (string) file_get_contents($saidaTmp);
+                    @unlink($saidaTmp);
+                    if (trim($texto) !== '') {
+                        return $texto;
+                    }
+                }
+                if (file_exists($saidaTmp)) {
+                    @unlink($saidaTmp);
+                }
+            }
+        }
+
+        // 2) Fallback: parser nativo simples de streams do PDF
+        $conteudo = (string) file_get_contents($caminho);
+        $texto = '';
+
+        if (preg_match_all('/stream(.*?)endstream/s', $conteudo, $streams)) {
+            foreach ($streams[1] as $stream) {
+                $stream = ltrim($stream, "\r\n");
+                $stream = rtrim($stream, "\r\n");
+                $decodificado = @gzuncompress($stream);
+                if ($decodificado === false) {
+                    $decodificado = @gzinflate($stream);
+                }
+                $alvo = $decodificado !== false ? $decodificado : $stream;
+
+                // Extrair texto entre parênteses dos operadores Tj/TJ
+                if (preg_match_all('/\(((?:\\\\.|[^\\\\()])*)\)\s*T[jJ]/', $alvo, $m)) {
+                    foreach ($m[1] as $trecho) {
+                        $texto .= self::decodePdfString($trecho) . ' ';
+                    }
+                }
+                // Também capturar arrays de texto TJ: [(a) -10 (b)] TJ
+                if (preg_match_all('/\[(.*?)\]\s*TJ/s', $alvo, $arr)) {
+                    foreach ($arr[1] as $bloco) {
+                        if (preg_match_all('/\(((?:\\\\.|[^\\\\()])*)\)/', $bloco, $mm)) {
+                            foreach ($mm[1] as $trecho) {
+                                $texto .= self::decodePdfString($trecho);
+                            }
+                            $texto .= ' ';
+                        }
+                    }
+                }
+            }
+        }
+
+        return $texto;
+    }
+
+    /**
+     * Decodifica sequências de escape de string PDF ( \( \) \\ \n etc ).
+     */
+    private static function decodePdfString(string $s): string
+    {
+        $map = ['\\n' => "\n", '\\r' => "\r", '\\t' => "\t", '\\(' => '(', '\\)' => ')', '\\\\' => '\\'];
+        return strtr($s, $map);
+    }
+
+    /**
+     * Converte RTF para texto simples (remoção básica de grupos de controle).
+     */
+    private static function rtfParaTexto(string $rtf): string
+    {
+        $texto = preg_replace('/\\\\[a-z]+-?\d* ?/i', ' ', $rtf);
+        $texto = str_replace(['{', '}'], '', (string) $texto);
+        return (string) $texto;
+    }
+
+    /**
+     * Extrai apenas sequências legíveis de um blob binário (fallback p/ .doc).
+     */
+    private static function extrairStringsLegiveis(string $bin): string
+    {
+        if (preg_match_all('/[\x20-\x7E\xC0-\xFF][\x20-\x7E\xC0-\xFF\s]{4,}/', $bin, $m)) {
+            return implode(' ', $m[0]);
+        }
+        return '';
+    }
+
+    /**
+     * Normaliza texto extraído: colapsa espaços, remove caracteres de controle.
+     */
+    private static function limparTexto(string $texto): string
+    {
+        $texto = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]/', ' ', $texto);
+        $texto = preg_replace('/[ \t]+/', ' ', (string) $texto);
+        $texto = preg_replace('/\n{3,}/', "\n\n", (string) $texto);
+        return trim((string) $texto);
+    }
+
+    /**
      * Extrair texto de diferentes tipos de documento
      */
     private static function extrairTexto(string $caminhoArquivo): ?string
