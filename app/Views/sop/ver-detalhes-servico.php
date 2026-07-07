@@ -527,7 +527,11 @@ if (!function_exists('sopTexto')) {
         <div class="w-full bg-gray-200 rounded-full h-3 mb-2 overflow-hidden">
             <div id="loadingBar" class="bg-primary h-3 rounded-full transition-all duration-500 ease-out" style="width: 5%"></div>
         </div>
-        <p class="text-xs text-gray-400" id="loadingEtapa">Etapa 0 de 8</p>
+        <p class="text-xs text-gray-400 mb-5" id="loadingEtapa">Etapa 0 de 8</p>
+        <button type="button" id="btnCancelarGeracao" onclick="cancelarGeracaoSop()"
+                class="px-5 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50">
+            Cancelar
+        </button>
     </div>
 </div>
 
@@ -612,12 +616,23 @@ async function salvarPersonalizacao() {
 }
 
 // Loading helpers
+let geracaoCancelada = false;
+
 function mostrarLoading(titulo, subtitulo) {
     document.getElementById('loadingTitulo').textContent = titulo;
     document.getElementById('loadingSubtitulo').textContent = subtitulo;
     document.getElementById('modalLoading').classList.remove('hidden');
 }
 function esconderLoading() { document.getElementById('modalLoading').classList.add('hidden'); }
+
+// Cancela o acompanhamento da geração (interrompe o polling no navegador).
+// Observação: fases já iniciadas no servidor terminam sozinhas; o cancelamento
+// apenas para de acompanhar e não recarrega a página com o resultado.
+function cancelarGeracaoSop() {
+    if (!confirm('Deseja cancelar a geração do SOP? O que já foi gerado até aqui será mantido.')) return;
+    geracaoCancelada = true;
+    esconderLoading();
+}
 function atualizarProgresso(fase, mensagem) {
     const percentuais = { 0: 4, 1: 12, 2: 25, 3: 38, 4: 50, 5: 62, 6: 75, 7: 88, 8: 100 };
     const pct = percentuais[fase] ?? 4;
@@ -682,6 +697,7 @@ async function acompanharGeracaoSop(sopId, mensagemInicial) {
         } catch (e) { return null; }
     }
 
+    geracaoCancelada = false;
     mostrarLoading('Gerando SOP Completo', mensagemInicial || 'Processando...');
     atualizarProgresso(1, mensagemInicial || 'Processando...');
 
@@ -689,6 +705,7 @@ async function acompanharGeracaoSop(sopId, mensagemInicial) {
     const maxTentativas = 32;
 
     for (let t = 0; t < maxTentativas && !concluido; t++) {
+        if (geracaoCancelada) return; // usuário cancelou o acompanhamento
         const stAntes = await consultarStatus();
         if (stAntes && stAntes.sucesso) {
             if (stAntes.status_geracao === 'concluido') { concluido = true; break; }
@@ -704,6 +721,7 @@ async function acompanharGeracaoSop(sopId, mensagemInicial) {
         try {
             const respProc = await fetch(URL_PROCESSAR + '?_=' + Date.now());
             const proc = await respProc.json();
+            if (geracaoCancelada) return;
             if (proc && proc.sucesso === false) {
                 esconderLoading();
                 alert('Erro na geração: ' + (proc.erro || 'Erro desconhecido'));
@@ -714,6 +732,8 @@ async function acompanharGeracaoSop(sopId, mensagemInicial) {
             await esperar(3000);
         }
     }
+
+    if (geracaoCancelada) return;
 
     if (!concluido) {
         const stFinal = await consultarStatus();
