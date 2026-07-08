@@ -500,6 +500,17 @@ class Plano
         return !empty($r);
     }
 
+    /**
+     * Exclui uma tarefa do plano (e seus comentários), recalculando o progresso.
+     */
+    public static function excluirTarefa(int $tarefaId, int $planoId): bool
+    {
+        try { Database::execute("DELETE FROM plano_tarefa_comentarios WHERE tarefa_id = :t", ['t' => $tarefaId]); } catch (Exception $e) {}
+        $ok = Database::execute("DELETE FROM plano_tarefas WHERE id = :id AND plano_id = :p", ['id' => $tarefaId, 'p' => $planoId]);
+        if ($ok) { self::atualizarProgresso($planoId); self::atualizarScoreMaturidade($planoId); }
+        return $ok;
+    }
+
     // ===================================================================
     // DETALHE DO CARD (estilo Trello): descrição, checklist, etiquetas,
     // datas, anexos (imagens coladas) e comentários.

@@ -70,6 +70,7 @@ class Router
         $this->get('plano-de-acao/ver', 'PlanoController', 'ver');
         $this->post('plano-de-acao/mover-tarefa', 'PlanoController', 'moverTarefa');
         $this->post('plano-de-acao/liberar-tarefa', 'PlanoController', 'liberarTarefa'); // Liberar/recolher tarefa da fila para o Kanban
+        $this->post('plano-de-acao/excluir-tarefa', 'PlanoController', 'excluirTarefa');  // Excluir tarefa/compromisso
         $this->get('plano-de-acao/tarefa-detalhe', 'PlanoController', 'tarefaDetalhe');       // Detalhe do card (JSON)
         $this->post('plano-de-acao/salvar-tarefa-detalhe', 'PlanoController', 'salvarTarefaDetalhe'); // Salvar campos do card
         $this->post('plano-de-acao/comentar-tarefa', 'PlanoController', 'comentarTarefa');    // Comentário no card

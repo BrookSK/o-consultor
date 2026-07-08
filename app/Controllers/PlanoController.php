@@ -552,6 +552,23 @@ class PlanoController
     }
 
     /**
+     * Exclui uma tarefa/compromisso do plano.
+     */
+    public function excluirTarefa(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+        $planoId = (int) ($_POST['plano_id'] ?? 0);
+        $tarefaId = (int) ($_POST['tarefa_id'] ?? 0);
+        if (!$planoId || !$tarefaId) { echo json_encode(['sucesso' => false, 'erro' => 'Dados inválidos.']); exit; }
+        if (!Plano::tarefaPertenceAoPlano($tarefaId, $planoId)) { echo json_encode(['sucesso' => false, 'erro' => 'Sem permissão.']); exit; }
+        $ok = Plano::excluirTarefa($tarefaId, $planoId);
+        echo json_encode(['sucesso' => (bool) $ok]);
+        exit;
+    }
+
+    /**
      * Detalhe de uma tarefa (JSON) para o modal do card.
      */
     public function tarefaDetalhe(): void

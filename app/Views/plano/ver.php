@@ -195,11 +195,18 @@
                                     Acionar Parceiro
                                 </button>
                                 
-                                <button onclick="abrirCard(<?= $tarefa['id'] ?>)" class="text-xs text-gray-400 hover:text-gray-600" title="Abrir card">
-                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
-                                    </svg>
-                                </button>
+                                <div class="flex items-center gap-2">
+                                    <button onclick="abrirCard(<?= $tarefa['id'] ?>)" class="text-xs text-gray-400 hover:text-gray-600" title="Abrir card">
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+                                        </svg>
+                                    </button>
+                                    <button onclick="excluirTarefaKanban(<?= $tarefa['id'] ?>)" class="text-xs text-gray-400 hover:text-red-600" title="Excluir">
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                        </svg>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -822,9 +829,12 @@
                     </div>
                 </div>
 
-                <div class="flex justify-end gap-3 pt-2 border-t border-gray-100">
-                    <button onclick="fecharCard()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Fechar</button>
-                    <button id="card-btn-salvar" onclick="salvarCard()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700">Salvar</button>
+                <div class="flex justify-between items-center gap-3 pt-2 border-t border-gray-100">
+                    <button onclick="excluirTarefaKanban(document.getElementById('card-id').value)" class="px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg">🗑 Excluir</button>
+                    <div class="flex gap-3">
+                        <button onclick="fecharCard()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Fechar</button>
+                        <button id="card-btn-salvar" onclick="salvarCard()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700">Salvar</button>
+                    </div>
                 </div>
             </div>
 
@@ -1125,6 +1135,20 @@ async function abrirCard(tarefaId) {
     } catch (e) { alert('Erro de conexão.'); }
 }
 function fecharCard() { document.getElementById('modal-card').classList.add('hidden'); }
+
+async function excluirTarefaKanban(tarefaId) {
+    if (!confirm('Excluir esta tarefa/compromisso? Esta ação não pode ser desfeita.')) return;
+    try {
+        const fd = new FormData();
+        fd.append('csrf_token', PLANO_CSRF);
+        fd.append('plano_id', PLANO_ID);
+        fd.append('tarefa_id', tarefaId);
+        const res = await fetch('<?= APP_URL ?>/plano-de-acao/excluir-tarefa', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.sucesso) { location.reload(); }
+        else { alert(data.erro || 'Erro ao excluir.'); }
+    } catch (e) { alert('Erro de conexão.'); }
+}
 
 function renderChecklist() {
     const cont = document.getElementById('card-checklist');
