@@ -99,8 +99,11 @@ class NoticiasController
      */
     public function buscar(): void
     {
-        $isManual = ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['manual']));
-        
+        // "Manual" = disparado pelo usuário (botão "Buscar agora"), via GET (?manual=1)
+        // ou POST (chamado internamente por ConteudoController::buscarAgora()).
+        // "Automática" = job/cron, identificado por empresa_id na querystring.
+        $isManual = isset($_GET['manual']) || $_SERVER['REQUEST_METHOD'] === 'POST';
+
         if ($isManual) {
             Auth::proteger();
             $empresaId = Auth::empresa();
