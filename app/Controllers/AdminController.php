@@ -98,14 +98,21 @@ class AdminController
     {
         $this->protegerAdmin();
         
-        // Buscar usuários reais do banco
+        // Buscar usuários reais do banco (ativos e arquivados separados).
         $sql = "SELECT u.*, e.nome as empresa_nome 
                 FROM usuarios u 
                 LEFT JOIN empresas e ON u.empresa_id = e.id 
                 ORDER BY u.criado_em DESC";
-        $usuarios = Database::query($sql);
-        
-        $dados = ['usuarios' => $usuarios];
+        $todos = Database::query($sql);
+
+        $ativos = array_values(array_filter($todos, fn($u) => (int) ($u['ativo'] ?? 1) === 1));
+        $arquivados = array_values(array_filter($todos, fn($u) => (int) ($u['ativo'] ?? 1) === 0));
+
+        $dados = [
+            'usuarios' => $ativos,       // compatibilidade com a aba principal
+            'ativos' => $ativos,
+            'arquivados' => $arquivados,
+        ];
         require VIEW_PATH . '/admin/usuarios.php';
     }
 

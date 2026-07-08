@@ -17,127 +17,127 @@
     </button>
 </div>
 
-<!-- Filtros -->
-<div class="flex flex-wrap gap-2 mb-4">
-    <select id="filtro-perfil" onchange="filtrarUsuarios()" class="px-3 py-1.5 border border-gray-300 rounded-lg text-xs outline-none">
-        <option value="">Todos perfis</option>
-        <option value="ADMIN_HOLDING">Admin Holding</option>
-        <option value="CONSULTOR_INTERNO">Consultor Interno</option>
-        <option value="CLIENTE">Cliente</option>
-    </select>
-    <select id="filtro-status" onchange="filtrarUsuarios()" class="px-3 py-1.5 border border-gray-300 rounded-lg text-xs outline-none">
-        <option value="">Todos status</option>
-        <option value="1">Ativo</option>
-        <option value="0">Inativo</option>
-    </select>
-    <input type="text" id="filtro-busca" onkeyup="filtrarUsuarios()" placeholder="Buscar por nome ou email..." 
-           class="px-3 py-1.5 border border-gray-300 rounded-lg text-xs outline-none flex-1 min-w-48">
-</div>
+<?php
+// Helper local para renderizar uma linha de usuário.
+if (!function_exists('renderLinhaUsuario')) {
+    function renderLinhaUsuario(array $u, bool $arquivado): string {
+        $perfilBadge = match($u['perfil'] ?? 'CLIENTE') {
+            'ADMIN_HOLDING' => 'bg-red-100 text-red-700',
+            'CONSULTOR_INTERNO' => 'bg-blue-100 text-blue-700',
+            default => 'bg-green-100 text-green-700'
+        };
+        $statusBadge = $arquivado ? 'bg-gray-100 text-gray-500' : 'bg-green-100 text-green-700';
+        $statusLabel = $arquivado ? 'Arquivado' : 'Ativo';
+        $ultimo = !empty($u['ultimo_login']) ? date('d/m/Y H:i', strtotime($u['ultimo_login'])) : 'Nunca';
+        $id = (int) $u['id'];
+        ob_start(); ?>
+        <tr class="hover:bg-gray-50" data-usuario-id="<?= $id ?>">
+            <td class="px-4 py-3 font-medium text-gray-800"><?= htmlspecialchars($u['nome'] ?? '') ?></td>
+            <td class="px-4 py-3 text-gray-600 text-xs"><?= htmlspecialchars($u['email'] ?? '') ?></td>
+            <td class="px-4 py-3 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold <?= $perfilBadge ?>"><?= $u['perfil'] ?? 'CLIENTE' ?></span></td>
+            <td class="px-4 py-3 text-center text-gray-600 text-xs"><?= htmlspecialchars($u['empresa_nome'] ?? 'N/A') ?></td>
+            <td class="px-4 py-3 text-center"><span class="px-2 py-0.5 rounded-full text-xs font-medium <?= $statusBadge ?>"><?= $statusLabel ?></span></td>
+            <td class="px-4 py-3 text-center text-gray-400 text-xs"><?= $ultimo ?></td>
+            <td class="px-4 py-3 text-center">
+                <div class="flex items-center justify-center gap-2">
+                    <button onclick="visualizarUsuario(<?= $id ?>)" class="text-xs text-blue-600 hover:underline">Ver</button>
+                    <button onclick="editarUsuario(<?= $id ?>)" class="text-xs text-primary hover:underline">Editar</button>
+                    <?php if ($arquivado): ?>
+                        <button onclick="alternarStatusUsuario(<?= $id ?>, '1')" class="text-xs text-green-600 hover:underline">Desarquivar</button>
+                    <?php else: ?>
+                        <button onclick="alternarStatusUsuario(<?= $id ?>, '0')" class="text-xs text-red-600 hover:underline">Arquivar</button>
+                    <?php endif; ?>
+                </div>
+            </td>
+        </tr>
+        <?php return ob_get_clean();
+    }
+}
+$ativos = $dados['ativos'] ?? ($dados['usuarios'] ?? []);
+$arquivados = $dados['arquivados'] ?? [];
+?>
 
-<!-- Tabela -->
-<div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-    <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-            <thead class="bg-gray-50 border-b">
-                <tr>
-                    <th class="text-left px-4 py-3 font-medium text-gray-500">Nome</th>
-                    <th class="text-left px-4 py-3 font-medium text-gray-500">Email</th>
-                    <th class="px-4 py-3 font-medium text-gray-500">Perfil</th>
-                    <th class="px-4 py-3 font-medium text-gray-500">Empresa</th>
-                    <th class="px-4 py-3 font-medium text-gray-500">Status</th>
-                    <th class="px-4 py-3 font-medium text-gray-500">Último Login</th>
-                    <th class="px-4 py-3 font-medium text-gray-500">Ações</th>
-                </tr>
-            </thead>
-            <tbody id="tabela-usuarios" class="divide-y divide-gray-100">
-                <?php if (isset($dados['usuarios']) && !empty($dados['usuarios'])): ?>
-                    <?php foreach ($dados['usuarios'] as $u): ?>
-                        <?php 
-                        $perfilBadge = match($u['perfil']) { 
-                            'ADMIN_HOLDING' => 'bg-red-100 text-red-700', 
-                            'CONSULTOR_INTERNO' => 'bg-blue-100 text-blue-700', 
-                            default => 'bg-green-100 text-green-700' 
-                        };
-                        $statusBadge = ($u['ativo'] ?? 1) == 1 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500';
-                        ?>
-                        <tr class="hover:bg-gray-50" data-usuario-id="<?= $u['id'] ?>">
-                            <td class="px-4 py-3 font-medium text-gray-800"><?= htmlspecialchars($u['nome'] ?? '') ?></td>
-                            <td class="px-4 py-3 text-gray-600 text-xs"><?= htmlspecialchars($u['email'] ?? '') ?></td>
-                            <td class="px-4 py-3 text-center">
-                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold <?= $perfilBadge ?>">
-                                    <?= $u['perfil'] ?? 'CLIENTE' ?>
-                                </span>
-                            </td>
-                            <td class="px-4 py-3 text-center text-gray-600 text-xs">
-                                <?= htmlspecialchars($u['empresa_nome'] ?? 'N/A') ?>
-                            </td>
-                            <td class="px-4 py-3 text-center">
-                                <span class="px-2 py-0.5 rounded-full text-xs font-medium <?= $statusBadge ?>">
-                                    <?= ($u['ativo'] ?? 1) == 1 ? 'Ativo' : 'Inativo' ?>
-                                </span>
-                            </td>
-                            <td class="px-4 py-3 text-center text-gray-400 text-xs">
-                                <?= isset($u['ultimo_login']) && $u['ultimo_login'] ? date('d/m/Y H:i', strtotime($u['ultimo_login'])) : 'Nunca' ?>
-                            </td>
-                            <td class="px-4 py-3 text-center">
-                                <div class="flex items-center justify-center gap-2">
-                                    <button onclick="visualizarUsuario(<?= $u['id'] ?>)" 
-                                            class="text-xs text-blue-600 hover:underline">Ver</button>
-                                    <button onclick="editarUsuario(<?= $u['id'] ?>)" 
-                                            class="text-xs text-primary hover:underline">Editar</button>
-                                    <button onclick="alternarStatusUsuario(<?= $u['id'] ?>, '<?= ($u['ativo'] ?? 1) == 1 ? '0' : '1' ?>')" 
-                                            class="text-xs text-<?= ($u['ativo'] ?? 1) == 1 ? 'red' : 'green' ?>-600 hover:underline">
-                                        <?= ($u['ativo'] ?? 1) == 1 ? 'Desativar' : 'Ativar' ?>
-                                    </button>
-                                </div>
-                            </td>
+<!-- Abas Ativos / Arquivados -->
+<div x-data="{ aba: 'ativos' }">
+    <div class="border-b border-gray-200 mb-4">
+        <nav class="flex gap-0">
+            <button @click="aba = 'ativos'" :class="aba === 'ativos' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm transition">Ativos (<?= count($ativos) ?>)</button>
+            <button @click="aba = 'arquivados'" :class="aba === 'arquivados' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm transition">🗄️ Arquivados (<?= count($arquivados) ?>)</button>
+        </nav>
+    </div>
+
+    <!-- Filtros (aplicam à aba ativa) -->
+    <div class="flex flex-wrap gap-2 mb-4">
+        <select id="filtro-perfil" onchange="filtrarUsuarios()" class="px-3 py-1.5 border border-gray-300 rounded-lg text-xs outline-none">
+            <option value="">Todos perfis</option>
+            <option value="ADMIN_HOLDING">Admin Holding</option>
+            <option value="CONSULTOR_INTERNO">Consultor Interno</option>
+            <option value="CLIENTE">Cliente</option>
+        </select>
+        <input type="text" id="filtro-busca" onkeyup="filtrarUsuarios()" placeholder="Buscar por nome ou email..."
+               class="px-3 py-1.5 border border-gray-300 rounded-lg text-xs outline-none flex-1 min-w-48">
+    </div>
+
+    <!-- ABA ATIVOS -->
+    <div x-show="aba === 'ativos'">
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50 border-b">
+                        <tr>
+                            <th class="text-left px-4 py-3 font-medium text-gray-500">Nome</th>
+                            <th class="text-left px-4 py-3 font-medium text-gray-500">Email</th>
+                            <th class="px-4 py-3 font-medium text-gray-500">Perfil</th>
+                            <th class="px-4 py-3 font-medium text-gray-500">Empresa</th>
+                            <th class="px-4 py-3 font-medium text-gray-500">Status</th>
+                            <th class="px-4 py-3 font-medium text-gray-500">Último Login</th>
+                            <th class="px-4 py-3 font-medium text-gray-500">Ações</th>
                         </tr>
-                    <?php endforeach; ?>
-                <?php else: ?>
-                    <tr>
-                        <td colspan="7" class="px-4 py-8 text-center text-gray-500">
-                            Nenhum usuário encontrado.
-                        </td>
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<!-- Modal Novo Usuário -->
-<div id="modal-usuario" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-    <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-        <h3 class="text-lg font-semibold text-gray-800 mb-4">Novo Usuário</h3>
-        <form id="form-usuario" class="space-y-3">
-            <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
-            <div><label class="block text-xs font-medium text-gray-700 mb-1">Nome *</label><input type="text" name="nome" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
-            <div><label class="block text-xs font-medium text-gray-700 mb-1">Email *</label><input type="email" name="email" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
-            <div><label class="block text-xs font-medium text-gray-700 mb-1">Perfil *</label><select name="perfil" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"><option>CLIENTE</option><option>CONSULTOR_INTERNO</option><option>ADMIN_HOLDING</option></select></div>
-            <div><label class="block text-xs font-medium text-gray-700 mb-1">Empresa vinculada</label><select name="empresa_id" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"><option value="">Nenhuma</option><option>Tech Solutions</option><option>Varejo Express</option><option>FoodService</option></select></div>
-            <div><label class="block text-xs font-medium text-gray-700 mb-1">Senha temporária *</label><input type="text" name="senha" required value="<?= bin2hex(random_bytes(4)) ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary font-mono"></div>
-            <div class="flex gap-2 pt-2">
-                <button type="button" onclick="document.getElementById('modal-usuario').classList.add('hidden')" class="flex-1 border border-gray-300 py-2 rounded-lg text-sm text-gray-700">Cancelar</button>
-                <button type="submit" class="flex-1 bg-primary text-white py-2 rounded-lg text-sm font-medium">Criar</button>
+                    </thead>
+                    <tbody id="tabela-usuarios" class="divide-y divide-gray-100">
+                        <?php if (!empty($ativos)): ?>
+                            <?php foreach ($ativos as $u) { echo renderLinhaUsuario($u, false); } ?>
+                        <?php else: ?>
+                            <tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">Nenhum usuário ativo.</td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
             </div>
-        </form>
+        </div>
     </div>
-</div>
-<script>
-document.getElementById('form-usuario').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    const res = await fetch('<?= APP_URL ?>/admin/usuarios/salvar', { method:'POST', body: new FormData(this) });
-    const data = await res.json();
-    if (data.sucesso) { document.getElementById('modal-usuario').classList.add('hidden'); alert(data.mensagem); location.reload(); }
-});
-</script>
 
-<?php $conteudo = ob_get_clean(); ?>
-<?php require VIEW_PATH . '/layouts/layout.php'; ?>
-                    </tr>
-                <?php endif; ?>
-            </tbody>
-        </table>
+    <!-- ABA ARQUIVADOS -->
+    <div x-show="aba === 'arquivados'" style="display:none;">
+        <div class="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-3 text-sm text-blue-700">
+            Usuários arquivados não aparecem nas demais telas (diagnósticos, planos, etc.). Desarquive para reativá-los e voltar a exibir seus dados.
+        </div>
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50 border-b">
+                        <tr>
+                            <th class="text-left px-4 py-3 font-medium text-gray-500">Nome</th>
+                            <th class="text-left px-4 py-3 font-medium text-gray-500">Email</th>
+                            <th class="px-4 py-3 font-medium text-gray-500">Perfil</th>
+                            <th class="px-4 py-3 font-medium text-gray-500">Empresa</th>
+                            <th class="px-4 py-3 font-medium text-gray-500">Status</th>
+                            <th class="px-4 py-3 font-medium text-gray-500">Último Login</th>
+                            <th class="px-4 py-3 font-medium text-gray-500">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabela-arquivados" class="divide-y divide-gray-100">
+                        <?php if (!empty($arquivados)): ?>
+                            <?php foreach ($arquivados as $u) { echo renderLinhaUsuario($u, true); } ?>
+                        <?php else: ?>
+                            <tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">Nenhum usuário arquivado.</td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 </div>
+
 <!-- Modal Criar/Editar Usuário -->
 <div id="modal-usuario" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden">
     <div class="flex items-center justify-center min-h-screen p-4">
@@ -445,11 +445,11 @@ document.getElementById('form-usuario').addEventListener('submit', async functio
 });
 
 async function alternarStatusUsuario(usuarioId, novoStatus) {
-    const acao = novoStatus == '1' ? 'ativar' : 'desativar';
-    
-    if (!confirm(`Deseja ${acao} este usuário?`)) {
-        return;
-    }
+    const acao = novoStatus == '1' ? 'desarquivar' : 'arquivar';
+    const msg = novoStatus == '1'
+        ? 'Desarquivar este usuário? Ele volta a ficar ativo e seus dados voltam a aparecer nas demais telas.'
+        : 'Arquivar este usuário? Ele e todos os seus dados deixarão de aparecer nas demais telas até ser desarquivado.';
+    if (!confirm(msg)) return;
     
     try {
         const formData = new FormData();
@@ -480,27 +480,16 @@ async function alternarStatusUsuario(usuarioId, novoStatus) {
 function filtrarUsuarios() {
     const filtroNome = document.getElementById('filtro-busca').value.toLowerCase();
     const filtroPerfil = document.getElementById('filtro-perfil').value;
-    const filtroStatus = document.getElementById('filtro-status').value;
-    
-    const linhas = document.querySelectorAll('#tabela-usuarios tr');
-    
-    linhas.forEach(linha => {
-        if (linha.querySelector('td')) { // Pular header
-            const nome = linha.children[0].textContent.toLowerCase();
-            const email = linha.children[1].textContent.toLowerCase();
-            const perfil = linha.children[2].textContent.trim();
-            const status = linha.children[4].textContent.includes('Ativo') ? '1' : '0';
-            
-            const matchNome = !filtroNome || nome.includes(filtroNome) || email.includes(filtroNome);
-            const matchPerfil = !filtroPerfil || perfil === filtroPerfil;
-            const matchStatus = !filtroStatus || status === filtroStatus;
-            
-            if (matchNome && matchPerfil && matchStatus) {
-                linha.style.display = '';
-            } else {
-                linha.style.display = 'none';
-            }
-        }
+
+    // Aplica o filtro nas duas tabelas (ativos e arquivados).
+    document.querySelectorAll('#tabela-usuarios tr, #tabela-arquivados tr').forEach(linha => {
+        if (!linha.querySelector('td') || linha.children.length < 3) return; // pular header/vazio
+        const nome = linha.children[0].textContent.toLowerCase();
+        const email = linha.children[1].textContent.toLowerCase();
+        const perfil = linha.children[2].textContent.trim();
+        const matchNome = !filtroNome || nome.includes(filtroNome) || email.includes(filtroNome);
+        const matchPerfil = !filtroPerfil || perfil === filtroPerfil;
+        linha.style.display = (matchNome && matchPerfil) ? '' : 'none';
     });
 }
 

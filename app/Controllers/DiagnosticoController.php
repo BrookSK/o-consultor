@@ -21,11 +21,13 @@ class DiagnosticoController
         // Buscar diagnósticos do usuário no banco
         if (Auth::perfil() === 'ADMIN_HOLDING') {
             // Admin vê todos os diagnósticos
+            // Oculta diagnósticos cujo usuário responsável está arquivado (ativo = 0).
             $diagnosticos = Database::query(
                 "SELECT d.*, e.nome as empresa_nome, e.segmento as setor, u.nome as responsavel_nome 
                  FROM diagnosticos d 
                  LEFT JOIN empresas e ON d.empresa_id = e.id 
                  LEFT JOIN usuarios u ON d.usuario_id = u.id 
+                 WHERE (u.id IS NULL OR u.ativo = 1)
                  ORDER BY d.criado_em DESC LIMIT 50"
             );
         } else {

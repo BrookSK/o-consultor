@@ -175,8 +175,15 @@
     </a>
 </div>
 
-<!-- Link voltar -->
-<div class="mt-6 text-center">
+<!-- Editar / voltar -->
+<div class="mt-6 flex items-center justify-center gap-4">
+    <?php if (!empty($resultado['diagnostico_id'])): ?>
+    <a href="<?= APP_URL ?>/diagnostico/editar?diagnostico_id=<?= (int) $resultado['diagnostico_id'] ?>"
+       class="inline-flex items-center gap-2 px-5 py-2.5 border border-primary text-primary rounded-lg text-sm font-medium hover:bg-primary hover:text-white transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+        Editar / Refazer diagnóstico
+    </a>
+    <?php endif; ?>
     <a href="<?= APP_URL ?>/diagnostico" class="text-sm text-gray-500 hover:text-primary">← Voltar para lista de diagnósticos</a>
 </div>
 

@@ -97,11 +97,14 @@ class Plano
         // Admin vê todos, outros vêem apenas da própria empresa
         $usuario = User::buscarPorId($usuarioId);
         
+        // Oculta planos cujo usuário criador está arquivado (ativo = 0).
         if ($usuario['perfil'] === 'ADMIN_HOLDING') {
             return Database::query(
                 "SELECT p.*, e.nome as empresa_nome 
                  FROM planos p 
                  LEFT JOIN empresas e ON p.empresa_id = e.id 
+                 LEFT JOIN usuarios pu ON p.usuario_id = pu.id
+                 WHERE (pu.id IS NULL OR pu.ativo = 1)
                  ORDER BY p.criado_em DESC LIMIT 50"
             );
         } else {
@@ -109,7 +112,9 @@ class Plano
                 "SELECT p.*, e.nome as empresa_nome 
                  FROM planos p 
                  LEFT JOIN empresas e ON p.empresa_id = e.id 
-                 WHERE p.usuario_id = :usuario_id OR p.empresa_id = :empresa_id
+                 LEFT JOIN usuarios pu ON p.usuario_id = pu.id
+                 WHERE (p.usuario_id = :usuario_id OR p.empresa_id = :empresa_id)
+                   AND (pu.id IS NULL OR pu.ativo = 1)
                  ORDER BY p.criado_em DESC",
                 ['usuario_id' => $usuarioId, 'empresa_id' => $usuario['empresa_id']]
             );
