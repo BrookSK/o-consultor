@@ -209,8 +209,11 @@ class Plano
      */
     public static function buscarTarefasKanban(int $planoId): array
     {
+        self::garantirEstruturaConsolidador();
+        // Só tarefas LIBERADAS aparecem no Kanban (liberação progressiva por etapa).
+        // Tarefas de etapas futuras (liberada=0) ficam ocultas até a etapa anterior concluir.
         $tarefas = Database::query(
-            "SELECT * FROM plano_tarefas WHERE plano_id = :plano_id ORDER BY ordem_kanban ASC, criado_em ASC",
+            "SELECT * FROM plano_tarefas WHERE plano_id = :plano_id AND COALESCE(liberada,1) = 1 ORDER BY ordem_etapa ASC, ordem_kanban ASC, criado_em ASC",
             ['plano_id' => $planoId]
         );
 
@@ -330,5 +333,271 @@ class Plano
              ORDER BY r.data_reuniao DESC",
             ['plano_id' => $planoId]
         );
+    }
+
+    // ===================================================================
+    // CONSOLIDADOR: etapas sequenciais, tarefas, calendário e métricas
+    // ===================================================================
+
+    /**
+     * Garante que as colunas/tabelas da migration 034 existem (idempotente),
+     * evitando depender da execução manual da migration em produção.
+     */
+    public static function garantirEstruturaConsolidador(): void
+    {
+        $alters = [
+            "ALTER TABLE plano_tarefas ADD COLUMN ordem_etapa INT NOT NULL DEFAULT 1",
+            "ALTER TABLE plano_tarefas ADD COLUMN hora TIME NULL",
+            "ALTER TABLE plano_tarefas ADD COLUMN tipo VARCHAR(20) NOT NULL DEFAULT 'tarefa'",
+            "ALTER TABLE plano_tarefas ADD COLUMN liberada TINYINT(1) NOT NULL DEFAULT 1",
+            "ALTER TABLE plano_tarefas ADD COLUMN concluida_em DATETIME NULL",
+            "ALTER TABLE planos ADD COLUMN score_maturidade DECIMAL(5,2) NOT NULL DEFAULT 0",
+            "ALTER TABLE planos ADD COLUMN score_inicial DECIMAL(5,2) NULL",
+            "ALTER TABLE planos ADD COLUMN total_etapas INT NOT NULL DEFAULT 0",
+            "ALTER TABLE planos ADD COLUMN etapa_atual INT NOT NULL DEFAULT 1",
+        ];
+        foreach ($alters as $sql) {
+            try { Database::execute($sql); } catch (Exception $e) { /* já existe */ }
+        }
+        try {
+            Database::execute(
+                "CREATE TABLE IF NOT EXISTS plano_metricas (
+                    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    plano_id INT UNSIGNED NOT NULL,
+                    nome VARCHAR(150) NOT NULL,
+                    categoria VARCHAR(60) NOT NULL DEFAULT 'geral',
+                    unidade VARCHAR(30) NULL,
+                    meta DECIMAL(15,2) NULL,
+                    frequencia VARCHAR(20) NOT NULL DEFAULT 'mensal',
+                    direcao VARCHAR(10) NOT NULL DEFAULT 'cima',
+                    ativo TINYINT(1) NOT NULL DEFAULT 1,
+                    criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    atualizado_em DATETIME NULL,
+                    INDEX idx_plano (plano_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+            );
+        } catch (Exception $e) { /* já existe */ }
+        try {
+            Database::execute(
+                "CREATE TABLE IF NOT EXISTS plano_metricas_registros (
+                    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    metrica_id INT UNSIGNED NOT NULL,
+                    valor DECIMAL(15,2) NOT NULL,
+                    data_referencia DATE NOT NULL,
+                    observacao VARCHAR(255) NULL,
+                    usuario_id INT UNSIGNED NULL,
+                    criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_metrica (metrica_id),
+                    INDEX idx_data (data_referencia)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+            );
+        } catch (Exception $e) { /* já existe */ }
+    }
+
+    /**
+     * Cria uma tarefa avulsa no plano (usada pela criação por IA/manual).
+     */
+    public static function criarTarefa(int $planoId, array $t): int|false
+    {
+        self::garantirEstruturaConsolidador();
+        $ok = Database::execute(
+            "INSERT INTO plano_tarefas (plano_id, prioridade_id, ordem_etapa, titulo, descricao, area, responsavel, prazo, hora, prioridade, status, tipo, liberada, criado_em)
+             VALUES (:plano_id, NULL, :ordem_etapa, :titulo, :descricao, :area, :responsavel, :prazo, :hora, :prioridade, 'pendente', :tipo, 1, NOW())",
+            [
+                'plano_id' => $planoId,
+                'ordem_etapa' => (int) ($t['ordem_etapa'] ?? self::proximaEtapaLivre($planoId)),
+                'titulo' => $t['titulo'],
+                'descricao' => $t['descricao'] ?? null,
+                'area' => $t['area'] ?? null,
+                'responsavel' => $t['responsavel'] ?? null,
+                'prazo' => $t['prazo'] ?? null,
+                'hora' => $t['hora'] ?? null,
+                'prioridade' => in_array($t['prioridade'] ?? 'media', ['alta','media','baixa']) ? $t['prioridade'] : 'media',
+                'tipo' => in_array($t['tipo'] ?? 'tarefa', ['tarefa','reuniao','entrega','compromisso']) ? $t['tipo'] : 'tarefa',
+            ]
+        );
+        if ($ok) {
+            self::atualizarProgresso($planoId);
+            return (int) Database::lastInsertId();
+        }
+        return false;
+    }
+
+    private static function proximaEtapaLivre(int $planoId): int
+    {
+        $row = Database::queryOne("SELECT COALESCE(MAX(ordem_etapa),0) AS m FROM plano_tarefas WHERE plano_id = :p", ['p' => $planoId]);
+        return ((int) ($row['m'] ?? 0)) + 1;
+    }
+
+    /**
+     * Cria as tarefas de um plano organizadas em ETAPAS sequenciais.
+     * Apenas a etapa 1 nasce liberada; as demais são liberadas conforme
+     * as anteriores forem concluídas (liberação progressiva no Kanban).
+     */
+    public static function criarTarefasEmEtapas(int $planoId, array $tarefas): void
+    {
+        self::garantirEstruturaConsolidador();
+        foreach ($tarefas as $t) {
+            $etapa = (int) ($t['ordem_etapa'] ?? 1);
+            Database::execute(
+                "INSERT INTO plano_tarefas (plano_id, prioridade_id, ordem_etapa, titulo, descricao, area, responsavel, prazo, prioridade, status, tipo, liberada, criado_em)
+                 VALUES (:plano_id, :prioridade_id, :ordem_etapa, :titulo, :descricao, :area, :responsavel, :prazo, :prioridade, 'pendente', 'tarefa', :liberada, NOW())",
+                [
+                    'plano_id' => $planoId,
+                    'prioridade_id' => $t['prioridade_id'] ?? null,
+                    'ordem_etapa' => $etapa,
+                    'titulo' => $t['titulo'],
+                    'descricao' => $t['descricao'] ?? null,
+                    'area' => $t['area'] ?? null,
+                    'responsavel' => $t['responsavel'] ?? null,
+                    'prazo' => $t['prazo'] ?? null,
+                    'prioridade' => in_array($t['prioridade'] ?? 'media', ['alta','media','baixa']) ? $t['prioridade'] : 'media',
+                    'liberada' => $etapa === 1 ? 1 : 0,
+                ]
+            );
+        }
+        $totalEtapas = 0;
+        foreach ($tarefas as $t) { $totalEtapas = max($totalEtapas, (int) ($t['ordem_etapa'] ?? 1)); }
+        Database::execute(
+            "UPDATE planos SET total_etapas = :te, etapa_atual = 1 WHERE id = :id",
+            ['te' => $totalEtapas, 'id' => $planoId]
+        );
+        self::atualizarProgresso($planoId);
+    }
+
+    /**
+     * Ao concluir tarefas, libera a próxima etapa quando a atual termina.
+     * Retorna quantas tarefas novas foram liberadas.
+     */
+    public static function liberarProximaEtapa(int $planoId): int
+    {
+        self::garantirEstruturaConsolidador();
+        // Descobrir a menor etapa que ainda tem tarefa não concluída.
+        $etapaCorrente = Database::queryOne(
+            "SELECT MIN(ordem_etapa) AS etapa FROM plano_tarefas WHERE plano_id = :p AND status <> 'concluido'",
+            ['p' => $planoId]
+        );
+        $etapa = $etapaCorrente['etapa'] ?? null;
+        if ($etapa === null) {
+            return 0; // tudo concluído
+        }
+        // Liberar todas as tarefas dessa etapa corrente (caso ainda travadas).
+        $afetadas = Database::execute(
+            "UPDATE plano_tarefas SET liberada = 1 WHERE plano_id = :p AND ordem_etapa = :e AND liberada = 0",
+            ['p' => $planoId, 'e' => (int) $etapa]
+        );
+        Database::execute("UPDATE planos SET etapa_atual = :e WHERE id = :id", ['e' => (int) $etapa, 'id' => $planoId]);
+        return is_int($afetadas) ? $afetadas : 0;
+    }
+
+    /**
+     * Atualiza o score de maturidade do plano proporcional ao progresso.
+     * Parte do score_inicial (diagnóstico) e caminha até 100 conforme conclui.
+     */
+    public static function atualizarScoreMaturidade(int $planoId): void
+    {
+        $p = Database::queryOne("SELECT progresso_calculado, score_inicial FROM planos WHERE id = :id", ['id' => $planoId]);
+        if (!$p) return;
+        $base = $p['score_inicial'] !== null ? (float) $p['score_inicial'] : 0.0;
+        $prog = (float) $p['progresso_calculado'];
+        // score caminha do base até 100 conforme o progresso das tarefas.
+        $score = round($base + ($prog / 100) * (100 - $base), 2);
+        Database::execute("UPDATE planos SET score_maturidade = :s WHERE id = :id", ['s' => $score, 'id' => $planoId]);
+    }
+
+    /**
+     * Itens de calendário: tarefas com prazo + reuniões.
+     */
+    public static function buscarCalendario(int $planoId): array
+    {
+        self::garantirEstruturaConsolidador();
+        $itens = [];
+        $tarefas = Database::query(
+            "SELECT id, titulo, prazo, hora, tipo, status, prioridade, area, responsavel
+             FROM plano_tarefas WHERE plano_id = :p AND prazo IS NOT NULL ORDER BY prazo ASC",
+            ['p' => $planoId]
+        );
+        foreach ($tarefas as $t) {
+            $itens[] = [
+                'id' => 'tarefa-' . $t['id'],
+                'titulo' => $t['titulo'],
+                'data' => $t['prazo'],
+                'hora' => $t['hora'],
+                'tipo' => $t['tipo'] ?: 'tarefa',
+                'status' => $t['status'],
+                'meta' => ['area' => $t['area'], 'responsavel' => $t['responsavel'], 'prioridade' => $t['prioridade']],
+            ];
+        }
+        $reunioes = Database::query(
+            "SELECT id, data_reuniao, participantes FROM plano_reunioes WHERE plano_id = :p ORDER BY data_reuniao ASC",
+            ['p' => $planoId]
+        );
+        foreach ($reunioes as $r) {
+            $itens[] = [
+                'id' => 'reuniao-' . $r['id'],
+                'titulo' => 'Reunião' . (!empty($r['participantes']) ? ' — ' . $r['participantes'] : ''),
+                'data' => substr($r['data_reuniao'], 0, 10),
+                'hora' => substr($r['data_reuniao'], 11, 5) ?: null,
+                'tipo' => 'reuniao',
+                'status' => 'agendado',
+                'meta' => [],
+            ];
+        }
+        return $itens;
+    }
+
+    // ---- Métricas / KPIs do plano ----
+    public static function criarMetrica(int $planoId, array $m): int|false
+    {
+        self::garantirEstruturaConsolidador();
+        $ok = Database::execute(
+            "INSERT INTO plano_metricas (plano_id, nome, categoria, unidade, meta, frequencia, direcao, ativo, criado_em)
+             VALUES (:plano_id, :nome, :categoria, :unidade, :meta, :frequencia, :direcao, 1, NOW())",
+            [
+                'plano_id' => $planoId,
+                'nome' => $m['nome'],
+                'categoria' => $m['categoria'] ?? 'geral',
+                'unidade' => $m['unidade'] ?? null,
+                'meta' => $m['meta'] ?? null,
+                'frequencia' => in_array($m['frequencia'] ?? 'mensal', ['semanal','quinzenal','mensal']) ? $m['frequencia'] : 'mensal',
+                'direcao' => in_array($m['direcao'] ?? 'cima', ['cima','baixo']) ? $m['direcao'] : 'cima',
+            ]
+        );
+        return $ok ? (int) Database::lastInsertId() : false;
+    }
+
+    public static function buscarMetricas(int $planoId): array
+    {
+        self::garantirEstruturaConsolidador();
+        $metricas = Database::query(
+            "SELECT * FROM plano_metricas WHERE plano_id = :p AND ativo = 1 ORDER BY categoria, nome",
+            ['p' => $planoId]
+        );
+        foreach ($metricas as &$m) {
+            $m['registros'] = Database::query(
+                "SELECT valor, data_referencia, observacao FROM plano_metricas_registros
+                 WHERE metrica_id = :m ORDER BY data_referencia ASC",
+                ['m' => $m['id']]
+            );
+            $m['ultimo_valor'] = !empty($m['registros']) ? end($m['registros'])['valor'] : null;
+        }
+        unset($m);
+        return $metricas;
+    }
+
+    public static function registrarMetrica(int $metricaId, float $valor, string $dataRef, ?string $obs, ?int $usuarioId): bool
+    {
+        self::garantirEstruturaConsolidador();
+        return Database::execute(
+            "INSERT INTO plano_metricas_registros (metrica_id, valor, data_referencia, observacao, usuario_id, criado_em)
+             VALUES (:m, :v, :d, :o, :u, NOW())",
+            ['m' => $metricaId, 'v' => $valor, 'd' => $dataRef, 'o' => $obs, 'u' => $usuarioId]
+        );
+    }
+
+    public static function metricaPertenceAoPlano(int $metricaId, int $planoId): bool
+    {
+        $r = Database::queryOne("SELECT id FROM plano_metricas WHERE id = :m AND plano_id = :p", ['m' => $metricaId, 'p' => $planoId]);
+        return !empty($r);
     }
 }

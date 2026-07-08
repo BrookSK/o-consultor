@@ -22,11 +22,38 @@
             <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Ativo</span>
         </div>
     </div>
-    <button onclick="document.getElementById('modal-reuniao').classList.remove('hidden')"
-            class="bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 transition flex items-center gap-2">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-        Registrar Reunião
-    </button>
+    <div class="flex flex-wrap items-center gap-2">
+        <button onclick="abrirModalTarefaIA()"
+                class="bg-accent text-white px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90 transition flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            Criar com IA
+        </button>
+        <button onclick="document.getElementById('modal-tarefa').classList.remove('hidden')"
+                class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            Nova Tarefa
+        </button>
+        <button onclick="document.getElementById('modal-reuniao').classList.remove('hidden')"
+                class="bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 transition flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            Registrar Reunião
+        </button>
+    </div>
+</div>
+
+<!-- Score de maturidade -->
+<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5 mb-6">
+    <div class="flex items-center justify-between mb-2">
+        <span class="text-sm font-medium text-gray-700">Maturidade da empresa</span>
+        <span class="text-sm font-bold text-accent"><?= round($plano['score_maturidade'] ?? 0) ?>%</span>
+    </div>
+    <div class="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+        <div class="h-full bg-accent rounded-full transition-all" style="width: <?= round($plano['score_maturidade'] ?? 0) ?>%"></div>
+    </div>
+    <p class="text-xs text-gray-400 mt-1">
+        Etapa <?= (int) ($plano['etapa_atual'] ?? 1) ?> de <?= (int) ($plano['total_etapas'] ?? 1) ?> ·
+        parte de <?= round($plano['score_inicial'] ?? 0) ?>% (diagnóstico) e avança conforme as tarefas são concluídas.
+    </p>
 </div>
 
 <!-- Painel de Progresso -->
@@ -84,9 +111,11 @@
 <!-- Abas: Kanban | Lista -->
 <div x-data="{ abaAtiva: 'kanban' }">
     <div class="border-b border-gray-200 mb-6">
-        <nav class="flex gap-0">
+        <nav class="flex gap-0 flex-wrap">
             <button @click="abaAtiva = 'kanban'" :class="abaAtiva === 'kanban' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm transition">📋 Kanban</button>
             <button @click="abaAtiva = 'lista'" :class="abaAtiva === 'lista' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm transition">📊 Lista</button>
+            <button @click="abaAtiva = 'calendario'" :class="abaAtiva === 'calendario' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm transition">📅 Calendário</button>
+            <button @click="abaAtiva = 'metricas'; setTimeout(() => window.renderCharts && window.renderCharts(), 100)" :class="abaAtiva === 'metricas' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm transition">📈 Métricas</button>
         </nav>
     </div>
 
@@ -237,6 +266,104 @@
             </div>
         </div>
     </div>
+
+    <!-- ABA CALENDÁRIO -->
+    <div x-show="abaAtiva === 'calendario'" x-transition style="display:none;">
+        <?php
+            $itensCal = $dados['calendario'] ?? [];
+            // Agrupar por data
+            $porData = [];
+            foreach ($itensCal as $it) {
+                $porData[$it['data']][] = $it;
+            }
+            ksort($porData);
+            $hojeStr = date('Y-m-d');
+        ?>
+        <?php if (empty($itensCal)): ?>
+        <div class="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500">
+            Nenhum compromisso com data ainda. Crie tarefas com prazo, reuniões ou use "Criar com IA".
+        </div>
+        <?php else: ?>
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 divide-y divide-gray-100">
+            <?php foreach ($porData as $data => $itens):
+                $ts = strtotime($data);
+                $atrasado = $data < $hojeStr;
+                $hoje = $data === $hojeStr;
+            ?>
+            <div class="p-4">
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="text-sm font-bold <?= $hoje ? 'text-accent' : ($atrasado ? 'text-red-600' : 'text-gray-800') ?>">
+                        <?= date('d/m/Y', $ts) ?> · <?= ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][date('w', $ts)] ?>
+                    </span>
+                    <?php if ($hoje): ?><span class="text-[10px] bg-accent text-white px-2 py-0.5 rounded-full font-bold">HOJE</span><?php endif; ?>
+                </div>
+                <div class="space-y-2">
+                    <?php foreach ($itens as $it):
+                        $icone = ['reuniao' => '👥', 'entrega' => '📦', 'compromisso' => '📌', 'tarefa' => '✅'][$it['tipo']] ?? '✅';
+                        $concluido = ($it['status'] ?? '') === 'concluido';
+                    ?>
+                    <div class="flex items-center gap-3 p-2 rounded-lg bg-gray-50">
+                        <span class="text-lg"><?= $icone ?></span>
+                        <div class="flex-1">
+                            <p class="text-sm font-medium text-gray-800 <?= $concluido ? 'line-through text-gray-400' : '' ?>"><?= htmlspecialchars($it['titulo']) ?></p>
+                            <p class="text-xs text-gray-400">
+                                <?= $it['hora'] ? '🕐 ' . substr($it['hora'], 0, 5) . ' · ' : '' ?>
+                                <?= ucfirst($it['tipo']) ?>
+                                <?= !empty($it['meta']['responsavel']) ? ' · ' . htmlspecialchars($it['meta']['responsavel']) : '' ?>
+                            </p>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+    </div>
+
+    <!-- ABA MÉTRICAS -->
+    <div x-show="abaAtiva === 'metricas'" x-transition style="display:none;">
+        <?php $metricas = $dados['metricas'] ?? []; ?>
+        <div class="flex items-center justify-between mb-4">
+            <p class="text-sm text-gray-500">Acompanhe KPIs da empresa. Registre valores na frequência definida para ver a evolução.</p>
+            <button onclick="document.getElementById('modal-metrica').classList.remove('hidden')" class="bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700">+ Nova métrica</button>
+        </div>
+
+        <?php if (empty($metricas)): ?>
+        <div class="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500">
+            Nenhuma métrica cadastrada. Clique em "Nova métrica" para começar a monitorar (financeiro, leads, conversão...).
+        </div>
+        <?php else: ?>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <?php foreach ($metricas as $m):
+                $registros = $m['registros'] ?? [];
+                $valores = array_map(fn($r) => (float) $r['valor'], $registros);
+                $labels = array_map(fn($r) => date('d/m', strtotime($r['data_referencia'])), $registros);
+                $ultimo = $m['ultimo_valor'];
+            ?>
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div class="flex items-start justify-between mb-2">
+                    <div>
+                        <h4 class="text-sm font-semibold text-gray-800"><?= htmlspecialchars($m['nome']) ?></h4>
+                        <p class="text-xs text-gray-400"><?= htmlspecialchars(ucfirst($m['categoria'])) ?> · <?= htmlspecialchars($m['frequencia']) ?><?= $m['meta'] !== null ? ' · meta: ' . htmlspecialchars($m['unidade'] . ' ' . $m['meta']) : '' ?></p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-lg font-bold text-primary"><?= $ultimo !== null ? htmlspecialchars(($m['unidade'] ? $m['unidade'] . ' ' : '') . $ultimo) : '—' ?></p>
+                        <button onclick="abrirRegistroMetrica(<?= (int) $m['id'] ?>, '<?= htmlspecialchars($m['nome'], ENT_QUOTES) ?>')" class="text-xs text-primary hover:underline">+ registrar</button>
+                    </div>
+                </div>
+                <canvas id="chart-metrica-<?= (int) $m['id'] ?>" height="120"
+                        data-labels='<?= htmlspecialchars(json_encode($labels), ENT_QUOTES) ?>'
+                        data-valores='<?= htmlspecialchars(json_encode($valores), ENT_QUOTES) ?>'
+                        data-nome='<?= htmlspecialchars($m['nome'], ENT_QUOTES) ?>'></canvas>
+                <?php if (empty($registros)): ?>
+                <p class="text-xs text-gray-400 text-center mt-2">Sem registros ainda.</p>
+                <?php endif; ?>
+            </div>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+    </div>
 </div>
 
 <!-- Histórico de Reuniões -->
@@ -351,6 +478,174 @@
     </div>
 </div>
 
+<!-- Modal Nova Tarefa (manual) -->
+<div id="modal-tarefa" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg shadow-xl max-w-lg w-full">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-gray-800">Nova Tarefa</h3>
+            <button onclick="document.getElementById('modal-tarefa').classList.add('hidden')" class="text-gray-400 hover:text-gray-600">✕</button>
+        </div>
+        <form id="form-tarefa" class="p-6 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
+            <input type="hidden" name="plano_id" value="<?= (int) $plano['id'] ?>">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Título *</label>
+                <input type="text" name="titulo" required class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
+                <textarea name="descricao" rows="2" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary resize-none"></textarea>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
+                    <select name="tipo" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                        <option value="tarefa">Tarefa</option>
+                        <option value="reuniao">Reunião</option>
+                        <option value="entrega">Entrega</option>
+                        <option value="compromisso">Compromisso</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Prioridade</label>
+                    <select name="prioridade" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                        <option value="alta">Alta</option>
+                        <option value="media" selected>Média</option>
+                        <option value="baixa">Baixa</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Data</label>
+                    <input type="date" name="prazo" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Hora</label>
+                    <input type="time" name="hora" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                </div>
+                <div class="col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Responsável</label>
+                    <input type="text" name="responsavel" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                </div>
+            </div>
+            <div class="flex justify-end gap-3">
+                <button type="button" onclick="document.getElementById('modal-tarefa').classList.add('hidden')" class="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Cancelar</button>
+                <button type="submit" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700">Salvar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal Criar com IA -->
+<div id="modal-tarefa-ia" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg shadow-xl max-w-lg w-full">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-gray-800">⚡ Criar compromisso com IA</h3>
+            <button onclick="document.getElementById('modal-tarefa-ia').classList.add('hidden')" class="text-gray-400 hover:text-gray-600">✕</button>
+        </div>
+        <div class="p-6 space-y-4">
+            <p class="text-sm text-gray-500">Escreva ou fale naturalmente. Ex.: "reunião com o comercial sexta às 15h para revisar metas" ou "entregar proposta ao cliente dia 20".</p>
+            <textarea id="ia-texto" rows="3" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary resize-none" placeholder="Descreva o compromisso..."></textarea>
+            <div id="ia-preview" class="hidden text-sm bg-green-50 border border-green-200 rounded-lg p-3 text-green-800"></div>
+            <div class="flex justify-end gap-3">
+                <button type="button" onclick="document.getElementById('modal-tarefa-ia').classList.add('hidden')" class="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Cancelar</button>
+                <button type="button" id="btn-ia-criar" onclick="criarTarefaIA()" class="px-4 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:opacity-90">Agendar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nova Métrica -->
+<div id="modal-metrica" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg shadow-xl max-w-lg w-full">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-gray-800">Nova Métrica / KPI</h3>
+            <button onclick="document.getElementById('modal-metrica').classList.add('hidden')" class="text-gray-400 hover:text-gray-600">✕</button>
+        </div>
+        <form id="form-metrica" class="p-6 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
+            <input type="hidden" name="plano_id" value="<?= (int) $plano['id'] ?>">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Nome *</label>
+                <input type="text" name="nome" required placeholder="Ex.: Faturamento mensal" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Categoria</label>
+                    <select name="categoria" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                        <option value="financeiro">Financeiro</option>
+                        <option value="leads">Leads</option>
+                        <option value="comercial">Comercial</option>
+                        <option value="operacional">Operacional</option>
+                        <option value="geral">Geral</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Unidade</label>
+                    <input type="text" name="unidade" placeholder="R$, %, leads..." class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Meta</label>
+                    <input type="number" step="any" name="meta" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Frequência</label>
+                    <select name="frequencia" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                        <option value="semanal">Semanal</option>
+                        <option value="quinzenal">Quinzenal</option>
+                        <option value="mensal" selected>Mensal</option>
+                    </select>
+                </div>
+                <div class="col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Direção (o que é melhor)</label>
+                    <select name="direcao" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                        <option value="cima">Maior é melhor</option>
+                        <option value="baixo">Menor é melhor</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3">
+                <button type="button" onclick="document.getElementById('modal-metrica').classList.add('hidden')" class="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Cancelar</button>
+                <button type="submit" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700">Criar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal Registrar valor de Métrica -->
+<div id="modal-registro-metrica" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg shadow-xl max-w-md w-full">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-gray-800">Registrar valor — <span id="reg-metrica-nome"></span></h3>
+            <button onclick="document.getElementById('modal-registro-metrica').classList.add('hidden')" class="text-gray-400 hover:text-gray-600">✕</button>
+        </div>
+        <form id="form-registro-metrica" class="p-6 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
+            <input type="hidden" name="plano_id" value="<?= (int) $plano['id'] ?>">
+            <input type="hidden" name="metrica_id" id="reg-metrica-id" value="">
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Valor *</label>
+                    <input type="number" step="any" name="valor" required class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Data</label>
+                    <input type="date" name="data_referencia" value="<?= date('Y-m-d') ?>" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Observação</label>
+                <input type="text" name="observacao" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+            </div>
+            <div class="flex justify-end gap-3">
+                <button type="button" onclick="document.getElementById('modal-registro-metrica').classList.add('hidden')" class="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Cancelar</button>
+                <button type="submit" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700">Salvar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Chart.js para gráficos das métricas -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <!-- Sortable.js CDN para drag-and-drop -->
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 
@@ -549,6 +844,100 @@ function configurarKanban() {
 function editarTarefa(id) {
     alert('Funcionalidade de edição será implementada em breve.');
 }
+
+const PLANO_CSRF = '<?= Csrf::token() ?>';
+
+// ===== Nova Tarefa (manual) =====
+document.getElementById('form-tarefa').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const btn = this.querySelector('button[type="submit"]');
+    btn.disabled = true; btn.textContent = 'Salvando...';
+    try {
+        const res = await fetch('<?= APP_URL ?>/plano-de-acao/criar-tarefa', { method: 'POST', body: new FormData(this) });
+        const data = await res.json();
+        if (data.sucesso) { location.reload(); }
+        else { alert(data.erro || 'Erro ao criar tarefa.'); btn.disabled = false; btn.textContent = 'Salvar'; }
+    } catch (err) { alert('Erro de conexão.'); btn.disabled = false; btn.textContent = 'Salvar'; }
+});
+
+// ===== Criar com IA =====
+function abrirModalTarefaIA() {
+    document.getElementById('ia-preview').classList.add('hidden');
+    document.getElementById('ia-texto').value = '';
+    document.getElementById('modal-tarefa-ia').classList.remove('hidden');
+}
+async function criarTarefaIA() {
+    const texto = document.getElementById('ia-texto').value.trim();
+    if (!texto) { alert('Descreva o compromisso.'); return; }
+    const btn = document.getElementById('btn-ia-criar');
+    btn.disabled = true; btn.textContent = 'Processando...';
+    try {
+        const fd = new FormData();
+        fd.append('csrf_token', PLANO_CSRF);
+        fd.append('plano_id', '<?= (int) $plano['id'] ?>');
+        fd.append('texto', texto);
+        const res = await fetch('<?= APP_URL ?>/plano-de-acao/criar-tarefa-ia', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.sucesso) {
+            const t = data.tarefa || {};
+            const prev = document.getElementById('ia-preview');
+            prev.textContent = '✓ Agendado: ' + (t.titulo || '') + (t.data ? ' — ' + t.data : '') + (t.hora ? ' ' + t.hora : '');
+            prev.classList.remove('hidden');
+            setTimeout(() => location.reload(), 900);
+        } else {
+            alert(data.erro || 'Não consegui agendar.');
+            btn.disabled = false; btn.textContent = 'Agendar';
+        }
+    } catch (err) { alert('Erro de conexão.'); btn.disabled = false; btn.textContent = 'Agendar'; }
+}
+
+// ===== Métricas =====
+document.getElementById('form-metrica').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const btn = this.querySelector('button[type="submit"]');
+    btn.disabled = true; btn.textContent = 'Criando...';
+    try {
+        const res = await fetch('<?= APP_URL ?>/plano-de-acao/criar-metrica', { method: 'POST', body: new FormData(this) });
+        const data = await res.json();
+        if (data.sucesso) { location.reload(); }
+        else { alert(data.erro || 'Erro ao criar métrica.'); btn.disabled = false; btn.textContent = 'Criar'; }
+    } catch (err) { alert('Erro de conexão.'); btn.disabled = false; btn.textContent = 'Criar'; }
+});
+
+function abrirRegistroMetrica(id, nome) {
+    document.getElementById('reg-metrica-id').value = id;
+    document.getElementById('reg-metrica-nome').textContent = nome;
+    document.getElementById('modal-registro-metrica').classList.remove('hidden');
+}
+document.getElementById('form-registro-metrica').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const btn = this.querySelector('button[type="submit"]');
+    btn.disabled = true; btn.textContent = 'Salvando...';
+    try {
+        const res = await fetch('<?= APP_URL ?>/plano-de-acao/registrar-metrica', { method: 'POST', body: new FormData(this) });
+        const data = await res.json();
+        if (data.sucesso) { location.reload(); }
+        else { alert(data.erro || 'Erro ao registrar.'); btn.disabled = false; btn.textContent = 'Salvar'; }
+    } catch (err) { alert('Erro de conexão.'); btn.disabled = false; btn.textContent = 'Salvar'; }
+});
+
+// Renderizar gráficos das métricas quando a aba abrir (e no load).
+window.renderCharts = function renderCharts() {
+    if (typeof Chart === 'undefined') return;
+    document.querySelectorAll('canvas[id^="chart-metrica-"]').forEach(cv => {
+        if (cv.dataset.rendered) return;
+        let labels = [], valores = [];
+        try { labels = JSON.parse(cv.dataset.labels || '[]'); valores = JSON.parse(cv.dataset.valores || '[]'); } catch (e) {}
+        if (!labels.length) return;
+        cv.dataset.rendered = '1';
+        new Chart(cv, {
+            type: 'line',
+            data: { labels: labels, datasets: [{ label: cv.dataset.nome || 'Valor', data: valores, borderColor: '#1E3A5F', backgroundColor: 'rgba(30,58,95,0.1)', fill: true, tension: 0.3, pointRadius: 3 }] },
+            options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: false } } }
+        });
+    });
+}
+document.addEventListener('DOMContentLoaded', () => setTimeout(window.renderCharts, 300));
 </script>
 
 <?php $conteudo = ob_get_clean(); ?>

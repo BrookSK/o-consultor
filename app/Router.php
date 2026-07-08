@@ -51,6 +51,11 @@ class Router
 
         // Plano de Ação
         $this->get('plano-de-acao', 'PlanoController', 'index');
+        $this->get('plano-de-acao/gerar-automatico', 'PlanoController', 'gerarAutomatico'); // Gera plano completo do diagnóstico
+        $this->post('plano-de-acao/criar-tarefa', 'PlanoController', 'criarTarefaManual');   // Criar tarefa manual
+        $this->post('plano-de-acao/criar-tarefa-ia', 'PlanoController', 'criarTarefaIA');     // Criar tarefa/compromisso por IA
+        $this->post('plano-de-acao/criar-metrica', 'PlanoController', 'criarMetrica');        // Criar métrica/KPI
+        $this->post('plano-de-acao/registrar-metrica', 'PlanoController', 'registrarMetrica'); // Registrar valor de métrica
         $this->get('plano-de-acao/novo', 'PlanoController', 'novo');
         $this->post('plano-de-acao/salvar-step1', 'PlanoController', 'salvarStep1');
         $this->get('plano-de-acao/prioridades', 'PlanoController', 'prioridades');

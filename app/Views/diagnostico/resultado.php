@@ -139,7 +139,7 @@
 <div class="flex flex-col sm:flex-row gap-4">
     <?php 
     $diagnosticoId = $resultado['diagnostico_id'] ?? null;
-    $planoUrl = APP_URL . '/plano-de-acao' . ($diagnosticoId ? '/novo?diagnostico_id=' . $diagnosticoId : '');
+    $planoUrl = APP_URL . '/plano-de-acao' . ($diagnosticoId ? '/gerar-automatico?diagnostico_id=' . $diagnosticoId : '');
     $sopUrl = APP_URL . '/manual-operacional' . ($diagnosticoId ? '?diagnostico_id=' . $diagnosticoId : '');
     ?>
     <a href="<?= $planoUrl ?>" 
