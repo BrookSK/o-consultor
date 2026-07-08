@@ -45,6 +45,43 @@ class PlanoController
     }
 
     /**
+     * Exclui um plano de ação (e todos os seus dados).
+     */
+    public function excluir(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $planoId = (int) ($_POST['plano_id'] ?? 0);
+        if (!$planoId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Plano não informado.']);
+            exit;
+        }
+
+        $plano = Plano::buscarPorId($planoId);
+        if (!$plano) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Plano não encontrado.']);
+            exit;
+        }
+
+        // Permissão: admin/consultor OU dono do plano (mesma empresa).
+        $ehAdmin = in_array(Auth::perfil(), ['ADMIN_HOLDING', 'CONSULTOR_INTERNO']);
+        $empresaUsuario = Auth::empresa();
+        if (!$ehAdmin && $empresaUsuario !== null && (int) $plano['empresa_id'] !== (int) $empresaUsuario) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Sem permissão para excluir este plano.']);
+            exit;
+        }
+
+        $ok = Plano::excluir($planoId);
+        if ($ok) {
+            Logger::acao('Plano de ação excluído', ['plano_id' => $planoId]);
+        }
+        echo json_encode(['sucesso' => (bool) $ok]);
+        exit;
+    }
+
+    /**
      * Step 1: Criar plano básico
      */
     public function novo(): void

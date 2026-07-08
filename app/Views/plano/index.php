@@ -93,7 +93,10 @@
                         <span class="px-2.5 py-1 rounded-full text-xs font-medium <?= $statusConfig['badge'] ?>"><?= $statusConfig['label'] ?></span>
                     </td>
                     <td class="px-6 py-4">
-                        <a href="<?= APP_URL ?>/plano-de-acao/ver?id=<?= $plano['id'] ?>" class="text-primary hover:underline text-sm font-medium">Abrir →</a>
+                        <div class="flex items-center gap-3">
+                            <a href="<?= APP_URL ?>/plano-de-acao/ver?id=<?= $plano['id'] ?>" class="text-primary hover:underline text-sm font-medium">Abrir →</a>
+                            <button type="button" onclick="excluirPlano(<?= (int) $plano['id'] ?>, '<?= htmlspecialchars($plano['empresa'], ENT_QUOTES) ?>')" class="text-red-500 hover:text-red-700 text-sm font-medium" title="Excluir plano">🗑</button>
+                        </div>
                     </td>
                 </tr>
                 <?php endforeach; ?>
@@ -101,6 +104,21 @@
         </table>
     </div>
 </div>
+
+<script>
+async function excluirPlano(planoId, nome) {
+    if (!confirm('Excluir o plano de "' + nome + '"?\n\nTodas as tarefas, prioridades, métricas e reuniões deste plano serão apagadas. Esta ação não pode ser desfeita.')) return;
+    try {
+        const fd = new FormData();
+        fd.append('csrf_token', '<?= Csrf::token() ?>');
+        fd.append('plano_id', planoId);
+        const res = await fetch('<?= APP_URL ?>/plano-de-acao/excluir', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.sucesso) { location.reload(); }
+        else { alert(data.erro || 'Erro ao excluir o plano.'); }
+    } catch (e) { alert('Erro de conexão.'); }
+}
+</script>
 
 <?php $conteudo = ob_get_clean(); ?>
 <?php require VIEW_PATH . '/layouts/layout.php'; ?>

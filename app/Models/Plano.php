@@ -46,6 +46,27 @@ class Plano
     /**
      * Atualizar plano
      */
+    /**
+     * Exclui um plano e todos os seus filhos (tarefas, prioridades, reuniões,
+     * métricas, comentários e registros). Limpa manualmente por segurança,
+     * caso alguma FK não tenha ON DELETE CASCADE.
+     */
+    public static function excluir(int $id): bool
+    {
+        try {
+            try { Database::execute("DELETE c FROM plano_tarefa_comentarios c JOIN plano_tarefas t ON c.tarefa_id = t.id WHERE t.plano_id = :p", ['p' => $id]); } catch (Exception $e) {}
+            try { Database::execute("DELETE r FROM plano_metricas_registros r JOIN plano_metricas m ON r.metrica_id = m.id WHERE m.plano_id = :p", ['p' => $id]); } catch (Exception $e) {}
+            try { Database::execute("DELETE FROM plano_metricas WHERE plano_id = :p", ['p' => $id]); } catch (Exception $e) {}
+            try { Database::execute("DELETE FROM plano_tarefas WHERE plano_id = :p", ['p' => $id]); } catch (Exception $e) {}
+            try { Database::execute("DELETE FROM plano_prioridades WHERE plano_id = :p", ['p' => $id]); } catch (Exception $e) {}
+            try { Database::execute("DELETE FROM plano_reunioes WHERE plano_id = :p", ['p' => $id]); } catch (Exception $e) {}
+            return Database::execute("DELETE FROM planos WHERE id = :id", ['id' => $id]);
+        } catch (Exception $e) {
+            Logger::error('Erro ao excluir plano: ' . $e->getMessage());
+            return false;
+        }
+    }
+
     public static function atualizar(int $id, array $dados): bool
     {
         $campos = [];
