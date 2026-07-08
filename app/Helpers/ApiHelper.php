@@ -248,16 +248,19 @@ class ApiHelper
 
         if ($conteudo === null) {
             self::logErro('Anthropic', 'Resposta sem conteúdo', $resultado['dados']);
+            error_log('[O CONSULTOR][Anthropic] Resposta sem conteúdo | dados=' . json_encode($resultado['dados'] ?? [], JSON_UNESCAPED_UNICODE));
             return ['sucesso' => false, 'conteudo' => null, 'erro' => 'Resposta da API sem conteúdo.'];
         }
 
-        // Tentar decodificar como JSON
-        $decoded = json_decode($conteudo, true);
-        if (json_last_error() === JSON_ERROR_NONE) {
+        // Tentar decodificar como JSON (com limpeza de cercas markdown/texto solto).
+        $decoded = self::extrairJsonDeTexto($conteudo);
+        if ($decoded !== null) {
             return ['sucesso' => true, 'conteudo' => $decoded, 'erro' => null];
         }
 
-        return ['sucesso' => true, 'conteudo' => $conteudo, 'erro' => null];
+        self::logErro('Anthropic', 'Não foi possível extrair JSON da resposta', ['raw' => mb_substr($conteudo, 0, 800)]);
+        error_log('[O CONSULTOR][Anthropic] JSON não extraído da resposta | RAW=' . mb_substr($conteudo, 0, 800));
+        return ['sucesso' => false, 'conteudo' => $conteudo, 'erro' => 'A IA não retornou JSON válido (resposta em texto livre).'];
     }
 
     /**
@@ -298,15 +301,58 @@ class ApiHelper
 
         if ($conteudo === null) {
             self::logErro('Perplexity', 'Resposta sem conteúdo', $resultado['dados']);
+            error_log('[O CONSULTOR][Perplexity] Resposta sem conteúdo | dados=' . json_encode($resultado['dados'] ?? [], JSON_UNESCAPED_UNICODE));
             return ['sucesso' => false, 'conteudo' => null, 'erro' => 'Resposta da API sem conteúdo.'];
         }
 
-        $decoded = json_decode($conteudo, true);
-        if (json_last_error() === JSON_ERROR_NONE) {
+        // A Perplexity raramente devolve JSON puro: costuma envolver em ```json ... ```
+        // ou incluir texto/citações antes/depois. Tentamos limpar e extrair o JSON real.
+        $decoded = self::extrairJsonDeTexto($conteudo);
+        if ($decoded !== null) {
             return ['sucesso' => true, 'conteudo' => $decoded, 'erro' => null];
         }
 
-        return ['sucesso' => true, 'conteudo' => $conteudo, 'erro' => null];
+        // Não foi possível extrair JSON válido: registrar amostra para diagnóstico e
+        // reportar falha (em vez de devolver sucesso=true com uma string, que o
+        // código chamador não consegue processar e falha silenciosamente).
+        self::logErro('Perplexity', 'Não foi possível extrair JSON da resposta', ['raw' => mb_substr($conteudo, 0, 800)]);
+        error_log('[O CONSULTOR][Perplexity] JSON não extraído da resposta | RAW=' . mb_substr($conteudo, 0, 800));
+        return ['sucesso' => false, 'conteudo' => $conteudo, 'erro' => 'A Perplexity não retornou JSON válido (resposta em texto livre).'];
+    }
+
+    /**
+     * Extrai um array/objeto JSON de um texto livre: remove cercas de código
+     * markdown (```json ... ```) e, se ainda falhar, tenta capturar o primeiro
+     * bloco [...]/{...} do texto. Retorna null se nada for aproveitável.
+     */
+    private static function extrairJsonDeTexto(string $texto): ?array
+    {
+        $limpo = trim($texto);
+        // Remover cercas de código markdown, se houver.
+        $limpo = preg_replace('/^```(?:json)?\s*|\s*```$/m', '', $limpo);
+        $limpo = trim($limpo);
+
+        $decoded = json_decode($limpo, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            return $decoded;
+        }
+
+        // Tentar capturar o primeiro array JSON no texto.
+        if (preg_match('/\[.*\]/s', $limpo, $m)) {
+            $decoded = json_decode($m[0], true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $decoded;
+            }
+        }
+        // Tentar capturar o primeiro objeto JSON no texto.
+        if (preg_match('/\{.*\}/s', $limpo, $m)) {
+            $decoded = json_decode($m[0], true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        return null;
     }
 
     /**
