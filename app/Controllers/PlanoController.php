@@ -18,7 +18,7 @@ class PlanoController
         $usuario = Auth::usuario();
         $planos = Plano::listarPorUsuario($usuario['id']);
 
-        // Mapear status para labels e calcular dados
+        // Mapear status para labels e normalizar chaves esperadas pela view
         foreach ($planos as &$plano) {
             $plano['status_label'] = match($plano['status']) {
                 'em_elaboracao' => 'Em Elaboração',
@@ -28,9 +28,14 @@ class PlanoController
                 'cancelado' => 'Cancelado',
                 default => 'Rascunho'
             };
-            
-            $plano['progresso'] = (int) $plano['progresso_calculado'];
+
+            $plano['progresso'] = (int) ($plano['progresso_calculado'] ?? 0);
+            $plano['empresa'] = $plano['empresa_nome'] ?? 'Empresa';
+            $plano['data'] = $plano['criado_em'] ?? date('Y-m-d');
+            $plano['concluidas'] = (int) ($plano['tarefas_concluidas'] ?? 0);
+            $plano['total_tarefas'] = (int) ($plano['total_tarefas'] ?? 0);
         }
+        unset($plano);
 
         $dados = [
             'planos' => $planos,
@@ -376,6 +381,7 @@ class PlanoController
 
         $kanban = Plano::buscarTarefasKanban($planoId);
         $reunioes = Plano::buscarReunioes($planoId);
+        $plano = $this->normalizarPlanoParaView($plano, $kanban, $reunioes);
 
         $dados = [
             'plano' => $plano,
@@ -384,6 +390,54 @@ class PlanoController
         ];
 
         require VIEW_PATH . '/plano/ver.php';
+    }
+
+    /**
+     * Normaliza o array do plano para as chaves esperadas pela view (ver.php):
+     * empresa, periodo[inicio|fim], progresso, concluidas, total_tarefas e a
+     * lista achatada de tarefas (a partir do kanban agrupado por status).
+     */
+    private function normalizarPlanoParaView(array $plano, array $kanban, array $reunioes = []): array
+    {
+        $plano['empresa'] = $plano['empresa_nome'] ?? 'Empresa';
+        $plano['objetivo'] = $plano['objetivo'] ?? '';
+        $plano['progresso'] = (int) ($plano['progresso_calculado'] ?? 0);
+        $plano['concluidas'] = (int) ($plano['tarefas_concluidas'] ?? 0);
+        $plano['total_tarefas'] = (int) ($plano['total_tarefas'] ?? 0);
+        $plano['periodo'] = [
+            'inicio' => $plano['periodo_inicio'] ?? $plano['criado_em'] ?? date('Y-m-d'),
+            'fim' => $plano['periodo_fim'] ?? $plano['criado_em'] ?? date('Y-m-d'),
+        ];
+
+        // Achatar o kanban (agrupado por status) numa única lista de tarefas.
+        $tarefas = [];
+        foreach ($kanban as $grupo) {
+            foreach ((array) $grupo as $t) { $tarefas[] = $t; }
+        }
+        // Garantir campos que a view acessa direto, evitando warnings.
+        foreach ($tarefas as &$t) {
+            $t['prazo'] = $t['prazo'] ?? null;
+            $t['status'] = $t['status'] ?? 'pendente';
+            $t['prioridade'] = $t['prioridade'] ?? 'media';
+            $t['area'] = $t['area'] ?? 'Geral';
+            $t['responsavel'] = $t['responsavel'] ?? '—';
+            $t['atualizado_em'] = $t['atualizado_em'] ?? $t['criado_em'] ?? date('Y-m-d H:i:s');
+        }
+        unset($t);
+        $plano['tarefas'] = $tarefas;
+
+        // Normalizar reuniões: a view usa a chave 'data' (o model retorna 'data_reuniao').
+        $reunioesNorm = [];
+        foreach ($reunioes as $r) {
+            $r['data'] = $r['data_reuniao'] ?? $r['data'] ?? ($r['criado_em'] ?? date('Y-m-d'));
+            $r['participantes'] = $r['participantes'] ?? '';
+            $r['decisoes'] = $r['decisoes'] ?? '';
+            $r['proximos_passos'] = $r['proximos_passos'] ?? '';
+            $reunioesNorm[] = $r;
+        }
+        $plano['reunioes'] = $reunioesNorm;
+
+        return $plano;
     }
 
     /**
@@ -414,6 +468,7 @@ class PlanoController
 
         $kanban = Plano::buscarTarefasKanban($planoId);
         $reunioes = Plano::buscarReunioes($planoId);
+        $plano = $this->normalizarPlanoParaView($plano, $kanban, $reunioes);
 
         $dados = [
             'plano' => $plano,
