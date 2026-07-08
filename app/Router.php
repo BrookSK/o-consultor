@@ -69,6 +69,10 @@ class Router
         $this->get('plano-de-acao/ver', 'PlanoController', 'ver');
         $this->post('plano-de-acao/mover-tarefa', 'PlanoController', 'moverTarefa');
         $this->post('plano-de-acao/liberar-tarefa', 'PlanoController', 'liberarTarefa'); // Liberar/recolher tarefa da fila para o Kanban
+        $this->get('plano-de-acao/tarefa-detalhe', 'PlanoController', 'tarefaDetalhe');       // Detalhe do card (JSON)
+        $this->post('plano-de-acao/salvar-tarefa-detalhe', 'PlanoController', 'salvarTarefaDetalhe'); // Salvar campos do card
+        $this->post('plano-de-acao/comentar-tarefa', 'PlanoController', 'comentarTarefa');    // Comentário no card
+        $this->post('plano-de-acao/upload-imagem-tarefa', 'PlanoController', 'uploadImagemTarefa'); // Colar/anexar imagem
         $this->post('plano-de-acao/reuniao', 'PlanoController', 'registrarReuniao');
         
         // F-12: Acionamento de Parceiros via Plano

@@ -439,8 +439,11 @@ class Plano
     public static function buscarFilaCompleta(int $planoId): array
     {
         self::garantirEstruturaConsolidador();
+        // Só as tarefas do PLANO (originadas das prioridades do diagnóstico) entram no roadmap.
+        // Compromissos avulsos (criados manualmente ou por IA) têm prioridade_id NULL e
+        // NÃO aparecem aqui — eles vivem no Kanban/Calendário.
         $tarefas = Database::query(
-            "SELECT * FROM plano_tarefas WHERE plano_id = :p
+            "SELECT * FROM plano_tarefas WHERE plano_id = :p AND prioridade_id IS NOT NULL
              ORDER BY ordem_etapa ASC, ordem_kanban ASC, criado_em ASC",
             ['p' => $planoId]
         );
@@ -469,6 +472,123 @@ class Plano
     {
         $r = Database::queryOne("SELECT id FROM plano_tarefas WHERE id = :id AND plano_id = :p", ['id' => $tarefaId, 'p' => $planoId]);
         return !empty($r);
+    }
+
+    // ===================================================================
+    // DETALHE DO CARD (estilo Trello): descrição, checklist, etiquetas,
+    // datas, anexos (imagens coladas) e comentários.
+    // ===================================================================
+
+    public static function garantirColunasDetalheTarefa(): void
+    {
+        $alters = [
+            "ALTER TABLE plano_tarefas ADD COLUMN data_inicio DATE NULL",
+            "ALTER TABLE plano_tarefas ADD COLUMN checklist LONGTEXT NULL",
+            "ALTER TABLE plano_tarefas ADD COLUMN etiquetas VARCHAR(500) NULL",
+            "ALTER TABLE plano_tarefas ADD COLUMN anexos LONGTEXT NULL",
+        ];
+        foreach ($alters as $sql) {
+            try { Database::execute($sql); } catch (Exception $e) { /* já existe */ }
+        }
+        try {
+            Database::execute(
+                "CREATE TABLE IF NOT EXISTS plano_tarefa_comentarios (
+                    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    tarefa_id INT UNSIGNED NOT NULL,
+                    usuario_id INT UNSIGNED NULL,
+                    usuario_nome VARCHAR(150) NULL,
+                    texto TEXT NOT NULL,
+                    criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_tarefa (tarefa_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+            );
+        } catch (Exception $e) { /* já existe */ }
+    }
+
+    /** Detalhe completo de uma tarefa (para o modal do card). */
+    public static function buscarTarefaDetalhe(int $tarefaId, int $planoId): ?array
+    {
+        self::garantirEstruturaConsolidador();
+        self::garantirColunasDetalheTarefa();
+        $t = Database::queryOne(
+            "SELECT * FROM plano_tarefas WHERE id = :id AND plano_id = :p",
+            ['id' => $tarefaId, 'p' => $planoId]
+        );
+        if (!$t) return null;
+        // Contexto da prioridade de origem (problema + ação sugerida), quando for tarefa do plano.
+        $t['contexto_prioridade'] = null;
+        if (!empty($t['prioridade_id'])) {
+            $pr = Database::queryOne(
+                "SELECT area, descricao_problema, acao_sugerida, impacto, urgencia FROM plano_prioridades WHERE id = :id",
+                ['id' => $t['prioridade_id']]
+            );
+            if ($pr) { $t['contexto_prioridade'] = $pr; }
+        }
+        $t['checklist'] = !empty($t['checklist']) ? (json_decode($t['checklist'], true) ?: []) : [];
+        $t['anexos'] = !empty($t['anexos']) ? (json_decode($t['anexos'], true) ?: []) : [];
+        $t['etiquetas'] = !empty($t['etiquetas']) ? array_values(array_filter(array_map('trim', explode(',', $t['etiquetas'])))) : [];
+        $t['comentarios'] = Database::query(
+            "SELECT texto, usuario_nome, criado_em FROM plano_tarefa_comentarios WHERE tarefa_id = :id ORDER BY criado_em ASC",
+            ['id' => $tarefaId]
+        );
+        return $t;
+    }
+
+    /** Salva os campos editáveis do card. */
+    public static function salvarTarefaDetalhe(int $tarefaId, int $planoId, array $d): bool
+    {
+        self::garantirColunasDetalheTarefa();
+        return Database::execute(
+            "UPDATE plano_tarefas SET
+                titulo = :titulo,
+                descricao = :descricao,
+                responsavel = :responsavel,
+                data_inicio = :data_inicio,
+                prazo = :prazo,
+                hora = :hora,
+                prioridade = :prioridade,
+                etiquetas = :etiquetas,
+                checklist = :checklist,
+                atualizado_em = NOW()
+             WHERE id = :id AND plano_id = :p",
+            [
+                'titulo' => $d['titulo'],
+                'descricao' => $d['descricao'] ?? null,
+                'responsavel' => $d['responsavel'] ?? null,
+                'data_inicio' => !empty($d['data_inicio']) ? $d['data_inicio'] : null,
+                'prazo' => !empty($d['prazo']) ? $d['prazo'] : null,
+                'hora' => !empty($d['hora']) ? $d['hora'] : null,
+                'prioridade' => in_array($d['prioridade'] ?? 'media', ['alta','media','baixa']) ? $d['prioridade'] : 'media',
+                'etiquetas' => !empty($d['etiquetas']) ? implode(',', (array) $d['etiquetas']) : null,
+                'checklist' => isset($d['checklist']) ? json_encode($d['checklist'], JSON_UNESCAPED_UNICODE) : null,
+                'id' => $tarefaId,
+                'p' => $planoId,
+            ]
+        );
+    }
+
+    /** Anexa uma imagem (URL) à tarefa. */
+    public static function adicionarAnexoTarefa(int $tarefaId, int $planoId, string $url): bool
+    {
+        self::garantirColunasDetalheTarefa();
+        $t = Database::queryOne("SELECT anexos FROM plano_tarefas WHERE id = :id AND plano_id = :p", ['id' => $tarefaId, 'p' => $planoId]);
+        if (!$t) return false;
+        $anexos = !empty($t['anexos']) ? (json_decode($t['anexos'], true) ?: []) : [];
+        $anexos[] = ['url' => $url, 'em' => date('Y-m-d H:i:s')];
+        return Database::execute(
+            "UPDATE plano_tarefas SET anexos = :a, atualizado_em = NOW() WHERE id = :id AND plano_id = :p",
+            ['a' => json_encode($anexos, JSON_UNESCAPED_UNICODE), 'id' => $tarefaId, 'p' => $planoId]
+        );
+    }
+
+    public static function adicionarComentarioTarefa(int $tarefaId, ?int $usuarioId, string $usuarioNome, string $texto): bool
+    {
+        self::garantirColunasDetalheTarefa();
+        return Database::execute(
+            "INSERT INTO plano_tarefa_comentarios (tarefa_id, usuario_id, usuario_nome, texto, criado_em)
+             VALUES (:t, :u, :un, :tx, NOW())",
+            ['t' => $tarefaId, 'u' => $usuarioId, 'un' => $usuarioNome, 'tx' => $texto]
+        );
     }
 
     /**

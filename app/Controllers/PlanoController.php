@@ -515,6 +515,119 @@ class PlanoController
     }
 
     /**
+     * Detalhe de uma tarefa (JSON) para o modal do card.
+     */
+    public function tarefaDetalhe(): void
+    {
+        Auth::proteger();
+        header('Content-Type: application/json');
+        $planoId = (int) ($_GET['plano_id'] ?? 0);
+        $tarefaId = (int) ($_GET['tarefa_id'] ?? 0);
+        if (!$planoId || !$tarefaId) { echo json_encode(['sucesso' => false, 'erro' => 'Dados inválidos.']); exit; }
+        $t = Plano::buscarTarefaDetalhe($tarefaId, $planoId);
+        if (!$t) { echo json_encode(['sucesso' => false, 'erro' => 'Tarefa não encontrada.']); exit; }
+        echo json_encode(['sucesso' => true, 'tarefa' => $t]);
+        exit;
+    }
+
+    /**
+     * Salvar os campos do card (título, descrição, datas, checklist, etiquetas...).
+     */
+    public function salvarTarefaDetalhe(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+        $planoId = (int) ($_POST['plano_id'] ?? 0);
+        $tarefaId = (int) ($_POST['tarefa_id'] ?? 0);
+        $titulo = trim($_POST['titulo'] ?? '');
+        if (!$planoId || !$tarefaId || $titulo === '') { echo json_encode(['sucesso' => false, 'erro' => 'Título é obrigatório.']); exit; }
+        if (!Plano::tarefaPertenceAoPlano($tarefaId, $planoId)) { echo json_encode(['sucesso' => false, 'erro' => 'Sem permissão.']); exit; }
+
+        $checklist = [];
+        if (!empty($_POST['checklist'])) {
+            $decoded = json_decode($_POST['checklist'], true);
+            if (is_array($decoded)) { $checklist = $decoded; }
+        }
+        $etiquetas = [];
+        if (!empty($_POST['etiquetas'])) {
+            $etiquetas = is_array($_POST['etiquetas']) ? $_POST['etiquetas'] : array_map('trim', explode(',', $_POST['etiquetas']));
+        }
+
+        $ok = Plano::salvarTarefaDetalhe($tarefaId, $planoId, [
+            'titulo' => $titulo,
+            'descricao' => trim($_POST['descricao'] ?? ''),
+            'responsavel' => trim($_POST['responsavel'] ?? ''),
+            'data_inicio' => $_POST['data_inicio'] ?? null,
+            'prazo' => $_POST['prazo'] ?? null,
+            'hora' => $_POST['hora'] ?? null,
+            'prioridade' => $_POST['prioridade'] ?? 'media',
+            'etiquetas' => $etiquetas,
+            'checklist' => $checklist,
+        ]);
+        echo json_encode(['sucesso' => (bool) $ok]);
+        exit;
+    }
+
+    /**
+     * Adiciona comentário a uma tarefa.
+     */
+    public function comentarTarefa(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+        $planoId = (int) ($_POST['plano_id'] ?? 0);
+        $tarefaId = (int) ($_POST['tarefa_id'] ?? 0);
+        $texto = trim($_POST['texto'] ?? '');
+        if (!$planoId || !$tarefaId || $texto === '') { echo json_encode(['sucesso' => false, 'erro' => 'Comentário vazio.']); exit; }
+        if (!Plano::tarefaPertenceAoPlano($tarefaId, $planoId)) { echo json_encode(['sucesso' => false, 'erro' => 'Sem permissão.']); exit; }
+        $usuario = Auth::usuario();
+        $ok = Plano::adicionarComentarioTarefa($tarefaId, Auth::id(), $usuario['nome'] ?? 'Usuário', $texto);
+        echo json_encode(['sucesso' => (bool) $ok, 'usuario_nome' => $usuario['nome'] ?? 'Usuário']);
+        exit;
+    }
+
+    /**
+     * Upload de imagem colada/anexada na descrição do card.
+     * Aceita dataURL base64 (colar imagem) e salva em public/uploads.
+     */
+    public function uploadImagemTarefa(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+        $planoId = (int) ($_POST['plano_id'] ?? 0);
+        $tarefaId = (int) ($_POST['tarefa_id'] ?? 0);
+        $dataUrl = $_POST['imagem'] ?? '';
+        if (!$planoId || !$tarefaId || $dataUrl === '') { echo json_encode(['sucesso' => false, 'erro' => 'Imagem inválida.']); exit; }
+        if (!Plano::tarefaPertenceAoPlano($tarefaId, $planoId)) { echo json_encode(['sucesso' => false, 'erro' => 'Sem permissão.']); exit; }
+
+        // Extrair base64 do dataURL
+        if (!preg_match('/^data:image\/(png|jpe?g|gif|webp);base64,(.+)$/', $dataUrl, $m)) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Formato de imagem não suportado.']);
+            exit;
+        }
+        $ext = $m[1] === 'jpeg' ? 'jpg' : $m[1];
+        $bin = base64_decode($m[2]);
+        if ($bin === false || strlen($bin) > 8 * 1024 * 1024) { // limite 8MB
+            echo json_encode(['sucesso' => false, 'erro' => 'Imagem inválida ou muito grande (máx. 8MB).']);
+            exit;
+        }
+        $dir = (defined('ROOT_PATH') ? ROOT_PATH : getcwd()) . '/public/uploads/plano/' . $planoId;
+        if (!is_dir($dir)) { @mkdir($dir, 0755, true); }
+        $nome = 'card_' . $tarefaId . '_' . uniqid() . '.' . $ext;
+        if (file_put_contents($dir . '/' . $nome, $bin) === false) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Falha ao salvar a imagem.']);
+            exit;
+        }
+        $url = APP_URL . '/public/uploads/plano/' . $planoId . '/' . $nome;
+        Plano::adicionarAnexoTarefa($tarefaId, $planoId, $url);
+        echo json_encode(['sucesso' => true, 'url' => $url]);
+        exit;
+    }
+
+    /**
      * Mover tarefa no Kanban via AJAX
      */
     public function moverTarefa(): void

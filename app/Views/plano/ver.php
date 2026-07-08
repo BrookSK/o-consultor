@@ -136,7 +136,7 @@
             <div class="<?= $coluna['bg'] ?> rounded-lg p-3 min-h-[300px]" id="col-<?= $statusKey ?>">
                 <div class="flex items-center justify-between mb-3">
                     <h4 class="text-sm font-semibold text-gray-700"><?= $coluna['label'] ?></h4>
-                    <span class="w-5 h-5 rounded-full bg-<?= $coluna['cor'] ?>-200 text-<?= $coluna['cor'] ?>-700 text-xs flex items-center justify-center font-bold"><?= count($tarefasColuna) ?></span>
+                    <span data-count class="w-5 h-5 rounded-full bg-<?= $coluna['cor'] ?>-200 text-<?= $coluna['cor'] ?>-700 text-xs flex items-center justify-center font-bold"><?= count($tarefasColuna) ?></span>
                 </div>
                 <div class="space-y-2 kanban-column" data-status="<?= $statusKey ?>">
                     <?php foreach ($tarefasColuna as $tarefa):
@@ -150,7 +150,7 @@
                     ?>
                     <div class="bg-white rounded-lg border border-gray-200 p-3 shadow-sm cursor-move hover:shadow-md transition kanban-card" data-id="<?= $tarefa['id'] ?>">
                         <div class="flex items-start justify-between gap-2 mb-2">
-                            <p class="text-sm font-medium text-gray-800 leading-tight"><?= htmlspecialchars($tarefa['titulo']) ?></p>
+                            <p class="text-sm font-medium text-gray-800 leading-tight cursor-pointer hover:text-primary" onclick="abrirCard(<?= $tarefa['id'] ?>)"><?= htmlspecialchars($tarefa['titulo']) ?></p>
                             <span class="px-1.5 py-0.5 rounded text-[10px] font-bold <?= $prioBadge ?> flex-shrink-0"><?= strtoupper(substr($tarefa['prioridade'], 0, 1)) ?></span>
                         </div>
                         
@@ -186,7 +186,7 @@
                                     Acionar Parceiro
                                 </button>
                                 
-                                <button onclick="editarTarefa(<?= $tarefa['id'] ?>)" class="text-xs text-gray-400 hover:text-gray-600">
+                                <button onclick="abrirCard(<?= $tarefa['id'] ?>)" class="text-xs text-gray-400 hover:text-gray-600" title="Abrir card">
                                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
                                     </svg>
@@ -236,11 +236,12 @@
                     ?>
                     <div class="px-5 py-3 flex items-center gap-3">
                         <span class="px-1.5 py-0.5 rounded text-[10px] font-bold <?= $prioBadge ?>"><?= strtoupper(substr($t['prioridade'] ?? 'M', 0, 1)) ?></span>
-                        <div class="flex-1 min-w-0">
-                            <p class="text-sm font-medium text-gray-800 <?= $concluido ? 'line-through text-gray-400' : '' ?> truncate"><?= htmlspecialchars($t['titulo']) ?></p>
+                        <div class="flex-1 min-w-0 cursor-pointer" onclick="abrirCard(<?= (int) $t['id'] ?>)">
+                            <p class="text-sm font-medium text-gray-800 <?= $concluido ? 'line-through text-gray-400' : '' ?> truncate hover:text-primary"><?= htmlspecialchars($t['titulo']) ?></p>
                             <p class="text-xs text-gray-400">
                                 <?= htmlspecialchars($t['area'] ?? 'Geral') ?>
                                 <?= !empty($t['prazo']) ? ' · ' . date('d/m/Y', strtotime($t['prazo'])) : '' ?>
+                                · <span class="text-primary/70">ver detalhes</span>
                             </p>
                         </div>
                         <?php if ($concluido): ?>
@@ -713,6 +714,104 @@
     </div>
 </div>
 
+<!-- Modal Detalhe do Card (estilo Trello) -->
+<div id="modal-card" class="hidden fixed inset-0 bg-black/50 z-50 flex items-start justify-center p-4 overflow-y-auto">
+    <div class="bg-white rounded-lg shadow-xl max-w-3xl w-full my-8">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <select id="card-status" class="text-sm border border-gray-300 rounded-lg px-2 py-1 outline-none focus:border-primary">
+                    <option value="pendente">Pendente</option>
+                    <option value="em_andamento">Em Andamento</option>
+                    <option value="bloqueado">Bloqueado</option>
+                    <option value="concluido">Concluído</option>
+                </select>
+            </div>
+            <button onclick="fecharCard()" class="text-gray-400 hover:text-gray-600">✕</button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-0">
+            <!-- Coluna principal -->
+            <div class="md:col-span-2 p-6 space-y-5">
+                <input type="hidden" id="card-id" value="">
+                <div>
+                    <input type="text" id="card-titulo" class="w-full text-lg font-bold text-gray-800 border-0 border-b border-transparent hover:border-gray-200 focus:border-primary outline-none px-0 py-1" placeholder="Título">
+                </div>
+
+                <!-- Etiquetas / datas / prioridade -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">🏷️ Etiquetas (vírgula)</label>
+                        <input type="text" id="card-etiquetas" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary" placeholder="Ex.: urgente, cliente">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">Prioridade</label>
+                        <select id="card-prioridade" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                            <option value="alta">Alta</option><option value="media">Média</option><option value="baixa">Baixa</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">📅 Início</label>
+                        <input type="date" id="card-data-inicio" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">📅 Entrega</label>
+                        <div class="flex gap-2">
+                            <input type="date" id="card-prazo" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                            <input type="time" id="card-hora" class="w-28 px-2 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                        </div>
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-xs font-medium text-gray-500 mb-1">👤 Responsável</label>
+                        <input type="text" id="card-responsavel" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                    </div>
+                </div>
+
+                <!-- Contexto do diagnóstico (por que esta ação existe / como abordar) -->
+                <div id="card-contexto" class="hidden bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm">
+                    <p class="font-semibold text-blue-800 mb-1">🎯 Por que esta ação</p>
+                    <p class="text-blue-700" id="card-contexto-problema"></p>
+                    <p class="font-semibold text-blue-800 mt-2 mb-1">✅ Como fazer (sugestão)</p>
+                    <p class="text-blue-700" id="card-contexto-acao"></p>
+                </div>
+
+                <!-- Descrição (com colar imagem) -->
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">☰ Descrição</label>
+                    <p class="text-xs text-gray-400 mb-1">Dica: cole (Ctrl+V) uma imagem diretamente aqui.</p>
+                    <textarea id="card-descricao" rows="5" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary resize-y" placeholder="Adicione uma descrição mais detalhada..."></textarea>
+                    <div id="card-anexos" class="flex flex-wrap gap-2 mt-2"></div>
+                </div>
+
+                <!-- Checklist -->
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="text-sm font-semibold text-gray-700">☑ Checklist</label>
+                        <span id="card-checklist-progresso" class="text-xs text-gray-400"></span>
+                    </div>
+                    <div id="card-checklist" class="space-y-1"></div>
+                    <div class="flex gap-2 mt-2">
+                        <input type="text" id="card-novo-item" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary" placeholder="Adicionar item...">
+                        <button onclick="addChecklistItem()" class="px-3 py-2 bg-gray-100 rounded-lg text-sm hover:bg-gray-200">Adicionar</button>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-3 pt-2 border-t border-gray-100">
+                    <button onclick="fecharCard()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Fechar</button>
+                    <button id="card-btn-salvar" onclick="salvarCard()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700">Salvar</button>
+                </div>
+            </div>
+
+            <!-- Coluna lateral: comentários -->
+            <div class="bg-gray-50 p-6 border-l border-gray-100">
+                <h4 class="text-sm font-semibold text-gray-700 mb-3">💬 Comentários e atividade</h4>
+                <textarea id="card-comentario" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary resize-none mb-2" placeholder="Escrever um comentário..."></textarea>
+                <button onclick="comentarCard()" class="w-full px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700 mb-4">Comentar</button>
+                <div id="card-comentarios" class="space-y-3"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Chart.js para gráficos das métricas -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <!-- Sortable.js CDN para drag-and-drop -->
@@ -896,29 +995,226 @@ function configurarKanban() {
             animation: 150,
             ghostClass: 'opacity-40',
             onEnd: async function(evt) {
+                // Só age se realmente mudou de coluna.
+                const origem = evt.from;
+                const destino = evt.to;
                 const tarefaId = evt.item.dataset.id;
-                const novoStatus = evt.to.dataset.status;
+                const novoStatus = destino.dataset.status;
                 if (!tarefaId || !novoStatus) return;
+                if (origem === destino) return; // reordenou na mesma coluna
+
                 const formData = new FormData();
-                formData.append('csrf_token', '<?= Csrf::token() ?>');
+                formData.append('csrf_token', PLANO_CSRF);
                 formData.append('tarefa_id', tarefaId);
                 formData.append('novo_status', novoStatus);
                 try {
-                    const res = await fetch('<?= APP_URL ?>/plano-de-acao/mover-tarefa', { method: 'POST', body: formData });
+                    const res = await fetch('<?= APP_URL ?>/plano-de-acao/mover-tarefa', {
+                        method: 'POST',
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                        body: formData
+                    });
                     const data = await res.json();
-                    // Se novas tarefas de uma etapa foram liberadas, recarrega para exibi-las.
-                    if (data && data.success && data.tarefas_liberadas > 0) {
-                        location.reload();
+                    if (!data || !data.success) {
+                        alert((data && data.message) || 'Não foi possível mover a tarefa.');
+                        location.reload(); // volta ao estado real do servidor
+                        return;
                     }
-                } catch(e) {}
+                    // Atualiza contadores e, se liberou nova etapa, recarrega para mostrá-la.
+                    if (data.tarefas_liberadas > 0) {
+                        location.reload();
+                    } else {
+                        atualizarContadoresKanban();
+                    }
+                } catch(e) {
+                    alert('Erro de conexão ao mover a tarefa.');
+                    location.reload();
+                }
             }
         });
+    });
+}
+
+// Recalcula os números das colunas do Kanban após um drag.
+function atualizarContadoresKanban() {
+    document.querySelectorAll('.kanban-column').forEach(col => {
+        const status = col.dataset.status;
+        const n = col.querySelectorAll('.kanban-card').length;
+        const badge = document.querySelector('#col-' + status + ' [data-count]');
+        if (badge) badge.textContent = n;
     });
 }
 
 function editarTarefa(id) {
     alert('Funcionalidade de edição será implementada em breve.');
 }
+
+// ===== Modal Detalhe do Card =====
+let cardChecklist = [];
+const PLANO_ID = <?= (int) $plano['id'] ?>;
+
+async function abrirCard(tarefaId) {
+    try {
+        const res = await fetch('<?= APP_URL ?>/plano-de-acao/tarefa-detalhe?plano_id=' + PLANO_ID + '&tarefa_id=' + tarefaId);
+        const data = await res.json();
+        if (!data.sucesso) { alert(data.erro || 'Erro ao abrir card.'); return; }
+        const t = data.tarefa;
+        document.getElementById('card-id').value = t.id;
+        document.getElementById('card-titulo').value = t.titulo || '';
+        document.getElementById('card-descricao').value = t.descricao || '';
+        document.getElementById('card-responsavel').value = t.responsavel || '';
+        document.getElementById('card-data-inicio').value = t.data_inicio || '';
+        document.getElementById('card-prazo').value = t.prazo || '';
+        document.getElementById('card-hora').value = t.hora ? String(t.hora).substring(0,5) : '';
+        document.getElementById('card-prioridade').value = t.prioridade || 'media';
+        document.getElementById('card-status').value = t.status || 'pendente';
+        document.getElementById('card-etiquetas').value = (t.etiquetas || []).join(', ');
+        // Contexto do diagnóstico (só para tarefas do plano)
+        const ctxBox = document.getElementById('card-contexto');
+        if (t.contexto_prioridade && (t.contexto_prioridade.descricao_problema || t.contexto_prioridade.acao_sugerida)) {
+            document.getElementById('card-contexto-problema').textContent = t.contexto_prioridade.descricao_problema || '—';
+            document.getElementById('card-contexto-acao').textContent = t.contexto_prioridade.acao_sugerida || '—';
+            ctxBox.classList.remove('hidden');
+        } else {
+            ctxBox.classList.add('hidden');
+        }
+        cardChecklist = Array.isArray(t.checklist) ? t.checklist : [];
+        renderChecklist();
+        renderAnexos(t.anexos || []);
+        renderComentarios(t.comentarios || []);
+        document.getElementById('card-comentario').value = '';
+        document.getElementById('modal-card').classList.remove('hidden');
+    } catch (e) { alert('Erro de conexão.'); }
+}
+function fecharCard() { document.getElementById('modal-card').classList.add('hidden'); }
+
+function renderChecklist() {
+    const cont = document.getElementById('card-checklist');
+    const feitos = cardChecklist.filter(i => i.feito).length;
+    document.getElementById('card-checklist-progresso').textContent = cardChecklist.length ? (feitos + '/' + cardChecklist.length) : '';
+    cont.innerHTML = cardChecklist.map((item, i) =>
+        '<label class="flex items-center gap-2 text-sm">' +
+        '<input type="checkbox" ' + (item.feito ? 'checked' : '') + ' onchange="toggleChecklist(' + i + ')" class="w-4 h-4 rounded border-gray-300">' +
+        '<span class="' + (item.feito ? 'line-through text-gray-400' : 'text-gray-700') + '">' + escapeHtml(item.texto) + '</span>' +
+        '<button onclick="removeChecklist(' + i + ')" class="ml-auto text-gray-300 hover:text-red-500 text-xs">✕</button>' +
+        '</label>'
+    ).join('');
+}
+function addChecklistItem() {
+    const inp = document.getElementById('card-novo-item');
+    const v = inp.value.trim();
+    if (!v) return;
+    cardChecklist.push({ texto: v, feito: false });
+    inp.value = '';
+    renderChecklist();
+}
+function toggleChecklist(i) { cardChecklist[i].feito = !cardChecklist[i].feito; renderChecklist(); }
+function removeChecklist(i) { cardChecklist.splice(i, 1); renderChecklist(); }
+
+function renderAnexos(anexos) {
+    const cont = document.getElementById('card-anexos');
+    cont.innerHTML = (anexos || []).map(a =>
+        '<a href="' + a.url + '" target="_blank" class="block"><img src="' + a.url + '" class="w-20 h-20 object-cover rounded-lg border border-gray-200"></a>'
+    ).join('');
+}
+function renderComentarios(coms) {
+    const cont = document.getElementById('card-comentarios');
+    if (!coms.length) { cont.innerHTML = '<p class="text-xs text-gray-400">Sem comentários ainda.</p>'; return; }
+    cont.innerHTML = coms.map(c =>
+        '<div class="text-sm"><span class="font-semibold text-gray-700">' + escapeHtml(c.usuario_nome || 'Usuário') + '</span>' +
+        '<span class="text-xs text-gray-400 ml-2">' + (c.criado_em ? c.criado_em.substring(0,16).replace('T',' ') : '') + '</span>' +
+        '<p class="text-gray-600 mt-0.5">' + escapeHtml(c.texto) + '</p></div>'
+    ).join('');
+}
+function escapeHtml(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+async function salvarCard() {
+    const btn = document.getElementById('card-btn-salvar');
+    btn.disabled = true; btn.textContent = 'Salvando...';
+    const id = document.getElementById('card-id').value;
+    try {
+        // Salvar campos do card
+        const fd = new FormData();
+        fd.append('csrf_token', PLANO_CSRF);
+        fd.append('plano_id', PLANO_ID);
+        fd.append('tarefa_id', id);
+        fd.append('titulo', document.getElementById('card-titulo').value);
+        fd.append('descricao', document.getElementById('card-descricao').value);
+        fd.append('responsavel', document.getElementById('card-responsavel').value);
+        fd.append('data_inicio', document.getElementById('card-data-inicio').value);
+        fd.append('prazo', document.getElementById('card-prazo').value);
+        fd.append('hora', document.getElementById('card-hora').value);
+        fd.append('prioridade', document.getElementById('card-prioridade').value);
+        fd.append('etiquetas', document.getElementById('card-etiquetas').value);
+        fd.append('checklist', JSON.stringify(cardChecklist));
+        await fetch('<?= APP_URL ?>/plano-de-acao/salvar-tarefa-detalhe', { method: 'POST', body: fd });
+
+        // Atualizar status (se mudou) via a rota de mover.
+        const st = document.getElementById('card-status').value;
+        const fd2 = new FormData();
+        fd2.append('csrf_token', PLANO_CSRF);
+        fd2.append('tarefa_id', id);
+        fd2.append('novo_status', st);
+        await fetch('<?= APP_URL ?>/plano-de-acao/mover-tarefa', { method: 'POST', body: fd2 });
+
+        location.reload();
+    } catch (e) { alert('Erro ao salvar.'); btn.disabled = false; btn.textContent = 'Salvar'; }
+}
+
+async function comentarCard() {
+    const texto = document.getElementById('card-comentario').value.trim();
+    if (!texto) return;
+    const id = document.getElementById('card-id').value;
+    const fd = new FormData();
+    fd.append('csrf_token', PLANO_CSRF);
+    fd.append('plano_id', PLANO_ID);
+    fd.append('tarefa_id', id);
+    fd.append('texto', texto);
+    try {
+        const res = await fetch('<?= APP_URL ?>/plano-de-acao/comentar-tarefa', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.sucesso) {
+            document.getElementById('card-comentario').value = '';
+            abrirCard(id); // recarrega comentários
+        } else { alert(data.erro || 'Erro ao comentar.'); }
+    } catch (e) { alert('Erro de conexão.'); }
+}
+
+// Colar imagem na descrição → faz upload e insere o link no texto.
+document.addEventListener('DOMContentLoaded', function() {
+    const desc = document.getElementById('card-descricao');
+    if (!desc) return;
+    desc.addEventListener('paste', async function(e) {
+        const items = (e.clipboardData || e.originalEvent.clipboardData || {}).items || [];
+        for (const item of items) {
+            if (item.type && item.type.indexOf('image') === 0) {
+                e.preventDefault();
+                const file = item.getAsFile();
+                const reader = new FileReader();
+                reader.onload = async function(ev) {
+                    const id = document.getElementById('card-id').value;
+                    const fd = new FormData();
+                    fd.append('csrf_token', PLANO_CSRF);
+                    fd.append('plano_id', PLANO_ID);
+                    fd.append('tarefa_id', id);
+                    fd.append('imagem', ev.target.result);
+                    try {
+                        const res = await fetch('<?= APP_URL ?>/plano-de-acao/upload-imagem-tarefa', { method: 'POST', body: fd });
+                        const data = await res.json();
+                        if (data.sucesso) {
+                            desc.value += (desc.value ? '\n' : '') + data.url;
+                            // mostrar preview
+                            const cont = document.getElementById('card-anexos');
+                            const a = document.createElement('a'); a.href = data.url; a.target = '_blank';
+                            a.innerHTML = '<img src="' + data.url + '" class="w-20 h-20 object-cover rounded-lg border border-gray-200">';
+                            cont.appendChild(a);
+                        } else { alert(data.erro || 'Falha no upload da imagem.'); }
+                    } catch (err) { alert('Erro ao enviar imagem.'); }
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+    });
+});
 
 // Liberar/recolher tarefa da fila (Roadmap) para o Kanban.
 async function toggleLiberacao(tarefaId, liberar, btn) {
