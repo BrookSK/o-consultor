@@ -273,6 +273,7 @@ class ApiHelper
         $model = $model ? $model : self::config('perplexity_modelo', 'sonar-pro');
 
         if (empty($apiKey)) {
+            error_log('[O CONSULTOR][Perplexity] Chave não configurada (Admin > Configurações > APIs).');
             return ['sucesso' => false, 'conteudo' => null, 'erro' => 'Chave Perplexity não configurada. Acesse Admin > Configurações > APIs.'];
         }
 
@@ -1609,6 +1610,7 @@ Responda APENAS com um array JSON de URLs válidas. Sem explicações.";
             // Timeout — retry
             if ($errNo === CURLE_OPERATION_TIMEDOUT && $tentativa < $maxTentativas) {
                 self::logErro($provedor, "Timeout (tentativa {$tentativa}), retrying...", ['url' => $url]);
+                error_log('[O CONSULTOR][' . $provedor . '] Timeout na tentativa ' . $tentativa . '/' . $maxTentativas . ' | URL=' . $url);
                 sleep(2);
                 continue;
             }
@@ -1616,6 +1618,7 @@ Responda APENAS com um array JSON de URLs válidas. Sem explicações.";
             // Erro de cURL
             if ($erro) {
                 self::logErro($provedor, "Erro cURL: {$erro}", ['url' => $url, 'errno' => $errNo]);
+                error_log('[O CONSULTOR][' . $provedor . '] Erro cURL (errno ' . $errNo . '): ' . $erro . ' | URL=' . $url);
                 return ['sucesso' => false, 'conteudo' => null, 'erro' => "API {$provedor} indisponível: {$erro}", 'dados' => null];
             }
 
@@ -1632,12 +1635,14 @@ Responda APENAS com um array JSON de URLs válidas. Sem explicações.";
             $dados = json_decode($resposta, true);
             if (json_last_error() !== JSON_ERROR_NONE) {
                 self::logErro($provedor, 'Resposta não é JSON válido', ['raw' => substr($resposta, 0, 500)]);
+                error_log('[O CONSULTOR][' . $provedor . '] Resposta não é JSON válido | RAW=' . substr((string) $resposta, 0, 500));
                 return ['sucesso' => false, 'conteudo' => null, 'erro' => 'Resposta inválida da API.', 'dados' => null];
             }
 
             return ['sucesso' => true, 'dados' => $dados, 'erro' => null];
         }
 
+        error_log('[O CONSULTOR][' . $provedor . '] Timeout final após ' . $maxTentativas . ' tentativa(s) | URL=' . $url);
         return ['sucesso' => false, 'conteudo' => null, 'erro' => "API {$provedor}: timeout após {$maxTentativas} tentativas.", 'dados' => null];
     }
 
