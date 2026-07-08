@@ -509,7 +509,7 @@ class NoticiasController
             ]
         );
     }
-}
+
     /**
      * Buscar notícias agora (manual)
      */
