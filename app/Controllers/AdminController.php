@@ -848,13 +848,6 @@ class AdminController
             exit;
         }
         
-        // Validação básica do formato da chave (mais flexível)
-        $formatosValidos = [
-            'openai' => '/^sk-[a-zA-Z0-9_-]{20,}$/',
-            'anthropic' => '/^sk-ant-[a-zA-Z0-9_-]{20,}$/',
-            'perplexity' => '/^pplx-[a-zA-Z0-9_-]{20,}$/'
-        ];
-        
         // DEBUG: Log para identificar o problema
         Logger::warning("Tentativa de salvar chave API", [
             'provedor' => $provedor,
@@ -862,31 +855,21 @@ class AdminController
             'chave_prefix' => substr($chave, 0, 10) . '...',
             'user_id' => Auth::id()
         ]);
-        
-        // Para desenvolvimento/teste, permitir chaves de exemplo
-        $chavesDesenvolvimento = [
-            'openai' => ['sk-test', 'sk-exemplo', 'sk-desenvolvimento'],
-            'anthropic' => ['sk-ant-test', 'sk-ant-exemplo'],  
-            'perplexity' => ['pplx-test', 'pplx-exemplo']
-        ];
-        
-        $isChaveDesenvolvimento = in_array($chave, $chavesDesenvolvimento[$provedor] ?? []);
-        
-        if (!$isChaveDesenvolvimento && isset($formatosValidos[$provedor]) && !preg_match($formatosValidos[$provedor], $chave)) {
-            $exemplos = [
-                'openai' => 'sk-proj-xxx... (mínimo 30 caracteres)',
-                'anthropic' => 'sk-ant-xxx... (mínimo 30 caracteres)',
-                'perplexity' => 'pplx-xxx... (mínimo 30 caracteres)'
-            ];
-            
+
+        // Validação de formato por regex de prefixo foi removida: os provedores mudam o
+        // formato das chaves com o tempo (ex.: chaves de projeto da OpenAI, chaves de
+        // organização, etc.) e uma regex rígida rejeitava chaves reais e válidas.
+        // Mantemos apenas uma checagem mínima de tamanho; a validade real é confirmada
+        // pelo botão "Testar API", que faz uma chamada real ao provedor.
+        if (mb_strlen($chave) < 8) {
             header('Content-Type: application/json');
             echo json_encode([
-                'sucesso' => false, 
-                'erro' => "Formato inválido. Esperado: {$exemplos[$provedor]}. Para testes, use: sk-test"
+                'sucesso' => false,
+                'erro' => 'Chave muito curta. Cole a chave completa fornecida pelo provedor.'
             ]);
             exit;
         }
-        
+
         try {
             // Salvar no banco (a criptografia é automática via model)
             $chaveConfig = $provedor . '_key';
