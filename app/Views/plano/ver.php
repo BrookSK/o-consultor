@@ -113,6 +113,7 @@
     <div class="border-b border-gray-200 mb-6">
         <nav class="flex gap-0 flex-wrap">
             <button @click="abaAtiva = 'kanban'" :class="abaAtiva === 'kanban' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm transition">📋 Kanban</button>
+            <button @click="abaAtiva = 'roadmap'" :class="abaAtiva === 'roadmap' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm transition">🗺️ Roadmap</button>
             <button @click="abaAtiva = 'lista'" :class="abaAtiva === 'lista' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm transition">📊 Lista</button>
             <button @click="abaAtiva = 'calendario'" :class="abaAtiva === 'calendario' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm transition">📅 Calendário</button>
             <button @click="abaAtiva = 'metricas'; setTimeout(() => window.renderCharts && window.renderCharts(), 100)" :class="abaAtiva === 'metricas' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm transition">📈 Métricas</button>
@@ -198,6 +199,66 @@
             </div>
             <?php endforeach; ?>
         </div>
+    </div>
+
+    <!-- ABA ROADMAP (fila completa de etapas) -->
+    <div x-show="abaAtiva === 'roadmap'" x-transition style="display:none;">
+        <?php $fila = $dados['fila'] ?? []; ?>
+        <div class="bg-white rounded-lg border border-gray-200 p-4 mb-4">
+            <p class="text-sm text-gray-600">
+                Todas as etapas do plano já estão criadas na ordem correta. Cada etapa aparece no Kanban conforme a anterior é concluída —
+                mas você pode <b>liberar manualmente</b> qualquer tarefa para o Kanban quando quiser, ou recolhê-la de volta.
+            </p>
+        </div>
+
+        <?php if (empty($fila)): ?>
+        <div class="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500">Nenhuma tarefa no roadmap ainda.</div>
+        <?php else: ?>
+        <div class="space-y-4">
+            <?php foreach ($fila as $numEtapa => $tarefasEtapa):
+                $totalEt = count($tarefasEtapa);
+                $concluidasEt = count(array_filter($tarefasEtapa, fn($t) => ($t['status'] ?? '') === 'concluido'));
+            ?>
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <div class="px-5 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                    <h4 class="text-sm font-bold text-gray-800">Etapa <?= (int) $numEtapa ?></h4>
+                    <span class="text-xs text-gray-500"><?= $concluidasEt ?>/<?= $totalEt ?> concluídas</span>
+                </div>
+                <div class="divide-y divide-gray-100">
+                    <?php foreach ($tarefasEtapa as $t):
+                        $liberada = (int) ($t['liberada'] ?? 1) === 1;
+                        $concluido = ($t['status'] ?? '') === 'concluido';
+                        $prioBadge = match($t['prioridade'] ?? 'media') {
+                            'alta' => 'bg-red-100 text-red-700',
+                            'baixa' => 'bg-blue-100 text-blue-700',
+                            default => 'bg-yellow-100 text-yellow-700',
+                        };
+                    ?>
+                    <div class="px-5 py-3 flex items-center gap-3">
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-bold <?= $prioBadge ?>"><?= strtoupper(substr($t['prioridade'] ?? 'M', 0, 1)) ?></span>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-medium text-gray-800 <?= $concluido ? 'line-through text-gray-400' : '' ?> truncate"><?= htmlspecialchars($t['titulo']) ?></p>
+                            <p class="text-xs text-gray-400">
+                                <?= htmlspecialchars($t['area'] ?? 'Geral') ?>
+                                <?= !empty($t['prazo']) ? ' · ' . date('d/m/Y', strtotime($t['prazo'])) : '' ?>
+                            </p>
+                        </div>
+                        <?php if ($concluido): ?>
+                            <span class="text-xs font-medium text-green-600">✓ Concluída</span>
+                        <?php elseif ($liberada): ?>
+                            <span class="text-xs text-gray-400 mr-1">No Kanban</span>
+                            <button onclick="toggleLiberacao(<?= (int) $t['id'] ?>, false, this)" class="text-xs px-3 py-1 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">Recolher</button>
+                        <?php else: ?>
+                            <span class="text-xs text-gray-400 mr-1">Na fila</span>
+                            <button onclick="toggleLiberacao(<?= (int) $t['id'] ?>, true, this)" class="text-xs px-3 py-1 rounded-lg bg-primary text-white hover:bg-primary-700">Enviar ao Kanban</button>
+                        <?php endif; ?>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
     </div>
 
     <!-- ABA LISTA -->
@@ -857,6 +918,23 @@ function configurarKanban() {
 
 function editarTarefa(id) {
     alert('Funcionalidade de edição será implementada em breve.');
+}
+
+// Liberar/recolher tarefa da fila (Roadmap) para o Kanban.
+async function toggleLiberacao(tarefaId, liberar, btn) {
+    btn.disabled = true;
+    btn.textContent = '...';
+    try {
+        const fd = new FormData();
+        fd.append('csrf_token', '<?= Csrf::token() ?>');
+        fd.append('plano_id', '<?= (int) $plano['id'] ?>');
+        fd.append('tarefa_id', tarefaId);
+        fd.append('liberar', liberar ? '1' : '0');
+        const res = await fetch('<?= APP_URL ?>/plano-de-acao/liberar-tarefa', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.sucesso) { location.reload(); }
+        else { alert(data.erro || 'Erro ao atualizar.'); btn.disabled = false; btn.textContent = liberar ? 'Enviar ao Kanban' : 'Recolher'; }
+    } catch (e) { alert('Erro de conexão.'); btn.disabled = false; btn.textContent = liberar ? 'Enviar ao Kanban' : 'Recolher'; }
 }
 
 // Componente Alpine do calendário mensal.

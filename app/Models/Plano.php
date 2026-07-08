@@ -430,6 +430,45 @@ class Plano
     }
 
     /**
+     * Retorna TODAS as tarefas do plano (liberadas e não liberadas),
+     * agrupadas por etapa e em ordem — a "fila" completa do roadmap.
+     */
+    public static function buscarFilaCompleta(int $planoId): array
+    {
+        self::garantirEstruturaConsolidador();
+        $tarefas = Database::query(
+            "SELECT * FROM plano_tarefas WHERE plano_id = :p
+             ORDER BY ordem_etapa ASC, ordem_kanban ASC, criado_em ASC",
+            ['p' => $planoId]
+        );
+        $porEtapa = [];
+        foreach ($tarefas as $t) {
+            $etapa = (int) ($t['ordem_etapa'] ?? 1);
+            $porEtapa[$etapa][] = $t;
+        }
+        ksort($porEtapa);
+        return $porEtapa;
+    }
+
+    /**
+     * Libera (mostra no Kanban) ou recolhe (esconde) uma tarefa específica.
+     */
+    public static function definirLiberacaoTarefa(int $tarefaId, int $planoId, bool $liberada): bool
+    {
+        self::garantirEstruturaConsolidador();
+        return Database::execute(
+            "UPDATE plano_tarefas SET liberada = :lib, atualizado_em = NOW() WHERE id = :id AND plano_id = :p",
+            ['lib' => $liberada ? 1 : 0, 'id' => $tarefaId, 'p' => $planoId]
+        );
+    }
+
+    public static function tarefaPertenceAoPlano(int $tarefaId, int $planoId): bool
+    {
+        $r = Database::queryOne("SELECT id FROM plano_tarefas WHERE id = :id AND plano_id = :p", ['id' => $tarefaId, 'p' => $planoId]);
+        return !empty($r);
+    }
+
+    /**
      * Cria as tarefas de um plano organizadas em ETAPAS sequenciais.
      * Apenas a etapa 1 nasce liberada; as demais são liberadas conforme
      * as anteriores forem concluídas (liberação progressiva no Kanban).

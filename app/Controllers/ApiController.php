@@ -185,8 +185,10 @@ class ApiController
                 }
             }
             
-            // Se conversão falhou, usar arquivo original
-            unlink($tempFile);
+            // Se conversão falhou, usar arquivo original (remove o temp se existir)
+            if (file_exists($tempFile)) {
+                @unlink($tempFile);
+            }
         }
         
         return $audioPath;

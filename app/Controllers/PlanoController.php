@@ -389,6 +389,7 @@ class PlanoController
             'reunioes' => $reunioes,
             'calendario' => Plano::buscarCalendario($planoId),
             'metricas' => Plano::buscarMetricas($planoId),
+            'fila' => Plano::buscarFilaCompleta($planoId),
         ];
 
         require VIEW_PATH . '/plano/ver.php';
@@ -482,9 +483,35 @@ class PlanoController
             'reunioes' => $reunioes,
             'calendario' => Plano::buscarCalendario($planoId),
             'metricas' => Plano::buscarMetricas($planoId),
+            'fila' => Plano::buscarFilaCompleta($planoId),
         ];
 
         require VIEW_PATH . '/plano/ver.php';
+    }
+
+    /**
+     * Libera/recolhe uma tarefa da fila para o Kanban (via AJAX).
+     */
+    public function liberarTarefa(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $planoId = (int) ($_POST['plano_id'] ?? 0);
+        $tarefaId = (int) ($_POST['tarefa_id'] ?? 0);
+        $liberar = (($_POST['liberar'] ?? '1') === '1');
+        if (!$planoId || !$tarefaId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Dados inválidos.']);
+            exit;
+        }
+        if (!Plano::tarefaPertenceAoPlano($tarefaId, $planoId)) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Tarefa não pertence a este plano.']);
+            exit;
+        }
+        $ok = Plano::definirLiberacaoTarefa($tarefaId, $planoId, $liberar);
+        echo json_encode(['sucesso' => (bool) $ok]);
+        exit;
     }
 
     /**
@@ -818,22 +845,55 @@ class PlanoController
 
         try {
             $resp = ApiHelper::chamarAnalise($prompt, true);
-            $dados = null;
-            if ($resp && !empty($resp['sucesso'])) {
-                $dados = $resp['conteudo'];
-                if (is_string($dados)) { $dados = json_decode($dados, true); }
-            }
 
-            if (empty($dados) || empty($dados['titulo'])) {
-                echo json_encode(['sucesso' => false, 'erro' => 'Não consegui entender o compromisso. Tente ser mais específico.']);
+            if (empty($resp['sucesso'])) {
+                Logger::erro('criarTarefaIA: IA indisponível', ['erro' => $resp['erro'] ?? '']);
+                echo json_encode(['sucesso' => false, 'erro' => $resp['erro'] ?? 'IA indisponível. Verifique se a API está ativa em Admin > APIs.']);
                 exit;
             }
 
+            // Normalizar o conteúdo (pode vir como array já decodificado, string JSON,
+            // ou JSON embrulhado em texto/markdown).
+            $dados = $resp['conteudo'];
+            if (is_string($dados)) {
+                $txt = trim($dados);
+                // Remover cercas de código markdown se houver
+                $txt = preg_replace('/^```(?:json)?|```$/m', '', $txt);
+                $dec = json_decode(trim($txt), true);
+                if (!is_array($dec)) {
+                    // tentar extrair o primeiro objeto {...}
+                    if (preg_match('/\{.*\}/s', $txt, $m)) {
+                        $dec = json_decode($m[0], true);
+                    }
+                }
+                $dados = $dec;
+            }
+
+            // Se veio aninhado (ex.: {"compromisso": {...}}), tentar descer um nível.
+            if (is_array($dados) && empty($dados['titulo'])) {
+                foreach ($dados as $v) {
+                    if (is_array($v) && !empty($v['titulo'])) { $dados = $v; break; }
+                }
+            }
+
+            // Aceitar variações de chave para o título.
+            $titulo = '';
+            if (is_array($dados)) {
+                $titulo = trim((string) ($dados['titulo'] ?? $dados['título'] ?? $dados['title'] ?? $dados['nome'] ?? ''));
+            }
+
+            if (empty($titulo)) {
+                Logger::erro('criarTarefaIA: sem titulo no retorno', ['retorno' => is_array($dados) ? json_encode($dados, JSON_UNESCAPED_UNICODE) : (string) $dados]);
+                // Fallback: usar a própria frase do usuário como título, agendando para hoje.
+                $titulo = mb_substr($texto, 0, 120);
+            }
+
             $data = preg_match('/^\d{4}-\d{2}-\d{2}$/', $dados['data'] ?? '') ? $dados['data'] : $hoje;
-            $hora = preg_match('/^\d{2}:\d{2}$/', $dados['hora'] ?? '') ? $dados['hora'] : null;
+            $horaRaw = $dados['hora'] ?? '';
+            $hora = preg_match('/^\d{1,2}:\d{2}$/', $horaRaw) ? substr('0' . $horaRaw, -5) : null;
 
             $id = Plano::criarTarefa($planoId, [
-                'titulo' => $dados['titulo'],
+                'titulo' => $titulo,
                 'descricao' => $dados['descricao'] ?? '',
                 'responsavel' => $dados['responsavel'] ?? '',
                 'prazo' => $data,
@@ -842,14 +902,19 @@ class PlanoController
                 'tipo' => in_array($dados['tipo'] ?? 'tarefa', ['tarefa','reuniao','entrega','compromisso']) ? $dados['tipo'] : 'tarefa',
             ]);
 
-            echo json_encode(['sucesso' => (bool) $id, 'id' => $id, 'tarefa' => [
-                'titulo' => $dados['titulo'], 'data' => $data, 'hora' => $hora, 'tipo' => $dados['tipo'] ?? 'tarefa'
+            if (!$id) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Não foi possível salvar o compromisso.']);
+                exit;
+            }
+
+            echo json_encode(['sucesso' => true, 'id' => $id, 'tarefa' => [
+                'titulo' => $titulo, 'data' => $data, 'hora' => $hora, 'tipo' => $dados['tipo'] ?? 'tarefa'
             ]]);
             exit;
 
         } catch (Exception $e) {
             Logger::erro('Erro criarTarefaIA: ' . $e->getMessage());
-            echo json_encode(['sucesso' => false, 'erro' => 'Erro ao processar com IA.']);
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro ao processar com IA: ' . $e->getMessage()]);
             exit;
         }
     }

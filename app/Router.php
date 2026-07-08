@@ -68,6 +68,7 @@ class Router
         $this->post('plano-de-acao/salvar-tarefas', 'PlanoController', 'salvarTarefas');
         $this->get('plano-de-acao/ver', 'PlanoController', 'ver');
         $this->post('plano-de-acao/mover-tarefa', 'PlanoController', 'moverTarefa');
+        $this->post('plano-de-acao/liberar-tarefa', 'PlanoController', 'liberarTarefa'); // Liberar/recolher tarefa da fila para o Kanban
         $this->post('plano-de-acao/reuniao', 'PlanoController', 'registrarReuniao');
         
         // F-12: Acionamento de Parceiros via Plano
