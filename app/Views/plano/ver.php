@@ -2,6 +2,15 @@
 <?php ob_start(); ?>
 <?php $plano = $dados['plano']; ?>
 
+<style>
+/* Evita que o arraste dos cards selecione texto em vez de mover. */
+.kanban-card { user-select: none; -webkit-user-select: none; -ms-user-select: none; }
+.kanban-card * { user-select: none; -webkit-user-select: none; }
+.kanban-column { min-height: 120px; }
+.sortable-ghost { opacity: .4; }
+.sortable-chosen { cursor: grabbing !important; }
+</style>
+
 <nav class="mb-6">
     <ol class="flex items-center text-sm text-gray-500 gap-2">
         <li><a href="<?= APP_URL ?>/dashboard" class="hover:text-primary">Dashboard</a></li>
@@ -739,7 +748,10 @@
             <div class="md:col-span-2 p-6 space-y-5">
                 <input type="hidden" id="card-id" value="">
                 <div>
-                    <textarea id="card-titulo" rows="1" class="w-full text-lg font-bold text-gray-800 border border-transparent hover:border-gray-200 focus:border-primary rounded-lg outline-none px-2 py-1 resize-none leading-snug" placeholder="Título"></textarea>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Título</label>
+                    <input type="text" id="card-titulo" data-no-mic="1"
+                           class="w-full text-base font-bold text-gray-800 border border-gray-300 focus:border-primary rounded-lg outline-none px-3 py-2"
+                           placeholder="Título da tarefa">
                 </div>
 
                 <!-- Etiquetas / datas / prioridade -->
@@ -1017,7 +1029,10 @@ window.configurarKanban = function configurarKanban() {
             animation: 150,
             ghostClass: 'opacity-40',
             draggable: '.kanban-card',
-            forceFallback: true,
+            handle: '.kanban-card',
+            delay: 60,
+            delayOnTouchOnly: true,
+            fallbackTolerance: 3,
             onEnd: async function(evt) {
                 // Só age se realmente mudou de coluna.
                 const origem = evt.from;
@@ -1083,10 +1098,7 @@ async function abrirCard(tarefaId) {
         if (!data.sucesso) { alert(data.erro || 'Erro ao abrir card.'); return; }
         const t = data.tarefa;
         document.getElementById('card-id').value = t.id;
-        const tituloEl = document.getElementById('card-titulo');
-        tituloEl.value = t.titulo || '';
-        tituloEl.style.height = 'auto';
-        tituloEl.style.height = (tituloEl.scrollHeight) + 'px';
+        document.getElementById('card-titulo').value = t.titulo || '';
         document.getElementById('card-descricao').value = t.descricao || '';
         document.getElementById('card-responsavel').value = t.responsavel || '';
         document.getElementById('card-data-inicio').value = t.data_inicio || '';
