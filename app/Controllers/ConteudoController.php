@@ -13,7 +13,16 @@ class ConteudoController
     {
         Auth::proteger();
 
-        $empresaId = Auth::garantirEmpresa();
+        // Para ADMIN_HOLDING em modo "Todas as empresas", Auth::empresa() retorna null.
+        // Não usamos Auth::garantirEmpresa() aqui porque ele cai num fallback silencioso
+        // para a primeira empresa do banco — o que fazia o admin editar/ver sites de
+        // uma empresa diferente da que ele pensava, parecendo que salvar/apagar "não funcionava".
+        $empresaId = Auth::empresa();
+        if (!$empresaId) {
+            Flash::set('erro', 'Selecione uma empresa específica (menu no topo) para gerenciar a Central de Conteúdo.');
+            header('Location: ' . APP_URL . '/admin/clientes');
+            exit;
+        }
 
         // Paginação: mais nova (página 1) → mais antiga (páginas sequenciais).
         $pagina = max(1, (int) ($_GET['pagina'] ?? 1));
@@ -43,7 +52,11 @@ class ConteudoController
         Auth::proteger();
         header('Content-Type: application/json');
 
-        $empresaId = Auth::garantirEmpresa();
+        $empresaId = Auth::empresa();
+        if (!$empresaId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Selecione uma empresa específica no menu do topo.']);
+            exit;
+        }
         $pagina = max(1, (int) ($_GET['pagina'] ?? 1));
 
         $resultado = $this->buscarNoticiasReais($empresaId, $pagina);
@@ -103,9 +116,11 @@ class ConteudoController
         Csrf::verificar();
         header('Content-Type: application/json');
 
-        $empresaId = Auth::garantirEmpresa();
+        // Mesmo motivo do index(): não usar garantirEmpresa() aqui, pois ele faria
+        // o admin em modo "Todas as empresas" salvar sites na empresa #1 silenciosamente.
+        $empresaId = Auth::empresa();
         if (!$empresaId) {
-            echo json_encode(['sucesso' => false, 'erro' => 'Empresa não identificada.']);
+            echo json_encode(['sucesso' => false, 'erro' => 'Selecione uma empresa específica no menu do topo antes de configurar os sites.']);
             exit;
         }
 
@@ -155,8 +170,13 @@ class ConteudoController
     {
         Auth::proteger();
         Csrf::verificar();
-        
-        $empresaId = Auth::garantirEmpresa();
+
+        $empresaId = Auth::empresa();
+        if (!$empresaId) {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Selecione uma empresa específica no menu do topo antes de buscar notícias.']);
+            exit;
+        }
 
         // Verificar se alguma API está configurada
         if (!Configuracao::apiAtiva('perplexity') && !Configuracao::apiAtiva('openai') && !Configuracao::apiAtiva('anthropic')) {

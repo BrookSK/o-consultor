@@ -107,6 +107,20 @@ class NoticiasController
         if ($isManual) {
             Auth::proteger();
             $empresaId = Auth::empresa();
+
+            // Admin em modo "Todas as empresas" não tem empresa_id na sessão.
+            // Sem isso, cairia no fallback de processarTodasEmpresas() abaixo,
+            // rodando a busca para TODAS as empresas do banco em vez da que o
+            // usuário pediu — comportamento inesperado que aparecia como
+            // "Erro interno ao buscar notícias" sempre que qualquer empresa falhasse.
+            if (!$empresaId) {
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'sucesso' => false,
+                    'erro' => 'Selecione uma empresa específica no menu do topo antes de buscar notícias.',
+                ]);
+                exit;
+            }
         } else {
             // Busca automática - processar todas as empresas ou específica
             $empresaId = (int) ($_GET['empresa_id'] ?? 0);
