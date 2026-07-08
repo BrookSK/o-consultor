@@ -319,35 +319,77 @@ class NoticiasController
      */
     private function salvarNoticia(int $empresaId, array $noticia, array $analise, string $apiUtilizada): bool
     {
-        return Database::execute(
-            "INSERT INTO noticias (
-                empresa_id, titulo, url, fonte, data_publicacao, categoria, relevancia, setor,
-                bloco1_noticia, bloco2_significa, bloco3_o_que_fazer, bloco4_pergunta, bloco5_conexao,
-                tags, resumo_bruto, processado_via
-             ) VALUES (
-                :empresa_id, :titulo, :url, :fonte, :data_publicacao, :categoria, :relevancia, :setor,
-                :bloco1, :bloco2, :bloco3, :bloco4, :bloco5,
-                :tags, :resumo_bruto, :processado_via
-             )",
-            [
-                'empresa_id' => $empresaId,
-                'titulo' => $noticia['titulo'],
-                'url' => $noticia['url'],
-                'fonte' => $noticia['fonte'] ?? 'Desconhecida',
-                'data_publicacao' => $noticia['data'] ?? date('Y-m-d'),
-                'categoria' => $analise['categoria'] ?? 'Mercado',
-                'relevancia' => $analise['relevancia'] ?? 'media',
-                'setor' => $noticia['setor'] ?? 'Geral',
-                'bloco1' => $analise['bloco1_noticia'] ?? '',
-                'bloco2' => $analise['bloco2_significa'] ?? '',
-                'bloco3' => $analise['bloco3_o_que_fazer'] ?? '',
-                'bloco4' => $analise['bloco4_pergunta'] ?? '',
-                'bloco5' => $analise['bloco5_conexao'] ?? '',
-                'tags' => json_encode($analise['tags'] ?? []),
-                'resumo_bruto' => $noticia['resumo_bruto'] ?? null,
-                'processado_via' => $apiUtilizada === 'perplexity' ? 'perplexity+gpt' : ($apiUtilizada . '_fallback'),
-            ]
-        );
+        // imagem_url é opcional (a IA pode não encontrar uma imagem de capa).
+        $imagemUrl = trim((string) ($noticia['imagem_url'] ?? ''));
+        $imagemUrl = filter_var($imagemUrl, FILTER_VALIDATE_URL) ? $imagemUrl : null;
+
+        try {
+            return Database::execute(
+                "INSERT INTO noticias (
+                    empresa_id, titulo, url, imagem_url, fonte, data_publicacao, categoria, relevancia, setor,
+                    bloco1_noticia, bloco2_significa, bloco3_o_que_fazer, bloco4_pergunta, bloco5_conexao,
+                    tags, resumo_bruto, processado_via
+                 ) VALUES (
+                    :empresa_id, :titulo, :url, :imagem_url, :fonte, :data_publicacao, :categoria, :relevancia, :setor,
+                    :bloco1, :bloco2, :bloco3, :bloco4, :bloco5,
+                    :tags, :resumo_bruto, :processado_via
+                 )",
+                [
+                    'empresa_id' => $empresaId,
+                    'titulo' => $noticia['titulo'],
+                    'url' => $noticia['url'],
+                    'imagem_url' => $imagemUrl,
+                    'fonte' => $noticia['fonte'] ?? 'Desconhecida',
+                    'data_publicacao' => $noticia['data'] ?? date('Y-m-d'),
+                    'categoria' => $analise['categoria'] ?? 'Mercado',
+                    'relevancia' => $analise['relevancia'] ?? 'media',
+                    'setor' => $noticia['setor'] ?? 'Geral',
+                    'bloco1' => $analise['bloco1_noticia'] ?? '',
+                    'bloco2' => $analise['bloco2_significa'] ?? '',
+                    'bloco3' => $analise['bloco3_o_que_fazer'] ?? '',
+                    'bloco4' => $analise['bloco4_pergunta'] ?? '',
+                    'bloco5' => $analise['bloco5_conexao'] ?? '',
+                    'tags' => json_encode($analise['tags'] ?? []),
+                    'resumo_bruto' => $noticia['resumo_bruto'] ?? null,
+                    'processado_via' => $apiUtilizada === 'perplexity' ? 'perplexity+gpt' : ($apiUtilizada . '_fallback'),
+                ]
+            );
+        } catch (Exception $e) {
+            // Coluna imagem_url pode não existir ainda (migration 035 não rodada);
+            // tenta de novo sem ela para não bloquear o salvamento da notícia.
+            if (stripos($e->getMessage(), 'imagem_url') !== false) {
+                return Database::execute(
+                    "INSERT INTO noticias (
+                        empresa_id, titulo, url, fonte, data_publicacao, categoria, relevancia, setor,
+                        bloco1_noticia, bloco2_significa, bloco3_o_que_fazer, bloco4_pergunta, bloco5_conexao,
+                        tags, resumo_bruto, processado_via
+                     ) VALUES (
+                        :empresa_id, :titulo, :url, :fonte, :data_publicacao, :categoria, :relevancia, :setor,
+                        :bloco1, :bloco2, :bloco3, :bloco4, :bloco5,
+                        :tags, :resumo_bruto, :processado_via
+                     )",
+                    [
+                        'empresa_id' => $empresaId,
+                        'titulo' => $noticia['titulo'],
+                        'url' => $noticia['url'],
+                        'fonte' => $noticia['fonte'] ?? 'Desconhecida',
+                        'data_publicacao' => $noticia['data'] ?? date('Y-m-d'),
+                        'categoria' => $analise['categoria'] ?? 'Mercado',
+                        'relevancia' => $analise['relevancia'] ?? 'media',
+                        'setor' => $noticia['setor'] ?? 'Geral',
+                        'bloco1' => $analise['bloco1_noticia'] ?? '',
+                        'bloco2' => $analise['bloco2_significa'] ?? '',
+                        'bloco3' => $analise['bloco3_o_que_fazer'] ?? '',
+                        'bloco4' => $analise['bloco4_pergunta'] ?? '',
+                        'bloco5' => $analise['bloco5_conexao'] ?? '',
+                        'tags' => json_encode($analise['tags'] ?? []),
+                        'resumo_bruto' => $noticia['resumo_bruto'] ?? null,
+                        'processado_via' => $apiUtilizada === 'perplexity' ? 'perplexity+gpt' : ($apiUtilizada . '_fallback'),
+                    ]
+                );
+            }
+            throw $e;
+        }
     }
 
     /**

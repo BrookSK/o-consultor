@@ -189,6 +189,7 @@ class Router
         // Central de Conteúdo
         $this->get('central-de-conteudo', 'ConteudoController', 'index');
         $this->get('central-de-conteudo/noticia', 'ConteudoController', 'noticiaDetalhe');
+        $this->get('central-de-conteudo/noticias-pagina', 'ConteudoController', 'noticiasPagina');
         $this->get('central-de-conteudo/caso', 'ConteudoController', 'casoDetalhe');
         $this->post('central-de-conteudo/perfil-busca', 'ConteudoController', 'salvarPerfilBusca');
         $this->post('central-de-conteudo/buscar-agora', 'ConteudoController', 'buscarAgora');

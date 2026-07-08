@@ -6,18 +6,25 @@
 
 class ConteudoController
 {
+    /** Quantidade de notícias por página no feed. */
+    private const NOTICIAS_POR_PAGINA = 12;
+
     public function index(): void
     {
         Auth::proteger();
 
         $empresaId = Auth::garantirEmpresa();
 
+        // Paginação: mais nova (página 1) → mais antiga (páginas sequenciais).
+        $pagina = max(1, (int) ($_GET['pagina'] ?? 1));
+
         // Buscar dados reais do banco
-        $noticias = $this->buscarNoticiasReais($empresaId);
+        $resultadoNoticias = $this->buscarNoticiasReais($empresaId, $pagina);
         $perfilBusca = $this->buscarPerfilBusca($empresaId);
         
         $dados = [
-            'noticias' => $noticias,
+            'noticias' => $resultadoNoticias['itens'],
+            'paginacao' => $resultadoNoticias['paginacao'],
             'casos' => $this->getCasosReais($empresaId), // Casos reais
             'inteligencia' => $this->getInteligenciaReais($empresaId), // Inteligência real
             'perfil_busca' => $perfilBusca,
@@ -26,6 +33,27 @@ class ConteudoController
         ];
 
         require VIEW_PATH . '/conteudo/index.php';
+    }
+
+    /**
+     * Retorna uma página do feed de notícias em JSON (para navegação de páginas via AJAX).
+     */
+    public function noticiasPagina(): void
+    {
+        Auth::proteger();
+        header('Content-Type: application/json');
+
+        $empresaId = Auth::garantirEmpresa();
+        $pagina = max(1, (int) ($_GET['pagina'] ?? 1));
+
+        $resultado = $this->buscarNoticiasReais($empresaId, $pagina);
+
+        echo json_encode([
+            'sucesso' => true,
+            'noticias' => $resultado['itens'],
+            'paginacao' => $resultado['paginacao'],
+        ]);
+        exit;
     }
 
     public function noticiaDetalhe(): void
@@ -73,9 +101,52 @@ class ConteudoController
     {
         Auth::proteger();
         Csrf::verificar();
-        Logger::acao('Perfil de busca atualizado');
         header('Content-Type: application/json');
-        echo json_encode(['sucesso' => true, 'mensagem' => 'Perfil de busca salvo!']);
+
+        $empresaId = Auth::garantirEmpresa();
+        if (!$empresaId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Empresa não identificada.']);
+            exit;
+        }
+
+        // Sites de referência enviados pelo usuário (array de URLs, pode ter vazios/inválidos).
+        $sitesEnviados = (array) ($_POST['sites'] ?? []);
+        $sitesValidos = [];
+        foreach ($sitesEnviados as $url) {
+            $url = trim((string) $url);
+            if ($url === '') continue;
+            // Aceita sem protocolo (ex.: "tecmundo.com.br") completando com https://.
+            if (!preg_match('#^https?://#i', $url)) {
+                $url = 'https://' . $url;
+            }
+            if (filter_var($url, FILTER_VALIDATE_URL)) {
+                $sitesValidos[] = $url;
+            }
+        }
+
+        try {
+            // Substitui a lista de sites cadastrados manualmente pelo usuário
+            // (mantém os sites que a IA adicionou automaticamente, se houver).
+            Database::execute(
+                "DELETE FROM empresa_perfil_busca WHERE empresa_id = :empresa_id AND adicionado_por = 'usuario'",
+                ['empresa_id' => $empresaId]
+            );
+
+            foreach (array_unique($sitesValidos) as $url) {
+                Database::execute(
+                    "INSERT INTO empresa_perfil_busca (empresa_id, site_url, ativo, adicionado_por, criado_em)
+                     VALUES (:empresa_id, :site_url, 1, 'usuario', NOW())",
+                    ['empresa_id' => $empresaId, 'site_url' => $url]
+                );
+            }
+
+            Logger::acao('Perfil de busca atualizado', ['empresa_id' => $empresaId, 'total_sites' => count($sitesValidos)]);
+
+            echo json_encode(['sucesso' => true, 'mensagem' => 'Perfil de busca salvo!', 'sites' => $sitesValidos]);
+        } catch (Exception $e) {
+            Logger::error('Erro ao salvar perfil de busca: ' . $e->getMessage());
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro ao salvar: ' . $e->getMessage()]);
+        }
         exit;
     }
 
@@ -107,10 +178,20 @@ class ConteudoController
             ob_start();
             $noticiasController->buscar();
             $response = ob_get_clean();
-            
-            // Se chegou aqui, retornar a resposta
+
+            $resultado = json_decode($response, true) ?? ['sucesso' => false, 'erro' => 'Resposta inválida da busca.'];
+
+            // Devolver também a lista de notícias atualizada (com imagem/resumo),
+            // para o front renderizar os cards inline sem precisar recarregar a página.
+            // Após uma busca nova, sempre volta para a página 1 (mais recentes).
+            if (!empty($resultado['sucesso'])) {
+                $pagina1 = $this->buscarNoticiasReais($empresaId, 1);
+                $resultado['noticias'] = $pagina1['itens'];
+                $resultado['paginacao'] = $pagina1['paginacao'];
+            }
+
             header('Content-Type: application/json');
-            echo $response;
+            echo json_encode($resultado);
             
         } catch (Exception $e) {
             Logger::error('Erro na busca manual de notícias', [
@@ -139,7 +220,7 @@ class ConteudoController
         }
         
         $dados = [
-            'noticias' => $this->buscarNoticiasReais($empresaId),
+            'noticias' => $this->buscarNoticiasReais($empresaId)['itens'],
             'casos' => $this->getCasosReais($empresaId),
         ];
         require VIEW_PATH . '/conteudo/admin.php';
@@ -213,23 +294,59 @@ class ConteudoController
     /**
      * Buscar notícias reais do banco de dados
      */
-    private function buscarNoticiasReais(int $empresaId): array
+    /**
+     * Busca notícias paginadas: da mais nova (página 1) para a mais antiga
+     * (páginas sequenciais 1, 2, 3...). Retorna ['itens' => [...], 'paginacao' => [...]].
+     */
+    private function buscarNoticiasReais(int $empresaId, int $pagina = 1): array
     {
-        $noticias = Database::query(
-            "SELECT id, titulo, fonte, data_publicacao as data, categoria, 
-                    LEFT(bloco1_noticia, 150) as resumo, relevancia,
-                    visualizada, favoritada
-             FROM noticias 
-             WHERE empresa_id = :empresa_id AND arquivada = 0
-             ORDER BY data_publicacao DESC, criado_em DESC 
-             LIMIT 50",
+        $pagina = max(1, $pagina);
+        $porPagina = self::NOTICIAS_POR_PAGINA;
+        $offset = ($pagina - 1) * $porPagina;
+
+        $total = (int) (Database::queryOne(
+            "SELECT COUNT(*) as total FROM noticias WHERE empresa_id = :empresa_id AND arquivada = 0",
             ['empresa_id' => $empresaId]
-        );
+        )['total'] ?? 0);
+
+        $totalPaginas = max(1, (int) ceil($total / $porPagina));
+        // Evita pedir uma página além do fim (ex.: após arquivar itens).
+        if ($pagina > $totalPaginas) {
+            $pagina = $totalPaginas;
+            $offset = ($pagina - 1) * $porPagina;
+        }
+
+        try {
+            $noticias = Database::query(
+                "SELECT id, titulo, url, imagem_url, fonte, data_publicacao as data, categoria, 
+                        LEFT(bloco1_noticia, 150) as resumo, relevancia,
+                        visualizada, favoritada
+                 FROM noticias 
+                 WHERE empresa_id = :empresa_id AND arquivada = 0
+                 ORDER BY data_publicacao DESC, criado_em DESC 
+                 LIMIT {$porPagina} OFFSET {$offset}",
+                ['empresa_id' => $empresaId]
+            );
+        } catch (Exception $e) {
+            // Coluna imagem_url pode não existir ainda (migration 035 não rodada).
+            $noticias = Database::query(
+                "SELECT id, titulo, url, fonte, data_publicacao as data, categoria, 
+                        LEFT(bloco1_noticia, 150) as resumo, relevancia,
+                        visualizada, favoritada
+                 FROM noticias 
+                 WHERE empresa_id = :empresa_id AND arquivada = 0
+                 ORDER BY data_publicacao DESC, criado_em DESC 
+                 LIMIT {$porPagina} OFFSET {$offset}",
+                ['empresa_id' => $empresaId]
+            );
+        }
 
         // Formatar para compatibilidade com view
-        return array_map(function($noticia) {
+        $itens = array_map(function($noticia) {
             return [
                 'id' => $noticia['id'],
+                'url' => $noticia['url'] ?? null,
+                'imagem_url' => $noticia['imagem_url'] ?? null,
                 'fonte' => $noticia['fonte'],
                 'titulo' => $noticia['titulo'],
                 'data' => $noticia['data'],
@@ -240,6 +357,16 @@ class ConteudoController
                 'favoritada' => (bool) $noticia['favoritada'],
             ];
         }, $noticias);
+
+        return [
+            'itens' => $itens,
+            'paginacao' => [
+                'pagina_atual' => $pagina,
+                'total_paginas' => $totalPaginas,
+                'total_itens' => $total,
+                'por_pagina' => $porPagina,
+            ],
+        ];
     }
 
     /**

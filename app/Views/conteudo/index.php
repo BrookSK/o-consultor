@@ -1,4 +1,63 @@
 <?php $tituloPagina = 'Central de Conteúdo'; ?>
+<?php
+/**
+ * Renderiza um card de notícia: imagem de capa, headline e resumo.
+ * O card inteiro leva à análise interna (5 blocos); um link secundário
+ * abre a notícia na fonte original (URL externa).
+ */
+if (!function_exists('renderCardNoticia')) {
+    function renderCardNoticia(array $noticia): string {
+        $catBadge = match($noticia['categoria'] ?? '') {
+            'Mercado' => 'bg-blue-100 text-blue-700',
+            'Tecnologia' => 'bg-purple-100 text-purple-700',
+            'Regulamentação' => 'bg-red-100 text-red-700',
+            'Tendência' => 'bg-green-100 text-green-700',
+            'Negócio' => 'bg-orange-100 text-orange-700',
+            default => 'bg-gray-100 text-gray-700',
+        };
+        $relBadge = ($noticia['relevancia'] ?? '') === 'alta' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600';
+        $imagem = trim((string) ($noticia['imagem_url'] ?? ''));
+        $dataFmt = !empty($noticia['data']) ? date('d/m/Y', strtotime($noticia['data'])) : '';
+        $urlExterna = trim((string) ($noticia['url'] ?? ''));
+
+        ob_start(); ?>
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition flex flex-col">
+            <a href="<?= APP_URL ?>/central-de-conteudo/noticia?id=<?= (int) $noticia['id'] ?>" class="block">
+                <?php if ($imagem !== ''): ?>
+                <img src="<?= htmlspecialchars($imagem) ?>" alt="" loading="lazy"
+                     onerror="this.closest('a').querySelector('.card-noticia-fallback').classList.remove('hidden'); this.remove();"
+                     class="w-full h-40 object-cover bg-gray-100">
+                <div class="card-noticia-fallback hidden w-full h-40 bg-gray-100 flex items-center justify-center text-3xl">📰</div>
+                <?php else: ?>
+                <div class="w-full h-40 bg-gray-100 flex items-center justify-center text-3xl">📰</div>
+                <?php endif; ?>
+            </a>
+            <div class="p-4 flex flex-col flex-1">
+                <div class="flex items-center gap-2 mb-2 flex-wrap">
+                    <span class="text-xs text-gray-400 font-medium"><?= htmlspecialchars($noticia['fonte'] ?? '') ?></span>
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold <?= $catBadge ?>"><?= htmlspecialchars($noticia['categoria'] ?? '') ?></span>
+                    <span class="text-xs text-gray-400"><?= $dataFmt ?></span>
+                </div>
+                <a href="<?= APP_URL ?>/central-de-conteudo/noticia?id=<?= (int) $noticia['id'] ?>" class="block">
+                    <h3 class="text-sm font-semibold text-gray-800 mb-1 leading-snug hover:text-primary"><?= htmlspecialchars($noticia['titulo'] ?? '') ?></h3>
+                </a>
+                <p class="text-xs text-gray-500 flex-1"><?= htmlspecialchars($noticia['resumo'] ?? '') ?></p>
+                <div class="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+                    <span class="text-xs font-bold px-2 py-0.5 rounded <?= $relBadge ?>"><?= ucfirst($noticia['relevancia'] ?? '') ?></span>
+                    <div class="flex items-center gap-3">
+                        <a href="<?= APP_URL ?>/central-de-conteudo/noticia?id=<?= (int) $noticia['id'] ?>" class="text-xs text-primary font-medium hover:underline">Ver análise →</a>
+                        <?php if ($urlExterna !== ''): ?>
+                        <a href="<?= htmlspecialchars($urlExterna) ?>" target="_blank" rel="noopener noreferrer" class="text-xs text-gray-400 hover:text-gray-600" title="Abrir notícia original">🔗</a>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <?php
+        return ob_get_clean();
+    }
+}
+?>
 <?php ob_start(); ?>
 
 <nav class="mb-6">
@@ -50,14 +109,17 @@
                     </div>
                     <div class="md:col-span-2">
                         <label class="block text-sm font-medium text-gray-700 mb-2">Sites de referência</label>
-                        <div class="space-y-2">
+                        <div id="lista-sites-busca" class="space-y-2">
                             <?php foreach ($dados['perfil_busca']['sites'] as $site): ?>
-                            <div class="flex items-center gap-2">
-                                <input type="url" value="<?= htmlspecialchars($site) ?>" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
-                                <button onclick="this.parentElement.remove()" class="text-red-400 hover:text-red-600 text-lg">&times;</button>
+                            <div class="flex items-center gap-2 site-referencia-item">
+                                <input type="url" value="<?= htmlspecialchars($site) ?>" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary" placeholder="https://...">
+                                <button type="button" onclick="this.parentElement.remove()" class="text-red-400 hover:text-red-600 text-lg">&times;</button>
                             </div>
                             <?php endforeach; ?>
-                            <button onclick="let div=document.createElement('div');div.className='flex items-center gap-2';div.innerHTML='<input type=\'url\' placeholder=\'https://...\' class=\'flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary\'><button onclick=\'this.parentElement.remove()\' class=\'text-red-400 hover:text-red-600 text-lg\'>&times;</button>';this.before(div)" class="text-sm text-primary font-medium hover:underline">+ Adicionar site</button>
+                        </div>
+                        <button type="button" onclick="adicionarCampoSite()" class="text-sm text-primary font-medium hover:underline mt-2">+ Adicionar site</button>
+                        <div class="mt-2">
+                            <button type="button" onclick="salvarPerfilBusca()" id="btn-salvar-perfil" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700">💾 Salvar sites</button>
                         </div>
                     </div>
                     <div class="md:col-span-2">
@@ -89,38 +151,22 @@
             <select class="px-3 py-1.5 border border-gray-300 rounded-lg text-xs outline-none"><option>Toda relevância</option><option>Alta</option><option>Média</option><option>Baixa</option></select>
         </div>
 
-        <!-- Feed de Notícias -->
-        <div class="space-y-4">
-            <?php foreach ($dados['noticias'] as $noticia):
-                $catBadge = match($noticia['categoria']) {
-                    'Mercado' => 'bg-blue-100 text-blue-700',
-                    'Tecnologia' => 'bg-purple-100 text-purple-700',
-                    'Regulamentação' => 'bg-red-100 text-red-700',
-                    'Tendência' => 'bg-green-100 text-green-700',
-                    'Negócio' => 'bg-orange-100 text-orange-700',
-                    default => 'bg-gray-100 text-gray-700',
-                };
-                $relBadge = match($noticia['relevancia']) {
-                    'alta' => 'bg-red-50 text-red-700 border-l-red-500',
-                    'media' => 'bg-yellow-50 text-yellow-700 border-l-yellow-500',
-                    default => 'bg-gray-50 text-gray-600 border-l-gray-300',
-                };
-            ?>
-            <a href="<?= APP_URL ?>/central-de-conteudo/noticia?id=<?= $noticia['id'] ?>" class="block bg-white rounded-lg shadow-sm border border-gray-200 p-5 hover:shadow-md transition border-l-4 <?= $relBadge ?>">
-                <div class="flex items-start justify-between gap-4">
-                    <div class="flex-1">
-                        <div class="flex items-center gap-2 mb-2">
-                            <span class="text-xs text-gray-400 font-medium"><?= htmlspecialchars($noticia['fonte']) ?></span>
-                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold <?= $catBadge ?>"><?= htmlspecialchars($noticia['categoria']) ?></span>
-                            <span class="text-xs text-gray-400"><?= date('d/m/Y', strtotime($noticia['data'])) ?></span>
-                        </div>
-                        <h3 class="text-sm font-semibold text-gray-800 mb-1"><?= htmlspecialchars($noticia['titulo']) ?></h3>
-                        <p class="text-xs text-gray-500"><?= htmlspecialchars($noticia['resumo']) ?></p>
-                    </div>
-                    <span class="text-xs font-bold px-2 py-0.5 rounded <?= $noticia['relevancia'] === 'alta' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600' ?>"><?= ucfirst($noticia['relevancia']) ?></span>
-                </div>
-            </a>
-            <?php endforeach; ?>
+        <!-- Feed de Notícias (cards com imagem, headline e resumo) -->
+        <div id="feed-noticias" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <?php if (empty($dados['noticias'])): ?>
+            <div id="feed-vazio" class="col-span-full bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500 text-sm">
+                Nenhuma notícia ainda. Configure seu perfil de busca acima e clique em "Buscar agora".
+            </div>
+            <?php else: ?>
+                <?php foreach ($dados['noticias'] as $noticia): echo renderCardNoticia($noticia); endforeach; ?>
+            <?php endif; ?>
+        </div>
+
+        <!-- Paginação: mais nova (página 1) → mais antiga -->
+        <?php $pag = $dados['paginacao'] ?? ['pagina_atual' => 1, 'total_paginas' => 1, 'total_itens' => 0]; ?>
+        <div id="paginacao-noticias" class="flex items-center justify-between mt-6" data-pagina-atual="<?= (int) $pag['pagina_atual'] ?>" data-total-paginas="<?= (int) $pag['total_paginas'] ?>">
+            <p id="paginacao-total" class="text-xs text-gray-400"><?= (int) $pag['total_itens'] ?> notícia(s) no total</p>
+            <div id="paginacao-controles" class="flex items-center gap-1"></div>
         </div>
     </div>
 
@@ -225,15 +271,197 @@
 </div>
 
 <script>
+// ===== Sites de referência =====
+function adicionarCampoSite() {
+    const div = document.createElement('div');
+    div.className = 'flex items-center gap-2 site-referencia-item';
+    div.innerHTML = '<input type="url" placeholder="https://..." class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">'
+        + '<button type="button" onclick="this.parentElement.remove()" class="text-red-400 hover:text-red-600 text-lg">&times;</button>';
+    document.getElementById('lista-sites-busca').appendChild(div);
+}
+
+async function salvarPerfilBusca() {
+    const btn = document.getElementById('btn-salvar-perfil');
+    const inputs = document.querySelectorAll('#lista-sites-busca input');
+    const sites = Array.from(inputs).map(i => i.value.trim()).filter(v => v !== '');
+
+    btn.disabled = true;
+    const original = btn.textContent;
+    btn.textContent = 'Salvando...';
+
+    try {
+        const formData = new FormData();
+        formData.append('csrf_token', '<?= Csrf::token() ?>');
+        sites.forEach(s => formData.append('sites[]', s));
+
+        const res = await fetch('<?= APP_URL ?>/central-de-conteudo/perfil-busca', { method: 'POST', body: formData });
+        const data = await res.json();
+
+        if (data.sucesso) {
+            if (typeof Toast !== 'undefined') Toast.sucesso(data.mensagem); else alert(data.mensagem);
+        } else {
+            const msg = data.erro || 'Erro ao salvar sites.';
+            if (typeof Toast !== 'undefined') Toast.erro(msg); else alert(msg);
+        }
+    } catch (e) {
+        alert('Erro de conexão ao salvar os sites.');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+    }
+}
+
+// ===== Buscar notícias agora (renderiza os cards inline, sem recarregar a página) =====
 async function buscarAgora() {
+    const btn = document.querySelector('[onclick="buscarAgora()"]');
+    const originalText = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = '🔍 Buscando...'; }
+
     const formData = new FormData();
     formData.append('csrf_token', '<?= Csrf::token() ?>');
     try {
         const res = await fetch('<?= APP_URL ?>/central-de-conteudo/buscar-agora', { method: 'POST', body: formData });
         const data = await res.json();
-        if (data.sucesso) { if (typeof Toast !== 'undefined') Toast.sucesso(data.mensagem); else alert(data.mensagem); }
-    } catch(e) { alert('Erro.'); }
+
+        if (data.sucesso) {
+            if (typeof Toast !== 'undefined') Toast.sucesso(data.mensagem); else alert(data.mensagem);
+            if (Array.isArray(data.noticias)) {
+                renderizarFeedNoticias(data.noticias);
+                if (data.paginacao) renderizarPaginacao(data.paginacao);
+            }
+        } else {
+            const msg = data.erro || 'Erro ao buscar notícias.';
+            if (typeof Toast !== 'undefined') Toast.erro(msg); else alert(msg);
+        }
+    } catch (e) {
+        alert('Erro de conexão ao buscar notícias.');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = originalText; }
+    }
 }
+
+// Monta os cards de notícia no feed, no mesmo formato renderizado pelo PHP.
+function renderizarFeedNoticias(noticias) {
+    const feed = document.getElementById('feed-noticias');
+    if (!feed) return;
+
+    if (!noticias.length) {
+        feed.innerHTML = '<div class="col-span-full bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500 text-sm">Nenhuma notícia encontrada.</div>';
+        return;
+    }
+
+    const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const catCores = {
+        'Mercado': 'bg-blue-100 text-blue-700',
+        'Tecnologia': 'bg-purple-100 text-purple-700',
+        'Regulamentação': 'bg-red-100 text-red-700',
+        'Tendência': 'bg-green-100 text-green-700',
+        'Negócio': 'bg-orange-100 text-orange-700',
+    };
+
+    feed.innerHTML = noticias.map(n => {
+        const catBadge = catCores[n.categoria] || 'bg-gray-100 text-gray-700';
+        const relBadge = n.relevancia === 'alta' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600';
+        const dataFmt = n.data ? new Date(n.data).toLocaleDateString('pt-BR') : '';
+        const urlAnalise = '<?= APP_URL ?>/central-de-conteudo/noticia?id=' + n.id;
+        const imgTag = n.imagem_url
+            ? '<img src="' + esc(n.imagem_url) + '" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement(\'div\'),{className:\'w-full h-40 bg-gray-100 flex items-center justify-center text-3xl\',textContent:\'📰\'}))" class="w-full h-40 object-cover bg-gray-100">'
+            : '<div class="w-full h-40 bg-gray-100 flex items-center justify-center text-3xl">📰</div>';
+        const linkExterno = n.url ? '<a href="' + esc(n.url) + '" target="_blank" rel="noopener noreferrer" class="text-xs text-gray-400 hover:text-gray-600" title="Abrir notícia original">🔗</a>' : '';
+
+        return '<div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition flex flex-col">'
+            + '<a href="' + urlAnalise + '" class="block">' + imgTag + '</a>'
+            + '<div class="p-4 flex flex-col flex-1">'
+            + '<div class="flex items-center gap-2 mb-2 flex-wrap">'
+            + '<span class="text-xs text-gray-400 font-medium">' + esc(n.fonte) + '</span>'
+            + '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold ' + catBadge + '">' + esc(n.categoria) + '</span>'
+            + '<span class="text-xs text-gray-400">' + dataFmt + '</span>'
+            + '</div>'
+            + '<a href="' + urlAnalise + '" class="block"><h3 class="text-sm font-semibold text-gray-800 mb-1 leading-snug hover:text-primary">' + esc(n.titulo) + '</h3></a>'
+            + '<p class="text-xs text-gray-500 flex-1">' + esc(n.resumo) + '</p>'
+            + '<div class="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">'
+            + '<span class="text-xs font-bold px-2 py-0.5 rounded ' + relBadge + '">' + esc((n.relevancia || '').charAt(0).toUpperCase() + (n.relevancia || '').slice(1)) + '</span>'
+            + '<div class="flex items-center gap-3">'
+            + '<a href="' + urlAnalise + '" class="text-xs text-primary font-medium hover:underline">Ver análise →</a>'
+            + linkExterno
+            + '</div></div></div></div>';
+    }).join('');
+}
+
+// ===== Paginação do feed de notícias (mais nova = página 1) =====
+function renderizarPaginacao(paginacao) {
+    const wrap = document.getElementById('paginacao-noticias');
+    const controles = document.getElementById('paginacao-controles');
+    const totalTxt = document.getElementById('paginacao-total');
+    if (!wrap || !controles) return;
+
+    const { pagina_atual, total_paginas, total_itens } = paginacao;
+    wrap.dataset.paginaAtual = pagina_atual;
+    wrap.dataset.totalPaginas = total_paginas;
+    if (totalTxt) totalTxt.textContent = total_itens + ' notícia(s) no total';
+
+    if (total_paginas <= 1) { controles.innerHTML = ''; return; }
+
+    const btn = (label, pagina, ativo, desabilitado) => {
+        const base = 'px-3 py-1.5 rounded-lg text-xs font-medium transition';
+        if (desabilitado) return '<span class="' + base + ' text-gray-300 cursor-not-allowed">' + label + '</span>';
+        if (ativo) return '<span class="' + base + ' bg-primary text-white">' + label + '</span>';
+        return '<button type="button" onclick="irParaPaginaNoticias(' + pagina + ')" class="' + base + ' border border-gray-300 text-gray-600 hover:bg-gray-50">' + label + '</button>';
+    };
+
+    // Janela de páginas ao redor da atual (máx. 5 números visíveis).
+    let inicio = Math.max(1, pagina_atual - 2);
+    let fim = Math.min(total_paginas, inicio + 4);
+    inicio = Math.max(1, fim - 4);
+
+    let html = '';
+    html += btn('‹ Mais recentes', 1, false, pagina_atual === 1);
+    html += btn('‹', pagina_atual - 1, false, pagina_atual === 1);
+    for (let p = inicio; p <= fim; p++) {
+        html += btn(String(p), p, p === pagina_atual, false);
+    }
+    html += btn('›', pagina_atual + 1, false, pagina_atual === total_paginas);
+    html += btn('Mais antigas ›', total_paginas, false, pagina_atual === total_paginas);
+
+    controles.innerHTML = html;
+}
+
+async function irParaPaginaNoticias(pagina) {
+    const wrap = document.getElementById('paginacao-noticias');
+    const totalPaginas = parseInt(wrap?.dataset.totalPaginas || '1', 10);
+    pagina = Math.max(1, Math.min(pagina, totalPaginas));
+
+    const feed = document.getElementById('feed-noticias');
+    if (feed) feed.style.opacity = '0.5';
+
+    try {
+        const res = await fetch('<?= APP_URL ?>/central-de-conteudo/noticias-pagina?pagina=' + pagina);
+        const data = await res.json();
+        if (data.sucesso) {
+            renderizarFeedNoticias(data.noticias);
+            renderizarPaginacao(data.paginacao);
+            document.getElementById('feed-noticias')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else {
+            alert(data.erro || 'Erro ao carregar página.');
+        }
+    } catch (e) {
+        alert('Erro de conexão ao trocar de página.');
+    } finally {
+        if (feed) feed.style.opacity = '1';
+    }
+}
+
+// Renderiza a paginação inicial (dados já vieram do PHP no carregamento da página).
+document.addEventListener('DOMContentLoaded', function() {
+    const wrap = document.getElementById('paginacao-noticias');
+    if (wrap) {
+        renderizarPaginacao({
+            pagina_atual: parseInt(wrap.dataset.paginaAtual || '1', 10),
+            total_paginas: parseInt(wrap.dataset.totalPaginas || '1', 10),
+            total_itens: parseInt(document.getElementById('paginacao-total')?.textContent || '0', 10),
+        });
+    }
+});
 
 function salvarItem(btn) {
     btn.innerHTML = '✓ Salvo';

@@ -1394,7 +1394,8 @@ Responda APENAS em formato JSON válido com a estrutura:
 
         return "Busque as 10 notícias mais recentes e relevantes para empresas do setor {$setor} em {$lingua}.
 Priorize conteúdo dos seguintes sites: {$sitesStr}
-Formato de resposta: JSON com array de objetos, cada um com: titulo, url, fonte, data, resumo_bruto, setor.
+Formato de resposta: JSON com array de objetos, cada um com: titulo, url, fonte, data, resumo_bruto, setor, imagem_url.
+- imagem_url: URL da imagem de capa/destaque da notícia (og:image da página), se disponível. Se não encontrar, use string vazia.
 Busque apenas conteúdo publicado nos últimos 7 dias.
 Não inclua notícias duplicadas ou sem relevância para o setor.
 Responda APENAS com o array JSON.";
