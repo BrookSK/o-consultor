@@ -611,8 +611,10 @@ class PlanoController
      */
     private function apiConfigurada(): bool
     {
-        $openaiKey = Configuracao::buscar('api_openai_key');
-        return !empty($openaiKey);
+        // Considera qualquer provedor de IA ativo (chave configurada + toggle ligado).
+        return Configuracao::apiAtiva('openai')
+            || Configuracao::apiAtiva('anthropic')
+            || Configuracao::apiAtiva('perplexity');
     }
 
     /**
