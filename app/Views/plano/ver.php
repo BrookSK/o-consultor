@@ -112,7 +112,7 @@
 <div x-data="{ abaAtiva: 'kanban' }">
     <div class="border-b border-gray-200 mb-6">
         <nav class="flex gap-0 flex-wrap">
-            <button @click="abaAtiva = 'kanban'" :class="abaAtiva === 'kanban' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm transition">📋 Kanban</button>
+            <button @click="abaAtiva = 'kanban'; setTimeout(() => window.configurarKanban && window.configurarKanban(), 50)" :class="abaAtiva === 'kanban' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm transition">📋 Kanban</button>
             <button @click="abaAtiva = 'roadmap'" :class="abaAtiva === 'roadmap' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm transition">🗺️ Roadmap</button>
             <button @click="abaAtiva = 'lista'" :class="abaAtiva === 'lista' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm transition">📊 Lista</button>
             <button @click="abaAtiva = 'calendario'" :class="abaAtiva === 'calendario' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm transition">📅 Calendário</button>
@@ -311,7 +311,7 @@
                             };
                             $vencida = strtotime($tarefa['prazo']) < time() && $tarefa['status'] !== 'concluido';
                         ?>
-                        <tr class="hover:bg-gray-50 <?= $vencida ? 'bg-red-50/50' : '' ?>">
+                        <tr class="hover:bg-gray-50 cursor-pointer <?= $vencida ? 'bg-red-50/50' : '' ?>" onclick="abrirCard(<?= (int) $tarefa['id'] ?>)">
                             <td class="px-4 py-3 font-medium text-gray-800">
                                 <?= htmlspecialchars($tarefa['titulo']) ?>
                                 <?php if ($vencida): ?><span class="ml-1 text-[10px] bg-red-500 text-white px-1 rounded font-bold">VENCIDA</span><?php endif; ?>
@@ -338,11 +338,15 @@
             foreach ($itensCal as $it) {
                 $d = $it['data'];
                 if (!$d) continue;
+                // id vem como "tarefa-123" ou "reuniao-123"; só tarefas abrem o card.
+                $ehTarefa = strpos((string) $it['id'], 'tarefa-') === 0;
+                $tid = $ehTarefa ? (int) str_replace('tarefa-', '', $it['id']) : 0;
                 $eventosPorData[$d][] = [
                     'titulo' => $it['titulo'],
                     'hora' => $it['hora'] ? substr($it['hora'], 0, 5) : '',
                     'tipo' => $it['tipo'],
                     'status' => $it['status'] ?? '',
+                    'tarefa_id' => $tid,
                 ];
             }
         ?>
@@ -378,7 +382,8 @@
                         <div class="mt-1 space-y-1">
                             <template x-for="(ev, i) in cel.eventos" :key="i">
                                 <div class="text-[10px] leading-tight truncate rounded px-1 py-0.5 text-white"
-                                     :class="ev.status === 'concluido' ? 'bg-green-600' : (ev.tipo === 'reuniao' ? 'bg-purple-600' : 'bg-primary')"
+                                     :class="(ev.status === 'concluido' ? 'bg-green-600' : (ev.tipo === 'reuniao' ? 'bg-purple-600' : 'bg-primary')) + (ev.tarefa_id ? ' cursor-pointer hover:opacity-80' : '')"
+                                     @click="ev.tarefa_id && abrirCard(ev.tarefa_id)"
                                      :title="ev.titulo + (ev.hora ? ' · ' + ev.hora : '')">
                                     <span x-show="ev.hora" x-text="ev.hora + ' '"></span><span x-text="ev.titulo"></span>
                                 </div>
@@ -734,7 +739,7 @@
             <div class="md:col-span-2 p-6 space-y-5">
                 <input type="hidden" id="card-id" value="">
                 <div>
-                    <input type="text" id="card-titulo" class="w-full text-lg font-bold text-gray-800 border-0 border-b border-transparent hover:border-gray-200 focus:border-primary outline-none px-0 py-1" placeholder="Título">
+                    <textarea id="card-titulo" rows="1" class="w-full text-lg font-bold text-gray-800 border border-transparent hover:border-gray-200 focus:border-primary rounded-lg outline-none px-2 py-1 resize-none leading-snug" placeholder="Título"></textarea>
                 </div>
 
                 <!-- Etiquetas / datas / prioridade -->
@@ -772,6 +777,16 @@
                     <p class="text-blue-700" id="card-contexto-problema"></p>
                     <p class="font-semibold text-blue-800 mt-2 mb-1">✅ Como fazer (sugestão)</p>
                     <p class="text-blue-700" id="card-contexto-acao"></p>
+                </div>
+
+                <!-- Sugestão IA (draft editável) -->
+                <div>
+                    <button type="button" id="card-btn-ia" onclick="sugerirComIA()"
+                            class="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-accent/10 text-accent border border-accent/30 text-sm font-medium hover:bg-accent/20">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        Sugerir "como fazer" + checklist com IA
+                    </button>
+                    <p class="text-[11px] text-gray-400 mt-1 text-center">A IA gera um rascunho com base no diagnóstico. Você pode editar e excluir itens antes de salvar.</p>
                 </div>
 
                 <!-- Descrição (com colar imagem) -->
@@ -988,12 +1003,21 @@ document.getElementById('form-reuniao').addEventListener('submit', async functio
     } catch (err) { alert('Erro de conexão.'); }
 });
 
-function configurarKanban() {
+window.configurarKanban = function configurarKanban() {
+    // Garante que a lib Sortable já carregou (script pode não ter terminado).
+    if (typeof Sortable === 'undefined') {
+        setTimeout(window.configurarKanban, 200);
+        return;
+    }
     document.querySelectorAll('.kanban-column').forEach(col => {
+        if (col.dataset.sortableInit) return; // evita inicializar duas vezes
+        col.dataset.sortableInit = '1';
         new Sortable(col, {
             group: 'kanban',
             animation: 150,
             ghostClass: 'opacity-40',
+            draggable: '.kanban-card',
+            forceFallback: true,
             onEnd: async function(evt) {
                 // Só age se realmente mudou de coluna.
                 const origem = evt.from;
@@ -1059,7 +1083,10 @@ async function abrirCard(tarefaId) {
         if (!data.sucesso) { alert(data.erro || 'Erro ao abrir card.'); return; }
         const t = data.tarefa;
         document.getElementById('card-id').value = t.id;
-        document.getElementById('card-titulo').value = t.titulo || '';
+        const tituloEl = document.getElementById('card-titulo');
+        tituloEl.value = t.titulo || '';
+        tituloEl.style.height = 'auto';
+        tituloEl.style.height = (tituloEl.scrollHeight) + 'px';
         document.getElementById('card-descricao').value = t.descricao || '';
         document.getElementById('card-responsavel').value = t.responsavel || '';
         document.getElementById('card-data-inicio').value = t.data_inicio || '';
@@ -1158,6 +1185,39 @@ async function salvarCard() {
 
         location.reload();
     } catch (e) { alert('Erro ao salvar.'); btn.disabled = false; btn.textContent = 'Salvar'; }
+}
+
+// Pede à IA um "como fazer" + checklist em rascunho (o usuário edita/exclui antes de salvar).
+async function sugerirComIA() {
+    const id = document.getElementById('card-id').value;
+    if (!id) return;
+    const btn = document.getElementById('card-btn-ia');
+    const original = btn.innerHTML;
+    btn.disabled = true; btn.textContent = 'Gerando sugestão...';
+    try {
+        const fd = new FormData();
+        fd.append('csrf_token', PLANO_CSRF);
+        fd.append('plano_id', PLANO_ID);
+        fd.append('tarefa_id', id);
+        const res = await fetch('<?= APP_URL ?>/plano-de-acao/sugerir-tarefa-ia', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!data.sucesso) { alert(data.erro || 'Não consegui gerar a sugestão.'); btn.disabled = false; btn.innerHTML = original; return; }
+
+        // Preenche a descrição (mantém o que já existe, se houver) e o checklist em draft.
+        const desc = document.getElementById('card-descricao');
+        if (data.como_fazer) {
+            desc.value = desc.value.trim() ? (desc.value.trim() + '\n\n' + data.como_fazer) : data.como_fazer;
+        }
+        if (Array.isArray(data.checklist) && data.checklist.length) {
+            // Acrescenta ao checklist atual (não apaga o que o usuário já tinha).
+            data.checklist.forEach(it => cardChecklist.push({ texto: it.texto || String(it), feito: false }));
+            renderChecklist();
+        }
+        btn.disabled = false; btn.innerHTML = original;
+    } catch (e) {
+        alert('Erro de conexão com a IA.');
+        btn.disabled = false; btn.innerHTML = original;
+    }
 }
 
 async function comentarCard() {

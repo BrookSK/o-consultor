@@ -72,6 +72,7 @@ class Router
         $this->get('plano-de-acao/tarefa-detalhe', 'PlanoController', 'tarefaDetalhe');       // Detalhe do card (JSON)
         $this->post('plano-de-acao/salvar-tarefa-detalhe', 'PlanoController', 'salvarTarefaDetalhe'); // Salvar campos do card
         $this->post('plano-de-acao/comentar-tarefa', 'PlanoController', 'comentarTarefa');    // Comentário no card
+        $this->post('plano-de-acao/sugerir-tarefa-ia', 'PlanoController', 'sugerirTarefaIA'); // IA: sugere como fazer + checklist
         $this->post('plano-de-acao/upload-imagem-tarefa', 'PlanoController', 'uploadImagemTarefa'); // Colar/anexar imagem
         $this->post('plano-de-acao/reuniao', 'PlanoController', 'registrarReuniao');
         

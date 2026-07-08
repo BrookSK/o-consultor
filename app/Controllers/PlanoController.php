@@ -589,6 +589,72 @@ class PlanoController
     }
 
     /**
+     * Sugestão de IA para uma tarefa do plano: gera "como fazer" (descrição)
+     * e um checklist em rascunho, com base no diagnóstico e no contexto da tarefa.
+     * Não salva nada — devolve o rascunho para o usuário editar/aceitar.
+     */
+    public function sugerirTarefaIA(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $planoId = (int) ($_POST['plano_id'] ?? 0);
+        $tarefaId = (int) ($_POST['tarefa_id'] ?? 0);
+        if (!$planoId || !$tarefaId) { echo json_encode(['sucesso' => false, 'erro' => 'Dados inválidos.']); exit; }
+
+        $t = Plano::buscarTarefaDetalhe($tarefaId, $planoId);
+        if (!$t) { echo json_encode(['sucesso' => false, 'erro' => 'Tarefa não encontrada.']); exit; }
+
+        // Contexto: empresa/diagnóstico + a própria tarefa.
+        $plano = Plano::buscarPorId($planoId);
+        $empresa = !empty($plano['empresa_id']) ? Empresa::buscarPorId((int) $plano['empresa_id']) : [];
+        $ctx = $t['contexto_prioridade'] ?? [];
+        $nomeEmpresa = $empresa['nome'] ?? 'a empresa';
+        $segmento = $empresa['segmento'] ?? 'geral';
+
+        $prompt = "Você é um consultor de gestão. Com base no diagnóstico da empresa, detalhe COMO EXECUTAR esta ação do plano de ação e proponha um checklist prático.\n\n"
+            . "Empresa: {$nomeEmpresa} (segmento: {$segmento}).\n"
+            . "Ação (tarefa): " . ($t['titulo'] ?? '') . "\n"
+            . "Área: " . ($t['area'] ?? 'Geral') . "\n"
+            . (!empty($ctx['descricao_problema']) ? "Problema identificado: " . $ctx['descricao_problema'] . "\n" : '')
+            . (!empty($ctx['acao_sugerida']) ? "Direção sugerida: " . $ctx['acao_sugerida'] . "\n" : '')
+            . "\nDevolva SOMENTE JSON no formato:\n"
+            . "{\n"
+            . "  \"como_fazer\": \"passo a passo objetivo de COMO executar esta ação nesta empresa (4 a 8 frases, prático e específico, sem enrolação)\",\n"
+            . "  \"checklist\": [\"item verificável 1\", \"item verificável 2\", \"...\"]\n"
+            . "}\n"
+            . "O checklist deve ter de 4 a 8 itens curtos, acionáveis e na ordem de execução. Responda APENAS com o JSON.";
+
+        try {
+            $resp = ApiHelper::chamarAnalise($prompt, true);
+            if (empty($resp['sucesso'])) {
+                echo json_encode(['sucesso' => false, 'erro' => $resp['erro'] ?? 'IA indisponível.']);
+                exit;
+            }
+            $dados = $resp['conteudo'];
+            if (is_string($dados)) { $dados = json_decode($dados, true); }
+            if (!is_array($dados)) { echo json_encode(['sucesso' => false, 'erro' => 'Resposta da IA inválida.']); exit; }
+
+            $comoFazer = trim((string) ($dados['como_fazer'] ?? ''));
+            $checklistRaw = $dados['checklist'] ?? [];
+            $checklist = [];
+            foreach ((array) $checklistRaw as $item) {
+                $txt = is_array($item) ? ($item['texto'] ?? '') : (string) $item;
+                $txt = trim($txt);
+                if ($txt !== '') { $checklist[] = ['texto' => $txt, 'feito' => false]; }
+            }
+
+            echo json_encode(['sucesso' => true, 'como_fazer' => $comoFazer, 'checklist' => $checklist]);
+            exit;
+        } catch (Exception $e) {
+            Logger::erro('Erro sugerirTarefaIA: ' . $e->getMessage());
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro ao gerar sugestão: ' . $e->getMessage()]);
+            exit;
+        }
+    }
+
+    /**
      * Upload de imagem colada/anexada na descrição do card.
      * Aceita dataURL base64 (colar imagem) e salva em public/uploads.
      */
@@ -648,21 +714,21 @@ class PlanoController
         $liberadas = 0;
         $planoId = 0;
         if ($sucesso) {
-            Logger::acao('Tarefa movida no Kanban', [
-                'tarefa_id' => $tarefaId,
-                'novo_status' => $novoStatus
-            ]);
-            // Marcar data de conclusão e liberar a próxima etapa quando a atual terminar.
-            $t = Database::queryOne("SELECT plano_id FROM plano_tarefas WHERE id = :id", ['id' => $tarefaId]);
-            $planoId = (int) ($t['plano_id'] ?? 0);
-            if ($novoStatus === 'concluido') {
-                Database::execute("UPDATE plano_tarefas SET concluida_em = NOW() WHERE id = :id AND concluida_em IS NULL", ['id' => $tarefaId]);
-            } else {
-                Database::execute("UPDATE plano_tarefas SET concluida_em = NULL WHERE id = :id", ['id' => $tarefaId]);
-            }
-            if ($planoId) {
-                $liberadas = Plano::liberarProximaEtapa($planoId);
-                Plano::atualizarScoreMaturidade($planoId);
+            // As etapas de pós-processamento NÃO podem derrubar a resposta do drag.
+            try {
+                $t = Database::queryOne("SELECT plano_id FROM plano_tarefas WHERE id = :id", ['id' => $tarefaId]);
+                $planoId = (int) ($t['plano_id'] ?? 0);
+                if ($novoStatus === 'concluido') {
+                    Database::execute("UPDATE plano_tarefas SET concluida_em = NOW() WHERE id = :id AND concluida_em IS NULL", ['id' => $tarefaId]);
+                } else {
+                    Database::execute("UPDATE plano_tarefas SET concluida_em = NULL WHERE id = :id", ['id' => $tarefaId]);
+                }
+                if ($planoId) {
+                    $liberadas = Plano::liberarProximaEtapa($planoId);
+                    Plano::atualizarScoreMaturidade($planoId);
+                }
+            } catch (Exception $e) {
+                Logger::erro('Pós-processamento moverTarefa falhou (ignorado): ' . $e->getMessage());
             }
         }
 
