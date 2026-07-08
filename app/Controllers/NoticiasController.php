@@ -586,15 +586,21 @@ class NoticiasController
 
     private function criarAlertaNovasNoticias(int $empresaId, int $quantidade): void
     {
-        Database::execute(
-            "INSERT INTO alertas (empresa_id, tipo, titulo, descricao, prioridade, status) 
-             VALUES (:empresa_id, 'novo_conteudo', :titulo, :descricao, 'info', 'ativo')",
-            [
-                'empresa_id' => $empresaId,
-                'titulo' => 'Novas notícias disponíveis',
-                'descricao' => "{$quantidade} nova(s) notícia(s) do seu setor foram encontradas e processadas pela IA.",
-            ]
-        );
+        // Alerta é só um "aviso" complementar à busca — nunca deve quebrar o fluxo
+        // principal (notícias já foram salvas com sucesso neste ponto).
+        try {
+            Database::execute(
+                "INSERT INTO alertas (empresa_id, tipo, titulo, descricao, prioridade, status) 
+                 VALUES (:empresa_id, 'novo_conteudo', :titulo, :descricao, 'info', 'ativo')",
+                [
+                    'empresa_id' => $empresaId,
+                    'titulo' => 'Novas notícias disponíveis',
+                    'descricao' => "{$quantidade} nova(s) notícia(s) do seu setor foram encontradas e processadas pela IA.",
+                ]
+            );
+        } catch (\Throwable $e) {
+            error_log('[O CONSULTOR][ALERTA-NOTICIAS] Falha ao criar alerta (ignorada): ' . $e->getMessage());
+        }
     }
 
     /**

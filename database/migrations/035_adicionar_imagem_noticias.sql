@@ -7,7 +7,21 @@
 
 USE o_consultor;
 
-ALTER TABLE noticias ADD COLUMN imagem_url VARCHAR(1000) NULL AFTER url;
+-- ALTER TABLE ... ADD COLUMN IF NOT EXISTS só existe a partir do MySQL 8.0.29.
+-- Para funcionar em qualquer versão, verifica via information_schema antes de adicionar.
+SET @coluna_existe = (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = 'o_consultor' AND TABLE_NAME = 'noticias' AND COLUMN_NAME = 'imagem_url'
+);
+
+SET @sql = IF(@coluna_existe = 0,
+    'ALTER TABLE noticias ADD COLUMN imagem_url VARCHAR(1000) NULL AFTER url',
+    'SELECT 1'
+);
+
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- =====================================================
 -- Correção: busca_logs.api_utilizada era NOT NULL sem valor padrão, mas o
