@@ -1250,7 +1250,7 @@ class AdminController
             'messages' => [
                 ['role' => 'user', 'content' => 'Responda apenas: ok']
             ],
-            'max_tokens' => 10
+            'max_tokens' => 16
         ];
         
         $ch = curl_init();
@@ -1317,7 +1317,7 @@ class AdminController
             'messages' => [
                 ['role' => 'user', 'content' => 'Responda apenas: ok']
             ],
-            'max_tokens' => 10
+            'max_tokens' => 16
         ];
         
         $ch = curl_init();
@@ -1381,7 +1381,7 @@ class AdminController
         
         $data = [
             'model' => 'claude-3-haiku-20240307',
-            'max_tokens' => 10,
+            'max_tokens' => 16,
             'messages' => [
                 ['role' => 'user', 'content' => 'Responda apenas: ok']
             ]

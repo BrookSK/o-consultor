@@ -503,9 +503,12 @@ async function testarApiF14(provedor) {
             updateApiStatus(provedor, 'working');
             showToast(data.mensagem, 'success');
         } else {
-            console.error('Erro retornado pelo teste:', data.erro);
+            // O backend às vezes embrulha a causa real dentro de "mensagem"
+            // (ex.: "❌ Erro: ...") em vez de "erro". Usamos o que existir.
+            const motivo = data.erro || data.mensagem || 'Erro no teste da API';
+            console.error('Erro retornado pelo teste:', motivo);
             updateApiStatus(provedor, 'error');
-            showToast(data.erro || 'Erro no teste da API', 'error');
+            showToast(motivo, 'error');
         }
         
     } catch (error) {
