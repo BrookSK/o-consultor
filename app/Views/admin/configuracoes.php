@@ -398,6 +398,9 @@ async function salvarChaveF14(provedor) {
         return;
     }
     
+    console.group('[API DEBUG] salvarChaveF14 — ' + provedor);
+    console.log('Chave (tamanho):', chave.length, '| prefixo:', chave.substring(0, 6) + '...');
+
     try {
         // Atualizar UI durante salvamento
         updateApiStatus(provedor, 'saving');
@@ -406,13 +409,31 @@ async function salvarChaveF14(provedor) {
         formData.append('csrf_token', '<?= Csrf::token() ?>');
         formData.append('provedor', provedor);
         formData.append('chave', chave);
-        
+
+        console.log('POST', '<?= APP_URL ?>/admin/api/salvar-chave', { provedor, chave_length: chave.length });
+
         const response = await fetch('<?= APP_URL ?>/admin/api/salvar-chave', {
             method: 'POST',
             body: formData
         });
-        
-        const data = await response.json();
+
+        console.log('HTTP status:', response.status, response.statusText);
+
+        const textoBruto = await response.text();
+        console.log('Resposta bruta:', textoBruto);
+
+        let data;
+        try {
+            data = JSON.parse(textoBruto);
+        } catch (parseErr) {
+            console.error('Falha ao fazer parse do JSON da resposta:', parseErr);
+            showToast('Resposta inválida do servidor (ver console).', 'error');
+            updateApiStatus(provedor, 'error');
+            console.groupEnd();
+            return;
+        }
+
+        console.log('Resposta (JSON):', data);
         
         if (data.sucesso) {
             chaveInput.value = '••••••••••••••••';
@@ -421,14 +442,17 @@ async function salvarChaveF14(provedor) {
             // Atualizar indicador visual para "configurada"
             updateApiStatus(provedor, 'configured');
         } else {
+            console.error('Erro retornado pelo servidor:', data.erro);
             showToast(data.erro || 'Erro ao salvar chave', 'error');
             updateApiStatus(provedor, 'error');
         }
         
     } catch (error) {
-        console.error('Erro:', error);
+        console.error('Exceção JS ao salvar chave:', error);
         showToast('Erro de conexão', 'error');
         updateApiStatus(provedor, 'error');
+    } finally {
+        console.groupEnd();
     }
 }
 async function testarApiF14(provedor) {
@@ -441,33 +465,57 @@ async function testarApiF14(provedor) {
     // Atualizar status visual para testando
     updateApiStatus(provedor, 'testing');
     
+    console.group('[API DEBUG] testarApiF14 — ' + provedor);
+
     try {
         const formData = new FormData();
         formData.append('csrf_token', '<?= Csrf::token() ?>');
         formData.append('provedor', provedor);
-        
+
+        console.log('POST', '<?= APP_URL ?>/admin/api/testar', { provedor });
+
         const response = await fetch('<?= APP_URL ?>/admin/api/testar', {
             method: 'POST',
             body: formData
         });
-        
-        const data = await response.json();
-        
+
+        console.log('HTTP status:', response.status, response.statusText);
+
+        const textoBruto = await response.text();
+        console.log('Resposta bruta:', textoBruto);
+
+        let data;
+        try {
+            data = JSON.parse(textoBruto);
+        } catch (parseErr) {
+            console.error('Falha ao fazer parse do JSON da resposta:', parseErr);
+            updateApiStatus(provedor, 'error');
+            showToast('Resposta inválida do servidor (ver console).', 'error');
+            console.groupEnd();
+            return;
+        }
+
+        console.log('Resposta (JSON):', data);
+        if (data.tempo_ms !== undefined) console.log('Tempo da chamada (ms):', data.tempo_ms);
+        if (data.http_status !== undefined) console.log('HTTP status retornado pelo provedor:', data.http_status);
+
         if (data.sucesso) {
             updateApiStatus(provedor, 'working');
             showToast(data.mensagem, 'success');
         } else {
+            console.error('Erro retornado pelo teste:', data.erro);
             updateApiStatus(provedor, 'error');
             showToast(data.erro || 'Erro no teste da API', 'error');
         }
         
     } catch (error) {
-        console.error('Erro:', error);
+        console.error('Exceção JS ao testar API:', error);
         updateApiStatus(provedor, 'error');
         showToast('Erro de conexão', 'error');
     } finally {
         button.textContent = originalText;
         button.disabled = false;
+        console.groupEnd();
     }
 }
 

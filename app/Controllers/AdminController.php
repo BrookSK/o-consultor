@@ -940,7 +940,7 @@ class AdminController
         
         try {
             // Verificar se API está ativa
-            if (!Configuracao::get($provedor . '_ativo', '0') === '1') {
+            if (Configuracao::get($provedor . '_ativo', '0') !== '1') {
                 header('Content-Type: application/json');
                 echo json_encode([
                     'sucesso' => false,
@@ -1267,19 +1267,33 @@ class AdminController
         ]);
         
         $response = curl_exec($ch);
+        $curlErro = curl_error($ch);
+        $curlErrno = curl_errno($ch);
         $httpStatus = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $tempoMs = round((microtime(true) - $startTime) * 1000);
         curl_close($ch);
-        
+
+        if ($response === false || $curlErro) {
+            error_log('[O CONSULTOR][TESTE-OpenAI] Erro cURL (errno ' . $curlErrno . '): ' . $curlErro);
+            return [
+                'sucesso' => false,
+                'erro' => 'Falha de conexão com a OpenAI: ' . ($curlErro ?: 'erro desconhecido') . ' (curl errno ' . $curlErrno . ')',
+                'tempo_ms' => $tempoMs,
+                'http_status' => $httpStatus,
+            ];
+        }
+
         if ($httpStatus === 200) {
             $decoded = json_decode($response, true);
             if (isset($decoded['choices'][0]['message']['content'])) {
                 return ['sucesso' => true, 'tempo_ms' => $tempoMs, 'http_status' => $httpStatus];
             }
+            error_log('[O CONSULTOR][TESTE-OpenAI] HTTP 200 mas sem conteúdo esperado | body=' . substr((string) $response, 0, 500));
         }
         
         $decoded = json_decode($response, true);
         $erro = $decoded['error']['message'] ?? "HTTP {$httpStatus}";
+        error_log('[O CONSULTOR][TESTE-OpenAI] HTTP ' . $httpStatus . ': ' . $erro . ' | body=' . substr((string) $response, 0, 500));
         
         return [
             'sucesso' => false, 
@@ -1320,20 +1334,36 @@ class AdminController
         ]);
         
         $response = curl_exec($ch);
+        $curlErro = curl_error($ch);
+        $curlErrno = curl_errno($ch);
         $httpStatus = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $tempoMs = round((microtime(true) - $startTime) * 1000);
         curl_close($ch);
-        
+
+        // Falha de transporte (DNS, SSL, timeout, conexão recusada etc.) — antes era
+        // engolida silenciosamente e caía no genérico "HTTP 0".
+        if ($response === false || $curlErro) {
+            error_log('[O CONSULTOR][TESTE-Perplexity] Erro cURL (errno ' . $curlErrno . '): ' . $curlErro);
+            return [
+                'sucesso' => false,
+                'erro' => 'Falha de conexão com a Perplexity: ' . ($curlErro ?: 'erro desconhecido') . ' (curl errno ' . $curlErrno . ')',
+                'tempo_ms' => $tempoMs,
+                'http_status' => $httpStatus,
+            ];
+        }
+
         if ($httpStatus === 200) {
             $decoded = json_decode($response, true);
             if (isset($decoded['choices'][0]['message']['content'])) {
                 return ['sucesso' => true, 'tempo_ms' => $tempoMs, 'http_status' => $httpStatus];
             }
+            error_log('[O CONSULTOR][TESTE-Perplexity] HTTP 200 mas sem conteúdo esperado | body=' . substr((string) $response, 0, 500));
         }
-        
+
         $decoded = json_decode($response, true);
-        $erro = $decoded['error']['message'] ?? "HTTP {$httpStatus}";
-        
+        $erro = $decoded['error']['message'] ?? ($decoded['error']['type'] ?? null) ?? "HTTP {$httpStatus}";
+        error_log('[O CONSULTOR][TESTE-Perplexity] HTTP ' . $httpStatus . ': ' . $erro . ' | body=' . substr((string) $response, 0, 500));
+
         return [
             'sucesso' => false, 
             'erro' => $erro,
@@ -1372,19 +1402,33 @@ class AdminController
         ]);
         
         $response = curl_exec($ch);
+        $curlErro = curl_error($ch);
+        $curlErrno = curl_errno($ch);
         $httpStatus = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $tempoMs = round((microtime(true) - $startTime) * 1000);
         curl_close($ch);
-        
+
+        if ($response === false || $curlErro) {
+            error_log('[O CONSULTOR][TESTE-Anthropic] Erro cURL (errno ' . $curlErrno . '): ' . $curlErro);
+            return [
+                'sucesso' => false,
+                'erro' => 'Falha de conexão com a Anthropic: ' . ($curlErro ?: 'erro desconhecido') . ' (curl errno ' . $curlErrno . ')',
+                'tempo_ms' => $tempoMs,
+                'http_status' => $httpStatus,
+            ];
+        }
+
         if ($httpStatus === 200) {
             $decoded = json_decode($response, true);
             if (isset($decoded['content'][0]['text'])) {
                 return ['sucesso' => true, 'tempo_ms' => $tempoMs, 'http_status' => $httpStatus];
             }
+            error_log('[O CONSULTOR][TESTE-Anthropic] HTTP 200 mas sem conteúdo esperado | body=' . substr((string) $response, 0, 500));
         }
         
         $decoded = json_decode($response, true);
         $erro = $decoded['error']['message'] ?? "HTTP {$httpStatus}";
+        error_log('[O CONSULTOR][TESTE-Anthropic] HTTP ' . $httpStatus . ': ' . $erro . ' | body=' . substr((string) $response, 0, 500));
         
         return [
             'sucesso' => false, 
