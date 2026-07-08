@@ -682,8 +682,8 @@ class PlanoController
             // Score inicial = pontuação do diagnóstico (maturidade de partida).
             $scoreInicial = (float) ($diagnostico['pontuacao'] ?? 0);
             Database::execute(
-                "UPDATE planos SET score_inicial = :s, score_maturidade = :s WHERE id = :id",
-                ['s' => $scoreInicial, 'id' => $planoId]
+                "UPDATE planos SET score_inicial = :s1, score_maturidade = :s2 WHERE id = :id",
+                ['s1' => $scoreInicial, 's2' => $scoreInicial, 'id' => $planoId]
             );
 
             // 2) Gerar prioridades (IA com fallback) e salvá-las já confirmadas.
