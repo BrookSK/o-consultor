@@ -583,6 +583,32 @@ class PlanoController
     }
 
     /**
+     * Verifica se já existe plano para um diagnóstico (usado pelo botão do resultado).
+     */
+    public function planoExiste(): void
+    {
+        Auth::proteger();
+        header('Content-Type: application/json');
+        $diagnosticoId = (int) ($_GET['diagnostico_id'] ?? 0);
+        if (!$diagnosticoId) {
+            echo json_encode(['sucesso' => false, 'existe' => false]);
+            exit;
+        }
+        $plano = Database::queryOne(
+            "SELECT id FROM planos WHERE diagnostico_id = :d ORDER BY criado_em DESC LIMIT 1",
+            ['d' => $diagnosticoId]
+        );
+        echo json_encode([
+            'sucesso' => true,
+            'existe' => (bool) $plano,
+            'redirect_ver' => $plano ? (APP_URL . '/plano-de-acao/ver?id=' . (int) $plano['id']) : null,
+            'gerar_novo' => APP_URL . '/plano-de-acao/gerar-automatico?diagnostico_id=' . $diagnosticoId,
+            'regerar' => APP_URL . '/plano-de-acao/gerar-automatico?diagnostico_id=' . $diagnosticoId . '&forcar=1',
+        ]);
+        exit;
+    }
+
+    /**
      * GERAÇÃO AUTOMÁTICA — a partir do diagnóstico, cria o plano completo
      * (prioridades + tarefas organizadas em ETAPAS sequenciais) de uma vez,
      * e redireciona direto ao Kanban. Usado pelo botão "Gerar Plano de Ação".
@@ -605,14 +631,31 @@ class PlanoController
             exit;
         }
 
-        // Evita duplicar: se já existe plano para este diagnóstico, abre o existente.
+        // Se já existe plano para este diagnóstico:
+        // - sem forçar: abre o existente (comportamento antigo)
+        // - forçar=1: REGENERA do zero (apaga o plano anterior e recria)
+        $forcar = (($_GET['forcar'] ?? '0') === '1');
         $existente = Database::queryOne(
             "SELECT id FROM planos WHERE diagnostico_id = :d ORDER BY criado_em DESC LIMIT 1",
             ['d' => $diagnosticoId]
         );
-        if ($existente) {
+        if ($existente && !$forcar) {
             header('Location: ' . APP_URL . '/plano-de-acao/ver?id=' . (int) $existente['id']);
             exit;
+        }
+        if ($existente && $forcar) {
+            // Remove o plano anterior e seus filhos. As tabelas de plano têm FK ON DELETE
+            // CASCADE, mas limpamos manualmente também (métricas podem não ter FK se a
+            // estrutura foi criada via garantirEstruturaConsolidador).
+            $pid = (int) $existente['id'];
+            try {
+                Database::execute("DELETE r FROM plano_metricas_registros r JOIN plano_metricas m ON r.metrica_id = m.id WHERE m.plano_id = :p", ['p' => $pid]);
+            } catch (Exception $e) { /* tabela pode não existir */ }
+            try { Database::execute("DELETE FROM plano_metricas WHERE plano_id = :p", ['p' => $pid]); } catch (Exception $e) {}
+            try { Database::execute("DELETE FROM plano_tarefas WHERE plano_id = :p", ['p' => $pid]); } catch (Exception $e) {}
+            try { Database::execute("DELETE FROM plano_prioridades WHERE plano_id = :p", ['p' => $pid]); } catch (Exception $e) {}
+            try { Database::execute("DELETE FROM plano_reunioes WHERE plano_id = :p", ['p' => $pid]); } catch (Exception $e) {}
+            Database::execute("DELETE FROM planos WHERE id = :id", ['id' => $pid]);
         }
 
         try {
@@ -719,18 +762,22 @@ class PlanoController
             exit;
         }
 
-        $id = Plano::criarTarefa($planoId, [
-            'titulo' => $titulo,
-            'descricao' => trim($_POST['descricao'] ?? ''),
-            'area' => trim($_POST['area'] ?? ''),
-            'responsavel' => trim($_POST['responsavel'] ?? ''),
-            'prazo' => $_POST['prazo'] ?? null,
-            'hora' => $_POST['hora'] ?? null,
-            'prioridade' => $_POST['prioridade'] ?? 'media',
-            'tipo' => $_POST['tipo'] ?? 'tarefa',
-        ]);
-
-        echo json_encode(['sucesso' => (bool) $id, 'id' => $id]);
+        try {
+            $id = Plano::criarTarefa($planoId, [
+                'titulo' => $titulo,
+                'descricao' => trim($_POST['descricao'] ?? ''),
+                'area' => trim($_POST['area'] ?? ''),
+                'responsavel' => trim($_POST['responsavel'] ?? ''),
+                'prazo' => !empty($_POST['prazo']) ? $_POST['prazo'] : null,
+                'hora' => !empty($_POST['hora']) ? $_POST['hora'] : null,
+                'prioridade' => $_POST['prioridade'] ?? 'media',
+                'tipo' => $_POST['tipo'] ?? 'tarefa',
+            ]);
+            echo json_encode(['sucesso' => (bool) $id, 'id' => $id]);
+        } catch (Exception $e) {
+            Logger::erro('Erro ao criar tarefa manual: ' . $e->getMessage());
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro ao criar tarefa: ' . $e->getMessage()]);
+        }
         exit;
     }
 

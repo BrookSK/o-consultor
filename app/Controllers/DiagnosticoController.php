@@ -1076,11 +1076,142 @@ class DiagnosticoController
     }
 
     /**
-     * Exibe o resultado do diagnóstico
+     * CRUD — Tela de edição da empresa + respostas do diagnóstico.
      */
-    public function resultado(): void
+    public function editar(): void
     {
         Auth::proteger();
+
+        $diagnosticoId = (int) ($_GET['diagnostico_id'] ?? 0);
+        if (!$diagnosticoId) {
+            Flash::set('erro', 'Diagnóstico não informado.');
+            header('Location: ' . APP_URL . '/diagnostico');
+            exit;
+        }
+
+        $diagnostico = Diagnostico::buscarPorId($diagnosticoId);
+        if (!$diagnostico) {
+            Flash::set('erro', 'Diagnóstico não encontrado.');
+            header('Location: ' . APP_URL . '/diagnostico');
+            exit;
+        }
+
+        // Permissão: dono do diagnóstico OU admin/consultor
+        $ehAdmin = in_array(Auth::perfil(), ['ADMIN_HOLDING', 'CONSULTOR_INTERNO']);
+        if (!$ehAdmin && (int) $diagnostico['usuario_id'] !== (int) Auth::id()) {
+            Flash::set('erro', 'Sem permissão para editar este diagnóstico.');
+            header('Location: ' . APP_URL . '/diagnostico');
+            exit;
+        }
+
+        $empresa = Empresa::buscarPorId((int) $diagnostico['empresa_id']);
+        $respostas = json_decode($diagnostico['respostas'], true) ?? [];
+
+        $dados = [
+            'diagnostico' => $diagnostico,
+            'empresa' => $empresa,
+            'respostas' => $respostas,
+        ];
+
+        require VIEW_PATH . '/diagnostico/editar.php';
+    }
+
+    /**
+     * CRUD — Salva alterações da empresa + respostas e REGENERA o resultado
+     * (recalcula a pontuação/nível). Não cria novo diagnóstico: atualiza o mesmo.
+     */
+    public function atualizar(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $diagnosticoId = (int) ($_POST['diagnostico_id'] ?? 0);
+        if (!$diagnosticoId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Diagnóstico não informado.']);
+            exit;
+        }
+
+        $diagnostico = Diagnostico::buscarPorId($diagnosticoId);
+        if (!$diagnostico) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Diagnóstico não encontrado.']);
+            exit;
+        }
+
+        $ehAdmin = in_array(Auth::perfil(), ['ADMIN_HOLDING', 'CONSULTOR_INTERNO']);
+        if (!$ehAdmin && (int) $diagnostico['usuario_id'] !== (int) Auth::id()) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Sem permissão.']);
+            exit;
+        }
+
+        try {
+            $empresaId = (int) $diagnostico['empresa_id'];
+
+            // 1) Atualizar dados cadastrais da empresa
+            $dadosEmpresa = [
+                'nome' => trim($_POST['empresa_nome'] ?? ''),
+                'segmento' => trim($_POST['segmento'] ?? ''),
+                'faturamento_mensal' => trim($_POST['faturamento_mensal'] ?? ''),
+                'colaboradores_internos' => (int) ($_POST['colaboradores_internos'] ?? 0),
+                'principal_desafio' => trim($_POST['principal_desafio'] ?? ''),
+            ];
+            if ($empresaId && $dadosEmpresa['nome'] !== '') {
+                Empresa::atualizar($empresaId, $dadosEmpresa);
+            }
+
+            // 2) Mesclar respostas existentes com as editadas do formulário
+            $respostas = json_decode($diagnostico['respostas'], true) ?? [];
+
+            // Campos que alimentam o score e o resumo (editáveis nesta tela).
+            $camposTexto = [
+                'processos_documentados', 'planejamento_documentado', 'maturidade_percebida',
+                'sistema_financeiro', 'controle_fluxo_caixa', 'margem_lucro',
+                'sistema_crm', 'taxa_conversao', 'estrutura_organizacional',
+                'programa_capacitacao', 'taxa_turnover', 'mapeamento_riscos',
+                'backup_continuidade', 'conformidade_regulatoria', 'dependencia_pessoas',
+                'dependencia_fornecedores', 'processos_sem_backup', 'fornecedor_insubstituivel',
+                'cliente_concentrado', 'objetivo_12_meses',
+            ];
+            foreach ($camposTexto as $campo) {
+                if (array_key_exists($campo, $_POST)) {
+                    $valor = $_POST[$campo];
+                    // Normalizar numéricos
+                    if (in_array($campo, ['processos_documentados', 'maturidade_percebida'])) {
+                        $valor = (int) $valor;
+                    }
+                    $respostas[$campo] = $valor;
+                }
+            }
+            // Departamentos (checkbox múltiplo)
+            if (isset($_POST['departamentos'])) {
+                $respostas['departamentos'] = array_values((array) $_POST['departamentos']);
+            }
+            // Refletir dados da empresa nas respostas (usados pelo resumo/IA)
+            $respostas['empresa_nome'] = $dadosEmpresa['nome'] ?: ($respostas['empresa_nome'] ?? '');
+            $respostas['setor'] = $dadosEmpresa['segmento'] ?: ($respostas['setor'] ?? '');
+            $respostas['faturamento_mensal'] = $dadosEmpresa['faturamento_mensal'] ?: ($respostas['faturamento_mensal'] ?? '');
+            $respostas['colaboradores_internos'] = $dadosEmpresa['colaboradores_internos'] ?: ($respostas['colaboradores_internos'] ?? 0);
+
+            // 3) Recalcular pontuação/nível (regerar diagnóstico)
+            $novoScore = $this->calcularScore($respostas);
+
+            Database::execute(
+                "UPDATE diagnosticos SET respostas = :respostas, pontuacao = :pontuacao, atualizado_em = NOW() WHERE id = :id",
+                [
+                    'respostas' => json_encode($respostas, JSON_UNESCAPED_UNICODE),
+                    'pontuacao' => $novoScore,
+                    'id' => $diagnosticoId,
+                ]
+            );
+
+            // Atualizar score de maturidade na empresa (coluna própria)
+            if ($empresaId) {
+                try {
+                    Database::execute(
+                        "UPDATE empresas SET score_maturidade = :s, atualizado_em = NOW() WHERE id = :id",
+                        ['s' => $novoScore, 'id' => $empresaId]
+                    );
+                } catch (Exception $e) { /* colu
 
         // Tentar pegar ID do diagnóstico da URL
         $diagnosticoId = null;

@@ -139,10 +139,9 @@
 <div class="flex flex-col sm:flex-row gap-4">
     <?php 
     $diagnosticoId = $resultado['diagnostico_id'] ?? null;
-    $planoUrl = APP_URL . '/plano-de-acao' . ($diagnosticoId ? '/gerar-automatico?diagnostico_id=' . $diagnosticoId : '');
     $sopUrl = APP_URL . '/manual-operacional' . ($diagnosticoId ? '?diagnostico_id=' . $diagnosticoId : '');
     ?>
-    <a href="<?= $planoUrl ?>" 
+    <button type="button" onclick="gerarPlanoAcao(<?= (int) $diagnosticoId ?>)"
        class="flex-1 bg-primary text-white px-6 py-4 rounded-lg font-medium text-sm hover:bg-primary-700 transition text-center flex items-center justify-center gap-3">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -151,7 +150,7 @@
             <span class="block font-semibold">Gerar Plano de Ação</span>
             <span class="block text-xs text-white/70">Ações prioritárias baseadas no diagnóstico</span>
         </span>
-    </a>
+    </button>
 
     <button onclick="gerarManualCompleto(<?= $resultado['diagnostico_id'] ?>)" 
             class="flex-1 bg-purple-600 text-white px-6 py-4 rounded-lg font-medium text-sm hover:bg-purple-700 transition text-center flex items-center justify-center gap-3">
@@ -193,6 +192,34 @@
 </div>
 
 <script>
+// Gerar/Regerar Plano de Ação — verifica se já existe e pergunta como o Manual Completo.
+async function gerarPlanoAcao(diagnosticoId) {
+    try {
+        const chk = await fetch('<?= APP_URL ?>/plano-de-acao/existe?diagnostico_id=' + diagnosticoId);
+        const info = await chk.json();
+
+        if (info.sucesso && info.existe) {
+            const regerar = confirm(
+                'Já existe um Plano de Ação para este diagnóstico.\n\n' +
+                'OK = Regerar do zero (o plano atual, tarefas e métricas serão substituídos)\n' +
+                'Cancelar = Abrir o plano atual'
+            );
+            if (regerar) {
+                window.location.href = info.regerar;
+            } else {
+                window.location.href = info.redirect_ver;
+            }
+            return;
+        }
+    } catch (e) {
+        // Se a verificação falhar, segue para a geração padrão.
+    }
+    // Não existe: confirmar a criação
+    if (confirm('Deseja gerar o Plano de Ação com base neste diagnóstico?')) {
+        window.location.href = '<?= APP_URL ?>/plano-de-acao/gerar-automatico?diagnostico_id=' + diagnosticoId;
+    }
+}
+
 // NOVA ARQUITETURA: Gerar Manual Completo
 async function gerarManualCompleto(diagnosticoId) {
     // 1. Verificar se já existe estrutura para este diagnóstico

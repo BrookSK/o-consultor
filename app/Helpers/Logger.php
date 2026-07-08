@@ -57,6 +57,14 @@ class Logger
     }
 
     /**
+     * Alias de error() — compatibilidade com chamadas Logger::erro().
+     */
+    public static function erro(string $mensagem, array $contexto = []): void
+    {
+        self::log('ERROR', $mensagem, $contexto);
+    }
+
+    /**
      * Log de ação crítica do usuário
      */
     public static function acao(string $mensagem, array $contexto = []): void

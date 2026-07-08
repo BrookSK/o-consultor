@@ -267,58 +267,66 @@
         </div>
     </div>
 
-    <!-- ABA CALENDÁRIO -->
+    <!-- ABA CALENDÁRIO (grade mensal) -->
     <div x-show="abaAtiva === 'calendario'" x-transition style="display:none;">
         <?php
+            // Mapa de itens por data (YYYY-MM-DD) para o calendário.
             $itensCal = $dados['calendario'] ?? [];
-            // Agrupar por data
-            $porData = [];
+            $eventosPorData = [];
             foreach ($itensCal as $it) {
-                $porData[$it['data']][] = $it;
+                $d = $it['data'];
+                if (!$d) continue;
+                $eventosPorData[$d][] = [
+                    'titulo' => $it['titulo'],
+                    'hora' => $it['hora'] ? substr($it['hora'], 0, 5) : '',
+                    'tipo' => $it['tipo'],
+                    'status' => $it['status'] ?? '',
+                ];
             }
-            ksort($porData);
-            $hojeStr = date('Y-m-d');
         ?>
-        <?php if (empty($itensCal)): ?>
-        <div class="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500">
-            Nenhum compromisso com data ainda. Crie tarefas com prazo, reuniões ou use "Criar com IA".
-        </div>
-        <?php else: ?>
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200 divide-y divide-gray-100">
-            <?php foreach ($porData as $data => $itens):
-                $ts = strtotime($data);
-                $atrasado = $data < $hojeStr;
-                $hoje = $data === $hojeStr;
-            ?>
-            <div class="p-4">
-                <div class="flex items-center gap-2 mb-2">
-                    <span class="text-sm font-bold <?= $hoje ? 'text-accent' : ($atrasado ? 'text-red-600' : 'text-gray-800') ?>">
-                        <?= date('d/m/Y', $ts) ?> · <?= ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][date('w', $ts)] ?>
-                    </span>
-                    <?php if ($hoje): ?><span class="text-[10px] bg-accent text-white px-2 py-0.5 rounded-full font-bold">HOJE</span><?php endif; ?>
+        <div x-data="calendarioPlano(<?= htmlspecialchars(json_encode($eventosPorData), ENT_QUOTES) ?>)" class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <!-- Cabeçalho de navegação -->
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2">
+                    <button @click="mudarMes(-1)" class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">‹</button>
+                    <button @click="irHoje()" class="px-3 h-8 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">Hoje</button>
+                    <button @click="mudarMes(1)" class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">›</button>
                 </div>
-                <div class="space-y-2">
-                    <?php foreach ($itens as $it):
-                        $icone = ['reuniao' => '👥', 'entrega' => '📦', 'compromisso' => '📌', 'tarefa' => '✅'][$it['tipo']] ?? '✅';
-                        $concluido = ($it['status'] ?? '') === 'concluido';
-                    ?>
-                    <div class="flex items-center gap-3 p-2 rounded-lg bg-gray-50">
-                        <span class="text-lg"><?= $icone ?></span>
-                        <div class="flex-1">
-                            <p class="text-sm font-medium text-gray-800 <?= $concluido ? 'line-through text-gray-400' : '' ?>"><?= htmlspecialchars($it['titulo']) ?></p>
-                            <p class="text-xs text-gray-400">
-                                <?= $it['hora'] ? '🕐 ' . substr($it['hora'], 0, 5) . ' · ' : '' ?>
-                                <?= ucfirst($it['tipo']) ?>
-                                <?= !empty($it['meta']['responsavel']) ? ' · ' . htmlspecialchars($it['meta']['responsavel']) : '' ?>
-                            </p>
+                <h3 class="text-lg font-bold text-primary" x-text="tituloMes"></h3>
+                <div class="w-24"></div>
+            </div>
+
+            <!-- Cabeçalho dos dias da semana -->
+            <div class="grid grid-cols-7 gap-px text-center text-xs font-semibold text-gray-500 mb-px">
+                <template x-for="d in ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']" :key="d">
+                    <div class="py-2" x-text="d"></div>
+                </template>
+            </div>
+
+            <!-- Grade dos dias -->
+            <div class="grid grid-cols-7 gap-px bg-gray-100 rounded-lg overflow-hidden">
+                <template x-for="(cel, idx) in celulas" :key="idx">
+                    <div class="bg-white min-h-[92px] p-1.5 align-top"
+                         :class="{ 'bg-gray-50': !cel.doMes }">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-medium"
+                                  :class="cel.hoje ? 'bg-accent text-white rounded-full w-5 h-5 flex items-center justify-center' : (cel.doMes ? 'text-gray-700' : 'text-gray-300')"
+                                  x-text="cel.dia"></span>
+                        </div>
+                        <div class="mt-1 space-y-1">
+                            <template x-for="(ev, i) in cel.eventos" :key="i">
+                                <div class="text-[10px] leading-tight truncate rounded px-1 py-0.5 text-white"
+                                     :class="ev.status === 'concluido' ? 'bg-green-600' : (ev.tipo === 'reuniao' ? 'bg-purple-600' : 'bg-primary')"
+                                     :title="ev.titulo + (ev.hora ? ' · ' + ev.hora : '')">
+                                    <span x-show="ev.hora" x-text="ev.hora + ' '"></span><span x-text="ev.titulo"></span>
+                                </div>
+                            </template>
                         </div>
                     </div>
-                    <?php endforeach; ?>
-                </div>
+                </template>
             </div>
-            <?php endforeach; ?>
+            <p class="text-xs text-gray-400 mt-3">Compromissos, reuniões e prazos de tarefas aparecem aqui. Crie com "Nova Tarefa" ou "Criar com IA".</p>
         </div>
-        <?php endif; ?>
     </div>
 
     <!-- ABA MÉTRICAS -->
@@ -829,12 +837,18 @@ function configurarKanban() {
             onEnd: async function(evt) {
                 const tarefaId = evt.item.dataset.id;
                 const novoStatus = evt.to.dataset.status;
+                if (!tarefaId || !novoStatus) return;
                 const formData = new FormData();
                 formData.append('csrf_token', '<?= Csrf::token() ?>');
                 formData.append('tarefa_id', tarefaId);
-                formData.append('status', novoStatus);
+                formData.append('novo_status', novoStatus);
                 try {
-                    await fetch('<?= APP_URL ?>/plano-de-acao/tarefa-status', { method: 'POST', body: formData });
+                    const res = await fetch('<?= APP_URL ?>/plano-de-acao/mover-tarefa', { method: 'POST', body: formData });
+                    const data = await res.json();
+                    // Se novas tarefas de uma etapa foram liberadas, recarrega para exibi-las.
+                    if (data && data.success && data.tarefas_liberadas > 0) {
+                        location.reload();
+                    }
                 } catch(e) {}
             }
         });
@@ -843,6 +857,64 @@ function configurarKanban() {
 
 function editarTarefa(id) {
     alert('Funcionalidade de edição será implementada em breve.');
+}
+
+// Componente Alpine do calendário mensal.
+function calendarioPlano(eventos) {
+    const hoje = new Date();
+    return {
+        eventos: eventos || {},
+        ano: hoje.getFullYear(),
+        mes: hoje.getMonth(), // 0-11
+        meses: ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'],
+        get tituloMes() { return this.meses[this.mes] + ' ' + this.ano; },
+        get celulas() {
+            const cels = [];
+            const primeiro = new Date(this.ano, this.mes, 1);
+            const inicioSemana = primeiro.getDay(); // 0=Dom
+            const diasNoMes = new Date(this.ano, this.mes + 1, 0).getDate();
+            const hojeStr = this.fmt(new Date());
+            // Dias do mês anterior para preencher a primeira semana
+            const diasMesAnterior = new Date(this.ano, this.mes, 0).getDate();
+            for (let i = inicioSemana - 1; i >= 0; i--) {
+                const dia = diasMesAnterior - i;
+                const dt = new Date(this.ano, this.mes - 1, dia);
+                cels.push(this.montarCel(dt, false, hojeStr));
+            }
+            // Dias do mês atual
+            for (let d = 1; d <= diasNoMes; d++) {
+                const dt = new Date(this.ano, this.mes, d);
+                cels.push(this.montarCel(dt, true, hojeStr));
+            }
+            // Completar até múltiplo de 7 (6 semanas = 42 no máximo)
+            while (cels.length % 7 !== 0) {
+                const ultimo = cels.length - inicioSemana - diasNoMes + 1;
+                const dt = new Date(this.ano, this.mes + 1, ultimo);
+                cels.push(this.montarCel(dt, false, hojeStr));
+            }
+            return cels;
+        },
+        montarCel(dt, doMes, hojeStr) {
+            const iso = this.fmt(dt);
+            return {
+                dia: dt.getDate(),
+                doMes: doMes,
+                hoje: iso === hojeStr,
+                eventos: this.eventos[iso] || [],
+            };
+        },
+        fmt(dt) {
+            const m = String(dt.getMonth() + 1).padStart(2, '0');
+            const d = String(dt.getDate()).padStart(2, '0');
+            return dt.getFullYear() + '-' + m + '-' + d;
+        },
+        mudarMes(delta) {
+            this.mes += delta;
+            if (this.mes < 0) { this.mes = 11; this.ano--; }
+            else if (this.mes > 11) { this.mes = 0; this.ano++; }
+        },
+        irHoje() { const h = new Date(); this.ano = h.getFullYear(); this.mes = h.getMonth(); },
+    };
 }
 
 const PLANO_CSRF = '<?= Csrf::token() ?>';

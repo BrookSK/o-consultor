@@ -48,10 +48,14 @@ class Router
         $this->post('diagnostico/reprocessar', 'DiagnosticoController', 'reprocessar');
         $this->post('diagnostico/salvar', 'DiagnosticoController', 'salvar');
         $this->get('diagnostico/resultado', 'DiagnosticoController', 'resultado');
+        $this->get('diagnostico/editar', 'DiagnosticoController', 'editar');          // CRUD: editar empresa + respostas
+        $this->post('diagnostico/atualizar', 'DiagnosticoController', 'atualizar');    // CRUD: salvar e regerar
+        $this->post('diagnostico/excluir', 'DiagnosticoController', 'excluir');        // CRUD: excluir diagnóstico
 
         // Plano de Ação
         $this->get('plano-de-acao', 'PlanoController', 'index');
         $this->get('plano-de-acao/gerar-automatico', 'PlanoController', 'gerarAutomatico'); // Gera plano completo do diagnóstico
+        $this->get('plano-de-acao/existe', 'PlanoController', 'planoExiste');               // Verifica se já existe plano do diagnóstico
         $this->post('plano-de-acao/criar-tarefa', 'PlanoController', 'criarTarefaManual');   // Criar tarefa manual
         $this->post('plano-de-acao/criar-tarefa-ia', 'PlanoController', 'criarTarefaIA');     // Criar tarefa/compromisso por IA
         $this->post('plano-de-acao/criar-metrica', 'PlanoController', 'criarMetrica');        // Criar métrica/KPI
