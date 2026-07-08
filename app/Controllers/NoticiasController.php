@@ -221,11 +221,24 @@ class NoticiasController
                 $noticias = $resultado['sucesso'] ? $resultado['conteudo'] : [];
             }
 
-            $noticiasEncontradas = count($noticias ?? []);
+            // Normalizar: a IA pode devolver a lista aninhada em chaves como 'noticias'/'resultados'.
+            if (!is_array($noticias)) {
+                $noticias = [];
+            } elseif (isset($noticias['noticias']) && is_array($noticias['noticias'])) {
+                $noticias = $noticias['noticias'];
+            } elseif (isset($noticias['resultados']) && is_array($noticias['resultados'])) {
+                $noticias = $noticias['resultados'];
+            }
+            // Se veio um único objeto (associativo) em vez de lista, embrulha.
+            if (!empty($noticias) && array_keys($noticias) !== range(0, count($noticias) - 1)) {
+                $noticias = [$noticias];
+            }
+
+            $noticiasEncontradas = count($noticias);
 
             // Processar cada notícia
             foreach ($noticias as $noticia) {
-                if (empty($noticia['url']) || empty($noticia['titulo'])) continue;
+                if (!is_array($noticia) || empty($noticia['url']) || empty($noticia['titulo'])) continue;
 
                 // Verificar duplicata
                 $existe = Database::queryOne(
@@ -263,7 +276,9 @@ class NoticiasController
                 'api_utilizada' => $apiUtilizada,
             ];
 
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
+            error_log('[O CONSULTOR][PROCESSAR-EMPRESA] ' . get_class($e) . ': ' . $e->getMessage()
+                . ' | ' . $e->getFile() . ':' . $e->getLine() . ' | empresa=' . $empresaId);
             // Atualizar log com erro
             $this->atualizarLogBusca($logId, false, $noticiasEncontradas, $noticiasNovas, $noticiasDuplicadas, $apiUtilizada, $e->getMessage());
             throw $e;
@@ -559,8 +574,19 @@ class NoticiasController
                     : 'Nenhuma nova notícia encontrada.'
             ]);
             
-        } catch (Exception $e) {
-            Logger::error('Erro na busca manual de notícias: ' . $e->getMessage());
+        } catch (\Throwable $e) {
+            // Log detalhado no error_log do Plesk para diagnóstico.
+            error_log('[O CONSULTOR][BUSCAR-NOTICIAS] ' . get_class($e) . ': ' . $e->getMessage()
+                . ' | ' . $e->getFile() . ':' . $e->getLine()
+                . ' | empresa=' . $empresaId
+                . "\n" . $e->getTraceAsString());
+            Logger::error('Erro na busca manual de notícias', [
+                'tipo' => get_class($e),
+                'mensagem' => $e->getMessage(),
+                'arquivo' => $e->getFile(),
+                'linha' => $e->getLine(),
+                'empresa_id' => $empresaId,
+            ]);
             header('Content-Type: application/json');
             echo json_encode(['sucesso' => false, 'erro' => 'Erro ao executar busca: ' . $e->getMessage()]);
         }
