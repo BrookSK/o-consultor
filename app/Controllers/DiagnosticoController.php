@@ -1211,7 +1211,30 @@ class DiagnosticoController
                         "UPDATE empresas SET score_maturidade = :s, atualizado_em = NOW() WHERE id = :id",
                         ['s' => $novoScore, 'id' => $empresaId]
                     );
-                } catch (Exception $e) { /* colu
+                } catch (Exception $e) { /* coluna pode não existir — ignorar */ }
+            }
+
+            echo json_encode([
+                'sucesso' => true,
+                'mensagem' => 'Diagnóstico atualizado e regenerado.',
+                'pontuacao' => $novoScore,
+                'redirect' => APP_URL . '/diagnostico/resultado/' . $diagnosticoId,
+            ]);
+            exit;
+
+        } catch (Exception $e) {
+            Logger::erro('Erro ao atualizar diagnóstico: ' . $e->getMessage());
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro ao atualizar: ' . $e->getMessage()]);
+            exit;
+        }
+    }
+
+    /**
+     * Exibe o resultado do diagnóstico (por ID na URL ou via sessão).
+     */
+    public function resultado(): void
+    {
+        Auth::proteger();
 
         // Tentar pegar ID do diagnóstico da URL
         $diagnosticoId = null;
