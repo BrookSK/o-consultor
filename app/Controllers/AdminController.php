@@ -1314,7 +1314,9 @@ class AdminController
         $url = 'https://api.perplexity.ai/chat/completions';
         
         $data = [
-            'model' => 'llama-3.1-sonar-small-128k-online',
+            // Modelos "llama-3.1-sonar-*" foram descontinuados pela Perplexity em 22/02/2025.
+            // Modelos atuais: sonar, sonar-pro, sonar-reasoning-pro, sonar-deep-research.
+            'model' => 'sonar',
             'messages' => [
                 ['role' => 'user', 'content' => 'Responda apenas: ok']
             ],

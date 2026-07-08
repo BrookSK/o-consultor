@@ -209,9 +209,12 @@
                     <div>
                         <label class="block text-xs text-gray-500 mb-1">Modelo</label>
                         <select id="modelo-perplexity" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
-                            <option>llama-3.1-sonar-small-128k-online</option>
-                            <option>llama-3.1-sonar-large-128k-online</option>
+                            <option value="sonar">sonar (rápido e econômico)</option>
+                            <option value="sonar-pro">sonar-pro (busca aprofundada)</option>
+                            <option value="sonar-reasoning-pro">sonar-reasoning-pro (raciocínio + busca)</option>
+                            <option value="sonar-deep-research">sonar-deep-research (pesquisa exaustiva)</option>
                         </select>
+                        <p class="text-[11px] text-gray-400 mt-1">Os modelos "llama-3.1-sonar-*" foram descontinuados pela Perplexity.</p>
                     </div>
                 </div>
                 

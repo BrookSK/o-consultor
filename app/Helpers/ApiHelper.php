@@ -273,7 +273,8 @@ class ApiHelper
     public static function chamarPerplexity(string $prompt, ?string $model = null): array
     {
         $apiKey = self::config('perplexity_key');
-        $model = $model ? $model : self::config('perplexity_modelo', 'sonar-pro');
+        // Modelos "llama-3.1-sonar-*" foram descontinuados pela Perplexity em 22/02/2025.
+        $model = $model ? $model : self::config('perplexity_modelo', 'sonar');
 
         if (empty($apiKey)) {
             error_log('[O CONSULTOR][Perplexity] Chave não configurada (Admin > Configurações > APIs).');
