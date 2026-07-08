@@ -8,3 +8,10 @@
 USE o_consultor;
 
 ALTER TABLE noticias ADD COLUMN imagem_url VARCHAR(1000) NULL AFTER url;
+
+-- =====================================================
+-- Correção: busca_logs.api_utilizada era NOT NULL sem valor padrão, mas o
+-- registro é criado (criarLogBusca) ANTES de a API ser escolhida — o INSERT
+-- falhava sempre, quebrando toda busca de notícias com "Erro interno".
+-- =====================================================
+ALTER TABLE busca_logs MODIFY COLUMN api_utilizada ENUM('perplexity', 'openai', 'anthropic') NULL;

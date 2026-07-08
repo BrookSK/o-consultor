@@ -129,6 +129,7 @@ class NoticiasController
                 echo json_encode([
                     'sucesso' => $resultado['sucesso'],
                     'mensagem' => $resultado['mensagem'] ?? 'Busca concluída!',
+                    'erro' => $resultado['erro'] ?? null,
                     'noticias_novas' => $resultado['noticias_novas'] ?? 0,
                     'tempo_ms' => $tempo,
                 ]);
@@ -521,40 +522,52 @@ class NoticiasController
 
     private function criarLogBusca(int $empresaId, string $tipo, array $sites): int
     {
-        Database::execute(
-            "INSERT INTO busca_logs (empresa_id, tipo_busca, sites_referencia) 
-             VALUES (:empresa_id, :tipo, :sites)",
-            [
-                'empresa_id' => $empresaId,
-                'tipo' => $tipo,
-                'sites' => json_encode($sites),
-            ]
-        );
-
-        return (int) Database::lastInsertId();
+        // O log é auxiliar/diagnóstico: uma falha aqui (ex.: coluna api_utilizada
+        // NOT NULL sem valor ainda definido, ou tabela ausente) NUNCA deve impedir
+        // a busca de notícias em si. Retorna 0 quando não é possível criar o log.
+        try {
+            Database::execute(
+                "INSERT INTO busca_logs (empresa_id, tipo_busca, sites_referencia) 
+                 VALUES (:empresa_id, :tipo, :sites)",
+                [
+                    'empresa_id' => $empresaId,
+                    'tipo' => $tipo,
+                    'sites' => json_encode($sites),
+                ]
+            );
+            return (int) Database::lastInsertId();
+        } catch (Exception $e) {
+            error_log('[O CONSULTOR][BUSCA-LOGS] Falha ao criar log (ignorada): ' . $e->getMessage());
+            return 0;
+        }
     }
 
     private function atualizarLogBusca(int $logId, bool $sucesso, int $encontradas, int $novas, int $duplicadas, ?string $api, ?string $erro = null): void
     {
-        Database::execute(
-            "UPDATE busca_logs SET 
-                api_utilizada = :api,
-                noticias_encontradas = :encontradas,
-                noticias_novas = :novas,
-                noticias_duplicadas = :duplicadas,
-                sucesso = :sucesso,
-                erro_detalhes = :erro
-             WHERE id = :id",
-            [
-                'id' => $logId,
-                'api' => $api,
-                'encontradas' => $encontradas,
-                'novas' => $novas,
-                'duplicadas' => $duplicadas,
-                'sucesso' => $sucesso ? 1 : 0,
-                'erro' => $erro,
-            ]
-        );
+        if ($logId <= 0) return; // criarLogBusca falhou antes; nada a atualizar.
+        try {
+            Database::execute(
+                "UPDATE busca_logs SET 
+                    api_utilizada = :api,
+                    noticias_encontradas = :encontradas,
+                    noticias_novas = :novas,
+                    noticias_duplicadas = :duplicadas,
+                    sucesso = :sucesso,
+                    erro_detalhes = :erro
+                 WHERE id = :id",
+                [
+                    'id' => $logId,
+                    'api' => $api,
+                    'encontradas' => $encontradas,
+                    'novas' => $novas,
+                    'duplicadas' => $duplicadas,
+                    'sucesso' => $sucesso ? 1 : 0,
+                    'erro' => $erro,
+                ]
+            );
+        } catch (Exception $e) {
+            error_log('[O CONSULTOR][BUSCA-LOGS] Falha ao atualizar log (ignorada): ' . $e->getMessage());
+        }
     }
 
     private function criarAlertaNovasNoticias(int $empresaId, int $quantidade): void

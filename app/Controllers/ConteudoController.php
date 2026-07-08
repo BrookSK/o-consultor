@@ -125,10 +125,11 @@ class ConteudoController
         }
 
         try {
-            // Substitui a lista de sites cadastrados manualmente pelo usuário
-            // (mantém os sites que a IA adicionou automaticamente, se houver).
+            // A lista exibida na tela é a fonte da verdade: substitui TODOS os sites
+            // da empresa (inclusive os que a IA adicionou automaticamente), para que
+            // o usuário consiga editar/remover qualquer site, não só os que ele mesmo criou.
             Database::execute(
-                "DELETE FROM empresa_perfil_busca WHERE empresa_id = :empresa_id AND adicionado_por = 'usuario'",
+                "DELETE FROM empresa_perfil_busca WHERE empresa_id = :empresa_id",
                 ['empresa_id' => $empresaId]
             );
 
