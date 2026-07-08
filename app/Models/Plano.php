@@ -417,8 +417,11 @@ class Plano
             ]
         );
         if ($ok) {
+            // Capturar o ID ANTES de qualquer outra query (atualizarProgresso roda
+            // UPDATE/SELECT e zeraria o lastInsertId da conexão).
+            $novoId = (int) Database::lastInsertId();
             self::atualizarProgresso($planoId);
-            return (int) Database::lastInsertId();
+            return $novoId > 0 ? $novoId : false;
         }
         return false;
     }
