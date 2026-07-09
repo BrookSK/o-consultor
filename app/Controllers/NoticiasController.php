@@ -345,6 +345,15 @@ class NoticiasController
      * og:image / twitter:image (padrão Open Graph, usado por todos os portais).
      * Retorna a URL absoluta da imagem ou null se não encontrar/acessar.
      */
+    /**
+     * Wrapper público para extrair a imagem de capa de uma página de notícia.
+     * Reutilizado por outros controllers (ex.: ConteudoController no detalhe).
+     */
+    public function extrairImagemNoticia(string $url): ?string
+    {
+        return $this->extrairImagemDaPagina($url);
+    }
+
     private function extrairImagemDaPagina(string $url): ?string
     {
         if (!filter_var($url, FILTER_VALIDATE_URL)) {

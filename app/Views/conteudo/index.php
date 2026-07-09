@@ -21,7 +21,7 @@ if (!function_exists('renderCardNoticia')) {
         $urlExterna = trim((string) ($noticia['url'] ?? ''));
 
         ob_start(); ?>
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition flex flex-col">
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition flex flex-col" data-noticia-id="<?= (int) $noticia['id'] ?>">
             <a href="<?= APP_URL ?>/central-de-conteudo/noticia?id=<?= (int) $noticia['id'] ?>" class="block">
                 <?php if ($imagem !== ''): ?>
                 <img src="<?= htmlspecialchars($imagem) ?>" alt="" loading="lazy"
@@ -49,6 +49,7 @@ if (!function_exists('renderCardNoticia')) {
                         <?php if ($urlExterna !== ''): ?>
                         <a href="<?= htmlspecialchars($urlExterna) ?>" target="_blank" rel="noopener noreferrer" class="text-xs text-gray-400 hover:text-gray-600" title="Abrir notícia original">🔗</a>
                         <?php endif; ?>
+                        <button type="button" onclick="excluirNoticia(<?= (int) $noticia['id'] ?>, this)" class="text-xs text-gray-400 hover:text-red-600" title="Excluir notícia">🗑️</button>
                     </div>
                 </div>
             </div>
@@ -73,9 +74,12 @@ if (!function_exists('renderCardNoticia')) {
         <h1 class="text-2xl font-bold text-gray-800">Central de Conteúdo</h1>
         <p class="text-gray-500 mt-1">Notícias, cursos, cases e inteligência de mercado.</p>
     </div>
-    <?php if (Auth::temAlgumPerfil([Auth::ADMIN_HOLDING, Auth::CONSULTOR_INTERNO])): ?>
-    <a href="<?= APP_URL ?>/central-de-conteudo/admin" class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">⚙️ Gerenciar</a>
-    <?php endif; ?>
+    <div class="flex items-center gap-3">
+        <button type="button" onclick="limparNoticias()" class="px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50">🗑️ Limpar todas</button>
+        <?php if (Auth::temAlgumPerfil([Auth::ADMIN_HOLDING, Auth::CONSULTOR_INTERNO])): ?>
+        <a href="<?= APP_URL ?>/central-de-conteudo/admin" class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">⚙️ Gerenciar</a>
+        <?php endif; ?>
+    </div>
 </div>
 
 <!-- 4 Abas -->
@@ -439,7 +443,9 @@ function renderizarFeedNoticias(noticias) {
             : '<div class="w-full h-40 bg-gray-100 flex items-center justify-center text-3xl">📰</div>';
         const linkExterno = n.url ? '<a href="' + esc(n.url) + '" target="_blank" rel="noopener noreferrer" class="text-xs text-gray-400 hover:text-gray-600" title="Abrir notícia original">🔗</a>' : '';
 
-        return '<div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition flex flex-col">'
+        const btnExcluir = '<button type="button" onclick="excluirNoticia(' + n.id + ', this)" class="text-xs text-gray-400 hover:text-red-600" title="Excluir notícia">🗑️</button>';
+
+        return '<div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition flex flex-col" data-noticia-id="' + n.id + '">'
             + '<a href="' + urlAnalise + '" class="block">' + imgTag + '</a>'
             + '<div class="p-4 flex flex-col flex-1">'
             + '<div class="flex items-center gap-2 mb-2 flex-wrap">'
@@ -454,8 +460,63 @@ function renderizarFeedNoticias(noticias) {
             + '<div class="flex items-center gap-3">'
             + '<a href="' + urlAnalise + '" class="text-xs text-primary font-medium hover:underline">Ver análise →</a>'
             + linkExterno
+            + btnExcluir
             + '</div></div></div></div>';
     }).join('');
+}
+
+// ===== Excluir notícia(s) =====
+async function excluirNoticia(id, btn) {
+    if (!confirm('Excluir esta notícia? Esta ação não pode ser desfeita.')) return;
+
+    if (btn) btn.disabled = true;
+    try {
+        const formData = new FormData();
+        formData.append('csrf_token', '<?= Csrf::token() ?>');
+        formData.append('noticia_id', id);
+
+        const res = await fetch('<?= APP_URL ?>/central-de-conteudo/excluir-noticia', { method: 'POST', body: formData });
+        const data = await res.json();
+
+        if (data.sucesso) {
+            const card = document.querySelector('[data-noticia-id="' + id + '"]');
+            if (card) card.remove();
+            if (typeof Toast !== 'undefined') Toast.sucesso(data.mensagem); else alert(data.mensagem);
+            // Se o feed ficou vazio, recarrega para exibir o estado "sem notícias".
+            const feed = document.getElementById('feed-noticias');
+            if (feed && !feed.querySelector('[data-noticia-id]')) atualizarFeedComRecentes();
+        } else {
+            if (btn) btn.disabled = false;
+            const msg = data.erro || 'Erro ao excluir notícia.';
+            if (typeof Toast !== 'undefined') Toast.erro(msg); else alert(msg);
+        }
+    } catch (e) {
+        if (btn) btn.disabled = false;
+        alert('Erro de conexão ao excluir notícia.');
+    }
+}
+
+async function limparNoticias() {
+    if (!confirm('Excluir TODAS as notícias desta empresa? Esta ação não pode ser desfeita.')) return;
+
+    try {
+        const formData = new FormData();
+        formData.append('csrf_token', '<?= Csrf::token() ?>');
+
+        const res = await fetch('<?= APP_URL ?>/central-de-conteudo/limpar-noticias', { method: 'POST', body: formData });
+        const data = await res.json();
+
+        if (data.sucesso) {
+            if (typeof Toast !== 'undefined') Toast.sucesso(data.mensagem); else alert(data.mensagem);
+            renderizarFeedNoticias([]);
+            renderizarPaginacao({ pagina_atual: 1, total_paginas: 1, total_itens: 0 });
+        } else {
+            const msg = data.erro || 'Erro ao limpar notícias.';
+            if (typeof Toast !== 'undefined') Toast.erro(msg); else alert(msg);
+        }
+    } catch (e) {
+        alert('Erro de conexão ao limpar notícias.');
+    }
 }
 
 // ===== Paginação do feed de notícias (mais nova = página 1) =====

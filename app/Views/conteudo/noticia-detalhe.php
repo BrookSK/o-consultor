@@ -24,6 +24,16 @@
         <h1 class="text-xl font-bold text-gray-800"><?= htmlspecialchars($noticia['titulo']) ?></h1>
     </div>
 
+    <!-- Imagem de capa -->
+    <?php $capa = trim((string) ($noticia['imagem_url'] ?? '')); ?>
+    <?php if ($capa !== ''): ?>
+    <div class="mb-6 rounded-lg overflow-hidden border border-gray-200 bg-gray-100">
+        <img src="<?= htmlspecialchars($capa) ?>" alt="<?= htmlspecialchars($noticia['titulo']) ?>"
+             class="w-full max-h-96 object-cover"
+             onerror="this.closest('div').remove();">
+    </div>
+    <?php endif; ?>
+
     <!-- Bloco 1: A Notícia -->
     <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-4">
         <h3 class="text-sm font-bold text-gray-700 uppercase tracking-wide mb-3 flex items-center gap-2">

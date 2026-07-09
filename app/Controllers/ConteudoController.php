@@ -99,6 +99,20 @@ class ConteudoController
             ['id' => $id]
         );
 
+        // Se ainda não tem imagem de capa, tenta extrair a og:image da página
+        // agora (sob demanda) e salva para as próximas visualizações.
+        if (empty($noticia['imagem_url']) && !empty($noticia['url'])) {
+            $img = (new NoticiasController())->extrairImagemNoticia((string) $noticia['url']);
+            if ($img !== null) {
+                try {
+                    Database::execute("UPDATE noticias SET imagem_url = :img WHERE id = :id", ['img' => $img, 'id' => $id]);
+                    $noticia['imagem_url'] = $img;
+                } catch (\Throwable $e) {
+                    // Coluna pode não existir ainda; ignora silenciosamente.
+                }
+            }
+        }
+
         $dados = ['noticia' => $this->formatarNoticiaDetalhes($noticia)];
         require VIEW_PATH . '/conteudo/noticia-detalhe.php';
     }
@@ -322,6 +336,81 @@ class ConteudoController
         exit;
     }
 
+    /**
+     * Exclui uma notícia (definitivamente) da empresa atual.
+     */
+    public function excluirNoticia(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $empresaId = Auth::empresa();
+        if (!$empresaId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Selecione uma empresa específica no menu do topo.']);
+            exit;
+        }
+
+        $noticiaId = (int) ($_POST['noticia_id'] ?? 0);
+        if ($noticiaId === 0) {
+            echo json_encode(['sucesso' => false, 'erro' => 'ID da notícia é obrigatório.']);
+            exit;
+        }
+
+        try {
+            $sucesso = Database::execute(
+                "DELETE FROM noticias WHERE id = :id AND empresa_id = :empresa_id",
+                ['id' => $noticiaId, 'empresa_id' => $empresaId]
+            );
+
+            if ($sucesso) {
+                Logger::acao('Notícia excluída', ['noticia_id' => $noticiaId, 'empresa_id' => $empresaId]);
+                echo json_encode(['sucesso' => true, 'mensagem' => 'Notícia excluída!']);
+            } else {
+                echo json_encode(['sucesso' => false, 'erro' => 'Notícia não encontrada.']);
+            }
+        } catch (Exception $e) {
+            Logger::error('Erro ao excluir notícia: ' . $e->getMessage());
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro ao excluir notícia.']);
+        }
+        exit;
+    }
+
+    /**
+     * Exclui TODAS as notícias da empresa atual.
+     */
+    public function limparNoticias(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $empresaId = Auth::empresa();
+        if (!$empresaId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Selecione uma empresa específica no menu do topo.']);
+            exit;
+        }
+
+        try {
+            $total = (int) (Database::queryOne(
+                "SELECT COUNT(*) as total FROM noticias WHERE empresa_id = :empresa_id",
+                ['empresa_id' => $empresaId]
+            )['total'] ?? 0);
+
+            Database::execute(
+                "DELETE FROM noticias WHERE empresa_id = :empresa_id",
+                ['empresa_id' => $empresaId]
+            );
+
+            Logger::acao('Todas as notícias excluídas', ['empresa_id' => $empresaId, 'total' => $total]);
+            echo json_encode(['sucesso' => true, 'mensagem' => "{$total} notícia(s) excluída(s)!", 'total' => $total]);
+        } catch (Exception $e) {
+            Logger::error('Erro ao limpar notícias: ' . $e->getMessage());
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro ao limpar notícias.']);
+        }
+        exit;
+    }
+
     // ===== REAL DATA METHODS =====
 
     /**
@@ -473,6 +562,7 @@ class ConteudoController
             'bloco_conexao' => $noticia['bloco5_conexao'],
             'tags' => json_decode($noticia['tags'] ?? '[]', true),
             'url' => $noticia['url'],
+            'imagem_url' => $noticia['imagem_url'] ?? null,
         ];
     }
 
