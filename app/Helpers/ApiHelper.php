@@ -1918,14 +1918,16 @@ Objetivo: {$objetivo}{$regrasEducativo}{$regrasNoticia}
 
 REGRAS IMPORTANTES:
 1. Cada slide deve ter um 'prompt_imagem' descrevendo uma CENA VISUAL CONCRETA e específica ligada ao tema (pessoas, ambientes, objetos, situações reais), NÃO uma coleção de ícones/símbolos abstratos. Ex.: em vez de 'ícones de cadeado e nuvem', prefira 'profissional de TI analisando painéis de segurança em um escritório moderno'.
-2. NÃO defina paleta/estética no prompt_imagem: o estilo visual (cores, iluminação, traço) virá das imagens de referência da marca. Descreva apenas O QUE aparece na cena.
-3. NÃO incluir texto, palavras ou números nas descrições de imagem
+2. NÃO defina paleta/estética no prompt_imagem: o estilo visual (cores, iluminação, traço) virá das imagens de referência da marca. Descreva apenas O QUE aparece na cena (cenário/elementos), pois a HEADLINE (campo 'texto') será escrita SOBRE a imagem automaticamente — deixe espaço/área limpa na composição para o texto caber com destaque.
+3. NÃO escreva a headline dentro do prompt_imagem (ela é adicionada à parte); descreva só a cena de fundo.
 4. Manter consistência com o tom de voz e arquétipo da marca
 5. O campo 'texto' de cada slide deve ser uma frase/parágrafo CLARO e COMPLETO em português, com sentido próprio. NÃO use emojis, símbolos, códigos ou caracteres especiais no 'texto' dos slides — apenas texto limpo.
 6. O conteúdo deve ser COERENTE e encadeado: capa com gancho, slides de desenvolvimento que se conectam, e fechamento com conclusão + CTA. Nada de frases soltas ou aleatórias.
 7. GANCHO OBRIGATÓRIO: o 'texto' de cada slide (especialmente a capa) deve ter um gancho que gere curiosidade e convide o usuário a ler/avançar — use perguntas, números, promessas de valor ou tensão. Evite títulos genéricos e descritivos.
-8. Legenda: texto corrido natural com call-to-action relevante ao objetivo (emojis são permitidos APENAS na legenda, com moderação).
-9. PERSONALIZAÇÃO: Use o contexto da jornada para tornar o conteúdo mais específico e relevante
+8. LEGENDA — LINGUAGEM SIMPLES: escreva a legenda em português claro e acessível, como se explicasse para um leigo. É PROIBIDO usar jargões técnicos ou termos de nicho em inglês (ex.: 'Shadow AI', 'living-off-the-land', 'mitigar riscos', 'compliance'). Se um conceito for técnico, explique em palavras do dia a dia. Frases curtas e diretas.
+9. LEGENDA — TOQUE NA DOR: a legenda deve sempre conectar com uma DOR real do público e deixar claro o RISCO/PREJUÍZO de NÃO agir (o que a pessoa/empresa perde se ignorar o assunto), antes do call-to-action. Gere urgência de forma honesta, sem alarmismo exagerado.
+10. Legenda: texto corrido natural, terminando com um call-to-action relevante ao objetivo (emojis permitidos APENAS na legenda, com moderação).
+11. PERSONALIZAÇÃO: Use o contexto da jornada para tornar o conteúdo mais específico e relevante
 
 Responda APENAS em JSON válido e bem formado, em português, sem explicações fora do JSON.";
     }

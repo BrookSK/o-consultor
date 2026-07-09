@@ -1092,6 +1092,17 @@ class MaquinaController
 
             $tamanho = $this->tamanhoImagemPorTipo((string) ($conteudo['tipo'] ?? ''));
 
+            // Headline a ser ESCRITA dentro da imagem (como nos templates de referência).
+            // Usa o 'texto' do slide (frase de gancho); opcionalmente um subtítulo.
+            $headline = trim((string) ($slides[$slideIndex]['texto'] ?? ''));
+            $subheadline = trim((string) ($slides[$slideIndex]['texto_secundario'] ?? ''));
+            $instrucaoTexto = '';
+            if ($headline !== '') {
+                $instrucaoTexto = ' A imagem DEVE conter, em destaque, a seguinte HEADLINE escrita EXATAMENTE assim (sem alterar palavras, em português): "' . $headline . '"'
+                    . ($subheadline !== '' ? ' e o subtítulo: "' . $subheadline . '"' : '')
+                    . '. Componha o texto como um post de rede social: tipografia grande, legível e bem posicionada (topo ou base), com bom contraste sobre a arte, no MESMO estilo tipográfico das imagens de referência. Grafia correta em português, sem erros de ortografia e sem letras trocadas.';
+            }
+
             $imgResult = null;
             $promptCompleto = '';
             $metodo = 'nenhum';
@@ -1131,10 +1142,11 @@ class MaquinaController
                     ? ' Estilo de referência a seguir fielmente: ' . mb_substr($descricaoTemplate, 0, 600) . '.'
                     : '';
                 $promptRef = 'Gere uma nova imagem VERTICAL (retrato) para post de Instagram REPLICANDO FIELMENTE o estilo visual das imagens de referência fornecidas '
-                    . '(MESMO meio/estética, paleta, iluminação, enquadramento, texturas e clima). O estilo das referências tem PRIORIDADE sobre qualquer outra instrução.'
+                    . '(MESMO meio/estética, paleta, iluminação, enquadramento, texturas, tipografia e clima). O estilo das referências tem PRIORIDADE sobre qualquer outra instrução.'
                     . $complementoDesc
-                    . ' Assunto/tema a retratar dentro desse estilo: ' . $promptImagem . '.'
-                    . ' NÃO reproduza o texto das referências; a imagem final não deve conter texto, letras, logos ou números.';
+                    . ' Assunto/cena a retratar dentro desse estilo: ' . $promptImagem . '.'
+                    . $instrucaoTexto
+                    . ' NÃO copie o texto que aparece nas imagens de referência (use-as apenas como estilo); a única escrita permitida na imagem é a HEADLINE indicada acima.';
                 $promptCompleto = $promptRef;
                 $imgResult = ApiHelper::gerarImagemComReferencia($promptRef, $caminhosRef, $tamanho);
                 if (!empty($imgResult['sucesso']) && !empty($imgResult['url'])) {
@@ -1149,12 +1161,12 @@ class MaquinaController
             if (!$imgResult || empty($imgResult['sucesso']) || empty($imgResult['url'])) {
                 $estiloTemplates = $descricaoTemplate !== '' ? $descricaoTemplate : $this->obterEstiloTemplates($marcaId);
                 $refTemplates = $estiloTemplates !== '' ? ' — Estilo visual de referência (siga fielmente): ' . $estiloTemplates : '';
-                $promptCompleto = $conteudo['prompt_dalle'] . ' — ' . $promptImagem . $refTemplates . ' — Formato vertical para post de Instagram (retrato), composição centralizada. Não incluir texto, palavras, letras ou números na imagem.';
+                $promptCompleto = $conteudo['prompt_dalle'] . ' — ' . $promptImagem . $refTemplates . ' — Formato vertical para post de Instagram (retrato), composição centralizada.' . $instrucaoTexto;
                 $imgResult = ApiHelper::gerarImagem($promptCompleto, $tamanho);
                 $metodo = 'texto';
 
                 if (!$imgResult['sucesso'] || empty($imgResult['url'])) {
-                    $promptSimples = $conteudo['prompt_dalle'] . $refTemplates . ' — estilo corporativo moderno, formato vertical de Instagram, sem texto';
+                    $promptSimples = $conteudo['prompt_dalle'] . $refTemplates . ' — estilo corporativo moderno, formato vertical de Instagram.' . $instrucaoTexto;
                     $imgResult = ApiHelper::gerarImagem($promptSimples, $tamanho);
                     $promptCompleto = $promptSimples;
                 }
