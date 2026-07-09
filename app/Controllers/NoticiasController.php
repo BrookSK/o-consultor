@@ -604,71 +604,398 @@ class NoticiasController
     }
 
     /**
-     * Buscar notícias agora (manual)
+     * Buscar notícias agora (manual) — ENFILEIRA a busca em vez de executá-la
+     * de forma síncrona. A busca faz 1 chamada de IA para buscar + 1 chamada de
+     * IA por notícia encontrada (até 10): rodando tudo numa única requisição
+     * HTTP isso passa fácil de 60-120s e o proxy (Nginx/Apache) mata a conexão
+     * com 504/timeout, mesmo que as notícias já tenham sido salvas no banco.
+     * O front-end acompanha o progresso via polling (ver enfileirarBusca()).
      */
     public function buscarAgora(): void
     {
         Auth::proteger();
-        
-        $input = json_decode(file_get_contents('php://input'), true);
+
         $empresaId = Auth::empresa();
-        
         if (!$empresaId) {
             header('Content-Type: application/json');
             echo json_encode(['sucesso' => false, 'erro' => 'Empresa não identificada.']);
             exit;
         }
-        
+
         try {
-            // Contar notícias antes da busca
-            $noticiasAntes = Database::queryOne(
-                "SELECT COUNT(*) as total FROM noticias WHERE empresa_id = :empresa_id",
-                ['empresa_id' => $empresaId]
-            )['total'] ?? 0;
-            
-            // Executar busca
-            $resultado = $this->processarEmpresa($empresaId, true);
-            
-            // Contar notícias depois da busca
-            $noticiasDepois = Database::queryOne(
-                "SELECT COUNT(*) as total FROM noticias WHERE empresa_id = :empresa_id",
-                ['empresa_id' => $empresaId]
-            )['total'] ?? 0;
-            
-            $novasNoticias = $noticiasDepois - $noticiasAntes;
-            
-            Logger::acao('Busca manual de notícias executada', [
-                'empresa_id' => $empresaId,
-                'noticias_encontradas' => $novasNoticias,
-                'resultado' => $resultado
-            ]);
-            
+            $filaId = $this->enfileirarBusca($empresaId, 'manual');
             header('Content-Type: application/json');
             echo json_encode([
                 'sucesso' => true,
-                'novas_noticias' => $novasNoticias,
-                'mensagem' => $novasNoticias > 0 
-                    ? "Encontradas {$novasNoticias} novas notícias!" 
-                    : 'Nenhuma nova notícia encontrada.'
+                'fila_id' => $filaId,
+                'mensagem' => 'Busca iniciada, processando...',
             ]);
-            
         } catch (\Throwable $e) {
-            // Log detalhado no error_log do Plesk para diagnóstico.
             error_log('[O CONSULTOR][BUSCAR-NOTICIAS] ' . get_class($e) . ': ' . $e->getMessage()
-                . ' | ' . $e->getFile() . ':' . $e->getLine()
-                . ' | empresa=' . $empresaId
-                . "\n" . $e->getTraceAsString());
-            Logger::error('Erro na busca manual de notícias', [
-                'tipo' => get_class($e),
-                'mensagem' => $e->getMessage(),
-                'arquivo' => $e->getFile(),
-                'linha' => $e->getLine(),
-                'empresa_id' => $empresaId,
-            ]);
+                . ' | ' . $e->getFile() . ':' . $e->getLine() . ' | empresa=' . $empresaId);
             header('Content-Type: application/json');
-            echo json_encode(['sucesso' => false, 'erro' => 'Erro ao executar busca: ' . $e->getMessage()]);
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro ao iniciar busca: ' . $e->getMessage()]);
         }
         exit;
+    }
+
+    // =========================================================================
+    // FILA DE BUSCA DE NOTÍCIAS — processamento em pequenos passos (sem timeout)
+    // Mesmo padrão usado pela fila_geracao_sop (ver SopController).
+    // =========================================================================
+
+    /**
+     * Garante que a tabela fila_busca_noticias existe (evita depender de migration manual).
+     */
+    private function garantirTabelaFilaBusca(): void
+    {
+        Database::execute(
+            "CREATE TABLE IF NOT EXISTS fila_busca_noticias (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                empresa_id INT UNSIGNED NOT NULL,
+                tipo_busca ENUM('manual', 'automatica') NOT NULL DEFAULT 'manual',
+                status ENUM('pendente', 'processando', 'concluido', 'erro') NOT NULL DEFAULT 'pendente',
+                etapa ENUM('buscar', 'analisar') NOT NULL DEFAULT 'buscar',
+                log_id INT UNSIGNED NULL,
+                api_utilizada VARCHAR(20) NULL,
+                noticias_pendentes JSON NULL,
+                noticias_encontradas INT UNSIGNED NOT NULL DEFAULT 0,
+                noticias_novas INT UNSIGNED NOT NULL DEFAULT 0,
+                noticias_duplicadas INT UNSIGNED NOT NULL DEFAULT 0,
+                mensagem VARCHAR(500) NULL,
+                tentativas INT UNSIGNED NOT NULL DEFAULT 0,
+                criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                iniciado_em DATETIME NULL,
+                concluido_em DATETIME NULL,
+                atualizado_em DATETIME NULL,
+                INDEX idx_status (status),
+                INDEX idx_empresa (empresa_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
+    }
+
+    /**
+     * Enfileira uma busca de notícias para a empresa. Retorna o id da fila.
+     */
+    public function enfileirarBusca(int $empresaId, string $tipo = 'manual'): int
+    {
+        $this->garantirTabelaFilaBusca();
+
+        // Remove pedidos travados (pendente/erro) antigos da mesma empresa antes de enfileirar um novo.
+        Database::execute(
+            "DELETE FROM fila_busca_noticias WHERE empresa_id = :empresa_id AND status IN ('pendente', 'erro')",
+            ['empresa_id' => $empresaId]
+        );
+
+        Database::execute(
+            "INSERT INTO fila_busca_noticias (empresa_id, tipo_busca, status, etapa, mensagem, criado_em, atualizado_em)
+             VALUES (:empresa_id, :tipo, 'pendente', 'buscar', 'Aguardando processamento...', NOW(), NOW())",
+            ['empresa_id' => $empresaId, 'tipo' => $tipo]
+        );
+        $filaId = (int) Database::lastInsertId();
+
+        $this->dispararWorkerBuscaNoticias();
+
+        return $filaId;
+    }
+
+    /**
+     * Dispara o worker CLI (worker/processar_fila_noticias.php) como processo desanexado.
+     * Best-effort: se não conseguir, o cron (se configurado) é o mecanismo garantido.
+     */
+    private function dispararWorkerBuscaNoticias(): void
+    {
+        if (!function_exists('exec')) return;
+        $disabled = explode(',', str_replace(' ', '', (string) ini_get('disable_functions')));
+        if (in_array('exec', $disabled, true)) return;
+
+        $candidatos = [PHP_BINDIR . '/php', '/opt/plesk/php/8.3/bin/php', '/opt/plesk/php/8.2/bin/php', '/usr/bin/php', 'php'];
+        $phpBin = 'php';
+        foreach ($candidatos as $c) {
+            if ($c === 'php' || @is_executable($c)) { $phpBin = $c; break; }
+        }
+
+        $script = ROOT_PATH . '/worker/processar_fila_noticias.php';
+        if (!file_exists($script)) return;
+
+        $logWorker = ROOT_PATH . '/worker/fila_noticias.log';
+        $cmd = escapeshellcmd($phpBin) . ' ' . escapeshellarg($script)
+            . ' >> ' . escapeshellarg($logWorker) . ' 2>&1 &';
+        @exec($cmd);
+    }
+
+    /**
+     * Endpoint de POLLING: retorna o status atual de uma fila de busca.
+     */
+    public function statusBuscaFila(): void
+    {
+        Auth::proteger();
+        header('Content-Type: application/json');
+
+        $filaId = (int) ($_GET['fila_id'] ?? 0);
+        if (!$filaId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'fila_id não informado.']);
+            exit;
+        }
+
+        $pedido = Database::queryOne(
+            "SELECT status, etapa, mensagem, noticias_novas, noticias_encontradas, noticias_duplicadas
+             FROM fila_busca_noticias WHERE id = :id",
+            ['id' => $filaId]
+        );
+
+        if (!$pedido) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Fila não encontrada.']);
+            exit;
+        }
+
+        echo json_encode([
+            'sucesso' => true,
+            'status' => $pedido['status'],
+            'etapa' => $pedido['etapa'],
+            'mensagem' => $pedido['mensagem'],
+            'concluido' => $pedido['status'] === 'concluido',
+            'erro' => $pedido['status'] === 'erro',
+            'noticias_novas' => (int) $pedido['noticias_novas'],
+            'noticias_encontradas' => (int) $pedido['noticias_encontradas'],
+        ]);
+        exit;
+    }
+
+    /**
+     * Endpoint HTTP para processar UM passo da fila (fallback quando não há cron/exec).
+     * Cada chamada faz apenas 1 chamada de IA, cabendo dentro do timeout do proxy.
+     */
+    public function processarFilaBuscaHttp(): void
+    {
+        Auth::proteger();
+        @set_time_limit(70);
+        header('Content-Type: application/json');
+
+        $resultado = $this->processarProximaEtapaBusca();
+        echo json_encode($resultado);
+        exit;
+    }
+
+    /**
+     * Processa UM passo da fila de busca (a etapa "buscar" OU a análise de
+     * UMA notícia da etapa "analisar"). Chamado pelo worker CLI em loop ou
+     * pelo polling HTTP do front-end.
+     */
+    public function processarProximaEtapaBusca(): array
+    {
+        $pedido = Database::queryOne(
+            "SELECT * FROM fila_busca_noticias
+             WHERE status = 'pendente'
+                OR (status = 'processando' AND atualizado_em < (NOW() - INTERVAL 240 SECOND))
+             ORDER BY criado_em ASC LIMIT 1"
+        );
+
+        if (!$pedido) {
+            $emProcesso = Database::queryOne("SELECT id FROM fila_busca_noticias WHERE status = 'processando' LIMIT 1");
+            if ($emProcesso) {
+                return ['sucesso' => true, 'processando' => true, 'mensagem' => 'Processando...'];
+            }
+            return ['sucesso' => true, 'vazio' => true, 'mensagem' => 'Fila vazia.'];
+        }
+
+        $filaId = (int) $pedido['id'];
+
+        Database::execute(
+            "UPDATE fila_busca_noticias SET status = 'processando', iniciado_em = COALESCE(iniciado_em, NOW()), atualizado_em = NOW() WHERE id = :id",
+            ['id' => $filaId]
+        );
+
+        try {
+            if ($pedido['etapa'] === 'buscar') {
+                return $this->executarEtapaBuscar($pedido);
+            }
+            return $this->executarEtapaAnalisar($pedido);
+        } catch (\Throwable $e) {
+            error_log('[O CONSULTOR][FILA-BUSCA-NOTICIAS] ' . get_class($e) . ': ' . $e->getMessage()
+                . ' | ' . $e->getFile() . ':' . $e->getLine() . ' | fila_id=' . $filaId);
+            Database::execute(
+                "UPDATE fila_busca_noticias SET status = 'erro', mensagem = :msg, tentativas = tentativas + 1, atualizado_em = NOW() WHERE id = :id",
+                ['msg' => substr($e->getMessage(), 0, 490), 'id' => $filaId]
+            );
+            return ['sucesso' => false, 'erro' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Etapa 1: faz a busca (1 chamada de IA) e separa as notícias que precisam
+     * de análise (as duplicadas já são descartadas aqui, sem gastar chamada de IA).
+     */
+    private function executarEtapaBuscar(array $pedido): array
+    {
+        $filaId = (int) $pedido['id'];
+        $empresaId = (int) $pedido['empresa_id'];
+
+        $empresa = Database::queryOne(
+            "SELECT nome, segmento, lingua_principal FROM empresas WHERE id = :id",
+            ['id' => $empresaId]
+        );
+        if (!$empresa) {
+            Database::execute(
+                "UPDATE fila_busca_noticias SET status = 'erro', mensagem = 'Empresa não encontrada', atualizado_em = NOW() WHERE id = :id",
+                ['id' => $filaId]
+            );
+            return ['sucesso' => false, 'erro' => 'Empresa não encontrada'];
+        }
+
+        $sites = Database::query(
+            "SELECT site_url FROM empresa_perfil_busca WHERE empresa_id = :empresa_id AND ativo = 1 ORDER BY adicionado_por DESC, criado_em ASC",
+            ['empresa_id' => $empresaId]
+        );
+        if (empty($sites)) {
+            if (!$this->inicializarPerfil($empresaId)) {
+                Database::execute(
+                    "UPDATE fila_busca_noticias SET status = 'erro', mensagem = 'Nenhum site de referência configurado', atualizado_em = NOW() WHERE id = :id",
+                    ['id' => $filaId]
+                );
+                return ['sucesso' => false, 'erro' => 'Nenhum site de referência configurado'];
+            }
+            $sites = Database::query(
+                "SELECT site_url FROM empresa_perfil_busca WHERE empresa_id = :empresa_id AND ativo = 1",
+                ['empresa_id' => $empresaId]
+            );
+        }
+
+        $sitesArray = array_column($sites, 'site_url');
+        $setor = $empresa['segmento'] ?? 'Tecnologia';
+        $lingua = $empresa['lingua_principal'] ?? 'Português';
+
+        $logId = $pedido['log_id'] ?: $this->criarLogBusca($empresaId, $pedido['tipo_busca'], $sitesArray);
+
+        // Uma única chamada de IA nesta etapa.
+        if (Configuracao::apiAtiva('perplexity')) {
+            $apiUtilizada = 'perplexity';
+            $prompt = ApiHelper::buildPromptBuscaNoticias($setor, $lingua, $sitesArray);
+            $resultado = ApiHelper::chamarPerplexity($prompt);
+            if ($resultado['sucesso'] && is_array($resultado['conteudo'])) {
+                $noticias = $resultado['conteudo'];
+            } else {
+                $apiUtilizada = Configuracao::apiAtiva('anthropic') ? 'anthropic' : 'openai';
+                $resultado = ApiHelper::chamarAnalise($prompt, true);
+                $noticias = $resultado['sucesso'] ? $resultado['conteudo'] : [];
+            }
+        } else {
+            $apiUtilizada = Configuracao::apiAtiva('anthropic') ? 'anthropic' : 'openai';
+            $prompt = "Busque as 10 notícias mais recentes do setor {$setor} em {$lingua}. Retorne JSON: [{titulo, url, fonte, data, resumo_bruto, setor}]";
+            $resultado = ApiHelper::chamarAnalise($prompt, true);
+            $noticias = $resultado['sucesso'] ? $resultado['conteudo'] : [];
+        }
+
+        if (!is_array($noticias)) {
+            $noticias = [];
+        } elseif (isset($noticias['noticias']) && is_array($noticias['noticias'])) {
+            $noticias = $noticias['noticias'];
+        } elseif (isset($noticias['resultados']) && is_array($noticias['resultados'])) {
+            $noticias = $noticias['resultados'];
+        }
+        if (!empty($noticias) && array_keys($noticias) !== range(0, count($noticias) - 1)) {
+            $noticias = [$noticias];
+        }
+
+        $noticiasEncontradas = count($noticias);
+        $pendentes = [];
+        $duplicadas = 0;
+
+        foreach ($noticias as $noticia) {
+            if (!is_array($noticia) || empty($noticia['url']) || empty($noticia['titulo'])) continue;
+            $existe = Database::queryOne(
+                "SELECT id FROM noticias WHERE empresa_id = :empresa_id AND url = :url",
+                ['empresa_id' => $empresaId, 'url' => $noticia['url']]
+            );
+            if ($existe) { $duplicadas++; continue; }
+            $pendentes[] = $noticia;
+        }
+
+        if (empty($pendentes)) {
+            $this->atualizarLogBusca($logId, true, $noticiasEncontradas, 0, $duplicadas, $apiUtilizada);
+            Database::execute(
+                "UPDATE fila_busca_noticias SET status = 'concluido', log_id = :log_id, api_utilizada = :api,
+                    noticias_encontradas = :encontradas, noticias_duplicadas = :duplicadas,
+                    mensagem = 'Busca concluída! Nenhuma notícia nova encontrada.', concluido_em = NOW(), atualizado_em = NOW()
+                 WHERE id = :id",
+                ['log_id' => $logId, 'api' => $apiUtilizada, 'encontradas' => $noticiasEncontradas, 'duplicadas' => $duplicadas, 'id' => $filaId]
+            );
+            return ['sucesso' => true, 'concluido' => true, 'mensagem' => 'Busca concluída! Nenhuma notícia nova encontrada.'];
+        }
+
+        $mensagem = "Encontradas {$noticiasEncontradas} notícia(s), analisando...";
+        Database::execute(
+            "UPDATE fila_busca_noticias SET status = 'pendente', etapa = 'analisar', log_id = :log_id, api_utilizada = :api,
+                noticias_pendentes = :pendentes, noticias_encontradas = :encontradas, noticias_duplicadas = :duplicadas,
+                mensagem = :mensagem, atualizado_em = NOW()
+             WHERE id = :id",
+            [
+                'log_id' => $logId, 'api' => $apiUtilizada,
+                'pendentes' => json_encode($pendentes, JSON_UNESCAPED_UNICODE),
+                'encontradas' => $noticiasEncontradas, 'duplicadas' => $duplicadas,
+                'mensagem' => $mensagem, 'id' => $filaId,
+            ]
+        );
+
+        return ['sucesso' => true, 'concluido' => false, 'mensagem' => $mensagem];
+    }
+
+    /**
+     * Etapa 2: analisa (1 chamada de IA) e salva UMA notícia da lista pendente.
+     * Chamado repetidamente até a lista esvaziar.
+     */
+    private function executarEtapaAnalisar(array $pedido): array
+    {
+        $filaId = (int) $pedido['id'];
+        $empresaId = (int) $pedido['empresa_id'];
+        $logId = (int) $pedido['log_id'];
+        $apiUtilizada = $pedido['api_utilizada'] ?: 'openai';
+
+        $pendentes = json_decode((string) $pedido['noticias_pendentes'], true) ?: [];
+        if (empty($pendentes)) {
+            return $this->concluirFilaBusca($filaId, $logId, $apiUtilizada, (int) $pedido['noticias_encontradas'], (int) $pedido['noticias_novas'], (int) $pedido['noticias_duplicadas'], $empresaId);
+        }
+
+        $noticia = array_shift($pendentes);
+
+        $empresa = Database::queryOne("SELECT segmento FROM empresas WHERE id = :id", ['id' => $empresaId]);
+        $setor = $empresa['segmento'] ?? ($noticia['setor'] ?? 'Geral');
+
+        $novasNoticias = (int) $pedido['noticias_novas'];
+        $analise = $this->gerarAnaliseBlocos($noticia, $setor);
+        if ($analise) {
+            $this->salvarNoticia($empresaId, $noticia, $analise, $apiUtilizada);
+            $novasNoticias++;
+        } else {
+            error_log('[O CONSULTOR][FILA-BUSCA-NOTICIAS] Análise falhou, notícia descartada: ' . ($noticia['titulo'] ?? ''));
+        }
+
+        if (empty($pendentes)) {
+            return $this->concluirFilaBusca($filaId, $logId, $apiUtilizada, (int) $pedido['noticias_encontradas'], $novasNoticias, (int) $pedido['noticias_duplicadas'], $empresaId);
+        }
+
+        $restantes = count($pendentes);
+        $mensagem = "Analisando notícias... ({$restantes} restante(s))";
+        Database::execute(
+            "UPDATE fila_busca_noticias SET status = 'pendente', noticias_pendentes = :pendentes, noticias_novas = :novas, mensagem = :mensagem, atualizado_em = NOW() WHERE id = :id",
+            ['pendentes' => json_encode($pendentes, JSON_UNESCAPED_UNICODE), 'novas' => $novasNoticias, 'mensagem' => $mensagem, 'id' => $filaId]
+        );
+
+        return ['sucesso' => true, 'concluido' => false, 'mensagem' => $mensagem];
+    }
+
+    private function concluirFilaBusca(int $filaId, int $logId, string $apiUtilizada, int $encontradas, int $novas, int $duplicadas, int $empresaId): array
+    {
+        $this->atualizarLogBusca($logId, true, $encontradas, $novas, $duplicadas, $apiUtilizada);
+        if ($novas > 0) {
+            $this->criarAlertaNovasNoticias($empresaId, $novas);
+        }
+        $mensagem = "Busca concluída! {$novas} notícia(s) nova(s) encontrada(s).";
+        Database::execute(
+            "UPDATE fila_busca_noticias SET status = 'concluido', noticias_novas = :novas, noticias_pendentes = NULL, mensagem = :mensagem, concluido_em = NOW(), atualizado_em = NOW() WHERE id = :id",
+            ['novas' => $novas, 'mensagem' => $mensagem, 'id' => $filaId]
+        );
+        return ['sucesso' => true, 'concluido' => true, 'mensagem' => $mensagem, 'noticias_novas' => $novas];
     }
 
     /**

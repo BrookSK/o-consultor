@@ -193,6 +193,7 @@ class Router
         $this->get('central-de-conteudo/caso', 'ConteudoController', 'casoDetalhe');
         $this->post('central-de-conteudo/perfil-busca', 'ConteudoController', 'salvarPerfilBusca');
         $this->post('central-de-conteudo/buscar-agora', 'ConteudoController', 'buscarAgora');
+        $this->get('central-de-conteudo/noticias-recentes', 'ConteudoController', 'noticiasRecentes');
         $this->post('central-de-conteudo/criar-conteudo', 'ConteudoController', 'criarConteudoDeNoticia');
         $this->get('central-de-conteudo/admin', 'ConteudoController', 'admin');
 
@@ -210,6 +211,8 @@ class Router
         $this->get('noticias/buscar', 'NoticiasController', 'buscar');
         $this->post('noticias/inicializar-perfil', 'NoticiasController', 'inicializarPerfil');
         $this->post('noticias/adicionar-site', 'NoticiasController', 'adicionarSite');
+        $this->get('noticias/status-fila-busca', 'NoticiasController', 'statusBuscaFila');           // Polling do status da busca
+        $this->get('noticias/processar-fila-busca', 'NoticiasController', 'processarFilaBuscaHttp'); // Processa 1 passo da fila (fallback sem cron)
         $this->post('noticias/remover-site', 'NoticiasController', 'removerSite');
 
         // Academy SSO

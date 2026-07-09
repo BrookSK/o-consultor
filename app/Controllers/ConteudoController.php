@@ -166,6 +166,14 @@ class ConteudoController
         exit;
     }
 
+    /**
+     * Enfileira a busca de notícias (não roda de forma síncrona). A busca faz
+     * 1 chamada de IA para buscar + 1 chamada de IA por notícia encontrada
+     * (até 10): rodando tudo numa única requisição HTTP isso passa fácil de
+     * 60-120s e o proxy (Nginx/Apache) mata a conexão com 504/timeout, mesmo
+     * que as notícias já tenham sido salvas. O front-end acompanha o
+     * progresso via polling em /noticias/status-fila-busca.
+     */
     public function buscarAgora(): void
     {
         Auth::proteger();
@@ -188,34 +196,18 @@ class ConteudoController
             exit;
         }
 
-        // Usar NoticiasController para processar
-        $noticiasController = new NoticiasController();
-        
         try {
-            // Simular GET request com manual=1
-            $_GET['manual'] = '1';
-            
-            // Capturar output buffer
-            ob_start();
-            $noticiasController->buscar();
-            $response = ob_get_clean();
-
-            $resultado = json_decode($response, true) ?? ['sucesso' => false, 'erro' => 'Resposta inválida da busca.'];
-
-            // Devolver também a lista de notícias atualizada (com imagem/resumo),
-            // para o front renderizar os cards inline sem precisar recarregar a página.
-            // Após uma busca nova, sempre volta para a página 1 (mais recentes).
-            if (!empty($resultado['sucesso'])) {
-                $pagina1 = $this->buscarNoticiasReais($empresaId, 1);
-                $resultado['noticias'] = $pagina1['itens'];
-                $resultado['paginacao'] = $pagina1['paginacao'];
-            }
+            $noticiasController = new NoticiasController();
+            $filaId = $noticiasController->enfileirarBusca($empresaId, 'manual');
 
             header('Content-Type: application/json');
-            echo json_encode($resultado);
-            
+            echo json_encode([
+                'sucesso' => true,
+                'fila_id' => $filaId,
+                'mensagem' => 'Busca iniciada, processando...',
+            ]);
         } catch (Exception $e) {
-            Logger::error('Erro na busca manual de notícias', [
+            Logger::error('Erro ao enfileirar busca de notícias', [
                 'erro' => $e->getMessage(),
                 'empresa_id' => $empresaId
             ]);
@@ -223,9 +215,29 @@ class ConteudoController
             header('Content-Type: application/json');
             echo json_encode([
                 'sucesso' => false,
-                'erro' => 'Erro ao buscar notícias. Tente novamente em alguns minutos.'
+                'erro' => 'Erro ao iniciar busca. Tente novamente em alguns minutos.'
             ]);
         }
+        exit;
+    }
+
+    /**
+     * Retorna a página 1 do feed (mais recentes) — usado pelo front após o
+     * polling detectar que a busca em fila foi concluída.
+     */
+    public function noticiasRecentes(): void
+    {
+        Auth::proteger();
+        header('Content-Type: application/json');
+
+        $empresaId = Auth::empresa();
+        if (!$empresaId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Selecione uma empresa específica no menu do topo.']);
+            exit;
+        }
+
+        $pagina1 = $this->buscarNoticiasReais($empresaId, 1);
+        echo json_encode(['sucesso' => true, 'noticias' => $pagina1['itens'], 'paginacao' => $pagina1['paginacao']]);
         exit;
     }
 

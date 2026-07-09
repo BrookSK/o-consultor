@@ -289,26 +289,23 @@ async function buscarAgora() {
     const textoOriginal = btn.textContent;
     btn.textContent = '🔄 Buscando...';
     btn.disabled = true;
-    
+
     try {
         const response = await fetch('<?= APP_URL ?>/noticias/buscar-agora', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                csrf_token: '<?= Csrf::token() ?>'
-            })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ csrf_token: '<?= Csrf::token() ?>' })
         });
-        
+
         const data = await response.json();
-        
-        if (data.sucesso) {
-            showToast(`✅ ${data.novas_noticias} novas notícias encontradas!`, 'success');
-            carregarNoticias();
-        } else {
+
+        if (!data.sucesso) {
             showToast(`❌ ${data.erro}`, 'error');
+            return;
         }
+
+        await acompanharBuscaNoticias(data.fila_id, btn);
+
     } catch (error) {
         console.error('Erro:', error);
         showToast('❌ Erro de conexão', 'error');
@@ -316,6 +313,45 @@ async function buscarAgora() {
         btn.textContent = textoOriginal;
         btn.disabled = false;
     }
+}
+
+// Acompanha (polling) a busca enfileirada. Ao concluir, recarrega a lista de notícias.
+async function acompanharBuscaNoticias(filaId, btn) {
+    const esperar = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+    const maxTentativas = 60; // ~2min
+
+    for (let t = 0; t < maxTentativas; t++) {
+        let status;
+        try {
+            const res = await fetch('<?= APP_URL ?>/noticias/status-fila-busca?fila_id=' + filaId + '&_=' + Date.now());
+            status = await res.json();
+        } catch (e) {
+            await esperar(2000);
+            continue;
+        }
+
+        if (!status.sucesso) break;
+        if (btn && status.mensagem) btn.textContent = '🔄 ' + status.mensagem;
+
+        // Fallback: se não há cron/exec disponível no servidor, processa 1 passo via HTTP.
+        try {
+            await fetch('<?= APP_URL ?>/noticias/processar-fila-busca?_=' + Date.now());
+        } catch (e) { /* best-effort */ }
+
+        if (status.concluido) {
+            showToast(`✅ ${status.noticias_novas} nova(s) notícia(s) encontrada(s)!`, 'success');
+            carregarNoticias();
+            return;
+        }
+        if (status.erro) {
+            showToast(`❌ ${status.mensagem || 'Erro ao buscar notícias.'}`, 'error');
+            return;
+        }
+
+        await esperar(2000);
+    }
+
+    carregarNoticias();
 }
 
 async function configurarPerfil() {

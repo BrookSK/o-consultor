@@ -311,7 +311,7 @@ async function salvarPerfilBusca() {
     }
 }
 
-// ===== Buscar notícias agora (renderiza os cards inline, sem recarregar a página) =====
+// ===== Buscar notícias agora (enfileira + acompanha via polling, sem timeout do proxy) =====
 async function buscarAgora() {
     const btn = document.querySelector('[onclick="buscarAgora()"]');
     const originalText = btn ? btn.textContent : '';
@@ -319,25 +319,76 @@ async function buscarAgora() {
 
     const formData = new FormData();
     formData.append('csrf_token', '<?= Csrf::token() ?>');
+
     try {
         const res = await fetch('<?= APP_URL ?>/central-de-conteudo/buscar-agora', { method: 'POST', body: formData });
         const data = await res.json();
 
-        if (data.sucesso) {
-            if (typeof Toast !== 'undefined') Toast.sucesso(data.mensagem); else alert(data.mensagem);
-            if (Array.isArray(data.noticias)) {
-                renderizarFeedNoticias(data.noticias);
-                if (data.paginacao) renderizarPaginacao(data.paginacao);
-            }
-        } else {
+        if (!data.sucesso) {
             const msg = data.erro || 'Erro ao buscar notícias.';
             if (typeof Toast !== 'undefined') Toast.erro(msg); else alert(msg);
+            return;
         }
+
+        await acompanharBuscaNoticias(data.fila_id, btn);
+
     } catch (e) {
         alert('Erro de conexão ao buscar notícias.');
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = originalText; }
     }
+}
+
+// Faz polling do status da busca enfileirada e, ao concluir, recarrega o feed.
+async function acompanharBuscaNoticias(filaId, btn) {
+    const esperar = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+    const maxTentativas = 60; // ~2min (2s entre tentativas)
+
+    for (let t = 0; t < maxTentativas; t++) {
+        let status;
+        try {
+            const res = await fetch('<?= APP_URL ?>/noticias/status-fila-busca?fila_id=' + filaId + '&_=' + Date.now());
+            status = await res.json();
+        } catch (e) {
+            await esperar(2000);
+            continue;
+        }
+
+        if (!status.sucesso) break;
+        if (btn && status.mensagem) btn.textContent = '🔍 ' + status.mensagem;
+
+        // Fallback: se não há cron/exec disponível no servidor, processa 1 passo via HTTP.
+        try {
+            await fetch('<?= APP_URL ?>/noticias/processar-fila-busca?_=' + Date.now());
+        } catch (e) { /* best-effort */ }
+
+        if (status.concluido) {
+            if (typeof Toast !== 'undefined') Toast.sucesso(status.mensagem); else alert(status.mensagem);
+            await atualizarFeedComRecentes();
+            return;
+        }
+        if (status.erro) {
+            const msg = status.mensagem || 'Erro ao buscar notícias.';
+            if (typeof Toast !== 'undefined') Toast.erro(msg); else alert(msg);
+            return;
+        }
+
+        await esperar(2000);
+    }
+
+    // Tempo esgotado no acompanhamento: recarrega mesmo assim (a busca continua em background).
+    await atualizarFeedComRecentes();
+}
+
+async function atualizarFeedComRecentes() {
+    try {
+        const res = await fetch('<?= APP_URL ?>/central-de-conteudo/noticias-recentes?_=' + Date.now());
+        const data = await res.json();
+        if (data.sucesso) {
+            renderizarFeedNoticias(data.noticias);
+            if (data.paginacao) renderizarPaginacao(data.paginacao);
+        }
+    } catch (e) { /* silencioso */ }
 }
 
 // Monta os cards de notícia no feed, no mesmo formato renderizado pelo PHP.
