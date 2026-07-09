@@ -437,40 +437,37 @@ document.getElementById('form-gerar').addEventListener('submit', async function(
         const data = await res.json();
         
         if (data.sucesso) {
-            // Atualizar preview com conteúdo gerado
+            // Renderiza o texto imediatamente; as imagens são geradas uma a uma depois.
+            const slides = data.conteudo.slides || [];
             let html = '<div class="space-y-3">';
-            if (data.conteudo.slides && data.conteudo.slides.length > 0) {
-                data.conteudo.slides.forEach((s, index) => {
-                    html += `<div class="border rounded-lg overflow-hidden">
-                        <img src="${s.imagem_url}" class="w-full h-32 object-cover" loading="lazy" onerror="this.src='https://placehold.co/1080x1080/cccccc/666666?text=Carregando'">
-                        <div class="p-3">
-                            <p class="text-xs text-gray-600">${s.texto || 'Slide ' + (index + 1)}</p>
-                        </div>
-                    </div>`;
-                });
-            }
-            
-            if (data.conteudo.legenda) {
-                html += `<div class="p-3 bg-gray-50 rounded-lg">
-                    <p class="text-xs text-gray-500 font-medium mb-1">Legenda:</p>
-                    <p class="text-xs text-gray-700 whitespace-pre-line">${data.conteudo.legenda}</p>
+            slides.forEach((s, index) => {
+                const pendente = s.imagem_pendente || (data.slides_pendentes || []).includes(index);
+                const imgHtml = s.imagem_url
+                    ? `<img src="${s.imagem_url}" class="w-full h-32 object-cover" loading="lazy">`
+                    : (pendente
+                        ? `<div class="w-full h-32 bg-gray-100 flex items-center justify-center text-xs text-gray-400" id="slide-img-${index}"><div class="inline-block w-5 h-5 border-2 border-gray-300 border-t-accent rounded-full animate-spin mr-2"></div> Gerando imagem...</div>`
+                        : `<div class="w-full h-32 bg-gray-100 flex items-center justify-center text-3xl">🖼️</div>`);
+                html += `<div class="border rounded-lg overflow-hidden" data-slide="${index}">
+                    ${imgHtml}
+                    <div class="p-3"><p class="text-xs text-gray-600">${s.texto || 'Slide ' + (index + 1)}</p></div>
                 </div>`;
+            });
+            if (data.conteudo.legenda) {
+                html += `<div class="p-3 bg-gray-50 rounded-lg"><p class="text-xs text-gray-500 font-medium mb-1">Legenda:</p><p class="text-xs text-gray-700 whitespace-pre-line">${data.conteudo.legenda}</p></div>`;
             }
-            
             html += '<div class="flex gap-2 mt-3">';
-            if (data.redirect_url) {
-                html += `<a href="${data.redirect_url}" class="flex-1 text-center px-3 py-2 bg-primary text-white rounded text-xs font-medium">✏️ Editar Conteúdo</a>`;
-            } else {
-                html += '<a href="<?= APP_URL ?>/maquina-de-conteudo/editar" class="flex-1 text-center px-3 py-2 bg-primary text-white rounded text-xs font-medium">✏️ Editar</a>';
-            }
-            html += '<button type="button" class="flex-1 px-3 py-2 border border-gray-300 rounded text-xs bg-green-50 text-green-700">💾 Salvo automaticamente</button>';
+            const editarUrl = data.redirect_url || '<?= APP_URL ?>/maquina-de-conteudo/editar';
+            html += `<a href="${editarUrl}" class="flex-1 text-center px-3 py-2 bg-primary text-white rounded text-xs font-medium">✏️ Editar Conteúdo</a>`;
+            html += '<span id="status-imagens" class="flex-1 px-3 py-2 border border-gray-300 rounded text-xs text-gray-500 text-center">💾 Rascunho salvo</span>';
             html += '</div></div>';
-            
             preview.innerHTML = html;
-            
-            // Mostrar mensagem de sucesso
-            if (typeof Toast !== 'undefined') {
-                Toast.sucesso(data.mensagem || 'Conteúdo gerado!');
+
+            if (typeof Toast !== 'undefined') Toast.sucesso(data.mensagem || 'Texto gerado!');
+
+            // Gera as imagens pendentes uma a uma (sem estourar timeout do proxy).
+            const pendentes = data.slides_pendentes || [];
+            if (data.gerar_imagens && data.conteudo_id && pendentes.length > 0) {
+                await gerarImagensSequencial(data.conteudo_id, pendentes);
             }
         } else {
             preview.innerHTML = '<p class="text-red-500 text-sm">' + (data.erro || 'Erro na geração.') + '</p>';
@@ -484,6 +481,39 @@ document.getElementById('form-gerar').addEventListener('submit', async function(
     btn.disabled = false;
     btn.textContent = '⚡ Gerar Conteúdo';
 });
+
+// Gera as imagens dos slides pendentes SEQUENCIALMENTE (1 request por imagem),
+// atualizando o preview conforme cada uma fica pronta.
+async function gerarImagensSequencial(conteudoId, indices) {
+    const status = document.getElementById('status-imagens');
+    let feitas = 0;
+    for (const idx of indices) {
+        if (status) status.textContent = `🎨 Gerando imagem ${feitas + 1}/${indices.length}...`;
+        try {
+            const fd = new FormData();
+            fd.append('csrf_token', '<?= Csrf::token() ?>');
+            fd.append('conteudo_id', conteudoId);
+            fd.append('slide_index', idx);
+            const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/gerar-imagem-slide', { method: 'POST', body: fd });
+            const data = await res.json();
+            const container = document.querySelector(`[data-slide="${idx}"]`);
+            if (data.sucesso && data.imagem_url && container) {
+                const alvo = container.querySelector('img, div');
+                const img = document.createElement('img');
+                img.src = data.imagem_url;
+                img.className = 'w-full h-32 object-cover';
+                img.loading = 'lazy';
+                if (alvo) alvo.replaceWith(img);
+            } else if (container) {
+                const ph = container.querySelector('#slide-img-' + idx);
+                if (ph) { ph.className = 'w-full h-32 bg-gray-100 flex items-center justify-center text-3xl'; ph.textContent = '🖼️'; }
+            }
+        } catch (e) { /* segue para a próxima imagem */ }
+        feitas++;
+    }
+    if (status) status.textContent = '✅ Concluído';
+    if (typeof Toast !== 'undefined') Toast.sucesso('Imagens geradas!');
+}
 
 // === CALENDÁRIO EDITORIAL ===
 

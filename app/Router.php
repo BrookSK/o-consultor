@@ -237,6 +237,7 @@ class Router
         $this->get('maquina-de-conteudo/editar', 'MaquinaController', 'editar');
         $this->post('maquina-de-conteudo/aprovar', 'MaquinaController', 'aprovar');
         $this->post('maquina-de-conteudo/regenerar-imagem', 'MaquinaController', 'regenerarImagem');
+        $this->post('maquina-de-conteudo/gerar-imagem-slide', 'MaquinaController', 'gerarImagemSlide'); // Gera 1 imagem por vez (evita timeout)
         $this->post('maquina-de-conteudo/upload-imagem', 'MaquinaController', 'uploadImagem');
         $this->post('maquina-de-conteudo/atualizar-slide', 'MaquinaController', 'atualizarSlide');
         $this->post('maquina-de-conteudo/upload-template', 'MaquinaController', 'uploadTemplate');

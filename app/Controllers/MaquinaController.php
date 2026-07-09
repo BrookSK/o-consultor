@@ -599,61 +599,28 @@ class MaquinaController
         $conteudoGerado['marca_id'] = $marcaId;
         $conteudoGerado['noticia_id'] = $noticiaId ?: null;
 
-        // 4. PASSO 2 — Geração e download de imagens (se IA ativo)
-        $imagensLocais = [];
-        if ($estiloImagem === 'ia' && isset($conteudoGerado['slides'])) {
-            // Estilo visual extraído dos TEMPLATES da marca (referência de imagem).
-            // O DALL-E não aceita imagem de referência, então usamos a descrição
-            // textual do estilo dos templates para guiar a geração.
-            $estiloTemplates = $this->obterEstiloTemplates($marcaId);
-            $refTemplates = $estiloTemplates !== '' ? ' — Estilo visual de referência (siga fielmente): ' . $estiloTemplates : '';
-
+        // 4. PASSO 2 — As imagens NÃO são geradas aqui (cada imagem no DALL-E leva
+        //    ~10-20s; gerar N imagens numa única request estoura o timeout do proxy → 504).
+        //    Marcamos os slides que precisam de imagem como "pendente" e o front-end
+        //    dispara a geração de UMA imagem por vez via /maquina-de-conteudo/gerar-imagem-slide.
+        $gerarImagens = ($estiloImagem === 'ia');
+        $slidesPendentes = [];
+        if (isset($conteudoGerado['slides']) && is_array($conteudoGerado['slides'])) {
             foreach ($conteudoGerado['slides'] as $index => &$slide) {
-                if (!empty($slide['prompt_imagem'])) {
-                    // Combinar prompt da marca + prompt do slide + estilo dos templates
-                    $promptCompleto = $marca['prompt_dalle'] . ' — ' . $slide['prompt_imagem'] . $refTemplates . ' — Não incluir texto, palavras ou números na imagem.';
-                    
-                    // Gerar imagem via DALL-E
-                    $imgResult = ApiHelper::gerarImagem($promptCompleto, '1024x1024');
-                    
-                    if ($imgResult['sucesso'] && $imgResult['url']) {
-                        // Baixar e salvar imagem localmente
-                        $caminhoLocal = $this->baixarImagemDalle($imgResult['url'], $marcaId);
-                        if ($caminhoLocal) {
-                            $slide['imagem_url'] = APP_URL . $caminhoLocal;
-                            $imagensLocais[$index] = [
-                                'url_dalle' => $imgResult['url'],
-                                'caminho_local' => $caminhoLocal,
-                                'prompt_usado' => $promptCompleto
-                            ];
-                        } else {
-                            $slide['imagem_url'] = 'https://placehold.co/1080x1080/1E3A5F/ffffff?text=Erro+Download';
-                        }
-                    } else {
-                        // Tentar com prompt simplificado (mantendo o estilo dos templates)
-                        $promptSimples = $marca['prompt_dalle'] . $refTemplates . ' — estilo corporativo moderno, sem texto';
-                        $imgResult2 = ApiHelper::gerarImagem($promptSimples, '1024x1024');
-                        
-                        if ($imgResult2['sucesso']) {
-                            $caminhoLocal = $this->baixarImagemDalle($imgResult2['url'], $marcaId);
-                            $slide['imagem_url'] = $caminhoLocal ? APP_URL . $caminhoLocal : 'https://placehold.co/1080x1080/1E3A5F/ffffff?text=Fallback';
-                            $imagensLocais[$index] = [
-                                'url_dalle' => $imgResult2['url'],
-                                'caminho_local' => $caminhoLocal,
-                                'prompt_usado' => $promptSimples
-                            ];
-                        } else {
-                            $slide['imagem_url'] = 'https://placehold.co/1080x1080/1E3A5F/ffffff?text=Sem+Imagem';
-                        }
-                    }
+                if ($gerarImagens && !empty($slide['prompt_imagem'])) {
+                    $slide['imagem_url'] = '';           // ainda será gerada
+                    $slide['imagem_pendente'] = true;    // sinaliza para o front
+                    $slidesPendentes[] = $index;
+                } else {
+                    $slide['imagem_pendente'] = false;
                 }
             }
             unset($slide);
         }
 
-        // 5. Salvar no banco (rascunho automático)
+        // 5. Salvar no banco (rascunho automático) — rápido, cabe no timeout.
         try {
-            $conteudoId = Database::execute(
+            Database::execute(
                 "INSERT INTO conteudos_marca (marca_id, usuario_id, tipo, tema, objetivo, noticia_id, slides, legenda, hashtags, status, imagens_locais, criado_em) 
                  VALUES (:marca_id, :user_id, :tipo, :tema, :objetivo, :noticia_id, :slides, :legenda, :hashtags, 'rascunho', :imagens, NOW())",
                 [
@@ -666,43 +633,121 @@ class MaquinaController
                     'slides' => json_encode($conteudoGerado['slides'] ?? []),
                     'legenda' => $conteudoGerado['legenda'] ?? '',
                     'hashtags' => $conteudoGerado['hashtags'] ?? '',
-                    'imagens' => json_encode($imagensLocais)
+                    'imagens' => json_encode([])
                 ]
             );
             $conteudoId = Database::lastInsertId();
-
-            // Salvar imagens individuais na tabela de controle
-            foreach ($imagensLocais as $slideIndex => $img) {
-                Database::execute(
-                    "INSERT INTO imagens_conteudo (conteudo_id, slide_index, caminho_original, caminho_local, url_dalle, prompt_usado, status, criado_em) 
-                     VALUES (:conteudo_id, :slide_index, :caminho_orig, :caminho_local, :url_dalle, :prompt_usado, 'ativo', NOW())",
-                    [
-                        'conteudo_id' => $conteudoId,
-                        'slide_index' => $slideIndex,
-                        'caminho_orig' => $img['url_dalle'],
-                        'caminho_local' => $img['caminho_local'],
-                        'url_dalle' => $img['url_dalle'],
-                        'prompt_usado' => $img['prompt_usado']
-                    ]
-                );
-            }
-
         } catch (\Exception $e) {
             // Se falhar BD, usar sessão como fallback
             Session::set('conteudo_gerado', $conteudoGerado);
             $conteudoId = 0;
         }
 
-        Logger::acao('Conteúdo gerado com IA', ['marca_id' => $marcaId, 'tipo' => $tipo, 'tema' => $tema, 'imagens_geradas' => count($imagensLocais)]);
+        Logger::acao('Conteúdo (texto) gerado com IA', ['marca_id' => $marcaId, 'tipo' => $tipo, 'tema' => $tema, 'slides_pendentes' => count($slidesPendentes)]);
 
         header('Content-Type: application/json');
         echo json_encode([
             'sucesso' => true,
             'conteudo_id' => $conteudoId,
             'conteudo' => $conteudoGerado,
+            'slides_pendentes' => $slidesPendentes,     // índices que o front vai gerar
+            'gerar_imagens' => $gerarImagens,
             'redirect_url' => APP_URL . '/maquina-de-conteudo/editar/' . $conteudoId,
-            'mensagem' => 'Conteúdo gerado e salvo como rascunho!'
+            'mensagem' => 'Texto gerado! Gerando imagens...'
         ]);
+        exit;
+    }
+
+    /**
+     * Gera a imagem de UM slide de um conteúdo já criado (chamado pelo front,
+     * um slide por vez, para não estourar o timeout do proxy).
+     */
+    public function gerarImagemSlide(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        @set_time_limit(90);
+        header('Content-Type: application/json');
+
+        $conteudoId = (int) ($_POST['conteudo_id'] ?? 0);
+        $slideIndex = (int) ($_POST['slide_index'] ?? -1);
+        if ($conteudoId <= 0 || $slideIndex < 0) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Parâmetros inválidos.']);
+            exit;
+        }
+
+        try {
+            $conteudo = Database::queryOne(
+                "SELECT c.slides, c.marca_id, m.prompt_dalle
+                 FROM conteudos_marca c JOIN marcas m ON c.marca_id = m.id
+                 WHERE c.id = :id AND c.usuario_id = :user_id",
+                ['id' => $conteudoId, 'user_id' => Auth::id()]
+            );
+            if (!$conteudo) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Conteúdo não encontrado.']);
+                exit;
+            }
+
+            $slides = json_decode($conteudo['slides'], true) ?: [];
+            if (!isset($slides[$slideIndex])) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Slide não encontrado.']);
+                exit;
+            }
+
+            $marcaId = (int) $conteudo['marca_id'];
+            $promptImagem = (string) ($slides[$slideIndex]['prompt_imagem'] ?? '');
+            if ($promptImagem === '') {
+                $slides[$slideIndex]['imagem_pendente'] = false;
+                Database::execute("UPDATE conteudos_marca SET slides = :s WHERE id = :id", ['s' => json_encode($slides), 'id' => $conteudoId]);
+                echo json_encode(['sucesso' => true, 'imagem_url' => '', 'vazio' => true]);
+                exit;
+            }
+
+            // Estilo dos templates (referência visual) — cacheado por marca.
+            $estiloTemplates = $this->obterEstiloTemplates($marcaId);
+            $refTemplates = $estiloTemplates !== '' ? ' — Estilo visual de referência (siga fielmente): ' . $estiloTemplates : '';
+
+            $promptCompleto = $conteudo['prompt_dalle'] . ' — ' . $promptImagem . $refTemplates . ' — Não incluir texto, palavras ou números na imagem.';
+            $imgResult = ApiHelper::gerarImagem($promptCompleto, '1024x1024');
+
+            if (!$imgResult['sucesso'] || empty($imgResult['url'])) {
+                // Tentar prompt simplificado
+                $promptSimples = $conteudo['prompt_dalle'] . $refTemplates . ' — estilo corporativo moderno, sem texto';
+                $imgResult = ApiHelper::gerarImagem($promptSimples, '1024x1024');
+                $promptCompleto = $promptSimples;
+            }
+
+            if (!$imgResult['sucesso'] || empty($imgResult['url'])) {
+                echo json_encode(['sucesso' => false, 'erro' => $imgResult['erro'] ?? 'Falha ao gerar imagem.']);
+                exit;
+            }
+
+            $caminhoLocal = $this->baixarImagemDalle($imgResult['url'], $marcaId);
+            if (!$caminhoLocal) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Falha ao salvar a imagem.']);
+                exit;
+            }
+
+            $urlPublica = APP_URL . $caminhoLocal;
+            $slides[$slideIndex]['imagem_url'] = $urlPublica;
+            $slides[$slideIndex]['imagem_pendente'] = false;
+
+            Database::execute("UPDATE conteudos_marca SET slides = :s WHERE id = :id", ['s' => json_encode($slides), 'id' => $conteudoId]);
+
+            // Registrar na tabela de controle (best-effort).
+            try {
+                Database::execute(
+                    "INSERT INTO imagens_conteudo (conteudo_id, slide_index, caminho_original, caminho_local, url_dalle, prompt_usado, status, criado_em)
+                     VALUES (:cid, :idx, :orig, :local, :dalle, :prompt, 'ativo', NOW())",
+                    ['cid' => $conteudoId, 'idx' => $slideIndex, 'orig' => $caminhoLocal, 'local' => $caminhoLocal, 'dalle' => $caminhoLocal, 'prompt' => $promptCompleto]
+                );
+            } catch (\Throwable $e) { /* tabela opcional */ }
+
+            echo json_encode(['sucesso' => true, 'imagem_url' => $urlPublica, 'slide_index' => $slideIndex]);
+        } catch (\Throwable $e) {
+            Logger::error('Erro ao gerar imagem do slide: ' . $e->getMessage());
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno ao gerar imagem.']);
+        }
         exit;
     }
 
