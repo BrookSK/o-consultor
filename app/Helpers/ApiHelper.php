@@ -1814,7 +1814,17 @@ Responda APENAS em JSON válido, sem explicações.";
     public static function buildPromptConteudoContextualizado(array $marca, string $tipo, string $tema, string $objetivo, ?string $noticiaBase = null, array $contextoJornada = [], ?string $literaturaBase = null, int $qtdSlides = 7): string
     {
         $qtdSlides = max(3, min(10, $qtdSlides ?: 7));
-        $contextoNoticia = $noticiaBase ? "\n\nBASEADO NA NOTÍCIA:\n{$noticiaBase}" : '';
+        $contextoNoticia = '';
+        $regrasNoticia = '';
+        if ($noticiaBase) {
+            $contextoNoticia = "\n\nBASEADO NA NOTÍCIA (use este conteúdo como fonte):\n{$noticiaBase}";
+            $regrasNoticia = "
+
+📰 REGRAS PARA CONTEÚDO DE NOTÍCIA (OBRIGATÓRIAS):
+1. A LEGENDA deve ser construída a partir do CONTEÚDO da notícia acima (o que aconteceu, por que importa, o que fazer), na linguagem própria da marca — não copie frases literais.
+2. CITE A FONTE no final da legenda, creditando o veículo/origem indicado em 'FONTE DA NOTÍCIA' (ex.: 'Fonte: <veículo> — <link>'). Inclua o link, se houver.
+3. O 'texto' de CADA slide deve funcionar como HEADLINE COM GANCHO: frase curta e instigante que desperte curiosidade e convide a continuar (perguntas, dados surpreendentes, tensão). Nada de títulos genéricos.";
+        }
 
         // Base de literatura (RAG na Biblioteca): trechos reais dos PDFs do cliente.
         $contextoLiteratura = '';
@@ -1902,7 +1912,7 @@ PROMPT MASTER DA MARCA:
 
 TAREFA:
 Crie um {$tipo} sobre o tema: {$tema}{$contextoNoticia}{$contextoLiteratura}
-Objetivo: {$objetivo}{$regrasEducativo}
+Objetivo: {$objetivo}{$regrasEducativo}{$regrasNoticia}
 
 {$instrucoesTipo}
 
@@ -1913,8 +1923,9 @@ REGRAS IMPORTANTES:
 4. Manter consistência com o tom de voz e arquétipo da marca
 5. O campo 'texto' de cada slide deve ser uma frase/parágrafo CLARO e COMPLETO em português, com sentido próprio. NÃO use emojis, símbolos, códigos ou caracteres especiais no 'texto' dos slides — apenas texto limpo.
 6. O conteúdo deve ser COERENTE e encadeado: capa com gancho, slides de desenvolvimento que se conectam, e fechamento com conclusão + CTA. Nada de frases soltas ou aleatórias.
-7. Legenda: texto corrido natural com call-to-action relevante ao objetivo (emojis são permitidos APENAS na legenda, com moderação).
-8. PERSONALIZAÇÃO: Use o contexto da jornada para tornar o conteúdo mais específico e relevante
+7. GANCHO OBRIGATÓRIO: o 'texto' de cada slide (especialmente a capa) deve ter um gancho que gere curiosidade e convide o usuário a ler/avançar — use perguntas, números, promessas de valor ou tensão. Evite títulos genéricos e descritivos.
+8. Legenda: texto corrido natural com call-to-action relevante ao objetivo (emojis são permitidos APENAS na legenda, com moderação).
+9. PERSONALIZAÇÃO: Use o contexto da jornada para tornar o conteúdo mais específico e relevante
 
 Responda APENAS em JSON válido e bem formado, em português, sem explicações fora do JSON.";
     }

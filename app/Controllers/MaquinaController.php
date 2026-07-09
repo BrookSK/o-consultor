@@ -700,9 +700,22 @@ class MaquinaController
 
         if ($fonte === 'noticia' && $noticiaId > 0) {
             try {
-                $noticia = Database::queryOne("SELECT titulo, bloco1_noticia, bloco2_significa, bloco3_o_que_fazer FROM noticias WHERE id = :id", ['id' => $noticiaId]);
+                $noticia = Database::queryOne("SELECT titulo, fonte, url, bloco1_noticia, bloco2_significa, bloco3_o_que_fazer FROM noticias WHERE id = :id", ['id' => $noticiaId]);
                 if ($noticia) {
-                    $noticiaBase = $noticia['titulo'] . "\n\n" . $noticia['bloco1_noticia'] . "\n\n" . $noticia['bloco2_significa'] . "\n\n" . $noticia['bloco3_o_que_fazer'];
+                    // Fonte/URL de origem para a legenda citar a referência.
+                    $fonteNome = trim((string) ($noticia['fonte'] ?? ''));
+                    $fonteUrl = trim((string) ($noticia['url'] ?? ''));
+                    $creditoLinhas = '';
+                    if ($fonteNome !== '' || $fonteUrl !== '') {
+                        $creditoLinhas = "\n\nFONTE DA NOTÍCIA (cite na legenda como crédito): "
+                            . ($fonteNome !== '' ? $fonteNome : 'fonte original')
+                            . ($fonteUrl !== '' ? ' — ' . $fonteUrl : '');
+                    }
+                    $noticiaBase = 'Título: ' . $noticia['titulo'] . "\n\n"
+                        . $noticia['bloco1_noticia'] . "\n\n"
+                        . $noticia['bloco2_significa'] . "\n\n"
+                        . $noticia['bloco3_o_que_fazer']
+                        . $creditoLinhas;
                 }
             } catch (\Exception $e) {
                 // Ignorar se tabela não existir
