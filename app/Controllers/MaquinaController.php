@@ -133,6 +133,32 @@ class MaquinaController
     }
 
     /**
+     * Retorna os caminhos ABSOLUTOS (no disco) dos templates de uma marca,
+     * para serem enviados como imagens de referência ao gpt-image-1.
+     */
+    private function caminhosTemplatesLocais(int $marcaId, int $limite = 4): array
+    {
+        try {
+            $templates = Database::query(
+                "SELECT caminho FROM marca_templates WHERE marca_id = :id ORDER BY criado_em DESC LIMIT {$limite}",
+                ['id' => $marcaId]
+            );
+        } catch (\Throwable $e) {
+            return [];
+        }
+        $caminhos = [];
+        foreach ($templates as $t) {
+            $rel = (string) ($t['caminho'] ?? '');
+            if ($rel === '') continue;
+            $abs = (defined('PUBLIC_PATH') ? PUBLIC_PATH : '') . $rel;
+            if (is_file($abs)) {
+                $caminhos[] = $abs;
+            }
+        }
+        return $caminhos;
+    }
+
+    /**
      * Tamanho da imagem conforme o tipo/rede. Instagram feed e story usam
      * formato vertical (retrato). Os tamanhos válidos da API são 1024x1024,
      * 1024x1792 (retrato) e 1792x1024 (paisagem).
@@ -751,21 +777,37 @@ class MaquinaController
                 exit;
             }
 
-            // Estilo dos templates (referência visual) — cacheado por marca.
-            $estiloTemplates = $this->obterEstiloTemplates($marcaId);
-            $refTemplates = $estiloTemplates !== '' ? ' — Estilo visual de referência (siga fielmente): ' . $estiloTemplates : '';
-
             // Formato vertical (retrato) para feed do Instagram; story também vertical.
             $tamanho = $this->tamanhoImagemPorTipo((string) ($conteudo['tipo'] ?? ''));
 
-            $promptCompleto = $conteudo['prompt_dalle'] . ' — ' . $promptImagem . $refTemplates . ' — Formato vertical para post de Instagram (retrato), composição centralizada com margens de segurança. Não incluir texto, palavras, letras ou números na imagem.';
-            $imgResult = ApiHelper::gerarImagem($promptCompleto, $tamanho);
+            $imgResult = null;
+            $promptCompleto = '';
 
-            if (!$imgResult['sucesso'] || empty($imgResult['url'])) {
-                // Tentar prompt simplificado
-                $promptSimples = $conteudo['prompt_dalle'] . $refTemplates . ' — estilo corporativo moderno, formato vertical de Instagram, sem texto';
-                $imgResult = ApiHelper::gerarImagem($promptSimples, $tamanho);
-                $promptCompleto = $promptSimples;
+            // 1) PREFERENCIAL: gerar USANDO os templates da marca como REFERÊNCIA visual
+            //    real (gpt-image-1 images/edits). É o que garante fidelidade ao estilo.
+            $caminhosRef = $this->caminhosTemplatesLocais($marcaId);
+            if (!empty($caminhosRef)) {
+                $promptRef = 'Crie uma nova imagem VERTICAL para post de Instagram no MESMO estilo visual das imagens de referência fornecidas '
+                    . '(mesma paleta, iluminação, composição, tipografia e estética). '
+                    . 'Tema/assunto da imagem: ' . $promptImagem . '. '
+                    . 'Mantenha coesão com a identidade das referências. NÃO copie o texto das referências; a imagem não deve conter texto, letras ou números.';
+                $promptCompleto = $promptRef;
+                $imgResult = ApiHelper::gerarImagemComReferencia($promptRef, $caminhosRef, $tamanho);
+            }
+
+            // 2) FALLBACK: sem templates ou se a geração por referência falhar,
+            //    usa geração por texto guiada pela descrição do estilo.
+            if (!$imgResult || empty($imgResult['sucesso']) || empty($imgResult['url'])) {
+                $estiloTemplates = $this->obterEstiloTemplates($marcaId);
+                $refTemplates = $estiloTemplates !== '' ? ' — Estilo visual de referência (siga fielmente): ' . $estiloTemplates : '';
+                $promptCompleto = $conteudo['prompt_dalle'] . ' — ' . $promptImagem . $refTemplates . ' — Formato vertical para post de Instagram (retrato), composição centralizada com margens de segurança. Não incluir texto, palavras, letras ou números na imagem.';
+                $imgResult = ApiHelper::gerarImagem($promptCompleto, $tamanho);
+
+                if (!$imgResult['sucesso'] || empty($imgResult['url'])) {
+                    $promptSimples = $conteudo['prompt_dalle'] . $refTemplates . ' — estilo corporativo moderno, formato vertical de Instagram, sem texto';
+                    $imgResult = ApiHelper::gerarImagem($promptSimples, $tamanho);
+                    $promptCompleto = $promptSimples;
+                }
             }
 
             if (!$imgResult['sucesso'] || empty($imgResult['url'])) {

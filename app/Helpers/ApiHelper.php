@@ -485,6 +485,105 @@ class ApiHelper
      * @param string $size   Tamanho (1024x1024, 1792x1024, 1024x1792)
      * @return array ['sucesso' => bool, 'url' => string|null, 'erro' => string|null]
      */
+    /**
+     * Gera imagem USANDO IMAGENS DE REFERÊNCIA (os templates da marca).
+     * Usa o endpoint de edições do gpt-image-1 (images/edits, multipart), que
+     * aceita uma ou mais imagens como referência e condiciona a saída ao estilo
+     * delas — diferente de images/generations, que só recebe texto.
+     * Requer gpt-image-1 (dall-e não suporta múltiplas referências de estilo).
+     *
+     * @param string   $prompt          Instrução de conteúdo (o que a imagem deve mostrar)
+     * @param string[] $caminhosLocais  Caminhos ABSOLUTOS no disco das imagens de referência
+     * @param string   $size            Tamanho lógico (1024x1024 | 1024x1536 | 1536x1024)
+     * @return array ['sucesso'=>bool, 'url'=>string|null (data URI/base64), 'erro'=>string|null]
+     */
+    public static function gerarImagemComReferencia(string $prompt, array $caminhosLocais, string $size = '1024x1536'): array
+    {
+        $apiKey = self::config('openai_key');
+        if (empty($apiKey)) {
+            return ['sucesso' => false, 'url' => null, 'erro' => 'Chave OpenAI não configurada.'];
+        }
+
+        // Filtra caminhos existentes (máx. 4 referências para custo/tempo).
+        $refs = [];
+        foreach ($caminhosLocais as $c) {
+            if (is_string($c) && $c !== '' && is_file($c)) {
+                $refs[] = $c;
+                if (count($refs) >= 4) break;
+            }
+        }
+        if (empty($refs)) {
+            return ['sucesso' => false, 'url' => null, 'erro' => 'Nenhuma imagem de referência disponível no disco.'];
+        }
+
+        // gpt-image-1 aceita 1024x1024, 1024x1536 (retrato), 1536x1024 (paisagem).
+        [$w, $h] = array_map('intval', array_pad(explode('x', $size), 2, 1024));
+        $sizeModelo = $h > $w ? '1024x1536' : ($w > $h ? '1536x1024' : '1024x1024');
+
+        $postfields = [
+            'model'  => 'gpt-image-1',
+            'prompt' => $prompt,
+            'size'   => $sizeModelo,
+            'n'      => 1,
+        ];
+        // Múltiplas imagens de referência. A API aceita o campo repetido image[].
+        // Com uma única referência, usa-se 'image'; com várias, 'image[N]'.
+        if (count($refs) === 1) {
+            $c = $refs[0];
+            $postfields['image'] = new \CURLFile($c, self::mimePorExtensao($c), 'ref.' . pathinfo($c, PATHINFO_EXTENSION));
+        } else {
+            foreach ($refs as $i => $caminho) {
+                $postfields['image[' . $i . ']'] = new \CURLFile($caminho, self::mimePorExtensao($caminho), 'ref_' . $i . '.' . pathinfo($caminho, PATHINFO_EXTENSION));
+            }
+        }
+
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => 'https://api.openai.com/v1/images/edits',
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 120,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $postfields,
+            CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $apiKey],
+        ]);
+        $response = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err = curl_error($ch);
+        curl_close($ch);
+
+        if ($err) {
+            error_log('[O CONSULTOR][ImagemRef] cURL: ' . $err);
+            return ['sucesso' => false, 'url' => null, 'erro' => 'Falha de conexão na geração com referência.'];
+        }
+        $dados = json_decode((string) $response, true);
+        if ($httpCode < 200 || $httpCode >= 300) {
+            $msg = $dados['error']['message'] ?? ('HTTP ' . $httpCode);
+            error_log('[O CONSULTOR][ImagemRef] ' . $msg . ' | BODY=' . substr((string) $response, 0, 800));
+            return ['sucesso' => false, 'url' => null, 'erro' => $msg];
+        }
+
+        $item = $dados['data'][0] ?? [];
+        if (!empty($item['b64_json'])) {
+            return ['sucesso' => true, 'url' => 'data:image/png;base64,' . $item['b64_json'], 'erro' => null];
+        }
+        if (!empty($item['url'])) {
+            return ['sucesso' => true, 'url' => $item['url'], 'erro' => null];
+        }
+        return ['sucesso' => false, 'url' => null, 'erro' => 'Resposta sem imagem.'];
+    }
+
+    /** MIME por extensão de arquivo de imagem. */
+    private static function mimePorExtensao(string $caminho): string
+    {
+        $ext = strtolower(pathinfo($caminho, PATHINFO_EXTENSION));
+        return match ($ext) {
+            'jpg', 'jpeg' => 'image/jpeg',
+            'webp' => 'image/webp',
+            'gif' => 'image/gif',
+            default => 'image/png',
+        };
+    }
+
     public static function gerarImagem(string $prompt, string $size = '1024x1024'): array
     {
         $apiKey = self::config('openai_key');
