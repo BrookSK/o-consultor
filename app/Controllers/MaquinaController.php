@@ -889,7 +889,8 @@ class MaquinaController
                     error_log('[O CONSULTOR][FILA-IMG] Falha ao enfileirar slide ' . $idx . ': ' . $e->getMessage());
                 }
             }
-            $this->dispararWorkerImagens();
+            // O processamento é iniciado pelo front (polling → /processar-imagens-bg),
+            // que roda em background no próprio PHP sem depender de exec/cron.
         }
 
         Logger::acao('Conteúdo (texto) gerado com IA', ['marca_id' => $marcaId, 'tipo' => $tipo, 'tema' => $tema, 'slides_pendentes' => count($slidesPendentes)]);
@@ -959,7 +960,7 @@ class MaquinaController
         $item = Database::queryOne(
             "SELECT * FROM fila_imagens_conteudo
              WHERE status = 'pendente'
-                OR (status = 'processando' AND atualizado_em < (NOW() - INTERVAL 300 SECOND))
+                OR (status = 'processando' AND atualizado_em < (NOW() - INTERVAL 150 SECOND))
              ORDER BY id ASC LIMIT 1"
         );
         if (!$item) {
@@ -1001,8 +1002,8 @@ class MaquinaController
             exit;
         }
 
-        // Garante que o processamento está andando (best-effort).
-        $this->dispararWorkerImagens();
+        // O processamento é acionado pelo front via /processar-imagens-bg
+        // (endpoint que fecha a conexão e continua em background). Aqui só lemos o status.
 
         try {
             $conteudo = Database::queryOne(
@@ -1047,6 +1048,63 @@ class MaquinaController
         header('Content-Type: application/json');
         $res = $this->processarProximaImagemFila();
         echo json_encode(['sucesso' => true, 'resultado' => $res]);
+        exit;
+    }
+
+    /**
+     * Processa a fila de imagens EM BACKGROUND no próprio PHP: responde ao
+     * navegador imediatamente (sem estourar o timeout do proxy) e, após fechar
+     * a conexão, continua gerando as imagens até esvaziar a fila.
+     * Usa lock de arquivo para garantir apenas UMA execução simultânea.
+     * Independe de exec()/cron — funciona em qualquer PHP-FPM.
+     */
+    public function processarFilaImagensBackground(): void
+    {
+        Auth::proteger();
+        header('Content-Type: application/json');
+
+        // Lock: se já há um processador rodando, não inicia outro.
+        $lockFile = ROOT_PATH . '/worker/imagens_http.lock';
+        @mkdir(dirname($lockFile), 0755, true);
+        $lock = @fopen($lockFile, 'c');
+        $temLock = $lock && flock($lock, LOCK_EX | LOCK_NB);
+
+        // Responde imediatamente e libera a conexão do navegador/proxy.
+        echo json_encode(['sucesso' => true, 'iniciado' => (bool) $temLock]);
+        if (function_exists('fastcgi_finish_request')) {
+            @session_write_close();
+            fastcgi_finish_request();
+        } else {
+            // Fallback: fecha o output para o cliente não ficar esperando.
+            @ob_end_flush();
+            @flush();
+        }
+
+        if (!$temLock) {
+            // Outro processo já está cuidando da fila.
+            if ($lock) fclose($lock);
+            return;
+        }
+
+        // A partir daqui roda "em background": sem limite de tempo e sem abortar
+        // se o cliente desconectar.
+        @set_time_limit(0);
+        @ignore_user_abort(true);
+
+        try {
+            $inicio = time();
+            while ((time() - $inicio) < 600) { // no máx. ~10 min por execução
+                $res = $this->processarProximaImagemFila();
+                if (!empty($res['vazio'])) break; // fila vazia
+                usleep(200000);
+            }
+        } catch (\Throwable $e) {
+            Logger::error('Erro no processamento background de imagens: ' . $e->getMessage());
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+            @unlink($lockFile);
+        }
         exit;
     }
 

@@ -549,9 +549,12 @@ async function gerarImagensSequencial(conteudoId, indices) {
 
         if (!data || !data.sucesso) { await esperar(2000); continue; }
 
-        // O processamento roda em BACKGROUND (worker CLI disparado pelo próprio
-        // endpoint de status). NÃO chamamos processar-fila-imagens aqui porque ele
-        // gera a imagem de forma síncrona (>60s) e estoura o timeout do proxy (504).
+        // Dispara o processador em BACKGROUND. Esse endpoint responde na hora
+        // (fecha a conexão) e segue gerando as imagens no servidor, sem estourar
+        // o timeout do proxy. O lock garante uma única execução simultânea.
+        if (data.pendentes > 0) {
+            fetch('<?= APP_URL ?>/maquina-de-conteudo/processar-imagens-bg?_=' + Date.now()).catch(() => {});
+        }
 
         let prontas = 0;
         (data.itens || []).forEach(item => {
