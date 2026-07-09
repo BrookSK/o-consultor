@@ -792,10 +792,11 @@ class MaquinaController
                 . ($caminhosRef ? ' | ' . implode(' ; ', $caminhosRef) : ''));
 
             if (!empty($caminhosRef)) {
-                $promptRef = 'Crie uma nova imagem VERTICAL para post de Instagram no MESMO estilo visual das imagens de referência fornecidas '
-                    . '(mesma paleta, iluminação, composição, tipografia e estética). '
-                    . 'Tema/assunto da imagem: ' . $promptImagem . '. '
-                    . 'Mantenha coesão com a identidade das referências. NÃO copie o texto das referências; a imagem não deve conter texto, letras ou números.';
+                $promptRef = 'Gere uma nova imagem VERTICAL (retrato) para post de Instagram REPLICANDO FIELMENTE o estilo visual das imagens de referência fornecidas. '
+                    . 'Reproduza o MESMO MEIO/ESTÉTICA das referências (se as referências forem fotográficas, gere uma FOTO realista; se forem ilustrações, gere ilustração no mesmo traço), '
+                    . 'a mesma paleta de cores, iluminação, enquadramento, profundidade, texturas e clima. O estilo das referências tem PRIORIDADE sobre qualquer outra instrução. '
+                    . 'Assunto/tema a retratar dentro desse estilo: ' . $promptImagem . '. '
+                    . 'NÃO reproduza o texto que aparece nas referências; a imagem final não deve conter texto, letras, logos ou números.';
                 $promptCompleto = $promptRef;
                 $imgResult = ApiHelper::gerarImagemComReferencia($promptRef, $caminhosRef, $tamanho);
                 if (!empty($imgResult['sucesso']) && !empty($imgResult['url'])) {
