@@ -960,7 +960,7 @@ class MaquinaController
         $item = Database::queryOne(
             "SELECT * FROM fila_imagens_conteudo
              WHERE status = 'pendente'
-                OR (status = 'processando' AND atualizado_em < (NOW() - INTERVAL 150 SECOND))
+                OR (status = 'processando' AND atualizado_em < (NOW() - INTERVAL 90 SECOND))
              ORDER BY id ASC LIMIT 1"
         );
         if (!$item) {
@@ -1063,31 +1063,31 @@ class MaquinaController
         Auth::proteger();
         header('Content-Type: application/json');
 
-        // Lock: se já há um processador rodando, não inicia outro.
-        $lockFile = ROOT_PATH . '/worker/imagens_http.lock';
-        @mkdir(dirname($lockFile), 0755, true);
+        // Lock no diretório temporário (sempre gravável). O lock é só uma
+        // OTIMIZAÇÃO para evitar processos concorrentes; a dedupe real é feita
+        // pelo status 'processando' no banco. Por isso, se não conseguir o lock,
+        // ainda assim processamos (sem risco de gerar a mesma imagem 2x).
+        $lockFile = sys_get_temp_dir() . '/oconsultor_imagens.lock';
         $lock = @fopen($lockFile, 'c');
-        $temLock = $lock && flock($lock, LOCK_EX | LOCK_NB);
+        $temLock = $lock && @flock($lock, LOCK_EX | LOCK_NB);
 
         // Responde imediatamente e libera a conexão do navegador/proxy.
-        echo json_encode(['sucesso' => true, 'iniciado' => (bool) $temLock]);
+        echo json_encode(['sucesso' => true, 'iniciado' => true]);
         if (function_exists('fastcgi_finish_request')) {
             @session_write_close();
-            fastcgi_finish_request();
+            @fastcgi_finish_request();
         } else {
-            // Fallback: fecha o output para o cliente não ficar esperando.
             @ob_end_flush();
             @flush();
         }
 
-        if (!$temLock) {
-            // Outro processo já está cuidando da fila.
-            if ($lock) fclose($lock);
+        // Se outro processo já está processando, encerra (evita concorrência).
+        if ($lock && !$temLock) {
+            fclose($lock);
             return;
         }
 
-        // A partir daqui roda "em background": sem limite de tempo e sem abortar
-        // se o cliente desconectar.
+        // Roda em background: sem limite de tempo, sem abortar se o cliente sair.
         @set_time_limit(0);
         @ignore_user_abort(true);
 
@@ -1101,9 +1101,8 @@ class MaquinaController
         } catch (\Throwable $e) {
             Logger::error('Erro no processamento background de imagens: ' . $e->getMessage());
         } finally {
-            flock($lock, LOCK_UN);
-            fclose($lock);
-            @unlink($lockFile);
+            if ($temLock) { @flock($lock, LOCK_UN); }
+            if ($lock) { @fclose($lock); }
         }
         exit;
     }
@@ -1217,16 +1216,25 @@ class MaquinaController
             $tituloImg = $headlineArte['titulo'] ?: $headline;
             $subImg = $headlineArte['subtitulo'] ?: $subheadline;
             $palavraDestaque = $headlineArte['destaque'] ?? '';
+            // Remove pontuação final exagerada (?, !) para não virar um símbolo gigante na arte.
+            $tituloImg = rtrim(trim($tituloImg), '?!.');
 
             $instrucaoTexto = '';
             if ($tituloImg !== '') {
-                $instrucaoTexto = ' TEXTO NA IMAGEM (renderize com tipografia de design profissional, tipo capa editorial/social, NÃO estilo documento de texto): '
-                    . 'TÍTULO principal em destaque máximo, escrito EXATAMENTE assim (em português, sem alterar palavras): "' . $tituloImg . '".'
-                    . ($palavraDestaque !== '' ? ' Dê ÊNFASE visual à(s) palavra(s) "' . $palavraDestaque . '" (maior, mais peso ou cor de destaque da marca) criando contraste com o resto do título.' : '')
-                    . ($subImg !== '' ? ' SUBTÍTULO menor e mais leve, abaixo do título: "' . $subImg . '".' : '')
-                    . ' HIERARQUIA TIPOGRÁFICA forte: título em fonte sans-serif bold/condensada de grande peso; subtítulo em peso leve; contraste claro de tamanho entre título e subtítulo. '
-                    . 'Composição orgânica e equilibrada (regra dos terços), texto integrado à cena e não centralizado como um documento, com respiro/margens, ótima legibilidade e contraste sobre a arte. '
-                    . 'Siga o MESMO estilo tipográfico das imagens de referência. Grafia correta em português, sem erros e sem letras trocadas.';
+                // Tag superior curta (rótulo de contexto, 3-4 palavras no máximo).
+                $tagSuperior = strtoupper(mb_substr(trim((string) ($conteudo['tema'] ?? 'DESTAQUE')), 0, 22));
+                // IMPORTANTE: reestruturar APENAS a HIERARQUIA/ESTRUTURA do texto.
+                // Paleta, cores, tipografia da marca e estética vêm dos TEMPLATES de
+                // referência — não impor cores/paleta aqui.
+                $instrucaoTexto = ' SISTEMA EDITORIAL DE TEXTO (reestruture APENAS a hierarquia e a estrutura do texto; MANTENHA a paleta de cores, a tipografia e a identidade visual das imagens de referência da marca):'
+                    . ' NÍVEL 1 — TAG SUPERIOR: rótulo de contexto curto em CAIXA ALTA (máx. 3-4 palavras), fonte condensada/bold em tamanho PEQUENO, funcionando como um selo ACIMA do título (não faz parte do título), alinhado à ESQUERDA, nunca centralizado: "' . $tagSuperior . '".'
+                    . ' NÍVEL 2 — TÍTULO PRINCIPAL: o PESO MÁXIMO da família tipográfica (extra bold/black), tamanho grande ocupando a maior área de destaque, quebrado em 2 a 3 LINHAS CURTAS (evitar linha única longa), com line-height REDUZIDO (linhas coladas, bloco compacto), alinhado à ESQUERDA. Texto EXATO (em português): "' . $tituloImg . '".'
+                    . ($subImg !== '' ? ' NÍVEL 3 — SUBTÍTULO/FECHAMENTO: fonte FINA (light) ou itálica (o PESO MÍNIMO), tamanho sensivelmente menor que o título (proporção ~1:3 a 1:4), MESMO alinhamento à esquerda: "' . $subImg . '".' : ' NÍVEL 3 — opcional: se houver subtítulo, use fonte fina/light bem menor que o título, alinhado à esquerda.')
+                    . ' HIERARQUIA DE 3 NÍVEIS OBRIGATÓRIA (tag pequena → título pesado → subtítulo fino): NUNCA use o mesmo peso de fonte em dois níveis, e mantenha um EIXO ÚNICO de alinhamento à esquerda em todo o bloco (nunca misturar centralizado com alinhado à esquerda).'
+                    . ($palavraDestaque !== '' ? ' Dê destaque de cor de acento da marca a APENAS a palavra "' . $palavraDestaque . '" do título.' : '')
+                    . ' ESPAÇAMENTO: bloco de texto concentrado em UMA única área do frame (canto inferior ou lateral), ocupando no MÁXIMO 40-50% da altura, com respiro (espaço em branco) entre o texto e as bordas; nunca espalhado ou centralizado no meio da composição.'
+                    . ' PONTUAÇÃO: evite símbolos de pontuação em tamanho desproporcional; se houver, mantenha no mesmo tamanho da fonte do título, nunca maior.'
+                    . ' Grafia correta em português, sem erros e sem letras trocadas.';
             }
 
             $imgResult = null;

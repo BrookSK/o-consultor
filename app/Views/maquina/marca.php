@@ -536,7 +536,7 @@ async function gerarImagensSequencial(conteudoId, indices) {
 
     const esperar = (ms) => new Promise(r => setTimeout(r, ms));
     const total = indices.length;
-    const maxTentativas = 120; // ~4 min (2s entre polls)
+    const maxTentativas = 300; // ~10 min (2s entre polls) — imagens levam ~60s cada
 
     for (let t = 0; t < maxTentativas; t++) {
         if (geracaoImagens.cancelarTudo) break;
