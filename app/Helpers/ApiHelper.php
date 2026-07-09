@@ -552,23 +552,27 @@ class ApiHelper
         curl_close($ch);
 
         if ($err) {
-            error_log('[O CONSULTOR][ImagemRef] cURL: ' . $err);
+            error_log('[O CONSULTOR][ImagemRef] RESULTADO=erro_curl cURL: ' . $err);
             return ['sucesso' => false, 'url' => null, 'erro' => 'Falha de conexão na geração com referência.'];
         }
         $dados = json_decode((string) $response, true);
         if ($httpCode < 200 || $httpCode >= 300) {
             $msg = $dados['error']['message'] ?? ('HTTP ' . $httpCode);
-            error_log('[O CONSULTOR][ImagemRef] ' . $msg . ' | BODY=' . substr((string) $response, 0, 800));
+            error_log('[O CONSULTOR][ImagemRef] RESULTADO=http_' . $httpCode . ' modelo=gpt-image-1 refs=' . count($refs)
+                . ' | ERRO=' . $msg . ' | BODY=' . substr((string) $response, 0, 800));
             return ['sucesso' => false, 'url' => null, 'erro' => $msg];
         }
 
         $item = $dados['data'][0] ?? [];
         if (!empty($item['b64_json'])) {
+            error_log('[O CONSULTOR][ImagemRef] RESULTADO=ok modelo=gpt-image-1 refs=' . count($refs) . ' formato=b64');
             return ['sucesso' => true, 'url' => 'data:image/png;base64,' . $item['b64_json'], 'erro' => null];
         }
         if (!empty($item['url'])) {
+            error_log('[O CONSULTOR][ImagemRef] RESULTADO=ok modelo=gpt-image-1 refs=' . count($refs) . ' formato=url');
             return ['sucesso' => true, 'url' => $item['url'], 'erro' => null];
         }
+        error_log('[O CONSULTOR][ImagemRef] RESULTADO=sem_imagem BODY=' . substr((string) $response, 0, 500));
         return ['sucesso' => false, 'url' => null, 'erro' => 'Resposta sem imagem.'];
     }
 

@@ -445,7 +445,10 @@ document.getElementById('form-gerar').addEventListener('submit', async function(
                 const imgHtml = s.imagem_url
                     ? `<img src="${s.imagem_url}" class="w-full aspect-[4/5] object-cover" loading="lazy">`
                     : (pendente
-                        ? `<div class="w-full aspect-[4/5] bg-gray-100 flex items-center justify-center text-xs text-gray-400" id="slide-img-${index}"><div class="inline-block w-5 h-5 border-2 border-gray-300 border-t-accent rounded-full animate-spin mr-2"></div> Gerando imagem...</div>`
+                        ? `<div class="w-full aspect-[4/5] bg-gray-100 flex flex-col items-center justify-center text-xs text-gray-400 gap-2" id="slide-img-${index}">
+                                <span class="flex items-center"><span class="inline-block w-5 h-5 border-2 border-gray-300 border-t-accent rounded-full animate-spin mr-2"></span> <span class="slide-status-txt">Na fila...</span></span>
+                                <button type="button" onclick="cancelarImagemSlide(${index})" class="px-2 py-1 border border-red-300 text-red-600 rounded text-[11px] hover:bg-red-50 slide-cancel-btn">Cancelar</button>
+                           </div>`
                         : `<div class="w-full aspect-[4/5] bg-gray-100 flex items-center justify-center text-3xl">🖼️</div>`);
                 html += `<div class="border rounded-lg overflow-hidden" data-slide="${index}">
                     ${imgHtml}
@@ -455,10 +458,11 @@ document.getElementById('form-gerar').addEventListener('submit', async function(
             if (data.conteudo.legenda) {
                 html += `<div class="p-3 bg-gray-50 rounded-lg"><p class="text-xs text-gray-500 font-medium mb-1">Legenda:</p><p class="text-xs text-gray-700 whitespace-pre-line">${data.conteudo.legenda}</p></div>`;
             }
-            html += '<div class="flex gap-2 mt-3">';
+            html += '<div class="flex gap-2 mt-3 items-center">';
             const editarUrl = data.redirect_url || '<?= APP_URL ?>/maquina-de-conteudo/editar';
             html += `<a href="${editarUrl}" class="flex-1 text-center px-3 py-2 bg-primary text-white rounded text-xs font-medium">✏️ Editar Conteúdo</a>`;
             html += '<span id="status-imagens" class="flex-1 px-3 py-2 border border-gray-300 rounded text-xs text-gray-500 text-center">💾 Rascunho salvo</span>';
+            html += '<button type="button" id="btn-cancelar-imagens" onclick="cancelarTodasImagens()" class="hidden px-3 py-2 border border-red-300 text-red-600 rounded text-xs font-medium hover:bg-red-50">✕ Cancelar todas</button>';
             html += '</div></div>';
             preview.innerHTML = html;
 
@@ -482,21 +486,76 @@ document.getElementById('form-gerar').addEventListener('submit', async function(
     btn.textContent = '⚡ Gerar Conteúdo';
 });
 
+// Controle de cancelamento da geração de imagens.
+let geracaoImagens = {
+    cancelarTudo: false,       // cancela toda a fila
+    canceladosSlide: {},       // { idx: true } — slides cancelados individualmente
+    controllerAtual: null,     // AbortController da request em andamento
+    idxAtual: null,            // slide sendo gerado agora
+};
+
+// Cancela um slide específico. Se for o que está gerando agora, aborta a request.
+function cancelarImagemSlide(idx) {
+    geracaoImagens.canceladosSlide[idx] = true;
+    if (geracaoImagens.idxAtual === idx && geracaoImagens.controllerAtual) {
+        geracaoImagens.controllerAtual.abort();
+    }
+    marcarSlideCancelado(idx);
+}
+
+// Cancela toda a geração restante.
+function cancelarTodasImagens() {
+    geracaoImagens.cancelarTudo = true;
+    if (geracaoImagens.controllerAtual) geracaoImagens.controllerAtual.abort();
+    const status = document.getElementById('status-imagens');
+    if (status) status.textContent = '✕ Cancelando...';
+}
+
+// Ajusta o placeholder de um slide para o estado "cancelado".
+function marcarSlideCancelado(idx) {
+    const ph = document.getElementById('slide-img-' + idx);
+    if (ph && !ph.querySelector('img')) {
+        ph.className = 'w-full aspect-[4/5] bg-gray-100 flex items-center justify-center text-xs text-gray-400';
+        ph.textContent = 'Cancelado';
+    }
+}
+
 // Gera as imagens dos slides pendentes SEQUENCIALMENTE (1 request por imagem),
-// atualizando o preview conforme cada uma fica pronta.
+// atualizando o preview conforme cada uma fica pronta. Suporta cancelamento
+// individual (por slide) e global (cancelar todas).
 async function gerarImagensSequencial(conteudoId, indices) {
     const status = document.getElementById('status-imagens');
+    const btnCancelarTodas = document.getElementById('btn-cancelar-imagens');
+    if (btnCancelarTodas) btnCancelarTodas.classList.remove('hidden');
+
+    // Reset do estado de controle.
+    geracaoImagens = { cancelarTudo: false, canceladosSlide: {}, controllerAtual: null, idxAtual: null };
+
     let feitas = 0;
     for (const idx of indices) {
+        if (geracaoImagens.cancelarTudo) break;
+        if (geracaoImagens.canceladosSlide[idx]) { feitas++; continue; }
+
+        const ph = document.getElementById('slide-img-' + idx);
+        const txt = ph ? ph.querySelector('.slide-status-txt') : null;
+        if (txt) txt.textContent = 'Gerando imagem...';
         if (status) status.textContent = `🎨 Gerando imagem ${feitas + 1}/${indices.length}...`;
+
+        geracaoImagens.idxAtual = idx;
+        geracaoImagens.controllerAtual = new AbortController();
+
         try {
             const fd = new FormData();
             fd.append('csrf_token', '<?= Csrf::token() ?>');
             fd.append('conteudo_id', conteudoId);
             fd.append('slide_index', idx);
-            const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/gerar-imagem-slide', { method: 'POST', body: fd });
+            const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/gerar-imagem-slide', { method: 'POST', body: fd, signal: geracaoImagens.controllerAtual.signal });
             const data = await res.json();
             const container = document.querySelector(`[data-slide="${idx}"]`);
+
+            // Se o usuário cancelou este slide durante a geração, descarta o resultado.
+            if (geracaoImagens.canceladosSlide[idx]) { marcarSlideCancelado(idx); feitas++; continue; }
+
             if (data.sucesso && data.imagem_url && container) {
                 const alvo = container.querySelector('img, div');
                 const img = document.createElement('img');
@@ -504,19 +563,37 @@ async function gerarImagensSequencial(conteudoId, indices) {
                 img.className = 'w-full aspect-[4/5] object-cover';
                 img.loading = 'lazy';
                 if (alvo) alvo.replaceWith(img);
-                // Avisa se a referência (templates) não foi usada e por quê.
                 if (data.metodo !== 'referencia' && data.aviso_ref && typeof Toast !== 'undefined') {
                     Toast.erro('Imagem gerada SEM os templates de referência. Motivo: ' + data.aviso_ref);
                 }
             } else if (container) {
-                const ph = container.querySelector('#slide-img-' + idx);
-                if (ph) { ph.className = 'w-full h-32 bg-gray-100 flex items-center justify-center text-3xl'; ph.textContent = '🖼️'; }
+                const p = container.querySelector('#slide-img-' + idx);
+                if (p) { p.className = 'w-full aspect-[4/5] bg-gray-100 flex items-center justify-center text-3xl'; p.textContent = '🖼️'; }
             }
-        } catch (e) { /* segue para a próxima imagem */ }
+        } catch (e) {
+            // AbortError = cancelamento (individual ou global): não é erro real.
+            if (e.name === 'AbortError') {
+                marcarSlideCancelado(idx);
+                if (geracaoImagens.cancelarTudo) break;
+            }
+            // outros erros: segue para a próxima imagem
+        }
         feitas++;
     }
-    if (status) status.textContent = '✅ Concluído';
-    if (typeof Toast !== 'undefined') Toast.sucesso('Imagens geradas!');
+
+    geracaoImagens.idxAtual = null;
+    geracaoImagens.controllerAtual = null;
+    if (btnCancelarTodas) btnCancelarTodas.classList.add('hidden');
+
+    if (geracaoImagens.cancelarTudo) {
+        // Marca como cancelados os slides que ainda estavam pendentes.
+        indices.forEach(i => marcarSlideCancelado(i));
+        if (status) status.textContent = '✕ Geração cancelada';
+        if (typeof Toast !== 'undefined') Toast.sucesso('Geração de imagens cancelada.');
+    } else {
+        if (status) status.textContent = '✅ Concluído';
+        if (typeof Toast !== 'undefined') Toast.sucesso('Imagens geradas!');
+    }
 }
 
 // === CALENDÁRIO EDITORIAL ===
