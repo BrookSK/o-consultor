@@ -230,6 +230,22 @@ class MaquinaController
     }
 
     /**
+     * Limpa a legenda: troca travessões por vírgula/ponto e remove marcadores
+     * de lista (bullets, hífens de tópico) — evita a "cara de IA".
+     */
+    private function limparLegenda(string $texto): string
+    {
+        // Travessões (— –) viram vírgula com espaço.
+        $texto = str_replace(["—", "–", " -- "], ", ", $texto);
+        // Remove bullets no início de linhas.
+        $texto = preg_replace('/^[\s]*[-•*]\s+/mu', '', $texto);
+        // Colapsa espaços múltiplos, preserva quebras de parágrafo.
+        $texto = preg_replace('/[ \t]{2,}/', ' ', (string) $texto);
+        $texto = preg_replace('/\n{3,}/', "\n\n", (string) $texto);
+        return trim((string) $texto);
+    }
+
+    /**
      * Cria uma headline curta e PROVOCATIVA para escrever dentro da imagem,
      * a partir do texto do slide + tema. Retorna título, subtítulo e a(s)
      * palavra(s) a destacar visualmente. Usa fallback se a IA não responder.
@@ -805,6 +821,11 @@ class MaquinaController
                 if (isset($s['texto_secundario'])) $s['texto_secundario'] = $this->limparTextoSlide((string) $s['texto_secundario']);
             }
             unset($s);
+        }
+
+        // Limpa a legenda: remove travessões e marcadores de lista (cara de IA).
+        if (!empty($conteudoGerado['legenda'])) {
+            $conteudoGerado['legenda'] = $this->limparLegenda((string) $conteudoGerado['legenda']);
         }
 
         // 4. PASSO 2 — As imagens NÃO são geradas aqui (cada imagem no DALL-E leva

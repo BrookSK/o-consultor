@@ -549,9 +549,9 @@ async function gerarImagensSequencial(conteudoId, indices) {
 
         if (!data || !data.sucesso) { await esperar(2000); continue; }
 
-        // Fallback: se não há worker (exec/cron), processa 1 imagem via HTTP.
-        // (best-effort; se der timeout no proxy, o polling segue mesmo assim)
-        fetch('<?= APP_URL ?>/maquina-de-conteudo/processar-fila-imagens?_=' + Date.now()).catch(() => {});
+        // O processamento roda em BACKGROUND (worker CLI disparado pelo próprio
+        // endpoint de status). NÃO chamamos processar-fila-imagens aqui porque ele
+        // gera a imagem de forma síncrona (>60s) e estoura o timeout do proxy (504).
 
         let prontas = 0;
         (data.itens || []).forEach(item => {

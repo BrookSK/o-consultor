@@ -1820,9 +1820,9 @@ Responda APENAS em JSON válido, sem explicações.";
             $contextoNoticia = "\n\nBASEADO NA NOTÍCIA (use este conteúdo como fonte):\n{$noticiaBase}";
             $regrasNoticia = "
 
-📰 REGRAS PARA CONTEÚDO DE NOTÍCIA (OBRIGATÓRIAS):
-1. A LEGENDA deve ser construída a partir do CONTEÚDO da notícia acima (o que aconteceu, por que importa, o que fazer), na linguagem própria da marca — não copie frases literais.
-2. CITE A FONTE no final da legenda, creditando o veículo/origem indicado em 'FONTE DA NOTÍCIA' (ex.: 'Fonte: <veículo> — <link>'). Inclua o link, se houver.
+REGRAS PARA CONTEÚDO DE NOTÍCIA (OBRIGATÓRIAS):
+1. A LEGENDA deve ser construída a partir do CONTEÚDO da notícia acima (o que aconteceu, por que importa, o que fazer), na linguagem própria da marca. Não copie frases literais.
+2. ORDEM FINAL DA LEGENDA: primeiro os parágrafos do texto, depois uma linha com as HASHTAGS e, por último, a linha da FONTE no formato exato: 'Fonte: <veículo> (<link>)' usando o veículo/link indicado em 'FONTE DA NOTÍCIA'. (A linha da fonte é a única exceção onde o link/parênteses são permitidos.)
 3. O 'texto' de CADA slide deve funcionar como HEADLINE COM GANCHO: frase curta e instigante que desperte curiosidade e convide a continuar (perguntas, dados surpreendentes, tensão). Nada de títulos genéricos.";
         }
 
@@ -1926,9 +1926,10 @@ REGRAS IMPORTANTES:
 7. GANCHO OBRIGATÓRIO: o 'texto' de cada slide (especialmente a capa) deve ter um gancho que gere curiosidade e convide o usuário a ler/avançar — use perguntas, números, promessas de valor ou tensão. Evite títulos genéricos e descritivos.
 8. LEGENDA — LINGUAGEM SIMPLES: escreva em português claro e acessível, como se explicasse para um leigo. É PROIBIDO usar jargões técnicos ou termos de nicho em inglês (ex.: 'Shadow AI', 'living-off-the-land', 'mitigar riscos', 'compliance'). Se um conceito for técnico, explique em palavras do dia a dia. Frases curtas e diretas.
 9. LEGENDA — TOQUE NA DOR: conecte com uma DOR real do público e deixe claro o RISCO/PREJUÍZO de NÃO agir (o que a pessoa/empresa perde se ignorar o assunto). Gere urgência de forma honesta, sem alarmismo exagerado.
-10. LEGENDA — ESTRUTURA EM PARÁGRAFOS: a legenda NÃO pode ser um texto corrido único. Organize em blocos curtos separados por quebras de linha duplas (\\n\\n), nesta ordem: (a) 1º parágrafo: gancho/abertura que conecta com a dor; (b) 2º parágrafo: contexto e o risco de não agir; (c) 3º parágrafo: o caminho/solução de forma simples; (d) parágrafo final: um CALL-TO-ACTION convidando a AGIR (ex.: 'Entre em contato', 'Fale com a gente', 'Chame no direct') de forma PROFISSIONAL e natural — nunca forçado, apelativo ou artificial.
-11. Emojis são permitidos APENAS na legenda, com muita moderação (no máximo 1 ou 2, se fizer sentido).
-12. PERSONALIZAÇÃO: Use o contexto da jornada para tornar o conteúdo mais específico e relevante
+10. LEGENDA — ESTRUTURA EM PARÁGRAFOS: a legenda NÃO pode ser um texto corrido único. Organize em blocos curtos separados por quebras de linha duplas (\\n\\n), nesta ordem: (a) gancho/abertura que conecta com a dor; (b) contexto e o risco de não agir; (c) o caminho/solução de forma simples; (d) parágrafo final com um CALL-TO-ACTION profissional convidando a AGIR (ex.: 'Entre em contato', 'Fale com a gente') de forma natural, nunca forçado, apelativo ou artificial.
+11. PROIBIDO usar travessões (— ou –) e proibido usar marcadores/bullets, listas ou hífens de tópico na legenda. Escreva em frases e parágrafos corridos e naturais, sem cara de texto gerado por IA. Não use dois-pontos para criar listas.
+12. Emojis são permitidos APENAS na legenda, com muita moderação (no máximo 1, se fizer sentido).
+13. PERSONALIZAÇÃO: Use o contexto da jornada para tornar o conteúdo mais específico e relevante
 
 Responda APENAS em JSON válido e bem formado, em português, sem explicações fora do JSON.";
     }
