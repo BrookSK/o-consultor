@@ -14,7 +14,13 @@
 
 <!-- Header da Marca -->
 <div class="flex items-center gap-4 mb-6">
+    <?php if (!empty($marca['logo_url'])): ?>
+    <div class="w-14 h-14 rounded-full bg-white border border-gray-200 flex items-center justify-center overflow-hidden">
+        <img src="<?= htmlspecialchars(APP_URL . $marca['logo_url']) ?>" class="max-w-full max-h-full object-contain">
+    </div>
+    <?php else: ?>
     <div class="w-14 h-14 rounded-full bg-primary text-white flex items-center justify-center text-xl font-bold"><?= strtoupper(substr($marca['nome'], 0, 1)) ?></div>
+    <?php endif; ?>
     <div>
         <h1 class="text-xl font-bold text-gray-800"><?= htmlspecialchars($marca['nome']) ?></h1>
         <p class="text-sm text-gray-500"><?= htmlspecialchars($marca['nicho']) ?> • Tom: <?= htmlspecialchars($marca['tom']) ?> • Arquétipo: <?= htmlspecialchars($marca['arquetipo']) ?></p>
@@ -22,13 +28,14 @@
 </div>
 
 <!-- 4 Abas -->
-<div x-data="{ aba: 'gerar' }">
+<div x-data="{ aba: 'gerar' }" x-init="$watch('aba', v => { if (v === 'publicacao' && typeof carregarCalendario === 'function') { carregarDadosPublicacao(); carregarCalendario(); } })">
     <div class="border-b border-gray-200 mb-6">
         <nav class="flex gap-0 overflow-x-auto">
             <button @click="aba = 'gerar'" :class="aba === 'gerar' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap">⚡ Gerar Conteúdo</button>
+            <button @click="aba = 'branding'" :class="aba === 'branding' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap">📖 Brand Book</button>
             <button @click="aba = 'biblioteca'" :class="aba === 'biblioteca' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap">📚 Biblioteca</button>
             <button @click="aba = 'templates'" :class="aba === 'templates' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap">🎨 Templates</button>
-            <button @click="aba = 'publicacao'" :class="aba === 'publicacao' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap">📅 Publicação</button>
+            <button @click="aba = 'publicacao'; setTimeout(() => { carregarDadosPublicacao(); carregarCalendario(); }, 50)" :class="aba === 'publicacao' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap">📅 Publicação</button>
         </nav>
     </div>
 
@@ -135,6 +142,66 @@
         </div>
     </div>
 
+    <!-- ABA BRAND BOOK -->
+    <div x-show="aba === 'branding'" x-transition style="display:none;">
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 max-w-3xl">
+            <h3 class="font-semibold text-gray-800 mb-1">📖 Brand Book da Marca</h3>
+            <p class="text-sm text-gray-500 mb-5">Configurações de identidade usadas na geração de conteúdo. Edite e salve.</p>
+
+            <form id="form-branding" class="space-y-4">
+                <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
+                <input type="hidden" name="marca_id" value="<?= (int) $marca['id'] ?>">
+
+                <!-- Logo -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Logo da marca</label>
+                    <div class="flex items-center gap-4">
+                        <div class="w-24 h-24 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden">
+                            <img id="logo-preview" src="<?= !empty($marca['logo_url']) ? htmlspecialchars(APP_URL . $marca['logo_url']) : '' ?>" class="max-w-full max-h-full object-contain <?= empty($marca['logo_url']) ? 'hidden' : '' ?>">
+                            <span id="logo-vazio" class="text-xs text-gray-400 <?= !empty($marca['logo_url']) ? 'hidden' : '' ?>">Sem logo</span>
+                        </div>
+                        <div>
+                            <label class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700 cursor-pointer inline-block">
+                                📤 Enviar logo (PNG/SVG)
+                                <input type="file" accept=".png,.svg,.jpg,.jpeg,.webp" class="hidden" onchange="uploadLogo(this)">
+                            </label>
+                            <p class="text-xs text-gray-400 mt-1">Preferencialmente PNG com fundo transparente. Será posicionado de forma estratégica e equilibrada nas imagens geradas.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Nome</label><input type="text" name="nome" value="<?= htmlspecialchars($marca['nome'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Nicho/Setor</label><input type="text" name="nicho" value="<?= htmlspecialchars($marca['nicho'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div class="md:col-span-2"><label class="block text-sm font-medium text-gray-700 mb-1">Público-alvo</label><input type="text" name="publico_alvo" value="<?= htmlspecialchars($marca['publico_alvo'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Tom de voz</label><input type="text" name="tom" value="<?= htmlspecialchars($marca['tom'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Arquétipo</label><input type="text" name="arquetipo" value="<?= htmlspecialchars($marca['arquetipo'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Palavras que USA</label><input type="text" name="palavras_usa" value="<?= htmlspecialchars($marca['palavras_usa'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Palavras que NUNCA usa</label><input type="text" name="palavras_nunca" value="<?= htmlspecialchars($marca['palavras_nunca'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                </div>
+
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Diferenciais competitivos</label>
+                    <textarea name="diferenciais_competitivos" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary resize-none"><?= htmlspecialchars($marca['diferenciais_competitivos'] ?? '') ?></textarea>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Prompt Master (base de toda geração de texto)</label>
+                    <textarea name="prompt_master" rows="5" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary resize-none font-mono text-xs"><?= htmlspecialchars($marca['prompt_master'] ?? '') ?></textarea>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Prompt de estilo visual (base das imagens)</label>
+                    <textarea name="prompt_dalle" rows="4" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary resize-none font-mono text-xs"><?= htmlspecialchars($marca['prompt_dalle'] ?? '') ?></textarea>
+                </div>
+
+                <div class="pt-2">
+                    <button type="submit" id="btn-salvar-branding" class="px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary-700">💾 Salvar Brand Book</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- ABA BIBLIOTECA -->
     <div x-show="aba === 'biblioteca'" x-transition style="display:none;">
         <div class="flex items-center justify-between mb-4">
@@ -161,9 +228,13 @@
                 </div>
                 <button type="button" onclick="event.stopPropagation(); excluirConteudo(<?= (int) $cont['id'] ?>, this)" class="absolute top-2 right-2 z-10 text-white/80 hover:text-red-300 text-sm" title="Excluir">🗑️</button>
                 <div onclick="window.location.href='<?= APP_URL ?>/maquina-de-conteudo/editar/<?= (int) $cont['id'] ?>'" class="cursor-pointer">
+                    <?php if (!empty($cont['thumb'])): ?>
+                    <img src="<?= htmlspecialchars($cont['thumb']) ?>" alt="" loading="lazy" class="w-full h-40 object-contain bg-gray-900">
+                    <?php else: ?>
                     <div class="h-32 bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-white text-3xl">
                         <?= $cont['tipo'] === 'carrossel' ? '📋' : ($cont['tipo'] === 'story' ? '📱' : '🖼️') ?>
                     </div>
+                    <?php endif; ?>
                     <div class="p-4">
                         <div class="flex items-center justify-between mb-2">
                             <span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium"><?= ucfirst($cont['tipo']) ?><?= $cont['slides'] > 1 ? ' • ' . $cont['slides'] . ' slides' : '' ?></span>
@@ -199,6 +270,45 @@
     </div>
 
 <script>
+// ===== Brand Book: salvar configurações e upload de logo =====
+document.getElementById('form-branding')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn-salvar-branding');
+    if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+    try {
+        const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/salvar-branding', { method: 'POST', body: new FormData(this) });
+        const data = await res.json();
+        if (data.sucesso) {
+            if (typeof Toast !== 'undefined') Toast.sucesso('Brand Book salvo!'); else alert('Brand Book salvo!');
+        } else {
+            alert(data.erro || 'Erro ao salvar.');
+        }
+    } catch (err) { alert('Erro de conexão.'); }
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Salvar Brand Book'; }
+});
+
+async function uploadLogo(input) {
+    if (!input.files || !input.files[0]) return;
+    const fd = new FormData();
+    fd.append('csrf_token', '<?= Csrf::token() ?>');
+    fd.append('marca_id', '<?= (int) $marca['id'] ?>');
+    fd.append('logo', input.files[0]);
+    try {
+        const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/upload-logo', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.sucesso && data.url) {
+            const img = document.getElementById('logo-preview');
+            const vazio = document.getElementById('logo-vazio');
+            if (img) { img.src = data.url + '?t=' + Date.now(); img.classList.remove('hidden'); }
+            if (vazio) vazio.classList.add('hidden');
+            if (typeof Toast !== 'undefined') Toast.sucesso('Logo enviado!');
+        } else {
+            alert(data.erro || 'Erro no upload do logo.');
+        }
+    } catch (e) { alert('Erro de conexão.'); }
+    input.value = '';
+}
+
 // Salva o rascunho na biblioteca para terminar depois.
 async function terminarDepois(conteudoId, btn) {
     if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
@@ -488,20 +598,8 @@ let conteudosData = {
     publicados: []
 };
 
-// Carregar dados ao mudar para aba publicação
-document.addEventListener('DOMContentLoaded', function() {
-    // Observar mudanças de aba
-    document.addEventListener('click', function(e) {
-        if (e.target.textContent?.includes('Publicação')) {
-            setTimeout(() => {
-                carregarDadosPublicacao();
-                carregarCalendario();
-            }, 100);
-        }
-    });
-    // Nota: carregarTemplates() já é chamado no DOMContentLoaded do bloco de
-    // templates acima — não chamar de novo aqui (causava templates duplicados).
-});
+// O carregamento do calendário/listas é acionado pelo Alpine ao abrir a aba
+// Publicação (ver x-init/@click no topo). Este bloco ficou apenas como nota.
 
 // === GERAÇÃO DE CONTEÚDO ===
 
@@ -531,7 +629,7 @@ document.getElementById('form-gerar').addEventListener('submit', async function(
             slides.forEach((s, index) => {
                 const pendente = s.imagem_pendente || (data.slides_pendentes || []).includes(index);
                 const imgHtml = s.imagem_url
-                    ? `<img src="${s.imagem_url}" class="w-full aspect-[4/5] object-cover" loading="lazy">`
+                    ? `<img src="${s.imagem_url}" class="w-full max-h-[480px] object-contain bg-gray-900" loading="lazy">`
                     : (pendente
                         ? `<div class="w-full aspect-[4/5] bg-gray-100 flex flex-col items-center justify-center text-xs text-gray-400 gap-2" id="slide-img-${index}">
                                 <span class="flex items-center"><span class="inline-block w-5 h-5 border-2 border-gray-300 border-t-accent rounded-full animate-spin mr-2"></span> <span class="slide-status-txt">Na fila...</span></span>
@@ -658,7 +756,7 @@ async function gerarImagensSequencial(conteudoId, indices) {
                     const alvo = container.querySelector('div');
                     const img = document.createElement('img');
                     img.src = item.imagem_url;
-                    img.className = 'w-full aspect-[4/5] object-cover';
+                    img.className = 'w-full max-h-[480px] object-contain bg-gray-900';
                     img.loading = 'lazy';
                     if (alvo) alvo.replaceWith(img);
                     // Adiciona controles de regeneração com instrução dentro do card.

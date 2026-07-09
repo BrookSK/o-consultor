@@ -52,7 +52,7 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <!-- Imagem -->
                 <div>
-                    <img src="<?= htmlspecialchars($slide['imagem_url']) ?>" class="w-full aspect-square rounded-lg object-cover border border-gray-200">
+                    <img src="<?= htmlspecialchars($slide['imagem_url']) ?>" class="w-full max-h-[520px] rounded-lg object-contain bg-gray-900 border border-gray-200">
                     <div class="flex gap-2 mt-2">
                         <label class="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs hover:bg-gray-50 cursor-pointer text-center">
                             📤 Substituir
@@ -227,11 +227,25 @@ async function atualizarTextoSlide(conteudoId, slideIndex, texto, cta = '') {
     }
 }
 
-function salvarRascunho() {
-    if (typeof Toast !== 'undefined') {
-        Toast.sucesso('Rascunho salvo automaticamente!');
-    } else {
-        alert('Rascunho salvo!');
+async function salvarRascunho() {
+    const conteudoId = <?= (int) ($conteudo['id'] ?? 0) ?>;
+    if (!conteudoId) {
+        if (typeof Toast !== 'undefined') Toast.sucesso('Rascunho salvo!'); else alert('Rascunho salvo!');
+        return;
+    }
+    try {
+        const fd = new FormData();
+        fd.append('csrf_token', '<?= Csrf::token() ?>');
+        fd.append('conteudo_id', conteudoId);
+        const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/salvar-biblioteca', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.sucesso) {
+            if (typeof Toast !== 'undefined') Toast.sucesso('Salvo na biblioteca!'); else alert('Salvo na biblioteca!');
+        } else {
+            alert(data.erro || 'Erro ao salvar.');
+        }
+    } catch (e) {
+        alert('Erro de conexão ao salvar.');
     }
 }
 

@@ -236,6 +236,8 @@ class Router
         $this->post('maquina/gerar', 'MaquinaController', 'gerar');
         $this->get('maquina-de-conteudo/editar', 'MaquinaController', 'editar');
         $this->post('maquina-de-conteudo/aprovar', 'MaquinaController', 'aprovar');
+        $this->post('maquina-de-conteudo/salvar-branding', 'MaquinaController', 'salvarBranding'); // Editar Brand Book
+        $this->post('maquina-de-conteudo/upload-logo', 'MaquinaController', 'uploadLogo'); // Logo da marca
         $this->post('maquina-de-conteudo/salvar-biblioteca', 'MaquinaController', 'salvarBiblioteca'); // "Terminar depois"
         $this->post('maquina-de-conteudo/excluir-conteudo', 'MaquinaController', 'excluirConteudo');
         $this->post('maquina-de-conteudo/excluir-conteudos', 'MaquinaController', 'excluirConteudos'); // Exclusão em massa

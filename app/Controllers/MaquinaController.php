@@ -246,6 +246,35 @@ class MaquinaController
     }
 
     /**
+     * Revisa ortografia/gramática de trechos curtos em português (títulos que
+     * serão escritos na imagem), retornando os textos corrigidos na mesma ordem.
+     * Se a IA falhar, devolve os originais.
+     *
+     * @param string[] $textos
+     * @return string[]
+     */
+    private function revisarOrtografia(array $textos): array
+    {
+        $limpos = array_map(fn($t) => trim((string) $t), $textos);
+        $temAlgo = false;
+        foreach ($limpos as $t) { if ($t !== '') { $temAlgo = true; break; } }
+        if (!$temAlgo) return $limpos;
+
+        $lista = json_encode($limpos, JSON_UNESCAPED_UNICODE);
+        $prompt = "Revise a ORTOGRAFIA e a acentuação dos textos abaixo (português do Brasil), corrigindo erros SEM mudar o sentido, sem reescrever e sem adicionar/remover conteúdo. Mantenha maiúsculas/minúsculas e a ordem. Devolva APENAS um array JSON de strings corrigidas, no mesmo tamanho e ordem.\n\nTextos: {$lista}\n\nResponda no formato: {\"textos\": [\"...\", \"...\"]}";
+        try {
+            $res = ApiHelper::chamarAnalise($prompt, true, 500);
+            if (!empty($res['sucesso']) && is_array($res['conteudo'])) {
+                $arr = $res['conteudo']['textos'] ?? $res['conteudo'];
+                if (is_array($arr) && count($arr) === count($limpos)) {
+                    return array_map(fn($t) => trim((string) $t), $arr);
+                }
+            }
+        } catch (\Throwable $e) { /* usa originais */ }
+        return $limpos;
+    }
+
+    /**
      * Cria uma headline curta e PROVOCATIVA para escrever dentro da imagem,
      * a partir do texto do slide + tema. Retorna título, subtítulo e a(s)
      * palavra(s) a destacar visualmente. Usa fallback se a IA não responder.
@@ -641,7 +670,7 @@ class MaquinaController
         try {
             $conteudos = Database::query(
                 "SELECT id, tipo, tema as titulo, status, criado_em as data,
-                        JSON_LENGTH(slides) as slides
+                        JSON_LENGTH(slides) as slides, slides
                  FROM conteudos_marca
                  WHERE marca_id = :marca_id AND usuario_id = :user_id
                    AND (status IN ('aprovado','agendado','publicado') OR salvo_biblioteca = 1)
@@ -653,7 +682,7 @@ class MaquinaController
             // Coluna salvo_biblioteca pode não existir (migration 045). Fallback:
             try {
                 $conteudos = Database::query(
-                    "SELECT id, tipo, tema as titulo, status, criado_em as data, JSON_LENGTH(slides) as slides
+                    "SELECT id, tipo, tema as titulo, status, criado_em as data, JSON_LENGTH(slides) as slides, slides
                      FROM conteudos_marca
                      WHERE marca_id = :marca_id AND usuario_id = :user_id
                        AND status IN ('aprovado','agendado','publicado')
@@ -664,6 +693,16 @@ class MaquinaController
                 $conteudos = [];
             }
         }
+        // Extrai a URL da 1ª imagem de cada conteúdo (para a miniatura do card).
+        foreach ($conteudos as &$c) {
+            $c['thumb'] = '';
+            $sl = json_decode($c['slides'] ?? '[]', true) ?: [];
+            foreach ($sl as $s) {
+                if (!empty($s['imagem_url'])) { $c['thumb'] = $s['imagem_url']; break; }
+            }
+            unset($c['slides']); // não precisa do JSON completo na view
+        }
+        unset($c);
         
         // Carregar notícias disponíveis para usar como base.
         // Usa a empresa da própria marca (funciona para ADMIN e cliente) e a
@@ -1192,12 +1231,22 @@ class MaquinaController
     private function gerarImagemDoSlide(int $conteudoId, int $slideIndex, string $instrucaoExtra = ''): array
     {
         try {
-            $conteudo = Database::queryOne(
-                "SELECT c.slides, c.marca_id, c.tipo, c.tema, m.prompt_dalle
-                 FROM conteudos_marca c JOIN marcas m ON c.marca_id = m.id
-                 WHERE c.id = :id",
-                ['id' => $conteudoId]
-            );
+            try {
+                $conteudo = Database::queryOne(
+                    "SELECT c.slides, c.marca_id, c.tipo, c.tema, m.prompt_dalle, m.logo_url
+                     FROM conteudos_marca c JOIN marcas m ON c.marca_id = m.id
+                     WHERE c.id = :id",
+                    ['id' => $conteudoId]
+                );
+            } catch (\Throwable $e) {
+                // Coluna logo_url pode não existir (migration 046).
+                $conteudo = Database::queryOne(
+                    "SELECT c.slides, c.marca_id, c.tipo, c.tema, m.prompt_dalle
+                     FROM conteudos_marca c JOIN marcas m ON c.marca_id = m.id
+                     WHERE c.id = :id",
+                    ['id' => $conteudoId]
+                );
+            }
             if (!$conteudo) {
                 return ['sucesso' => false, 'erro' => 'Conteúdo não encontrado.'];
             }
@@ -1233,6 +1282,11 @@ class MaquinaController
             $palavraDestaque = $headlineArte['destaque'] ?? '';
             // Remove pontuação final exagerada (?, !) para não virar um símbolo gigante na arte.
             $tituloImg = rtrim(trim($tituloImg), '?!.');
+            // Revisão ortográfica do título e subtítulo antes de irem para a imagem
+            // (o gerador de imagem erra letras; garantir grafia correta na arte).
+            $revisado = $this->revisarOrtografia([$tituloImg, $subImg]);
+            $tituloImg = $revisado[0] ?? $tituloImg;
+            $subImg = $revisado[1] ?? $subImg;
 
             $instrucaoTexto = '';
             if ($tituloImg !== '') {
@@ -1247,7 +1301,7 @@ class MaquinaController
                     . ($subImg !== '' ? ' NÍVEL 3 — SUBTÍTULO/FECHAMENTO: fonte FINA (light) ou itálica (o PESO MÍNIMO), tamanho sensivelmente menor que o título (proporção ~1:3 a 1:4), MESMO alinhamento à esquerda: "' . $subImg . '".' : ' NÍVEL 3 — opcional: se houver subtítulo, use fonte fina/light bem menor que o título, alinhado à esquerda.')
                     . ' HIERARQUIA DE 3 NÍVEIS OBRIGATÓRIA (tag pequena → título pesado → subtítulo fino): NUNCA use o mesmo peso de fonte em dois níveis, e mantenha um EIXO ÚNICO de alinhamento à esquerda em todo o bloco (nunca misturar centralizado com alinhado à esquerda).'
                     . ($palavraDestaque !== '' ? ' Dê destaque de cor de acento da marca a APENAS a palavra "' . $palavraDestaque . '" do título.' : '')
-                    . ' ESPAÇAMENTO: bloco de texto concentrado em UMA única área do frame (canto inferior ou lateral), ocupando no MÁXIMO 40-50% da altura, com respiro (espaço em branco) entre o texto e as bordas; nunca espalhado ou centralizado no meio da composição.'
+                    . ' ESPAÇAMENTO E POSIÇÃO: bloco de texto concentrado numa única área da METADE INFERIOR do frame, porém ELEVADO cerca de 20% acima da base (deixando uma margem inferior generosa/respiro abaixo do texto), ocupando no MÁXIMO 40-50% da altura; alinhado à esquerda, nunca colado na borda de baixo, nunca espalhado ou centralizado no meio da composição.'
                     . ' PONTUAÇÃO: evite símbolos de pontuação em tamanho desproporcional; se houver, mantenha no mesmo tamanho da fonte do título, nunca maior.'
                     . ' Grafia correta em português, sem erros e sem letras trocadas.';
             }
@@ -1285,19 +1339,35 @@ class MaquinaController
                 $avisoRef = 'Nenhum template no disco para esta marca.';
             }
 
+            // Logo da marca: se existir no disco, entra como ÚLTIMA referência e é
+            // posicionado de forma estratégica/equilibrada na arte.
+            $logoRel = (string) ($conteudo['logo_url'] ?? '');
+            $logoAbs = $logoRel !== '' ? (PUBLIC_PATH . $logoRel) : '';
+            $temLogo = ($logoAbs !== '' && is_file($logoAbs));
+            $instrucaoLogo = $temLogo
+                ? ' A ÚLTIMA imagem de referência fornecida é o LOGO da marca: insira-o na arte de forma discreta, elegante e bem posicionada (canto superior ou inferior, tamanho pequeno ~8-12% da largura), com equilíbrio e sofisticação, respeitando as cores originais do logo e sem competir com a headline.'
+                : '';
+
             if (!empty($caminhosRef)) {
                 // Descrição do template escolhido entra como COMPLEMENTO do prompt.
                 $complementoDesc = $descricaoTemplate !== ''
                     ? ' Estilo de referência a seguir fielmente: ' . mb_substr($descricaoTemplate, 0, 600) . '.'
                     : '';
+                // Anexa o logo como referência adicional (mantendo o limite de 4 total).
+                $refsComLogo = $caminhosRef;
+                if ($temLogo) {
+                    $refsComLogo = array_slice($caminhosRef, 0, 3);
+                    $refsComLogo[] = $logoAbs;
+                }
                 $promptRef = 'Gere uma nova imagem VERTICAL (retrato) para post de Instagram REPLICANDO FIELMENTE o estilo visual das imagens de referência fornecidas '
                     . '(MESMO meio/estética, paleta, iluminação, enquadramento, texturas, tipografia e clima). O estilo das referências tem PRIORIDADE sobre qualquer outra instrução.'
                     . $complementoDesc
                     . ' Assunto/cena a retratar dentro desse estilo: ' . $promptImagem . '.'
                     . $instrucaoTexto
+                    . $instrucaoLogo
                     . ' NÃO copie o texto que aparece nas imagens de referência (use-as apenas como estilo); a única escrita permitida na imagem é a HEADLINE indicada acima.';
                 $promptCompleto = $promptRef;
-                $imgResult = ApiHelper::gerarImagemComReferencia($promptRef, $caminhosRef, $tamanho);
+                $imgResult = ApiHelper::gerarImagemComReferencia($promptRef, $refsComLogo, $tamanho);
                 if (!empty($imgResult['sucesso']) && !empty($imgResult['url'])) {
                     $metodo = 'referencia';
                 } else {
@@ -1422,6 +1492,101 @@ class MaquinaController
             header('Content-Type: application/json');
             echo json_encode(['sucesso' => false, 'erro' => 'Erro interno.']);
         }
+        exit;
+    }
+
+    /** Salva as configurações do Brand Book de uma marca. */
+    public function salvarBranding(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $marcaId = (int) ($_POST['marca_id'] ?? 0);
+        if (!$marcaId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Marca não informada.']);
+            exit;
+        }
+
+        // Campos editáveis do Brand Book (só grava colunas que existirem).
+        $campos = [
+            'nome' => trim((string) ($_POST['nome'] ?? '')),
+            'nicho' => trim((string) ($_POST['nicho'] ?? '')),
+            'publico_alvo' => trim((string) ($_POST['publico_alvo'] ?? '')),
+            'tom' => trim((string) ($_POST['tom'] ?? '')),
+            'arquetipo' => trim((string) ($_POST['arquetipo'] ?? '')),
+            'palavras_usa' => trim((string) ($_POST['palavras_usa'] ?? '')),
+            'palavras_nunca' => trim((string) ($_POST['palavras_nunca'] ?? '')),
+            'diferenciais_competitivos' => trim((string) ($_POST['diferenciais_competitivos'] ?? '')),
+            'prompt_master' => trim((string) ($_POST['prompt_master'] ?? '')),
+            'prompt_dalle' => trim((string) ($_POST['prompt_dalle'] ?? '')),
+        ];
+
+        try {
+            $existentes = $this->colunasDaTabela('marcas');
+            $sets = [];
+            $params = ['id' => $marcaId];
+            foreach ($campos as $col => $val) {
+                if (in_array($col, $existentes, true)) {
+                    $sets[] = "$col = :$col";
+                    $params[$col] = $val;
+                }
+            }
+            if (empty($sets)) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Nada para salvar.']);
+                exit;
+            }
+            Database::execute("UPDATE marcas SET " . implode(', ', $sets) . " WHERE id = :id", $params);
+            Logger::acao('Brand Book atualizado', ['marca_id' => $marcaId]);
+            echo json_encode(['sucesso' => true, 'mensagem' => 'Brand Book salvo!']);
+        } catch (\Throwable $e) {
+            Logger::error('Erro ao salvar Brand Book: ' . $e->getMessage());
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro ao salvar.']);
+        }
+        exit;
+    }
+
+    /** Upload do logo da marca (Brand Book). */
+    public function uploadLogo(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $marcaId = (int) ($_POST['marca_id'] ?? 0);
+        if (!$marcaId || empty($_FILES['logo']) || $_FILES['logo']['error'] !== UPLOAD_ERR_OK) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Arquivo inválido.']);
+            exit;
+        }
+
+        $arquivo = $_FILES['logo'];
+        $ext = strtolower(pathinfo($arquivo['name'], PATHINFO_EXTENSION));
+        if (!in_array($ext, ['png', 'svg', 'jpg', 'jpeg', 'webp'], true)) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Formato não permitido. Use PNG, SVG, JPG ou WEBP.']);
+            exit;
+        }
+
+        $dir = PUBLIC_PATH . '/uploads/logos/' . $marcaId;
+        if (!is_dir($dir)) @mkdir($dir, 0755, true);
+
+        $nome = 'logo_' . uniqid() . '.' . $ext;
+        $abs = $dir . '/' . $nome;
+        $rel = '/uploads/logos/' . $marcaId . '/' . $nome;
+
+        if (!move_uploaded_file($arquivo['tmp_name'], $abs)) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Falha ao salvar o logo.']);
+            exit;
+        }
+
+        try {
+            Database::execute("UPDATE marcas SET logo_url = :u WHERE id = :id", ['u' => $rel, 'id' => $marcaId]);
+        } catch (\Throwable $e) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Coluna logo_url ausente (rode a migration 046).']);
+            exit;
+        }
+
+        Logger::acao('Logo da marca enviado', ['marca_id' => $marcaId]);
+        echo json_encode(['sucesso' => true, 'url' => APP_URL . $rel]);
         exit;
     }
 
