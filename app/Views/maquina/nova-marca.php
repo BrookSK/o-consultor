@@ -195,7 +195,7 @@
 <script>
 function marcaWizard() {
     return {
-        etapa: 1, enviando: false, gerandoBrandBook: false,
+        etapa: 1, enviando: false, gerandoBrandBook: false, carregandoDados: false,
         form: {
             empresa_id: '', // Novo campo para associar à empresa
             nome: '', nicho: '', publico: '', produtos: '', diferenciais: '', concorrentes: '', objetivos: [],
@@ -203,6 +203,8 @@ function marcaWizard() {
             paleta: ['#1E3A5F', '#E07B00', '#FFFFFF', '#F5F7FA', '#1a7a1a'],
             fonte_principal: 'Inter', fonte_secundaria: '', estilo_visual: 'Minimalista/Clean', direcao_foto: 'Misto',
         },
+        // Dados pré-carregados no servidor (empresa fixa de cliente/consultor).
+        dadosPreenchimento: <?= json_encode($dados['dados_preenchimento'] ?? null, JSON_UNESCAPED_UNICODE) ?>,
         brandBook: {
             essencia: 'Uma marca que transforma complexidade tecnológica em simplicidade para seus clientes, transmitindo confiança e expertise.',
             personalidade: 'Confiável, Técnica, Proativa, Acessível, Inovadora',
@@ -216,18 +218,91 @@ function marcaWizard() {
             this.$watch('etapa', (val) => {
                 if (val === 4) { this.gerandoBrandBook = true; setTimeout(() => this.gerandoBrandBook = false, 2500); }
             });
+
+            // Preenche com os dados carregados no servidor (cliente/consultor com empresa fixa).
+            if (this.dadosPreenchimento) {
+                this.aplicarDados(this.dadosPreenchimento);
+            }
+
+            // ADMIN_HOLDING: ao selecionar a empresa, busca e preenche os dados dela.
+            this.$watch('form.empresa_id', (id) => {
+                if (id) this.carregarDadosEmpresa(id);
+            });
         },
+
+        // Busca no servidor todos os dados conhecidos da empresa e preenche o formulário.
+        async carregarDadosEmpresa(empresaId) {
+            this.carregandoDados = true;
+            try {
+                const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/dados-empresa?empresa_id=' + encodeURIComponent(empresaId) + '&_=' + Date.now());
+                const data = await res.json();
+                if (data.sucesso && data.dados) {
+                    this.aplicarDados(data.dados, true);
+                    if (typeof Toast !== 'undefined') {
+                        Toast.sucesso(data.dados.tem_marca
+                            ? 'Dados da marca existente carregados. Edite o que precisar.'
+                            : 'Informações da empresa carregadas.');
+                    }
+                }
+            } catch (e) { /* silencioso */ }
+            this.carregandoDados = false;
+        },
+
+        // Aplica um objeto de dados aos campos do formulário (sem sobrescrever com vazio).
+        aplicarDados(d, manterEmpresaId = false) {
+            const set = (campo, valor) => { if (valor !== undefined && valor !== null && valor !== '') this.form[campo] = valor; };
+            if (!manterEmpresaId && d.empresa_id) this.form.empresa_id = String(d.empresa_id);
+            set('nome', d.nome);
+            set('nicho', d.nicho);
+            set('publico', d.publico);
+            set('produtos', d.produtos);
+            set('diferenciais', d.diferenciais);
+            set('concorrentes', d.concorrentes);
+            set('tom', d.tom);
+            set('arquetipo', d.arquetipo);
+            set('palavras_usa', d.palavras_usa);
+            set('palavras_nunca', d.palavras_nunca);
+            set('fonte_principal', d.fonte_principal);
+            set('fonte_secundaria', d.fonte_secundaria);
+            set('estilo_visual', d.estilo_visual);
+            set('direcao_foto', d.direcao_foto);
+            if (Array.isArray(d.objetivos) && d.objetivos.length) this.form.objetivos = d.objetivos;
+            if (Array.isArray(d.formatos) && d.formatos.length) this.form.formatos = d.formatos;
+            if (Array.isArray(d.paleta) && d.paleta.length) this.form.paleta = d.paleta;
+            if (d.prompt_master) this.promptMaster = d.prompt_master;
+        },
+
         async salvar() {
             this.enviando = true;
             const fd = new FormData();
             fd.append('csrf_token', '<?= Csrf::token() ?>');
+            // Envia todos os campos do wizard (antes só nome/nicho eram enviados).
+            fd.append('empresa_id', this.form.empresa_id || '');
             fd.append('nome', this.form.nome);
             fd.append('nicho', this.form.nicho);
+            fd.append('publico', this.form.publico);
+            fd.append('produtos', this.form.produtos);
+            fd.append('diferenciais', this.form.diferenciais);
+            fd.append('concorrentes', this.form.concorrentes);
+            (this.form.objetivos || []).forEach(o => fd.append('objetivos[]', o));
+            fd.append('tom', this.form.tom);
+            fd.append('arquetipo', this.form.arquetipo);
+            fd.append('palavras_usa', this.form.palavras_usa);
+            fd.append('palavras_nunca', this.form.palavras_nunca);
+            (this.form.formatos || []).forEach(f => fd.append('formatos[]', f));
+            (this.form.paleta || []).forEach(c => fd.append('paleta[]', c));
+            fd.append('fonte_principal', this.form.fonte_principal);
+            fd.append('fonte_secundaria', this.form.fonte_secundaria);
+            fd.append('estilo_visual', this.form.estilo_visual);
+            fd.append('direcao_foto', this.form.direcao_foto);
+            fd.append('prompt_master', this.promptMaster);
+            fd.append('prompt_dalle', this.brandBook.prompt_dalle);
             try {
                 const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/salvar-marca', { method: 'POST', body: fd });
                 const data = await res.json();
-                if (data.sucesso) window.location.href = data.redirect;
-            } catch(e) { alert('Erro.'); }
+                if (data.sucesso) { window.location.href = data.redirect; return; }
+                alert(data.erro || 'Erro ao salvar.');
+            } catch(e) { alert('Erro ao salvar.'); }
             this.enviando = false;
         }
     };

@@ -230,7 +230,9 @@ class Router
         $this->get('maquina-de-conteudo', 'MaquinaController', 'index');
         $this->get('maquina-de-conteudo/marca', 'MaquinaController', 'marca');
         $this->get('maquina-de-conteudo/nova-marca', 'MaquinaController', 'novaMarca');
+        $this->get('maquina-de-conteudo/dados-empresa', 'MaquinaController', 'dadosEmpresa'); // Pré-preenchimento do wizard
         $this->post('maquina-de-conteudo/salvar-marca', 'MaquinaController', 'salvarMarca');
+        $this->post('maquina-de-conteudo/excluir-marca', 'MaquinaController', 'excluirMarca');
         $this->post('maquina/gerar', 'MaquinaController', 'gerar');
         $this->get('maquina-de-conteudo/editar', 'MaquinaController', 'editar');
         $this->post('maquina-de-conteudo/aprovar', 'MaquinaController', 'aprovar');

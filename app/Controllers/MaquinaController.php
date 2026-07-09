@@ -55,21 +55,210 @@ class MaquinaController
             }
         }
         
+        // Para CLIENTE/CONSULTOR com empresa fixa, já pré-carrega os dados dela
+        // para o wizard preencher os campos automaticamente ao abrir.
+        $dadosPreenchimento = null;
+        $empresaFixa = Auth::perfil() === 'ADMIN_HOLDING' ? null : Auth::empresa();
+        if ($empresaFixa) {
+            $dadosPreenchimento = $this->montarDadosEmpresa((int) $empresaFixa);
+        }
+
         $dados = [
-            'empresas_disponiveis' => $empresasDisponiveis
+            'empresas_disponiveis' => $empresasDisponiveis,
+            'dados_preenchimento' => $dadosPreenchimento,
         ];
         require VIEW_PATH . '/maquina/nova-marca.php';
+    }
+
+    /**
+     * Endpoint JSON: retorna todos os dados conhecidos de uma empresa (cadastro,
+     * diagnóstico, central de conteúdo e marca já cadastrada) para pré-preencher
+     * o wizard de nova marca.
+     */
+    public function dadosEmpresa(): void
+    {
+        Auth::proteger();
+        header('Content-Type: application/json');
+
+        $empresaId = (int) ($_GET['empresa_id'] ?? 0);
+
+        // Cliente/consultor só pode puxar dados da própria empresa.
+        if (Auth::perfil() !== 'ADMIN_HOLDING') {
+            $empresaId = (int) Auth::empresa();
+        }
+
+        if (!$empresaId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Empresa não informada.']);
+            exit;
+        }
+
+        $dados = $this->montarDadosEmpresa($empresaId);
+        if ($dados === null) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Empresa não encontrada.']);
+            exit;
+        }
+
+        echo json_encode(['sucesso' => true, 'dados' => $dados]);
+        exit;
+    }
+
+    /**
+     * Agrega os dados da empresa vindos de: tabela empresas, último diagnóstico
+     * concluído, perfil de busca (central de conteúdo) e marca já cadastrada.
+     * Retorna um array pronto para o front preencher os campos do wizard.
+     */
+    private function montarDadosEmpresa(int $empresaId): ?array
+    {
+        $empresa = Database::queryOne(
+            "SELECT * FROM empresas WHERE id = :id",
+            ['id' => $empresaId]
+        );
+        if (!$empresa) {
+            return null;
+        }
+
+        // Base a partir do cadastro da empresa.
+        $out = [
+            'empresa_id'   => $empresaId,
+            'empresa_nome' => $empresa['nome'] ?? '',
+            'nome'         => $empresa['nome'] ?? '',
+            'nicho'        => $empresa['segmento'] ?? '',
+            'publico'      => '',
+            'produtos'     => '',
+            'diferenciais' => '',
+            'concorrentes' => '',
+            'sites'        => [],
+            'instrucoes'   => '',
+            'tem_marca'    => false,
+        ];
+
+        // Enriquecer com o último diagnóstico concluído (respostas JSON).
+        try {
+            $diag = Database::queryOne(
+                "SELECT respostas FROM diagnosticos
+                 WHERE empresa_id = :id AND status = 'concluido'
+                 ORDER BY criado_em DESC LIMIT 1",
+                ['id' => $empresaId]
+            );
+            if ($diag && !empty($diag['respostas'])) {
+                $r = json_decode($diag['respostas'], true) ?: [];
+                $out['produtos']     = $out['produtos']     ?: (string) ($r['produtos_servicos'] ?? '');
+                $out['nicho']        = $out['nicho']        ?: (string) ($r['setor'] ?? '');
+                $out['diferenciais'] = $out['diferenciais'] ?: (string) ($r['pontos_fortes'] ?? '');
+                $out['publico']      = $out['publico']      ?: (string) ($r['publico_alvo'] ?? ($r['clientes_ativos'] ?? ''));
+            }
+        } catch (\Throwable $e) {
+            // diagnóstico é opcional; ignora.
+        }
+
+        // Enriquecer com a Central de Conteúdo (sites de referência + instruções).
+        try {
+            $sites = Database::query(
+                "SELECT site_url FROM empresa_perfil_busca WHERE empresa_id = :id AND ativo = 1 ORDER BY criado_em ASC",
+                ['id' => $empresaId]
+            );
+            $out['sites'] = array_column($sites, 'site_url');
+        } catch (\Throwable $e) { /* opcional */ }
+
+        try {
+            $inst = Database::queryOne(
+                "SELECT instrucoes_busca_noticias FROM empresas WHERE id = :id",
+                ['id' => $empresaId]
+            );
+            $out['instrucoes'] = (string) ($inst['instrucoes_busca_noticias'] ?? '');
+        } catch (\Throwable $e) { /* coluna pode não existir */ }
+
+        // Se já existe uma marca cadastrada para a empresa, usar como base (preenche tudo).
+        try {
+            $marca = Database::queryOne(
+                "SELECT * FROM marcas WHERE empresa_id = :id AND ativo = 1 ORDER BY id DESC LIMIT 1",
+                ['id' => $empresaId]
+            );
+            if ($marca) {
+                $out['tem_marca'] = true;
+                $out['nome']         = $marca['nome'] ?: $out['nome'];
+                $out['nicho']        = $marca['nicho'] ?: $out['nicho'];
+                $out['publico']      = $marca['publico_alvo'] ?: $out['publico'];
+                $out['produtos']     = $marca['produtos_servicos'] ?: $out['produtos'];
+                $out['diferenciais'] = $marca['diferenciais_competitivos'] ?: $out['diferenciais'];
+                $out['concorrentes'] = $marca['concorrentes'] ?: $out['concorrentes'];
+                $out['tom']          = $marca['tom'] ?? '';
+                $out['arquetipo']    = $marca['arquetipo'] ?? '';
+                $out['palavras_usa'] = $marca['palavras_usa'] ?? '';
+                $out['palavras_nunca'] = $marca['palavras_nunca'] ?? '';
+                $out['fonte_principal'] = $marca['fonte_principal'] ?? '';
+                $out['fonte_secundaria'] = $marca['fonte_secundaria'] ?? '';
+                $out['estilo_visual'] = $marca['estilo_visual'] ?? '';
+                $out['direcao_foto'] = $marca['direcao_foto'] ?? '';
+                $out['objetivos']    = json_decode($marca['objetivos_conteudo'] ?? '[]', true) ?: [];
+                $out['formatos']     = json_decode($marca['formatos_preferenciais'] ?? '[]', true) ?: [];
+                $out['paleta']       = json_decode($marca['paleta_cores'] ?? '[]', true) ?: [];
+                $out['prompt_master'] = $marca['prompt_master'] ?? '';
+            }
+        } catch (\Throwable $e) { /* marca é opcional */ }
+
+        return $out;
+    }
+
+    /**
+     * Excluir (desativar) uma marca da empresa.
+     */
+    public function excluirMarca(): void
+    {
+        Auth::proteger();
+        Auth::exigirPerfil([Auth::ADMIN_HOLDING, Auth::CONSULTOR_INTERNO]);
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $marcaId = (int) ($_POST['marca_id'] ?? 0);
+        if (!$marcaId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'ID da marca é obrigatório.']);
+            exit;
+        }
+
+        try {
+            // ADMIN_HOLDING pode excluir qualquer marca; demais só da própria empresa.
+            if (Auth::perfil() === 'ADMIN_HOLDING') {
+                $where = 'id = :id';
+                $params = ['id' => $marcaId];
+            } else {
+                $where = 'id = :id AND empresa_id = :empresa_id';
+                $params = ['id' => $marcaId, 'empresa_id' => (int) Auth::empresa()];
+            }
+
+            $sucesso = Database::execute(
+                "UPDATE marcas SET ativo = 0 WHERE {$where}",
+                $params
+            );
+
+            if ($sucesso) {
+                Logger::acao('Marca excluída', ['marca_id' => $marcaId]);
+                echo json_encode(['sucesso' => true, 'mensagem' => 'Marca excluída!']);
+            } else {
+                echo json_encode(['sucesso' => false, 'erro' => 'Marca não encontrada.']);
+            }
+        } catch (Exception $e) {
+            Logger::error('Erro ao excluir marca: ' . $e->getMessage());
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro ao excluir marca.']);
+        }
+        exit;
     }
 
     public function salvarMarca(): void
     {
         Auth::proteger();
         Csrf::verificar();
-        
-        $empresaId = Auth::empresa();
+
+        // ADMIN_HOLDING escolhe a empresa no wizard; os demais usam a empresa da sessão.
+        if (Auth::perfil() === 'ADMIN_HOLDING') {
+            $empresaId = (int) ($_POST['empresa_id'] ?? 0) ?: (int) Auth::empresa();
+        } else {
+            $empresaId = (int) Auth::empresa();
+        }
+
         if (!$empresaId) {
             header('Content-Type: application/json');
-            echo json_encode(['sucesso' => false, 'erro' => 'Empresa não identificada']);
+            echo json_encode(['sucesso' => false, 'erro' => 'Selecione a empresa/cliente para associar a marca.']);
             exit;
         }
 
