@@ -230,6 +230,42 @@ class MaquinaController
     }
 
     /**
+     * Cria uma headline curta e PROVOCATIVA para escrever dentro da imagem,
+     * a partir do texto do slide + tema. Retorna título, subtítulo e a(s)
+     * palavra(s) a destacar visualmente. Usa fallback se a IA não responder.
+     *
+     * @return array{titulo:string, subtitulo:string, destaque:string}
+     */
+    private function criarHeadlineImagem(string $textoSlide, string $subtexto, string $tema, string $tipo): array
+    {
+        $base = trim($textoSlide) !== '' ? $textoSlide : $tema;
+        $fallback = ['titulo' => $base, 'subtitulo' => $subtexto, 'destaque' => ''];
+        if ($base === '') return $fallback;
+
+        $prompt = "Você é diretor de criação de posts para redes sociais. A partir do conteúdo abaixo, crie uma CHAMADA visual curta e IMPACTANTE para aparecer em destaque na imagem (estilo capa de post), captando a essência e provocando curiosidade.\n"
+            . "Tema: {$tema}\nTexto do slide: {$textoSlide}\n"
+            . "Regras: título com no máximo 6 palavras, provocativo (pergunta, tensão, número ou promessa); subtítulo opcional com no máximo 8 palavras; linguagem simples, sem termos técnicos em inglês; português correto.\n"
+            . "Responda APENAS em JSON: {\"titulo\": \"...\", \"subtitulo\": \"...\", \"destaque\": \"palavra ou expressão do título para dar ênfase visual\"}";
+
+        try {
+            $res = ApiHelper::chamarAnalise($prompt, true);
+            if (!empty($res['sucesso']) && is_array($res['conteudo'])) {
+                $c = $res['conteudo'];
+                $titulo = $this->limparTextoSlide((string) ($c['titulo'] ?? ''));
+                if ($titulo !== '') {
+                    return [
+                        'titulo' => $titulo,
+                        'subtitulo' => $this->limparTextoSlide((string) ($c['subtitulo'] ?? $subtexto)),
+                        'destaque' => $this->limparTextoSlide((string) ($c['destaque'] ?? '')),
+                    ];
+                }
+            }
+        } catch (\Throwable $e) { /* usa fallback */ }
+
+        return $fallback;
+    }
+
+    /**
      * Tamanho da imagem conforme o tipo/rede. Instagram feed e story usam
      * formato vertical (retrato). Os tamanhos válidos da API são 1024x1024,
      * 1024x1792 (retrato) e 1792x1024 (paisagem).
@@ -1093,14 +1129,25 @@ class MaquinaController
             $tamanho = $this->tamanhoImagemPorTipo((string) ($conteudo['tipo'] ?? ''));
 
             // Headline a ser ESCRITA dentro da imagem (como nos templates de referência).
-            // Usa o 'texto' do slide (frase de gancho); opcionalmente um subtítulo.
             $headline = trim((string) ($slides[$slideIndex]['texto'] ?? ''));
             $subheadline = trim((string) ($slides[$slideIndex]['texto_secundario'] ?? ''));
+
+            // A IA de arte cria uma HEADLINE curta e provocativa a partir do texto do
+            // slide + tema (pega a essência, deixa impactante e com gancho).
+            $headlineArte = $this->criarHeadlineImagem($headline, $subheadline, (string) ($conteudo['tema'] ?? ''), (string) ($conteudo['tipo'] ?? ''));
+            $tituloImg = $headlineArte['titulo'] ?: $headline;
+            $subImg = $headlineArte['subtitulo'] ?: $subheadline;
+            $palavraDestaque = $headlineArte['destaque'] ?? '';
+
             $instrucaoTexto = '';
-            if ($headline !== '') {
-                $instrucaoTexto = ' A imagem DEVE conter, em destaque, a seguinte HEADLINE escrita EXATAMENTE assim (sem alterar palavras, em português): "' . $headline . '"'
-                    . ($subheadline !== '' ? ' e o subtítulo: "' . $subheadline . '"' : '')
-                    . '. Componha o texto como um post de rede social: tipografia grande, legível e bem posicionada (topo ou base), com bom contraste sobre a arte, no MESMO estilo tipográfico das imagens de referência. Grafia correta em português, sem erros de ortografia e sem letras trocadas.';
+            if ($tituloImg !== '') {
+                $instrucaoTexto = ' TEXTO NA IMAGEM (renderize com tipografia de design profissional, tipo capa editorial/social, NÃO estilo documento de texto): '
+                    . 'TÍTULO principal em destaque máximo, escrito EXATAMENTE assim (em português, sem alterar palavras): "' . $tituloImg . '".'
+                    . ($palavraDestaque !== '' ? ' Dê ÊNFASE visual à(s) palavra(s) "' . $palavraDestaque . '" (maior, mais peso ou cor de destaque da marca) criando contraste com o resto do título.' : '')
+                    . ($subImg !== '' ? ' SUBTÍTULO menor e mais leve, abaixo do título: "' . $subImg . '".' : '')
+                    . ' HIERARQUIA TIPOGRÁFICA forte: título em fonte sans-serif bold/condensada de grande peso; subtítulo em peso leve; contraste claro de tamanho entre título e subtítulo. '
+                    . 'Composição orgânica e equilibrada (regra dos terços), texto integrado à cena e não centralizado como um documento, com respiro/margens, ótima legibilidade e contraste sobre a arte. '
+                    . 'Siga o MESMO estilo tipográfico das imagens de referência. Grafia correta em português, sem erros e sem letras trocadas.';
             }
 
             $imgResult = null;
