@@ -173,33 +173,54 @@ async function uploadImagem(input, conteudoId, slideIndex) {
 }
 
 async function regenerarImagem(conteudoId, slideIndex) {
-    const prompt = prompt('Digite o prompt para a nova imagem:', '');
-    if (!prompt) return;
-    
-    const fd = new FormData();
-    fd.append('csrf_token', '<?= Csrf::token() ?>');
-    fd.append('conteudo_id', conteudoId);
-    fd.append('slide_index', slideIndex);
-    fd.append('prompt_editado', prompt);
-    
+    const instrucao = window.prompt('O que ajustar nesta imagem? (ex.: corrigir a grafia da headline, fundo mais claro)', '');
+    if (instrucao === null) return;
+
+    const slideContainer = document.querySelector(`[data-slide-index="${slideIndex}"]`);
+    const img = slideContainer ? slideContainer.querySelector('img') : null;
+    if (img) img.style.opacity = '0.4';
+
     try {
-        const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/regenerar-imagem', { method: 'POST', body: fd });
+        // Enfileira a regeneração (roda em background, sem timeout do proxy).
+        const fd = new FormData();
+        fd.append('csrf_token', '<?= Csrf::token() ?>');
+        fd.append('conteudo_id', conteudoId);
+        fd.append('slide_index', slideIndex);
+        fd.append('instrucao', instrucao);
+        const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/gerar-imagem-slide', { method: 'POST', body: fd });
         const data = await res.json();
-        
-        if (data.sucesso) {
-            // Atualizar imagem na tela
-            const slideContainer = document.querySelector(`[data-slide-index="${slideIndex}"]`);
-            const img = slideContainer ? slideContainer.querySelector('img') : null;
-            if (img) {
-                img.src = data.imagem_url;
-            }
-            if (typeof Toast !== 'undefined') {
-                Toast.sucesso(data.mensagem);
-            }
-        } else {
-            alert(data.erro || 'Erro na regeneração.');
+        if (!data.sucesso) {
+            if (img) img.style.opacity = '1';
+            alert(data.erro || 'Erro ao enfileirar.');
+            return;
         }
+        if (typeof Toast !== 'undefined') Toast.sucesso('Regeneração iniciada...');
+
+        // Polling do status desse slide.
+        const esperar = (ms) => new Promise(r => setTimeout(r, ms));
+        for (let t = 0; t < 150; t++) {
+            fetch('<?= APP_URL ?>/maquina-de-conteudo/processar-imagens-bg?_=' + Date.now()).catch(() => {});
+            await esperar(2500);
+            let st;
+            try {
+                const r = await fetch('<?= APP_URL ?>/maquina-de-conteudo/status-imagens?conteudo_id=' + conteudoId + '&_=' + Date.now());
+                st = await r.json();
+            } catch (e) { continue; }
+            const item = (st.itens || []).find(i => i.slide_index === slideIndex);
+            if (item && item.status === 'concluido' && item.imagem_url) {
+                if (img) { img.src = item.imagem_url + '?t=' + Date.now(); img.style.opacity = '1'; }
+                if (typeof Toast !== 'undefined') Toast.sucesso('Imagem regenerada!');
+                return;
+            }
+            if (item && item.status === 'erro') {
+                if (img) img.style.opacity = '1';
+                alert('Falha ao regenerar.');
+                return;
+            }
+        }
+        if (img) img.style.opacity = '1';
     } catch(e) {
+        if (img) img.style.opacity = '1';
         alert('Erro de conexão.');
     }
 }

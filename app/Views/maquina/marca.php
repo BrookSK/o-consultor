@@ -180,9 +180,24 @@
                     <div><label class="block text-sm font-medium text-gray-700 mb-1">Palavras que NUNCA usa</label><input type="text" name="palavras_nunca" value="<?= htmlspecialchars($marca['palavras_nunca'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
                 </div>
 
-                <div class="md:col-span-2">
+                <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Diferenciais competitivos</label>
                     <textarea name="diferenciais_competitivos" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary resize-none"><?= htmlspecialchars($marca['diferenciais_competitivos'] ?? '') ?></textarea>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Produtos/Serviços</label>
+                    <textarea name="produtos_servicos" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary resize-none"><?= htmlspecialchars($marca['produtos_servicos'] ?? '') ?></textarea>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Concorrentes</label><input type="text" name="concorrentes" value="<?= htmlspecialchars($marca['concorrentes'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Objetivos de conteúdo</label><input type="text" name="objetivos_conteudo" value="<?= htmlspecialchars(is_array(json_decode($marca['objetivos_conteudo'] ?? '[]', true)) ? implode(', ', json_decode($marca['objetivos_conteudo'] ?? '[]', true)) : ($marca['objetivos_conteudo'] ?? '')) ?>" placeholder="Educar, Engajar, Converter..." class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Formatos preferenciais</label><input type="text" name="formatos_preferenciais" value="<?= htmlspecialchars(is_array(json_decode($marca['formatos_preferenciais'] ?? '[]', true)) ? implode(', ', json_decode($marca['formatos_preferenciais'] ?? '[]', true)) : ($marca['formatos_preferenciais'] ?? '')) ?>" placeholder="Carrossel, Post, Story..." class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Paleta de cores (hex, separados por vírgula)</label><input type="text" name="paleta_cores" value="<?= htmlspecialchars(is_array($marca['paleta_cores'] ?? null) ? implode(', ', $marca['paleta_cores']) : (is_array(json_decode($marca['paleta_cores'] ?? '[]', true)) ? implode(', ', json_decode($marca['paleta_cores'] ?? '[]', true)) : ($marca['paleta_cores'] ?? ''))) ?>" placeholder="#1E3A5F, #E07B00, #FFFFFF" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Fonte principal</label><input type="text" name="fonte_principal" value="<?= htmlspecialchars($marca['fonte_principal'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Fonte secundária</label><input type="text" name="fonte_secundaria" value="<?= htmlspecialchars($marca['fonte_secundaria'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Estilo visual</label><input type="text" name="estilo_visual" value="<?= htmlspecialchars($marca['estilo_visual'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Direção fotográfica</label><input type="text" name="direcao_foto" value="<?= htmlspecialchars($marca['direcao_foto'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
                 </div>
 
                 <div>
@@ -805,13 +820,13 @@ async function regenerarComInstrucao(conteudoId, idx, container) {
     const txt = container.querySelector('.regen-txt');
     const btn = container.querySelector('.regen-btn');
     const instrucao = txt ? txt.value.trim() : '';
-    if (btn) { btn.disabled = true; btn.textContent = '🔄 Regenerando...'; }
+    if (btn) { btn.disabled = true; btn.textContent = '🔄 Na fila...'; }
 
-    // Mostra estado de carregamento na própria imagem.
     const img = container.querySelector('img');
     if (img) img.style.opacity = '0.4';
 
     try {
+        // 1) Enfileira a regeneração (com a instrução de correção).
         const fd = new FormData();
         fd.append('csrf_token', '<?= Csrf::token() ?>');
         fd.append('conteudo_id', conteudoId);
@@ -819,21 +834,44 @@ async function regenerarComInstrucao(conteudoId, idx, container) {
         fd.append('instrucao', instrucao);
         const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/gerar-imagem-slide', { method: 'POST', body: fd });
         const data = await res.json();
-        if (data.sucesso && data.imagem_url) {
-            if (img) { img.src = data.imagem_url + '?t=' + Date.now(); img.style.opacity = '1'; }
-            if (typeof Toast !== 'undefined') Toast.sucesso('Imagem regenerada!');
-            if (data.metodo !== 'referencia' && data.aviso_ref && typeof Toast !== 'undefined') {
-                Toast.erro('Gerada SEM os templates de referência. Motivo: ' + data.aviso_ref);
-            }
-        } else {
+        if (!data.sucesso) {
             if (img) img.style.opacity = '1';
-            if (typeof Toast !== 'undefined') Toast.erro(data.erro || 'Falha ao regenerar.'); else alert(data.erro || 'Falha ao regenerar.');
+            if (btn) { btn.disabled = false; btn.textContent = '🔄 Regenerar esta imagem'; }
+            alert(data.erro || 'Falha ao enfileirar.');
+            return;
         }
+
+        // 2) Processa em background e faz polling do status DESSE slide.
+        const esperar = (ms) => new Promise(r => setTimeout(r, ms));
+        for (let t = 0; t < 150; t++) {
+            fetch('<?= APP_URL ?>/maquina-de-conteudo/processar-imagens-bg?_=' + Date.now()).catch(() => {});
+            await esperar(2500);
+            let st;
+            try {
+                const r = await fetch('<?= APP_URL ?>/maquina-de-conteudo/status-imagens?conteudo_id=' + conteudoId + '&_=' + Date.now());
+                st = await r.json();
+            } catch (e) { continue; }
+            const item = (st.itens || []).find(i => i.slide_index === idx);
+            if (item && item.status === 'concluido' && item.imagem_url) {
+                if (img) { img.src = item.imagem_url + '?t=' + Date.now(); img.style.opacity = '1'; }
+                if (btn) { btn.disabled = false; btn.textContent = '🔄 Regenerar esta imagem'; }
+                if (typeof Toast !== 'undefined') Toast.sucesso('Imagem regenerada!');
+                return;
+            }
+            if (item && item.status === 'erro') {
+                if (img) img.style.opacity = '1';
+                if (btn) { btn.disabled = false; btn.textContent = '🔄 Regenerar esta imagem'; }
+                if (typeof Toast !== 'undefined') Toast.erro('Falha ao regenerar.'); else alert('Falha ao regenerar.');
+                return;
+            }
+        }
+        // Tempo esgotado
+        if (img) img.style.opacity = '1';
+        if (btn) { btn.disabled = false; btn.textContent = '🔄 Regenerar esta imagem'; }
     } catch (e) {
         if (img) img.style.opacity = '1';
-        alert('Erro de conexão ao regenerar.');
-    } finally {
         if (btn) { btn.disabled = false; btn.textContent = '🔄 Regenerar esta imagem'; }
+        alert('Erro de conexão ao regenerar.');
     }
 }
 

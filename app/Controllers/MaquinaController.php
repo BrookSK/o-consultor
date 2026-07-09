@@ -287,10 +287,15 @@ class MaquinaController
         $fallback = ['titulo' => $base, 'subtitulo' => $subtexto, 'destaque' => ''];
         if ($base === '') return $fallback;
 
-        $prompt = "Você é diretor de criação de posts para redes sociais. A partir do conteúdo abaixo, crie uma CHAMADA visual curta e IMPACTANTE para aparecer em destaque na imagem (estilo capa de post), captando a essência e provocando curiosidade.\n"
+        $prompt = "Você é diretor de criação de posts para redes sociais. A partir do conteúdo abaixo, crie uma CHAMADA visual CURTÍSSIMA e IMPACTANTE para aparecer em destaque na imagem (estilo capa de post), captando a essência e provocando curiosidade.\n"
             . "Tema: {$tema}\nTexto do slide: {$textoSlide}\n"
-            . "Regras: título com no máximo 6 palavras, provocativo (pergunta, tensão, número ou promessa); subtítulo opcional com no máximo 8 palavras; linguagem simples, sem termos técnicos em inglês; português correto.\n"
-            . "Responda APENAS em JSON: {\"titulo\": \"...\", \"subtitulo\": \"...\", \"destaque\": \"palavra ou expressão do título para dar ênfase visual\"}";
+            . "Regras OBRIGATÓRIAS:\n"
+            . "- TÍTULO: no MÁXIMO 4 palavras (idealmente 2 a 3). Quanto MENOS texto, melhor. Provocativo (tensão, número ou promessa curta).\n"
+            . "- SUBTÍTULO: opcional e curtíssimo, no MÁXIMO 4 palavras. Deixe VAZIO se o título já for forte sozinho.\n"
+            . "- Use palavras SIMPLES e comuns em português; EVITE termos técnicos, siglas, nomes próprios difíceis e QUALQUER palavra em inglês (o texto será desenhado na imagem e palavras complexas saem com erros de grafia).\n"
+            . "- Prefira palavras curtas e de escrita fácil. Sem abreviações, sem números romanos.\n"
+            . "- Português correto, com acentuação.\n"
+            . "Responda APENAS em JSON: {\"titulo\": \"...\", \"subtitulo\": \"...\", \"destaque\": \"1 palavra do título para dar ênfase visual\"}";
 
         try {
             $res = ApiHelper::chamarAnalise($prompt, true);
@@ -973,6 +978,7 @@ class MaquinaController
                 status ENUM('pendente','processando','concluido','erro','cancelado') NOT NULL DEFAULT 'pendente',
                 tentativas INT UNSIGNED NOT NULL DEFAULT 0,
                 mensagem VARCHAR(500) NULL,
+                instrucao TEXT NULL,
                 criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 atualizado_em DATETIME NULL,
                 INDEX idx_conteudo (conteudo_id),
@@ -980,6 +986,16 @@ class MaquinaController
                 UNIQUE KEY uk_conteudo_slide (conteudo_id, slide_index)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
         );
+        // Garante a coluna instrucao em bancos que já tinham a tabela.
+        try {
+            $existe = Database::queryOne(
+                "SELECT COUNT(*) AS t FROM information_schema.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'fila_imagens_conteudo' AND COLUMN_NAME = 'instrucao'"
+            );
+            if ((int) ($existe['t'] ?? 0) === 0) {
+                Database::execute("ALTER TABLE fila_imagens_conteudo ADD COLUMN instrucao TEXT NULL");
+            }
+        } catch (\Throwable $e) { /* ignora */ }
     }
 
     /** Dispara o worker CLI que processa a fila de imagens (best-effort). */
@@ -1027,7 +1043,7 @@ class MaquinaController
             ['id' => $filaId]
         );
 
-        $res = $this->gerarImagemDoSlide((int) $item['conteudo_id'], (int) $item['slide_index']);
+        $res = $this->gerarImagemDoSlide((int) $item['conteudo_id'], (int) $item['slide_index'], (string) ($item['instrucao'] ?? ''));
 
         if (!empty($res['sucesso'])) {
             Database::execute("UPDATE fila_imagens_conteudo SET status='concluido', mensagem=:m, atualizado_em=NOW() WHERE id=:id",
@@ -1207,7 +1223,6 @@ class MaquinaController
     {
         Auth::proteger();
         Csrf::verificar();
-        @set_time_limit(180);
         header('Content-Type: application/json');
 
         $conteudoId = (int) ($_POST['conteudo_id'] ?? 0);
@@ -1218,8 +1233,27 @@ class MaquinaController
             exit;
         }
 
-        $res = $this->gerarImagemDoSlide($conteudoId, $slideIndex, $instrucao);
-        echo json_encode($res);
+        // Enfileira (regenerar/gerar 1 slide) e processa em BACKGROUND — a geração
+        // leva >60s e estouraria o timeout do proxy se fosse síncrona.
+        $this->garantirTabelaFilaImagens();
+        try {
+            Database::execute(
+                "INSERT INTO fila_imagens_conteudo (conteudo_id, slide_index, status, instrucao, criado_em, atualizado_em)
+                 VALUES (:cid, :idx, 'pendente', :inst, NOW(), NOW())
+                 ON DUPLICATE KEY UPDATE status='pendente', tentativas=0, instrucao=:inst2, atualizado_em=NOW()",
+                ['cid' => $conteudoId, 'idx' => $slideIndex, 'inst' => $instrucao ?: null, 'inst2' => $instrucao ?: null]
+            );
+        } catch (\Throwable $e) {
+            // Fallback sem a coluna instrucao (migration 047 não rodada).
+            Database::execute(
+                "INSERT INTO fila_imagens_conteudo (conteudo_id, slide_index, status, criado_em, atualizado_em)
+                 VALUES (:cid, :idx, 'pendente', NOW(), NOW())
+                 ON DUPLICATE KEY UPDATE status='pendente', tentativas=0, atualizado_em=NOW()",
+                ['cid' => $conteudoId, 'idx' => $slideIndex]
+            );
+        }
+
+        echo json_encode(['sucesso' => true, 'enfileirado' => true, 'slide_index' => $slideIndex]);
         exit;
     }
 
@@ -1282,28 +1316,40 @@ class MaquinaController
             $palavraDestaque = $headlineArte['destaque'] ?? '';
             // Remove pontuação final exagerada (?, !) para não virar um símbolo gigante na arte.
             $tituloImg = rtrim(trim($tituloImg), '?!.');
+            // Rede de segurança: menos texto = menos erro de grafia no gpt-image-1.
+            // Limita o título a no máx. 4 palavras e o subtítulo a no máx. 4.
+            $limitarPalavras = static function (string $t, int $max): string {
+                $p = preg_split('/\s+/', trim($t)) ?: [];
+                $p = array_values(array_filter($p, fn($x) => $x !== ''));
+                return implode(' ', array_slice($p, 0, $max));
+            };
+            $tituloImg = $limitarPalavras($tituloImg, 4);
+            $subImg = $limitarPalavras($subImg, 4);
             // Revisão ortográfica do título e subtítulo antes de irem para a imagem
             // (o gerador de imagem erra letras; garantir grafia correta na arte).
             $revisado = $this->revisarOrtografia([$tituloImg, $subImg]);
-            $tituloImg = $revisado[0] ?? $tituloImg;
-            $subImg = $revisado[1] ?? $subImg;
+            $tituloImg = $limitarPalavras($revisado[0] ?? $tituloImg, 4);
+            $subImg = $limitarPalavras($revisado[1] ?? $subImg, 4);
 
             $instrucaoTexto = '';
             if ($tituloImg !== '') {
-                // Tag superior curta (rótulo de contexto, 3-4 palavras no máximo).
-                $tagSuperior = strtoupper(mb_substr(trim((string) ($conteudo['tema'] ?? 'DESTAQUE')), 0, 22));
+                // Tag superior curta (rótulo de contexto, 2-3 primeiras palavras do
+                // tema, sem cortar no meio de uma palavra).
+                $palavrasTema = preg_split('/\s+/', trim((string) ($conteudo['tema'] ?? 'DESTAQUE')));
+                $tagSuperior = strtoupper(implode(' ', array_slice(array_filter($palavrasTema), 0, 3)));
                 // IMPORTANTE: reestruturar APENAS a HIERARQUIA/ESTRUTURA do texto.
                 // Paleta, cores, tipografia da marca e estética vêm dos TEMPLATES de
                 // referência — não impor cores/paleta aqui.
                 $instrucaoTexto = ' SISTEMA EDITORIAL DE TEXTO (reestruture APENAS a hierarquia e a estrutura do texto; MANTENHA a paleta de cores, a tipografia e a identidade visual das imagens de referência da marca):'
                     . ' NÍVEL 1 — TAG SUPERIOR: rótulo de contexto curto em CAIXA ALTA (máx. 3-4 palavras), fonte condensada/bold em tamanho PEQUENO, funcionando como um selo ACIMA do título (não faz parte do título), alinhado à ESQUERDA, nunca centralizado: "' . $tagSuperior . '".'
-                    . ' NÍVEL 2 — TÍTULO PRINCIPAL: o PESO MÁXIMO da família tipográfica (extra bold/black), tamanho grande ocupando a maior área de destaque, quebrado em 2 a 3 LINHAS CURTAS (evitar linha única longa), com line-height REDUZIDO (linhas coladas, bloco compacto), alinhado à ESQUERDA. Texto EXATO (em português): "' . $tituloImg . '".'
+                    . ' NÍVEL 2 — TÍTULO PRINCIPAL: o PESO MÁXIMO da família tipográfica (extra bold/black), tamanho grande ocupando a maior área de destaque, em 1 a 2 LINHAS CURTAS, com line-height REDUZIDO (linhas coladas, bloco compacto), alinhado à ESQUERDA. Texto EXATO (em português), sem alterar nenhuma palavra: "' . $tituloImg . '".'
                     . ($subImg !== '' ? ' NÍVEL 3 — SUBTÍTULO/FECHAMENTO: fonte FINA (light) ou itálica (o PESO MÍNIMO), tamanho sensivelmente menor que o título (proporção ~1:3 a 1:4), MESMO alinhamento à esquerda: "' . $subImg . '".' : ' NÍVEL 3 — opcional: se houver subtítulo, use fonte fina/light bem menor que o título, alinhado à esquerda.')
                     . ' HIERARQUIA DE 3 NÍVEIS OBRIGATÓRIA (tag pequena → título pesado → subtítulo fino): NUNCA use o mesmo peso de fonte em dois níveis, e mantenha um EIXO ÚNICO de alinhamento à esquerda em todo o bloco (nunca misturar centralizado com alinhado à esquerda).'
                     . ($palavraDestaque !== '' ? ' Dê destaque de cor de acento da marca a APENAS a palavra "' . $palavraDestaque . '" do título.' : '')
                     . ' ESPAÇAMENTO E POSIÇÃO: bloco de texto concentrado numa única área da METADE INFERIOR do frame, porém ELEVADO cerca de 20% acima da base (deixando uma margem inferior generosa/respiro abaixo do texto), ocupando no MÁXIMO 40-50% da altura; alinhado à esquerda, nunca colado na borda de baixo, nunca espalhado ou centralizado no meio da composição.'
                     . ' PONTUAÇÃO: evite símbolos de pontuação em tamanho desproporcional; se houver, mantenha no mesmo tamanho da fonte do título, nunca maior.'
-                    . ' Grafia correta em português, sem erros e sem letras trocadas.';
+                    . ' DESIGN AVANÇADO (acabamento editorial premium, nível de revista/branding): use grid e alinhamento precisos, generoso espaço negativo, uma pequena linha/filete ou elemento gráfico sutil de acento para ancorar o bloco, contraste forte entre o título pesado e o subtítulo fino, e integração elegante entre o texto e a cena (o texto pousa sobre uma área de respiro da imagem, sem poluição). Composição sofisticada, limpa e moderna — nada de visual amador tipo "documento de Word".'
+                    . ' GRAFIA (CRÍTICO): escreva o texto EXATAMENTE como fornecido, letra por letra, em português correto e com acentuação certa. NÃO invente, traduza, abrevie nem troque letras. Como o texto é curto, capriche na precisão de cada caractere. Se não conseguir renderizar uma palavra com perfeição, prefira reduzir o tamanho a escrevê-la errada.';
             }
 
             $imgResult = null;
@@ -1508,16 +1554,31 @@ class MaquinaController
             exit;
         }
 
+        // Converte listas separadas por vírgula em JSON (colunas JSON da tabela).
+        $paraJson = static function (string $v): string {
+            $itens = array_values(array_filter(array_map('trim', explode(',', $v)), fn($x) => $x !== ''));
+            return json_encode($itens, JSON_UNESCAPED_UNICODE);
+        };
+
         // Campos editáveis do Brand Book (só grava colunas que existirem).
         $campos = [
             'nome' => trim((string) ($_POST['nome'] ?? '')),
             'nicho' => trim((string) ($_POST['nicho'] ?? '')),
             'publico_alvo' => trim((string) ($_POST['publico_alvo'] ?? '')),
+            'produtos_servicos' => trim((string) ($_POST['produtos_servicos'] ?? '')),
+            'diferenciais_competitivos' => trim((string) ($_POST['diferenciais_competitivos'] ?? '')),
+            'concorrentes' => trim((string) ($_POST['concorrentes'] ?? '')),
             'tom' => trim((string) ($_POST['tom'] ?? '')),
             'arquetipo' => trim((string) ($_POST['arquetipo'] ?? '')),
             'palavras_usa' => trim((string) ($_POST['palavras_usa'] ?? '')),
             'palavras_nunca' => trim((string) ($_POST['palavras_nunca'] ?? '')),
-            'diferenciais_competitivos' => trim((string) ($_POST['diferenciais_competitivos'] ?? '')),
+            'fonte_principal' => trim((string) ($_POST['fonte_principal'] ?? '')),
+            'fonte_secundaria' => trim((string) ($_POST['fonte_secundaria'] ?? '')),
+            'estilo_visual' => trim((string) ($_POST['estilo_visual'] ?? '')),
+            'direcao_foto' => trim((string) ($_POST['direcao_foto'] ?? '')),
+            'objetivos_conteudo' => $paraJson((string) ($_POST['objetivos_conteudo'] ?? '')),
+            'formatos_preferenciais' => $paraJson((string) ($_POST['formatos_preferenciais'] ?? '')),
+            'paleta_cores' => $paraJson((string) ($_POST['paleta_cores'] ?? '')),
             'prompt_master' => trim((string) ($_POST['prompt_master'] ?? '')),
             'prompt_dalle' => trim((string) ($_POST['prompt_dalle'] ?? '')),
         ];
