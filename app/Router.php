@@ -213,6 +213,7 @@ class Router
         $this->post('noticias/adicionar-site', 'NoticiasController', 'adicionarSite');
         $this->get('noticias/status-fila-busca', 'NoticiasController', 'statusBuscaFila');           // Polling do status da busca
         $this->get('noticias/processar-fila-busca', 'NoticiasController', 'processarFilaBuscaHttp'); // Processa 1 passo da fila (fallback sem cron)
+        $this->get('noticias/preencher-imagens', 'NoticiasController', 'preencherImagensFaltantes');  // Backfill de og:image nas notícias salvas
         $this->post('noticias/remover-site', 'NoticiasController', 'removerSite');
 
         // Academy SSO

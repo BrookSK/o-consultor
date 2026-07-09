@@ -341,13 +341,82 @@ class NoticiasController
     }
 
     /**
+     * Extrai a imagem de capa da página de uma notícia lendo as meta tags
+     * og:image / twitter:image (padrão Open Graph, usado por todos os portais).
+     * Retorna a URL absoluta da imagem ou null se não encontrar/acessar.
+     */
+    private function extrairImagemDaPagina(string $url): ?string
+    {
+        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+            return null;
+        }
+
+        try {
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_MAXREDIRS      => 5,
+                CURLOPT_TIMEOUT        => 8,
+                CURLOPT_CONNECTTIMEOUT => 5,
+                CURLOPT_SSL_VERIFYPEER => false,
+                // Baixa só o começo do HTML (as meta tags ficam no <head>).
+                CURLOPT_RANGE          => '0-131072',
+                CURLOPT_USERAGENT      => 'Mozilla/5.0 (compatible; OConsultorBot/1.0; +https://app.oconsultor.digital)',
+                CURLOPT_HTTPHEADER     => ['Accept: text/html,application/xhtml+xml'],
+            ]);
+            $html = curl_exec($ch);
+            $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if (!$html || $httpCode >= 400) {
+                return null;
+            }
+
+            // Procura og:image / twitter:image (com property ou name, em qualquer ordem de atributos).
+            $padroes = [
+                '/<meta[^>]+(?:property|name)=["\']og:image(?::url)?["\'][^>]+content=["\']([^"\']+)["\']/i',
+                '/<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\']og:image(?::url)?["\']/i',
+                '/<meta[^>]+(?:property|name)=["\']twitter:image(?::src)?["\'][^>]+content=["\']([^"\']+)["\']/i',
+                '/<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\']twitter:image(?::src)?["\']/i',
+            ];
+            foreach ($padroes as $padrao) {
+                if (preg_match($padrao, $html, $m) && !empty($m[1])) {
+                    $img = html_entity_decode(trim($m[1]), ENT_QUOTES);
+                    // Resolve URLs relativas/protocol-relative para absolutas.
+                    if (str_starts_with($img, '//')) {
+                        $scheme = parse_url($url, PHP_URL_SCHEME) ?: 'https';
+                        $img = $scheme . ':' . $img;
+                    } elseif (str_starts_with($img, '/')) {
+                        $scheme = parse_url($url, PHP_URL_SCHEME) ?: 'https';
+                        $host = parse_url($url, PHP_URL_HOST);
+                        if ($host) $img = $scheme . '://' . $host . $img;
+                    }
+                    if (filter_var($img, FILTER_VALIDATE_URL)) {
+                        return mb_substr($img, 0, 1000);
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[O CONSULTOR][OG-IMAGE] Falha ao extrair imagem de ' . $url . ': ' . $e->getMessage());
+        }
+
+        return null;
+    }
+
+    /**
      * Salvar notícia no banco de dados
      */
     private function salvarNoticia(int $empresaId, array $noticia, array $analise, string $apiUtilizada): bool
     {
-        // imagem_url é opcional (a IA pode não encontrar uma imagem de capa).
+        // imagem_url é opcional. 1º tenta a que veio da busca (return_images);
+        // se não tiver, extrai a og:image da própria página da notícia — que é
+        // a imagem de capa que todo portal de notícia expõe nas meta tags.
         $imagemUrl = trim((string) ($noticia['imagem_url'] ?? ''));
         $imagemUrl = filter_var($imagemUrl, FILTER_VALIDATE_URL) ? $imagemUrl : null;
+        if ($imagemUrl === null && !empty($noticia['url'])) {
+            $imagemUrl = $this->extrairImagemDaPagina((string) $noticia['url']);
+        }
 
         try {
             return Database::execute(
@@ -680,6 +749,28 @@ class NoticiasController
                 INDEX idx_empresa (empresa_id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
         );
+
+        // Garante a coluna imagem_url em noticias (migration 035 pode não ter rodado).
+        $this->garantirColunaImagemUrl();
+    }
+
+    /**
+     * Garante que a coluna noticias.imagem_url existe (idempotente).
+     * Evita depender de a migration 035 ter sido executada manualmente.
+     */
+    private function garantirColunaImagemUrl(): void
+    {
+        try {
+            $existe = Database::queryOne(
+                "SELECT COUNT(*) AS total FROM information_schema.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'noticias' AND COLUMN_NAME = 'imagem_url'"
+            );
+            if ((int) ($existe['total'] ?? 0) === 0) {
+                Database::execute("ALTER TABLE noticias ADD COLUMN imagem_url VARCHAR(1000) NULL AFTER url");
+            }
+        } catch (\Throwable $e) {
+            error_log('[O CONSULTOR][IMAGEM-URL] Falha ao garantir coluna imagem_url (ignorada): ' . $e->getMessage());
+        }
     }
 
     /**
@@ -997,6 +1088,67 @@ class NoticiasController
         );
 
         return ['sucesso' => true, 'concluido' => false, 'mensagem' => $mensagem];
+    }
+
+    /**
+     * Preenche a imagem de capa (og:image) de notícias já salvas que estão sem
+     * imagem. Processa em pequenos lotes para não estourar tempo/limite.
+     * Retorna quantas foram atualizadas.
+     */
+    public function backfillImagensNoticias(int $empresaId, int $limite = 8): int
+    {
+        try {
+            $semImagem = Database::query(
+                "SELECT id, url FROM noticias
+                 WHERE empresa_id = :empresa_id
+                   AND (imagem_url IS NULL OR imagem_url = '')
+                   AND url IS NOT NULL AND url <> ''
+                 ORDER BY criado_em DESC
+                 LIMIT {$limite}",
+                ['empresa_id' => $empresaId]
+            );
+        } catch (\Throwable $e) {
+            // Coluna imagem_url pode não existir ainda (migration 035 não rodada).
+            return 0;
+        }
+
+        $atualizadas = 0;
+        foreach ($semImagem as $n) {
+            $img = $this->extrairImagemDaPagina((string) $n['url']);
+            if ($img !== null) {
+                try {
+                    Database::execute(
+                        "UPDATE noticias SET imagem_url = :img WHERE id = :id",
+                        ['img' => $img, 'id' => $n['id']]
+                    );
+                    $atualizadas++;
+                } catch (\Throwable $e) {
+                    error_log('[O CONSULTOR][OG-IMAGE-BACKFILL] Falha ao atualizar notícia ' . $n['id'] . ': ' . $e->getMessage());
+                }
+            }
+        }
+        return $atualizadas;
+    }
+
+    /**
+     * Endpoint: preenche imagens faltantes das notícias já salvas (chamado pelo
+     * front após carregar o feed, para exibir capas sem precisar refazer a busca).
+     */
+    public function preencherImagensFaltantes(): void
+    {
+        Auth::proteger();
+        @set_time_limit(90);
+        header('Content-Type: application/json');
+
+        $empresaId = Auth::empresa();
+        if (!$empresaId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Empresa não identificada.']);
+            exit;
+        }
+
+        $atualizadas = $this->backfillImagensNoticias($empresaId, 12);
+        echo json_encode(['sucesso' => true, 'atualizadas' => $atualizadas]);
+        exit;
     }
 
     private function concluirFilaBusca(int $filaId, int $logId, string $apiUtilizada, int $encontradas, int $novas, int $duplicadas, int $empresaId): array

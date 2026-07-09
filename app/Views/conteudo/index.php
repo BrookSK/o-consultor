@@ -387,6 +387,25 @@ async function atualizarFeedComRecentes() {
         if (data.sucesso) {
             renderizarFeedNoticias(data.noticias);
             if (data.paginacao) renderizarPaginacao(data.paginacao);
+            // Preenche as capas (og:image) que ainda estiverem faltando e recarrega.
+            await preencherImagensFaltantes();
+        }
+    } catch (e) { /* silencioso */ }
+}
+
+// Extrai a og:image das páginas das notícias que ainda estão sem capa e,
+// se preencher alguma, recarrega o feed para exibir as imagens.
+async function preencherImagensFaltantes() {
+    try {
+        const res = await fetch('<?= APP_URL ?>/noticias/preencher-imagens?_=' + Date.now());
+        const data = await res.json();
+        if (data.sucesso && data.atualizadas > 0) {
+            const res2 = await fetch('<?= APP_URL ?>/central-de-conteudo/noticias-recentes?_=' + Date.now());
+            const data2 = await res2.json();
+            if (data2.sucesso) {
+                renderizarFeedNoticias(data2.noticias);
+                if (data2.paginacao) renderizarPaginacao(data2.paginacao);
+            }
         }
     } catch (e) { /* silencioso */ }
 }
@@ -511,6 +530,10 @@ document.addEventListener('DOMContentLoaded', function() {
             total_paginas: parseInt(wrap.dataset.totalPaginas || '1', 10),
             total_itens: parseInt(document.getElementById('paginacao-total')?.textContent || '0', 10),
         });
+    }
+    // Preenche capas faltantes das notícias já existentes (em background).
+    if (document.querySelector('#feed-noticias')) {
+        preencherImagensFaltantes();
     }
 });
 
