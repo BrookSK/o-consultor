@@ -516,6 +516,9 @@ class MaquinaController
 
         $marcaId = (int) ($_POST['marca_id'] ?? 1);
         $tipo = htmlspecialchars(trim($_POST['tipo'] ?? 'carrossel'));
+        // Quantidade de slides do carrossel (3 a 10). Só se aplica a carrossel.
+        $qtdSlides = (int) ($_POST['qtd_slides'] ?? 7);
+        $qtdSlides = max(3, min(10, $qtdSlides ?: 7));
         $tema = htmlspecialchars(trim($_POST['tema'] ?? ''));
         $objetivo = htmlspecialchars(trim($_POST['objetivo'] ?? 'educar'));
         $estiloImagem = htmlspecialchars(trim($_POST['estilo_imagem'] ?? 'ia'));
@@ -580,7 +583,7 @@ class MaquinaController
         }
 
         // 3. PASSO 1 — Geração de texto via IA com contexto da jornada
-        $prompt = ApiHelper::buildPromptConteudoContextualizado($marca, $tipo, $tema, $objetivo, $noticiaBase, $contextoJornada, $literaturaBase);
+        $prompt = ApiHelper::buildPromptConteudoContextualizado($marca, $tipo, $tema, $objetivo, $noticiaBase, $contextoJornada, $literaturaBase, $qtdSlides);
         $resIA = ApiHelper::chamarAnalise($prompt, true);
 
         if (!$resIA['sucesso'] || !is_array($resIA['conteudo'])) {
@@ -1131,18 +1134,29 @@ class MaquinaController
     private function baixarImagemDalle(string $urlDalle, int $marcaId): ?string
     {
         try {
-            // Fazer download da imagem
-            $ch = curl_init($urlDalle);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            $imagemData = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-            
-            if ($httpCode !== 200 || !$imagemData) {
-                Logger::error('Falha no download DALL-E', ['url' => $urlDalle, 'http_code' => $httpCode]);
-                return null;
+            // Suporte a imagem em base64 (data URI), formato do gpt-image-1.
+            if (str_starts_with($urlDalle, 'data:')) {
+                $virgula = strpos($urlDalle, ',');
+                $base64 = $virgula !== false ? substr($urlDalle, $virgula + 1) : '';
+                $imagemData = base64_decode($base64, true);
+                if ($imagemData === false || $imagemData === '') {
+                    Logger::error('Falha ao decodificar imagem base64');
+                    return null;
+                }
+            } else {
+                // Fazer download da imagem por URL (dall-e).
+                $ch = curl_init($urlDalle);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+                $imagemData = curl_exec($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
+
+                if ($httpCode !== 200 || !$imagemData) {
+                    Logger::error('Falha no download da imagem', ['http_code' => $httpCode]);
+                    return null;
+                }
             }
             
             // Criar diretório se não existir

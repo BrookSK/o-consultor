@@ -490,54 +490,78 @@ class ApiHelper
         $apiKey = self::config('openai_key');
 
         if (empty($apiKey)) {
-            return ['sucesso' => false, 'url' => null, 'erro' => 'Chave OpenAI não configurada para DALL-E.'];
+            return ['sucesso' => false, 'url' => null, 'erro' => 'Chave OpenAI não configurada para geração de imagens.'];
         }
 
-        $resultado = self::executarCurl(
+        // Modelo de imagem configurável (padrão gpt-image-1 — dall-e-3 foi
+        // descontinuado/indisponível em várias contas). Configure em
+        // Admin > Configurações como 'openai_imagem_modelo' se necessário.
+        $modelo = self::config('openai_imagem_modelo', 'gpt-image-1');
+
+        $resultado = self::gerarImagemRequest($apiKey, $modelo, $prompt, $size);
+
+        if (!$resultado['sucesso']) {
+            $erro = $resultado['erro'] ?? '';
+            // Se o modelo não existe/indisponível, tenta fallback automático.
+            if (stripos($erro, 'does not exist') !== false || stripos($erro, 'invalid_value') !== false || stripos($erro, 'model') !== false) {
+                foreach (['gpt-image-1', 'dall-e-3', 'dall-e-2'] as $fallback) {
+                    if ($fallback === $modelo) continue;
+                    $tentativa = self::gerarImagemRequest($apiKey, $fallback, $prompt, $size);
+                    if ($tentativa['sucesso']) { $resultado = $tentativa; break; }
+                }
+            }
+            // Se rejeitado por política de conteúdo, simplifica o prompt.
+            if (!$resultado['sucesso'] && stripos($erro, 'content_policy') !== false) {
+                $resultado = self::gerarImagemRequest($apiKey, $modelo, self::simplificarPromptImagem($prompt), $size);
+            }
+            if (!$resultado['sucesso']) {
+                return ['sucesso' => false, 'url' => null, 'erro' => $resultado['erro'] ?? 'Imagem não gerada.'];
+            }
+        }
+
+        // Extrai URL ou base64 da resposta (formatos variam entre modelos).
+        $item = $resultado['dados']['data'][0] ?? [];
+        if (!empty($item['url'])) {
+            return ['sucesso' => true, 'url' => $item['url'], 'erro' => null];
+        }
+        if (!empty($item['b64_json'])) {
+            // Devolve como data URI para reaproveitar a lógica de download existente.
+            return ['sucesso' => true, 'url' => 'data:image/png;base64,' . $item['b64_json'], 'erro' => null];
+        }
+
+        self::logErro('Imagem', 'Resposta sem URL/b64 de imagem', $resultado['dados']);
+        return ['sucesso' => false, 'url' => null, 'erro' => 'Imagem não retornada pela API.'];
+    }
+
+    /**
+     * Executa a requisição de geração de imagem para um modelo específico,
+     * montando o corpo conforme as particularidades de cada modelo.
+     */
+    private static function gerarImagemRequest(string $apiKey, string $modelo, string $prompt, string $size): array
+    {
+        $body = [
+            'model'  => $modelo,
+            'prompt' => $prompt,
+            'n'      => 1,
+            'size'   => $size,
+        ];
+        // 'quality' e 'response_format' têm valores/aceitação diferentes por modelo.
+        if (stripos($modelo, 'dall-e') !== false) {
+            $body['quality'] = 'standard';
+            $body['response_format'] = 'url'; // dall-e retorna URL temporária
+        }
+        // gpt-image-1: retorna b64_json por padrão; não aceita response_format=url.
+
+        return self::executarCurl(
             'https://api.openai.com/v1/images/generations',
             [
                 'Authorization: Bearer ' . $apiKey,
                 'Content-Type: application/json',
             ],
-            [
-                'model'   => 'dall-e-3',
-                'prompt'  => $prompt,
-                'n'       => 1,
-                'size'    => $size,
-                'quality' => 'standard',
-            ],
-            'DALL-E'
+            $body,
+            'Imagem(' . $modelo . ')',
+            120
         );
-
-        if (!$resultado['sucesso']) {
-            // Tentar com prompt simplificado se DALL-E rejeitou
-            if (strpos(isset($resultado['erro']) ? $resultado['erro'] : '', 'content_policy') !== false) {
-                $promptSimplificado = self::simplificarPromptImagem($prompt);
-                $resultado = self::executarCurl(
-                    'https://api.openai.com/v1/images/generations',
-                    [
-                        'Authorization: Bearer ' . $apiKey,
-                        'Content-Type: application/json',
-                    ],
-                    ['model' => 'dall-e-3', 'prompt' => $promptSimplificado, 'n' => 1, 'size' => $size, 'quality' => 'standard'],
-                    'DALL-E (retry simplificado)'
-                );
-                if (!$resultado['sucesso']) {
-                    return ['sucesso' => false, 'url' => null, 'erro' => 'Imagem não gerada — prompt rejeitado após ajuste.'];
-                }
-            } else {
-                return $resultado;
-            }
-        }
-
-        $url = isset($resultado['dados']['data'][0]['url']) ? $resultado['dados']['data'][0]['url'] : null;
-
-        if (!$url) {
-            self::logErro('DALL-E', 'Resposta sem URL de imagem', $resultado['dados']);
-            return ['sucesso' => false, 'url' => null, 'erro' => 'Imagem não retornada pela API.'];
-        }
-
-        return ['sucesso' => true, 'url' => $url, 'erro' => null];
     }
 
     // =========================================================================
@@ -1610,8 +1634,9 @@ Responda APENAS em JSON válido, sem explicações.";
     /**
      * Gera prompt contextualizado com dados da jornada do cliente
      */
-    public static function buildPromptConteudoContextualizado(array $marca, string $tipo, string $tema, string $objetivo, ?string $noticiaBase = null, array $contextoJornada = [], ?string $literaturaBase = null): string
+    public static function buildPromptConteudoContextualizado(array $marca, string $tipo, string $tema, string $objetivo, ?string $noticiaBase = null, array $contextoJornada = [], ?string $literaturaBase = null, int $qtdSlides = 7): string
     {
+        $qtdSlides = max(3, min(10, $qtdSlides ?: 7));
         $contextoNoticia = $noticiaBase ? "\n\nBASEADO NA NOTÍCIA:\n{$noticiaBase}" : '';
 
         // Base de literatura (RAG na Biblioteca): trechos reais dos PDFs do cliente.
@@ -1634,7 +1659,7 @@ Responda APENAS em JSON válido, sem explicações.";
    • FECHAMENTO (últimos slides): síntese do aprendizado + uma conclusão que agregue valor + CTA coerente com o objetivo.
 4. VALOR REAL: o post deve ENSINAR algo. Priorize utilidade, clareza e profundidade acessível — nada de texto genérico ou raso. Traga pelo menos uma curiosidade ou insight não óbvio.
 5. DIDÁTICA: linguagem clara, explique termos técnicos, use analogias quando ajudar. Cada slide deve fazer sentido sozinho e também na sequência.
-6. QUANTIDADE: gere slides suficientes para desenvolver o raciocínio completo (para carrossel, priorize 6 a 9 slides bem encadeados).";
+6. QUANTIDADE: respeite a quantidade de slides solicitada, distribuindo abertura, desenvolvimento e fechamento de forma equilibrada e bem encadeada.";
         }
 
         // Construir contexto da jornada
@@ -1673,7 +1698,7 @@ Responda APENAS em JSON válido, sem explicações.";
 
         switch($tipo) {
             case 'carrossel':
-                $instrucoesTipo = 'Para CARROSSEL gere JSON com estrutura: {\"slides\": [{\"numero\": 1, \"tipo\": \"capa\", \"texto\": \"título principal\", \"texto_secundario\": \"subtítulo opcional\", \"prompt_imagem\": \"descrição detalhada da imagem\"}, {\"numero\": 2, \"tipo\": \"conteudo\", \"texto\": \"conteúdo do slide\", \"prompt_imagem\": \"descrição da imagem\"}], \"legenda\": \"texto da legenda com call-to-action\", \"hashtags\": \"#tag1 #tag2 #tag3\"}';
+                $instrucoesTipo = "Para CARROSSEL gere EXATAMENTE {$qtdSlides} slides (nem mais, nem menos) no JSON, na estrutura: {\"slides\": [{\"numero\": 1, \"tipo\": \"capa\", \"texto\": \"título principal\", \"texto_secundario\": \"subtítulo opcional\", \"prompt_imagem\": \"descrição detalhada da imagem\"}, {\"numero\": 2, \"tipo\": \"conteudo\", \"texto\": \"conteúdo do slide\", \"prompt_imagem\": \"descrição da imagem\"}], \"legenda\": \"texto da legenda com call-to-action\", \"hashtags\": \"#tag1 #tag2 #tag3\"}. O primeiro slide é a capa e o último deve conter a conclusão/CTA. O array 'slides' deve ter {$qtdSlides} itens.";
                 break;
             case 'post':
                 $instrucoesTipo = 'Para POST gere JSON com estrutura: {\"slides\": [{\"numero\": 1, \"tipo\": \"unico\", \"texto\": \"conteúdo principal\", \"prompt_imagem\": \"descrição da imagem\"}], \"legenda\": \"texto da legenda\", \"hashtags\": \"#tag1 #tag2\"}';

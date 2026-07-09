@@ -41,14 +41,23 @@
                 <form id="form-gerar" class="space-y-4">
                     <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
                     <input type="hidden" name="marca_id" value="<?= $marca['id'] ?>">
-                    <div>
+                    <div x-data="{ tipo: 'carrossel' }">
                         <label class="block text-sm font-medium text-gray-700 mb-1">Tipo de conteúdo</label>
-                        <select name="tipo" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
-                            <option value="carrossel">Carrossel (7 slides)</option>
+                        <select name="tipo" x-model="tipo" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                            <option value="carrossel">Carrossel</option>
                             <option value="post">Post único</option>
                             <option value="story">Story</option>
                             <option value="reels">Reels (texto)</option>
                         </select>
+                        <!-- Quantidade de slides (apenas carrossel) -->
+                        <div x-show="tipo === 'carrossel'" x-transition class="mt-2">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Quantidade de slides</label>
+                            <select name="qtd_slides" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                                <?php for ($s = 3; $s <= 10; $s++): ?>
+                                <option value="<?= $s ?>" <?= $s === 7 ? 'selected' : '' ?>><?= $s ?> slides</option>
+                                <?php endfor; ?>
+                            </select>
+                        </div>
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Tema/Assunto *</label>

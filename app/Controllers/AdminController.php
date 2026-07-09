@@ -1632,6 +1632,7 @@ class AdminController
             'openai_key' => 'Chave de API da OpenAI (GPT + DALL-E + Whisper)',
             'openai_modelo' => 'Modelo padrão do OpenAI para geração de texto',
             'openai_modelo_mini' => 'Modelo econômico do OpenAI para tarefas simples',
+            'openai_imagem_modelo' => 'Modelo de geração de imagens (ex.: gpt-image-1, dall-e-3, dall-e-2)',
             'openai_max_tokens' => 'Máximo de tokens por resposta OpenAI',
             'openai_ativo' => 'Toggle: API OpenAI ativa ou inativa',
             
