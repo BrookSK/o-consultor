@@ -37,7 +37,7 @@
         <?php if (Auth::perfil() === 'ADMIN_HOLDING'): ?>
         <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
             <label class="block text-sm font-medium text-gray-700 mb-2">Empresa/Cliente *</label>
-            <select x-model="form.empresa_id" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary" required>
+            <select x-model="form.empresa_id" @change="carregarDadosEmpresa($event.target.value)" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary" required>
                 <option value="">Selecione a empresa/cliente</option>
                 <?php if (!empty($dados['empresas_disponiveis'])): ?>
                     <?php foreach ($dados['empresas_disponiveis'] as $empresa): ?>
@@ -219,19 +219,15 @@ function marcaWizard() {
                 if (val === 4) { this.gerandoBrandBook = true; setTimeout(() => this.gerandoBrandBook = false, 2500); }
             });
 
-            // Preenche com os dados carregados no servidor (cliente/consultor com empresa fixa).
+            // Preenche com os dados carregados no servidor (empresa atual do topo/fixa).
             if (this.dadosPreenchimento) {
                 this.aplicarDados(this.dadosPreenchimento);
             }
-
-            // ADMIN_HOLDING: ao selecionar a empresa, busca e preenche os dados dela.
-            this.$watch('form.empresa_id', (id) => {
-                if (id) this.carregarDadosEmpresa(id);
-            });
         },
 
         // Busca no servidor todos os dados conhecidos da empresa e preenche o formulário.
         async carregarDadosEmpresa(empresaId) {
+            if (!empresaId) return;
             this.carregandoDados = true;
             try {
                 const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/dados-empresa?empresa_id=' + encodeURIComponent(empresaId) + '&_=' + Date.now());
@@ -243,6 +239,8 @@ function marcaWizard() {
                             ? 'Dados da marca existente carregados. Edite o que precisar.'
                             : 'Informações da empresa carregadas.');
                     }
+                } else if (data.erro && typeof Toast !== 'undefined') {
+                    Toast.erro(data.erro);
                 }
             } catch (e) { /* silencioso */ }
             this.carregandoDados = false;

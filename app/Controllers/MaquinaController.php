@@ -55,12 +55,13 @@ class MaquinaController
             }
         }
         
-        // Para CLIENTE/CONSULTOR com empresa fixa, já pré-carrega os dados dela
-        // para o wizard preencher os campos automaticamente ao abrir.
+        // Pré-carrega os dados da empresa atual para o wizard preencher ao abrir.
+        // Para ADMIN_HOLDING, usa a empresa selecionada na barra do topo (se houver);
+        // para CLIENTE/CONSULTOR, usa a empresa fixa da sessão.
         $dadosPreenchimento = null;
-        $empresaFixa = Auth::perfil() === 'ADMIN_HOLDING' ? null : Auth::empresa();
-        if ($empresaFixa) {
-            $dadosPreenchimento = $this->montarDadosEmpresa((int) $empresaFixa);
+        $empresaAtual = Auth::empresa(); // ADMIN: empresa do topo (ou null); demais: empresa fixa
+        if ($empresaAtual) {
+            $dadosPreenchimento = $this->montarDadosEmpresa((int) $empresaAtual);
         }
 
         $dados = [
