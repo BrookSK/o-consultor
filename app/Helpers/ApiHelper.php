@@ -1460,14 +1460,19 @@ Responda APENAS com o array JSON.";
     /**
      * Gera prompt para análise de notícia (5 blocos)
      */
-    public static function buildPromptAnaliseNoticia(string $setor, string $titulo, string $resumo): string
+    public static function buildPromptAnaliseNoticia(string $setor, string $titulo, string $resumo, string $lingua = 'Português'): string
     {
-        return "Analise esta notícia para um empresário do setor {$setor}:
-Título: {$titulo}
-Resumo: {$resumo}
+        return "Analise esta notícia para um empresário do setor {$setor}.
 
-Gere em JSON:
+Título original: {$titulo}
+Resumo original: {$resumo}
+
+IMPORTANTE — IDIOMA: TODO o conteúdo da resposta deve estar em {$lingua}. Se o título ou o resumo original estiverem em outro idioma, TRADUZA-OS para {$lingua} da forma mais FIEL possível, preservando o sentido, nomes próprios, números, siglas e termos técnicos (não invente nem omita informação). Os campos 'titulo' e 'resumo' abaixo devem conter essa versão traduzida (ou o texto original, caso já esteja em {$lingua}).
+
+Gere em JSON (todos os textos em {$lingua}):
 {
+  \"titulo\": \"título da notícia em {$lingua} (tradução fiel do original, ou o original se já estiver em {$lingua})\",
+  \"resumo\": \"resumo objetivo da notícia em {$lingua} (2-3 frases, tradução fiel)\",
   \"bloco1_noticia\": \"texto claro sobre o que aconteceu\",
   \"bloco2_significa\": \"o que isso significa para empresas do setor\",
   \"bloco3_o_que_fazer\": \"lista de 3-5 ações práticas separadas por \\n\",

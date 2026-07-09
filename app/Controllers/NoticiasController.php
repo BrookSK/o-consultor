@@ -277,8 +277,8 @@ class NoticiasController
                     continue;
                 }
 
-                // Gerar análise dos 5 blocos
-                $analise = $this->gerarAnaliseBlocos($noticia, $setor);
+                // Gerar análise dos 5 blocos (na língua configurada, traduzindo se necessário)
+                $analise = $this->gerarAnaliseBlocos($noticia, $setor, $lingua);
 
                 if ($analise) {
                     // Salvar notícia no banco
@@ -314,13 +314,14 @@ class NoticiasController
     /**
      * Gerar análise de 5 blocos para uma notícia
      */
-    private function gerarAnaliseBlocos(array $noticia, string $setor): ?array
+    private function gerarAnaliseBlocos(array $noticia, string $setor, string $lingua = 'Português'): ?array
     {
         try {
             $prompt = ApiHelper::buildPromptAnaliseNoticia(
                 $setor,
                 $noticia['titulo'],
-                $noticia['resumo_bruto'] ?? $noticia['titulo']
+                $noticia['resumo_bruto'] ?? $noticia['titulo'],
+                $lingua
             );
 
             $resultado = ApiHelper::chamarAnalise($prompt, true);
@@ -427,6 +428,12 @@ class NoticiasController
             $imagemUrl = $this->extrairImagemDaPagina((string) $noticia['url']);
         }
 
+        // Título e resumo salvos na língua configurada: a análise (IA) devolve a
+        // versão traduzida de forma fiel. Se por algum motivo não vier, cai para
+        // o texto original da fonte.
+        $titulo = trim((string) ($analise['titulo'] ?? '')) ?: (string) $noticia['titulo'];
+        $resumo = trim((string) ($analise['resumo'] ?? '')) ?: ($noticia['resumo_bruto'] ?? null);
+
         try {
             return Database::execute(
                 "INSERT INTO noticias (
@@ -440,7 +447,7 @@ class NoticiasController
                  )",
                 [
                     'empresa_id' => $empresaId,
-                    'titulo' => $noticia['titulo'],
+                    'titulo' => $titulo,
                     'url' => $noticia['url'],
                     'imagem_url' => $imagemUrl,
                     'fonte' => $noticia['fonte'] ?? 'Desconhecida',
@@ -454,7 +461,7 @@ class NoticiasController
                     'bloco4' => $analise['bloco4_pergunta'] ?? '',
                     'bloco5' => $analise['bloco5_conexao'] ?? '',
                     'tags' => json_encode($analise['tags'] ?? []),
-                    'resumo_bruto' => $noticia['resumo_bruto'] ?? null,
+                    'resumo_bruto' => $resumo,
                     'processado_via' => $apiUtilizada === 'perplexity' ? 'perplexity+gpt' : ($apiUtilizada . '_fallback'),
                 ]
             );
@@ -474,7 +481,7 @@ class NoticiasController
                      )",
                     [
                         'empresa_id' => $empresaId,
-                        'titulo' => $noticia['titulo'],
+                        'titulo' => $titulo,
                         'url' => $noticia['url'],
                         'fonte' => $noticia['fonte'] ?? 'Desconhecida',
                         'data_publicacao' => $noticia['data'] ?? date('Y-m-d'),
@@ -487,7 +494,7 @@ class NoticiasController
                         'bloco4' => $analise['bloco4_pergunta'] ?? '',
                         'bloco5' => $analise['bloco5_conexao'] ?? '',
                         'tags' => json_encode($analise['tags'] ?? []),
-                        'resumo_bruto' => $noticia['resumo_bruto'] ?? null,
+                        'resumo_bruto' => $resumo,
                         'processado_via' => $apiUtilizada === 'perplexity' ? 'perplexity+gpt' : ($apiUtilizada . '_fallback'),
                     ]
                 );
@@ -1073,11 +1080,12 @@ class NoticiasController
 
         $noticia = array_shift($pendentes);
 
-        $empresa = Database::queryOne("SELECT segmento FROM empresas WHERE id = :id", ['id' => $empresaId]);
+        $empresa = Database::queryOne("SELECT segmento, lingua_principal FROM empresas WHERE id = :id", ['id' => $empresaId]);
         $setor = $empresa['segmento'] ?? ($noticia['setor'] ?? 'Geral');
+        $lingua = $empresa['lingua_principal'] ?? 'Português';
 
         $novasNoticias = (int) $pedido['noticias_novas'];
-        $analise = $this->gerarAnaliseBlocos($noticia, $setor);
+        $analise = $this->gerarAnaliseBlocos($noticia, $setor, $lingua);
         if ($analise) {
             $this->salvarNoticia($empresaId, $noticia, $analise, $apiUtilizada);
             $novasNoticias++;
@@ -1212,14 +1220,15 @@ class NoticiasController
             
             // Buscar dados da empresa para contexto
             $empresa = Database::queryOne(
-                "SELECT nome, segmento FROM empresas WHERE id = :id",
+                "SELECT nome, segmento, lingua_principal FROM empresas WHERE id = :id",
                 ['id' => Auth::empresa()]
             );
             
             $setor = $empresa['segmento'] ?? 'Geral';
+            $lingua = $empresa['lingua_principal'] ?? 'Português';
             
-            // Gerar análise via IA
-            $analise = $this->gerarAnaliseBlocos($noticia, $setor);
+            // Gerar análise via IA (na língua configurada, traduzindo se necessário)
+            $analise = $this->gerarAnaliseBlocos($noticia, $setor, $lingua);
             
             if ($analise) {
                 // Salvar análise no banco
