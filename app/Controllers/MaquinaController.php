@@ -634,21 +634,35 @@ class MaquinaController
             exit;
         }
         
-        // Carregar conteúdos da marca
+        // Carregar conteúdos para a BIBLIOTECA: apenas aprovados/agendados/publicados
+        // OU rascunhos explicitamente salvos ("terminar depois"). Rascunhos soltos
+        // (gerados e não finalizados) NÃO aparecem.
         $conteudos = [];
         try {
             $conteudos = Database::query(
-                "SELECT id, tipo, tema as titulo, status, criado_em as data, 
+                "SELECT id, tipo, tema as titulo, status, criado_em as data,
                         JSON_LENGTH(slides) as slides
-                 FROM conteudos_marca 
-                 WHERE marca_id = :marca_id AND usuario_id = :user_id 
-                 ORDER BY criado_em DESC 
-                 LIMIT 10",
+                 FROM conteudos_marca
+                 WHERE marca_id = :marca_id AND usuario_id = :user_id
+                   AND (status IN ('aprovado','agendado','publicado') OR salvo_biblioteca = 1)
+                 ORDER BY criado_em DESC
+                 LIMIT 50",
                 ['marca_id' => $marcaId, 'user_id' => Auth::id()]
             );
         } catch (\Exception $e) {
-            // Tabela pode não existir - usar array vazio
-            $conteudos = [];
+            // Coluna salvo_biblioteca pode não existir (migration 045). Fallback:
+            try {
+                $conteudos = Database::query(
+                    "SELECT id, tipo, tema as titulo, status, criado_em as data, JSON_LENGTH(slides) as slides
+                     FROM conteudos_marca
+                     WHERE marca_id = :marca_id AND usuario_id = :user_id
+                       AND status IN ('aprovado','agendado','publicado')
+                     ORDER BY criado_em DESC LIMIT 50",
+                    ['marca_id' => $marcaId, 'user_id' => Auth::id()]
+                );
+            } catch (\Exception $e2) {
+                $conteudos = [];
+            }
         }
         
         // Carregar notícias disponíveis para usar como base.
@@ -782,9 +796,10 @@ class MaquinaController
             }
         }
 
-        // 3. PASSO 1 — Geração de texto via IA com contexto da jornada
+        // 3. PASSO 1 — Geração de texto via IA com contexto da jornada.
+        // Usa um limite de tokens folgado para o JSON do conteúdo não ser cortado.
         $prompt = ApiHelper::buildPromptConteudoContextualizado($marca, $tipo, $tema, $objetivo, $noticiaBase, $contextoJornada, $literaturaBase, $qtdSlides);
-        $resIA = ApiHelper::chamarAnalise($prompt, true);
+        $resIA = ApiHelper::chamarAnalise($prompt, true, 6000);
 
         if (!$resIA['sucesso'] || !is_array($resIA['conteudo'])) {
             header('Content-Type: application/json');
@@ -1406,6 +1421,80 @@ class MaquinaController
             Logger::error('Erro ao aprovar conteúdo', ['erro' => $e->getMessage()]);
             header('Content-Type: application/json');
             echo json_encode(['sucesso' => false, 'erro' => 'Erro interno.']);
+        }
+        exit;
+    }
+
+    /** Marca um conteúdo (rascunho) como salvo na biblioteca ("terminar depois"). */
+    public function salvarBiblioteca(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $conteudoId = (int) ($_POST['conteudo_id'] ?? 0);
+        if ($conteudoId === 0) {
+            echo json_encode(['sucesso' => false, 'erro' => 'ID inválido.']);
+            exit;
+        }
+        try {
+            Database::execute(
+                "UPDATE conteudos_marca SET salvo_biblioteca = 1, atualizado_em = NOW() WHERE id = :id AND usuario_id = :uid",
+                ['id' => $conteudoId, 'uid' => Auth::id()]
+            );
+            echo json_encode(['sucesso' => true, 'mensagem' => 'Conteúdo salvo na biblioteca para terminar depois.']);
+        } catch (\Throwable $e) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro ao salvar na biblioteca.']);
+        }
+        exit;
+    }
+
+    /** Exclui um conteúdo da biblioteca (e imagens associadas). */
+    public function excluirConteudo(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $conteudoId = (int) ($_POST['conteudo_id'] ?? 0);
+        if ($conteudoId === 0) {
+            echo json_encode(['sucesso' => false, 'erro' => 'ID inválido.']);
+            exit;
+        }
+        try {
+            $ok = Database::execute(
+                "DELETE FROM conteudos_marca WHERE id = :id AND usuario_id = :uid",
+                ['id' => $conteudoId, 'uid' => Auth::id()]
+            );
+            echo json_encode($ok ? ['sucesso' => true, 'mensagem' => 'Conteúdo excluído!'] : ['sucesso' => false, 'erro' => 'Conteúdo não encontrado.']);
+        } catch (\Throwable $e) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro ao excluir conteúdo.']);
+        }
+        exit;
+    }
+
+    /** Exclui vários conteúdos da biblioteca de uma vez. */
+    public function excluirConteudos(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $ids = array_values(array_filter(array_map('intval', (array) ($_POST['ids'] ?? []))));
+        if (empty($ids)) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Nenhum item selecionado.']);
+            exit;
+        }
+        try {
+            $in = implode(',', array_fill(0, count($ids), '?'));
+            $stmt = Database::getConexao()->prepare(
+                "DELETE FROM conteudos_marca WHERE usuario_id = ? AND id IN ($in)"
+            );
+            $stmt->execute(array_merge([Auth::id()], $ids));
+            $n = $stmt->rowCount();
+            echo json_encode(['sucesso' => true, 'mensagem' => "{$n} conteúdo(s) excluído(s)!"]);
+        } catch (\Throwable $e) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro ao excluir conteúdos.']);
         }
         exit;
     }
@@ -2189,6 +2278,7 @@ class MaquinaController
                 'nome' => $arquivo['name'],
                 'url' => APP_URL . $caminhoRelativo,
                 'id' => $templateId,
+                'descricao' => $descricao,
             ],
         ]);
         exit;
@@ -2204,11 +2294,19 @@ class MaquinaController
 
         try {
             $templates = Database::query(
-                "SELECT id, nome_original, caminho, criado_em FROM marca_templates WHERE marca_id = :id ORDER BY criado_em DESC",
+                "SELECT id, nome_original, caminho, descricao, adequado_para, criado_em FROM marca_templates WHERE marca_id = :id ORDER BY criado_em DESC",
                 ['id' => $marcaId]
             );
         } catch (\Exception $e) {
-            $templates = [];
+            // Colunas descricao/adequado_para podem não existir (migration 044).
+            try {
+                $templates = Database::query(
+                    "SELECT id, nome_original, caminho, criado_em FROM marca_templates WHERE marca_id = :id ORDER BY criado_em DESC",
+                    ['id' => $marcaId]
+                );
+            } catch (\Exception $e2) {
+                $templates = [];
+            }
         }
 
         header('Content-Type: application/json');

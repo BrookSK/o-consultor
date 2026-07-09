@@ -137,11 +137,16 @@
 
     <!-- ABA BIBLIOTECA -->
     <div x-show="aba === 'biblioteca'" x-transition style="display:none;">
-        <div class="flex flex-wrap gap-2 mb-4">
-            <select class="px-3 py-1.5 border border-gray-300 rounded-lg text-xs outline-none"><option>Todos tipos</option><option>Carrossel</option><option>Post</option><option>Story</option></select>
-            <select class="px-3 py-1.5 border border-gray-300 rounded-lg text-xs outline-none"><option>Todos status</option><option>Rascunho</option><option>Aprovado</option><option>Agendado</option><option>Publicado</option></select>
+        <div class="flex items-center justify-between mb-4">
+            <p class="text-sm text-gray-500">Conteúdos aprovados, agendados, publicados ou salvos para terminar depois.</p>
+            <button type="button" onclick="excluirConteudosSelecionados()" id="btn-excluir-massa" class="hidden px-3 py-1.5 border border-red-300 text-red-600 rounded-lg text-xs font-medium hover:bg-red-50">🗑️ Excluir selecionados</button>
         </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" id="grid-biblioteca">
+            <?php if (empty($dados['conteudos'])): ?>
+            <div class="col-span-full bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500 text-sm">
+                Nenhum conteúdo na biblioteca. Aprove um conteúdo ou use "Terminar depois" na aba Gerar Conteúdo.
+            </div>
+            <?php else: ?>
             <?php foreach ($dados['conteudos'] as $cont):
                 $statusCfg = match($cont['status']) {
                     'aprovado' => ['badge' => 'bg-blue-100 text-blue-700', 'label' => 'Aprovado'],
@@ -150,20 +155,27 @@
                     default => ['badge' => 'bg-gray-100 text-gray-600', 'label' => 'Rascunho'],
                 };
             ?>
-            <div onclick="window.location.href='<?= APP_URL ?>/maquina-de-conteudo/editar'" class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition cursor-pointer">
-                <div class="h-32 bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-white text-3xl">
-                    <?= $cont['tipo'] === 'carrossel' ? '📋' : ($cont['tipo'] === 'story' ? '📱' : '🖼️') ?>
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition relative" data-conteudo-id="<?= (int) $cont['id'] ?>">
+                <div class="absolute top-2 left-2 z-10">
+                    <input type="checkbox" class="chk-conteudo w-4 h-4 rounded" value="<?= (int) $cont['id'] ?>" onclick="event.stopPropagation(); atualizarBotaoMassa();">
                 </div>
-                <div class="p-4">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium"><?= ucfirst($cont['tipo']) ?><?= $cont['slides'] > 1 ? ' • ' . $cont['slides'] . ' slides' : '' ?></span>
-                        <span class="text-xs px-2 py-0.5 rounded-full font-medium <?= $statusCfg['badge'] ?>"><?= $statusCfg['label'] ?></span>
+                <button type="button" onclick="event.stopPropagation(); excluirConteudo(<?= (int) $cont['id'] ?>, this)" class="absolute top-2 right-2 z-10 text-white/80 hover:text-red-300 text-sm" title="Excluir">🗑️</button>
+                <div onclick="window.location.href='<?= APP_URL ?>/maquina-de-conteudo/editar/<?= (int) $cont['id'] ?>'" class="cursor-pointer">
+                    <div class="h-32 bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-white text-3xl">
+                        <?= $cont['tipo'] === 'carrossel' ? '📋' : ($cont['tipo'] === 'story' ? '📱' : '🖼️') ?>
                     </div>
-                    <p class="text-sm font-medium text-gray-800 line-clamp-2"><?= htmlspecialchars($cont['titulo']) ?></p>
-                    <p class="text-xs text-gray-400 mt-2"><?= date('d/m/Y', strtotime($cont['data'])) ?></p>
+                    <div class="p-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium"><?= ucfirst($cont['tipo']) ?><?= $cont['slides'] > 1 ? ' • ' . $cont['slides'] . ' slides' : '' ?></span>
+                            <span class="text-xs px-2 py-0.5 rounded-full font-medium <?= $statusCfg['badge'] ?>"><?= $statusCfg['label'] ?></span>
+                        </div>
+                        <p class="text-sm font-medium text-gray-800 line-clamp-2"><?= htmlspecialchars($cont['titulo']) ?></p>
+                        <p class="text-xs text-gray-400 mt-2"><?= date('d/m/Y', strtotime($cont['data'])) ?></p>
+                    </div>
                 </div>
             </div>
             <?php endforeach; ?>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -187,6 +199,75 @@
     </div>
 
 <script>
+// Salva o rascunho na biblioteca para terminar depois.
+async function terminarDepois(conteudoId, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+    try {
+        const fd = new FormData();
+        fd.append('csrf_token', '<?= Csrf::token() ?>');
+        fd.append('conteudo_id', conteudoId);
+        const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/salvar-biblioteca', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.sucesso) {
+            if (btn) { btn.textContent = '✓ Salvo na biblioteca'; }
+            if (typeof Toast !== 'undefined') Toast.sucesso(data.mensagem || 'Salvo na biblioteca!');
+        } else {
+            if (btn) { btn.disabled = false; btn.textContent = '📌 Terminar depois'; }
+            alert(data.erro || 'Erro ao salvar.');
+        }
+    } catch (e) {
+        if (btn) { btn.disabled = false; btn.textContent = '📌 Terminar depois'; }
+        alert('Erro de conexão.');
+    }
+}
+
+// ===== Biblioteca: exclusão individual e em massa =====
+function atualizarBotaoMassa() {
+    const marcados = document.querySelectorAll('.chk-conteudo:checked').length;
+    const btn = document.getElementById('btn-excluir-massa');
+    if (btn) btn.classList.toggle('hidden', marcados === 0);
+}
+
+async function excluirConteudo(id, btn) {
+    if (!confirm('Excluir este conteúdo? Esta ação não pode ser desfeita.')) return;
+    if (btn) btn.disabled = true;
+    try {
+        const fd = new FormData();
+        fd.append('csrf_token', '<?= Csrf::token() ?>');
+        fd.append('conteudo_id', id);
+        const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/excluir-conteudo', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.sucesso) {
+            document.querySelector('[data-conteudo-id="' + id + '"]')?.remove();
+            if (typeof Toast !== 'undefined') Toast.sucesso('Conteúdo excluído!');
+            atualizarBotaoMassa();
+        } else {
+            if (btn) btn.disabled = false;
+            alert(data.erro || 'Erro ao excluir.');
+        }
+    } catch (e) { if (btn) btn.disabled = false; alert('Erro de conexão.'); }
+}
+
+async function excluirConteudosSelecionados() {
+    const ids = Array.from(document.querySelectorAll('.chk-conteudo:checked')).map(c => c.value);
+    if (ids.length === 0) return;
+    if (!confirm('Excluir ' + ids.length + ' conteúdo(s) selecionado(s)? Esta ação não pode ser desfeita.')) return;
+    try {
+        const fd = new FormData();
+        fd.append('csrf_token', '<?= Csrf::token() ?>');
+        ids.forEach(id => fd.append('ids[]', id));
+        const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/excluir-conteudos', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.sucesso) {
+            ids.forEach(id => document.querySelector('[data-conteudo-id="' + id + '"]')?.remove());
+            if (typeof Toast !== 'undefined') Toast.sucesso(data.mensagem || 'Conteúdos excluídos!');
+            atualizarBotaoMassa();
+        } else {
+            alert(data.erro || 'Erro ao excluir.');
+        }
+    } catch (e) { alert('Erro de conexão.'); }
+}
+
 // Carregar templates salvos ao abrir a aba
 document.addEventListener('DOMContentLoaded', carregarTemplates);
 
@@ -204,7 +285,7 @@ async function carregarTemplates() {
             const grid = document.getElementById('grid-templates');
             const placeholder = document.getElementById('upload-placeholder');
             data.templates.forEach(t => {
-                const card = criarCardTemplate(t.id, '<?= APP_URL ?>' + t.caminho, t.nome_original);
+                const card = criarCardTemplate(t.id, '<?= APP_URL ?>' + t.caminho, t.nome_original, t.descricao || '');
                 grid.insertBefore(card, placeholder);
             });
         }
@@ -227,7 +308,7 @@ async function uploadTemplate(input) {
         if (data.sucesso) {
             const grid = document.getElementById('grid-templates');
             const placeholder = document.getElementById('upload-placeholder');
-            const card = criarCardTemplate(data.arquivo.id, data.arquivo.url, data.arquivo.nome);
+            const card = criarCardTemplate(data.arquivo.id, data.arquivo.url, data.arquivo.nome, data.arquivo.descricao || '');
             grid.insertBefore(card, placeholder);
             if (typeof Toast !== 'undefined') Toast.sucesso('Template salvo!');
         } else {
@@ -238,16 +319,23 @@ async function uploadTemplate(input) {
     input.value = '';
 }
 
-function criarCardTemplate(id, url, nome) {
+function criarCardTemplate(id, url, nome, descricao) {
+    const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const card = document.createElement('div');
-    card.className = 'relative rounded-lg overflow-hidden border border-gray-200 group';
+    card.className = 'rounded-lg overflow-hidden border border-gray-200 bg-white';
     card.id = 'template-' + id;
     card.innerHTML = `
-        <img src="${url}" class="w-full h-32 object-cover" loading="lazy">
-        <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
-            <button onclick="removerTemplate(${id})" class="text-white text-xs bg-red-600 px-3 py-1.5 rounded hover:bg-red-700">Remover</button>
+        <div class="relative group">
+            <img src="${url}" class="w-full h-32 object-cover" loading="lazy">
+            <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                <button onclick="removerTemplate(${id})" class="text-white text-xs bg-red-600 px-3 py-1.5 rounded hover:bg-red-700">Remover</button>
+            </div>
         </div>
-        <p class="text-xs text-gray-600 p-2 truncate">${nome}</p>
+        <div class="p-2">
+            <p class="text-xs text-gray-600 truncate mb-1">${esc(nome)}</p>
+            <label class="block text-[10px] text-gray-400 mb-1">Descrição gerada pela IA (estilo detectado)</label>
+            <textarea class="w-full px-2 py-1.5 border border-gray-200 rounded text-[11px] text-gray-600 bg-gray-50 resize-none" rows="4" readonly placeholder="${descricao ? '' : 'Sem descrição (reenvie para a IA analisar).'}">${esc(descricao)}</textarea>
+        </div>
     `;
     return card;
 }
@@ -458,9 +546,12 @@ document.getElementById('form-gerar').addEventListener('submit', async function(
             if (data.conteudo.legenda) {
                 html += `<div class="p-3 bg-gray-50 rounded-lg"><p class="text-xs text-gray-500 font-medium mb-1">Legenda:</p><p class="text-xs text-gray-700 whitespace-pre-line">${data.conteudo.legenda}</p></div>`;
             }
-            html += '<div class="flex gap-2 mt-3 items-center">';
+            html += '<div class="flex flex-wrap gap-2 mt-3 items-center">';
             const editarUrl = data.redirect_url || '<?= APP_URL ?>/maquina-de-conteudo/editar';
-            html += `<a href="${editarUrl}" class="flex-1 text-center px-3 py-2 bg-primary text-white rounded text-xs font-medium">✏️ Editar Conteúdo</a>`;
+            html += `<a href="${editarUrl}" class="px-3 py-2 bg-primary text-white rounded text-xs font-medium">✏️ Editar Conteúdo</a>`;
+            if (data.conteudo_id) {
+                html += `<button type="button" onclick="terminarDepois(${data.conteudo_id}, this)" class="px-3 py-2 border border-gray-300 rounded text-xs font-medium text-gray-700 hover:bg-gray-50">📌 Terminar depois</button>`;
+            }
             html += '<span id="status-imagens" class="flex-1 px-3 py-2 border border-gray-300 rounded text-xs text-gray-500 text-center">💾 Rascunho salvo</span>';
             html += '<button type="button" id="btn-cancelar-imagens" onclick="cancelarTodasImagens()" class="hidden px-3 py-2 border border-red-300 text-red-600 rounded text-xs font-medium hover:bg-red-50">✕ Cancelar todas</button>';
             html += '</div></div>';
@@ -714,6 +805,11 @@ function renderizarCalendario(mes, ano, conteudos) {
                        primeiroConteudo.status === 'publicado' ? 'bg-green-200 text-green-800' : 'bg-blue-200 text-blue-800';
             
             divDia.className = `py-2 rounded cursor-pointer ${cor}`;
+            divDia.title = conteudoDoDia.map(c => c.tema).join(' | ') + ' (clique para abrir)';
+            // Clicar no dia abre a edição do conteúdo (o primeiro do dia).
+            divDia.addEventListener('click', () => {
+                window.location.href = '<?= APP_URL ?>/maquina-de-conteudo/editar/' + primeiroConteudo.id;
+            });
             
             if (conteudoDoDia.length > 1) {
                 const badge = document.createElement('span');

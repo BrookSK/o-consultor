@@ -40,7 +40,7 @@ class ApiHelper
      * Chama a API da OpenAI (GPT-4o, GPT-4o-mini, etc.)
      * Chave e modelo são lidos do banco via tela de configurações.
      */
-    public static function chamarOpenAI(string $prompt, ?string $model = null, bool $jsonMode = true, ?int $maxTokensOverride = null, ?int $timeoutOverride = null): array
+    public static function chamarOpenAI(string $prompt, ?string $model = null, bool $jsonMode = true, ?int $maxTokensOverride = null, ?int $timeoutOverride = null, bool $repetindoSemJson = false): array
     {
         $apiKey = self::config('openai_key');
         $model = $model ? $model : self::config('openai_modelo', 'gpt-4o');
@@ -76,11 +76,43 @@ class ApiHelper
         }
 
         // Extrair conteúdo da resposta
-        $conteudo = isset($resultado['dados']['choices'][0]['message']['content']) ? $resultado['dados']['choices'][0]['message']['content'] : null;
+        $choice = $resultado['dados']['choices'][0] ?? [];
+        $conteudo = $choice['message']['content'] ?? null;
+        $finish = $choice['finish_reason'] ?? '';
+        $refusal = $choice['message']['refusal'] ?? null;
 
-        if ($conteudo === null) {
+        if ($conteudo === null || $conteudo === '') {
+            // Diagnóstico detalhado no log para entender a causa real.
+            error_log('[O CONSULTOR][OpenAI] Sem conteúdo | modelo=' . $model
+                . ' | finish_reason=' . $finish
+                . ' | refusal=' . (is_string($refusal) ? $refusal : 'null')
+                . ' | usage=' . json_encode($resultado['dados']['usage'] ?? [], JSON_UNESCAPED_UNICODE));
             self::logErro('OpenAI', 'Resposta sem conteúdo', $resultado['dados']);
-            return ['sucesso' => false, 'conteudo' => null, 'erro' => 'Resposta da API sem conteúdo.'];
+
+            if ($refusal) {
+                return ['sucesso' => false, 'conteudo' => null, 'erro' => 'A IA recusou o pedido: ' . $refusal];
+            }
+            if ($finish === 'length') {
+                return ['sucesso' => false, 'conteudo' => null, 'erro' => 'Resposta cortada por limite de tokens. Reduza o tamanho do conteúdo (menos slides) ou aumente o limite de tokens em Admin > Configurações.'];
+            }
+
+            // Alguns modelos retornam vazio quando 'response_format=json_object' é
+            // enviado. Tenta 1 vez SEM o json mode, pedindo o JSON no próprio texto.
+            if ($jsonMode && !$repetindoSemJson) {
+                error_log('[O CONSULTOR][OpenAI] Retentando sem response_format=json_object');
+                $r2 = self::chamarOpenAI(
+                    $prompt . "\n\nResponda ESTRITAMENTE com um JSON válido, sem texto fora do JSON.",
+                    $model, false, $maxTokensOverride, $timeoutOverride, true
+                );
+                if (!empty($r2['sucesso']) && is_string($r2['conteudo'])) {
+                    $decoded = self::extrairJsonDeTexto($r2['conteudo']);
+                    if (is_array($decoded)) {
+                        return ['sucesso' => true, 'conteudo' => $decoded, 'erro' => null];
+                    }
+                }
+            }
+
+            return ['sucesso' => false, 'conteudo' => null, 'erro' => 'Resposta da API sem conteúdo (finish_reason: ' . ($finish ?: 'desconhecido') . ').'];
         }
 
         // Validar JSON se modo JSON ativo
@@ -751,7 +783,7 @@ class ApiHelper
      * Se apenas Claude: usa Claude.
      * Se nenhuma: retorna erro.
      */
-    public static function chamarAnalise(string $prompt, bool $jsonMode = true): array
+    public static function chamarAnalise(string $prompt, bool $jsonMode = true, ?int $maxTokens = null): array
     {
         $gptAtivo = Configuracao::apiAtiva('openai');
         $claudeAtivo = Configuracao::apiAtiva('anthropic');
@@ -762,7 +794,7 @@ class ApiHelper
 
         // Tentar GPT primeiro (se ativo)
         if ($gptAtivo) {
-            $resultado = self::chamarOpenAI($prompt, null, $jsonMode);
+            $resultado = self::chamarOpenAI($prompt, null, $jsonMode, $maxTokens);
             if ($resultado['sucesso']) {
                 return $resultado;
             }
@@ -1821,7 +1853,7 @@ Responda APENAS em JSON válido, sem explicações.";
             $regrasNoticia = "
 
 REGRAS PARA CONTEÚDO DE NOTÍCIA (OBRIGATÓRIAS):
-1. A LEGENDA deve ser construída a partir do CONTEÚDO da notícia acima (o que aconteceu, por que importa, o que fazer), na linguagem própria da marca. Não copie frases literais.
+1. A LEGENDA deve COMENTAR o conteúdo da notícia acima (o que aconteceu, por que importa para o público, o que fazer a respeito), na linguagem própria da marca. Não copie frases literais. A legenda e a imagem devem ser COERENTES entre si: a legenda deve conversar com o que aparece na arte (mesmo tema/gancho), e o CALL-TO-ACTION da legenda deve estar alinhado ao clima e às cores da imagem, formando uma peça única e consistente.
 2. ORDEM FINAL DA LEGENDA: primeiro os parágrafos do texto, depois uma linha com as HASHTAGS e, por último, a linha da FONTE no formato exato: 'Fonte: <veículo> (<link>)' usando o veículo/link indicado em 'FONTE DA NOTÍCIA'. (A linha da fonte é a única exceção onde o link/parênteses são permitidos.)
 3. O 'texto' de CADA slide deve funcionar como HEADLINE COM GANCHO: frase curta e instigante que desperte curiosidade e convide a continuar (perguntas, dados surpreendentes, tensão). Nada de títulos genéricos.";
         }
