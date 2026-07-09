@@ -217,14 +217,17 @@ class NoticiasController
         $apiUtilizada = null;
 
         try {
+            $imagensBusca = [];
+
             // Tentar Perplexity primeiro
             if (Configuracao::apiAtiva('perplexity')) {
                 $apiUtilizada = 'perplexity';
                 $prompt = ApiHelper::buildPromptBuscaNoticias($setor, $lingua, $sitesArray);
-                $resultado = ApiHelper::chamarPerplexity($prompt);
+                $resultado = ApiHelper::chamarPerplexity($prompt, null, true);
 
                 if ($resultado['sucesso'] && is_array($resultado['conteudo'])) {
                     $noticias = $resultado['conteudo'];
+                    $imagensBusca = $resultado['imagens'] ?? [];
                 } else {
                     // Fallback para Claude/GPT
                     $apiUtilizada = Configuracao::apiAtiva('anthropic') ? 'anthropic' : 'openai';
@@ -250,6 +253,11 @@ class NoticiasController
             // Se veio um único objeto (associativo) em vez de lista, embrulha.
             if (!empty($noticias) && array_keys($noticias) !== range(0, count($noticias) - 1)) {
                 $noticias = [$noticias];
+            }
+
+            // Casar imagens reais (return_images) com cada notícia pelo domínio da URL.
+            if (!empty($imagensBusca)) {
+                $noticias = ApiHelper::casarImagensComNoticias($noticias, $imagensBusca);
             }
 
             $noticiasEncontradas = count($noticias);
@@ -868,12 +876,14 @@ class NoticiasController
         $logId = $pedido['log_id'] ?: $this->criarLogBusca($empresaId, $pedido['tipo_busca'], $sitesArray);
 
         // Uma única chamada de IA nesta etapa.
+        $imagensBusca = [];
         if (Configuracao::apiAtiva('perplexity')) {
             $apiUtilizada = 'perplexity';
             $prompt = ApiHelper::buildPromptBuscaNoticias($setor, $lingua, $sitesArray);
-            $resultado = ApiHelper::chamarPerplexity($prompt);
+            $resultado = ApiHelper::chamarPerplexity($prompt, null, true);
             if ($resultado['sucesso'] && is_array($resultado['conteudo'])) {
                 $noticias = $resultado['conteudo'];
+                $imagensBusca = $resultado['imagens'] ?? [];
             } else {
                 $apiUtilizada = Configuracao::apiAtiva('anthropic') ? 'anthropic' : 'openai';
                 $resultado = ApiHelper::chamarAnalise($prompt, true);
@@ -895,6 +905,11 @@ class NoticiasController
         }
         if (!empty($noticias) && array_keys($noticias) !== range(0, count($noticias) - 1)) {
             $noticias = [$noticias];
+        }
+
+        // Casar imagens reais (return_images) com cada notícia pelo domínio da URL.
+        if (!empty($imagensBusca)) {
+            $noticias = ApiHelper::casarImagensComNoticias($noticias, $imagensBusca);
         }
 
         $noticiasEncontradas = count($noticias);

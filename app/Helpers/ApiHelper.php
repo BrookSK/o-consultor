@@ -266,11 +266,16 @@ class ApiHelper
     /**
      * Chama a API da Perplexity (busca em tempo real)
      *
-     * @param string $prompt Prompt de busca
-     * @param string $model  Modelo (sonar, sonar-pro)
-     * @return array ['sucesso' => bool, 'conteudo' => string|null, 'erro' => string|null]
+     * @param string $prompt      Prompt de busca
+     * @param string $model       Modelo (sonar, sonar-pro)
+     * @param bool   $comImagens  Se true, pede à Perplexity para retornar imagens reais
+     *                            encontradas na busca (return_images). A Perplexity faz a
+     *                            busca de imagem de verdade — pedir para a IA "adivinhar"
+     *                            uma URL de og:image dentro do JSON de resposta não funciona
+     *                            de forma confiável (o modelo alucina URLs inválidas).
+     * @return array ['sucesso' => bool, 'conteudo' => string|null, 'imagens' => array, 'erro' => string|null]
      */
-    public static function chamarPerplexity(string $prompt, ?string $model = null): array
+    public static function chamarPerplexity(string $prompt, ?string $model = null, bool $comImagens = false): array
     {
         $apiKey = self::config('perplexity_key');
         // Modelos "llama-3.1-sonar-*" foram descontinuados pela Perplexity em 22/02/2025.
@@ -278,7 +283,15 @@ class ApiHelper
 
         if (empty($apiKey)) {
             error_log('[O CONSULTOR][Perplexity] Chave não configurada (Admin > Configurações > APIs).');
-            return ['sucesso' => false, 'conteudo' => null, 'erro' => 'Chave Perplexity não configurada. Acesse Admin > Configurações > APIs.'];
+            return ['sucesso' => false, 'conteudo' => null, 'imagens' => [], 'erro' => 'Chave Perplexity não configurada. Acesse Admin > Configurações > APIs.'];
+        }
+
+        $body = [
+            'model'    => $model,
+            'messages' => [['role' => 'user', 'content' => $prompt]],
+        ];
+        if ($comImagens) {
+            $body['return_images'] = true;
         }
 
         $resultado = self::executarCurl(
@@ -287,30 +300,31 @@ class ApiHelper
                 'Authorization: Bearer ' . $apiKey,
                 'Content-Type: application/json',
             ],
-            [
-                'model'    => $model,
-                'messages' => [['role' => 'user', 'content' => $prompt]],
-            ],
+            $body,
             'Perplexity'
         );
 
         if (!$resultado['sucesso']) {
+            $resultado['imagens'] = [];
             return $resultado;
         }
+
+        // Imagens reais encontradas pela busca (array de {image_url, origin_url, title, ...}).
+        $imagens = isset($resultado['dados']['images']) && is_array($resultado['dados']['images']) ? $resultado['dados']['images'] : [];
 
         $conteudo = isset($resultado['dados']['choices'][0]['message']['content']) ? $resultado['dados']['choices'][0]['message']['content'] : null;
 
         if ($conteudo === null) {
             self::logErro('Perplexity', 'Resposta sem conteúdo', $resultado['dados']);
             error_log('[O CONSULTOR][Perplexity] Resposta sem conteúdo | dados=' . json_encode($resultado['dados'] ?? [], JSON_UNESCAPED_UNICODE));
-            return ['sucesso' => false, 'conteudo' => null, 'erro' => 'Resposta da API sem conteúdo.'];
+            return ['sucesso' => false, 'conteudo' => null, 'imagens' => [], 'erro' => 'Resposta da API sem conteúdo.'];
         }
 
         // A Perplexity raramente devolve JSON puro: costuma envolver em ```json ... ```
         // ou incluir texto/citações antes/depois. Tentamos limpar e extrair o JSON real.
         $decoded = self::extrairJsonDeTexto($conteudo);
         if ($decoded !== null) {
-            return ['sucesso' => true, 'conteudo' => $decoded, 'erro' => null];
+            return ['sucesso' => true, 'conteudo' => $decoded, 'imagens' => $imagens, 'erro' => null];
         }
 
         // Não foi possível extrair JSON válido: registrar amostra para diagnóstico e
@@ -318,7 +332,50 @@ class ApiHelper
         // código chamador não consegue processar e falha silenciosamente).
         self::logErro('Perplexity', 'Não foi possível extrair JSON da resposta', ['raw' => mb_substr($conteudo, 0, 800)]);
         error_log('[O CONSULTOR][Perplexity] JSON não extraído da resposta | RAW=' . mb_substr($conteudo, 0, 800));
-        return ['sucesso' => false, 'conteudo' => $conteudo, 'erro' => 'A Perplexity não retornou JSON válido (resposta em texto livre).'];
+        return ['sucesso' => false, 'conteudo' => $conteudo, 'imagens' => $imagens, 'erro' => 'A Perplexity não retornou JSON válido (resposta em texto livre).'];
+    }
+
+    /**
+     * Casa as imagens reais retornadas pela busca (return_images da Perplexity)
+     * com cada notícia, comparando o domínio da origin_url da imagem com o
+     * domínio da URL da notícia. Preenche $noticia['imagem_url'] quando encontrar.
+     *
+     * @param array $noticias Lista de notícias (cada uma com 'url')
+     * @param array $imagens  Lista de imagens ['image_url','origin_url',...]
+     * @return array Notícias com 'imagem_url' preenchido quando possível
+     */
+    public static function casarImagensComNoticias(array $noticias, array $imagens): array
+    {
+        if (empty($imagens)) {
+            return $noticias;
+        }
+
+        $dominio = static function (string $url): string {
+            $host = (string) (parse_url($url, PHP_URL_HOST) ?? '');
+            return preg_replace('/^www\./', '', strtolower($host));
+        };
+
+        // Agrupa imagens disponíveis por domínio de origem, na ordem em que vieram.
+        $imagensPorDominio = [];
+        foreach ($imagens as $img) {
+            $origem = (string) ($img['origin_url'] ?? '');
+            $imgUrl = (string) ($img['image_url'] ?? '');
+            if ($origem === '' || $imgUrl === '') continue;
+            $imagensPorDominio[$dominio($origem)][] = $imgUrl;
+        }
+
+        foreach ($noticias as &$noticia) {
+            if (!empty($noticia['imagem_url'])) continue; // já tem imagem (ex.: veio de outra fonte)
+            $urlNoticia = (string) ($noticia['url'] ?? '');
+            if ($urlNoticia === '') continue;
+            $dom = $dominio($urlNoticia);
+            if (!empty($imagensPorDominio[$dom])) {
+                $noticia['imagem_url'] = array_shift($imagensPorDominio[$dom]);
+            }
+        }
+        unset($noticia);
+
+        return $noticias;
     }
 
     /**
@@ -1394,8 +1451,7 @@ Responda APENAS em formato JSON válido com a estrutura:
 
         return "Busque as 10 notícias mais recentes e relevantes para empresas do setor {$setor} em {$lingua}.
 Priorize conteúdo dos seguintes sites: {$sitesStr}
-Formato de resposta: JSON com array de objetos, cada um com: titulo, url, fonte, data, resumo_bruto, setor, imagem_url.
-- imagem_url: URL da imagem de capa/destaque da notícia (og:image da página), se disponível. Se não encontrar, use string vazia.
+Formato de resposta: JSON com array de objetos, cada um com: titulo, url, fonte, data, resumo_bruto, setor.
 Busque apenas conteúdo publicado nos últimos 7 dias.
 Não inclua notícias duplicadas ou sem relevância para o setor.
 Responda APENAS com o array JSON.";
