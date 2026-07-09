@@ -104,6 +104,74 @@ class MaquinaController
     }
 
     /**
+     * Limpa o cache da descrição de estilo dos templates de uma marca.
+     * Chamado quando um template é adicionado/removido.
+     */
+    private function invalidarEstiloTemplates(int $marcaId): void
+    {
+        try {
+            Database::execute("UPDATE marcas SET templates_estilo = NULL WHERE id = :id", ['id' => $marcaId]);
+        } catch (\Throwable $e) {
+            // Coluna pode não existir ainda (migration 041); ignora.
+        }
+    }
+
+    /**
+     * Retorna a descrição do estilo visual dos templates da marca (para guiar o
+     * DALL-E). Usa cache em marcas.templates_estilo; se vazio e houver templates,
+     * analisa as imagens via visão (GPT-4o) e persiste o resultado.
+     * Retorna string vazia se não houver templates ou não for possível analisar.
+     */
+    private function obterEstiloTemplates(int $marcaId): string
+    {
+        // 1) Cache existente.
+        try {
+            $row = Database::queryOne("SELECT templates_estilo FROM marcas WHERE id = :id", ['id' => $marcaId]);
+            if ($row && !empty(trim((string) ($row['templates_estilo'] ?? '')))) {
+                return (string) $row['templates_estilo'];
+            }
+        } catch (\Throwable $e) {
+            return ''; // coluna não existe ainda
+        }
+
+        // 2) Buscar templates da marca.
+        try {
+            $templates = Database::query(
+                "SELECT caminho FROM marca_templates WHERE marca_id = :id ORDER BY criado_em DESC LIMIT 6",
+                ['id' => $marcaId]
+            );
+        } catch (\Throwable $e) {
+            return '';
+        }
+        if (empty($templates)) {
+            return '';
+        }
+
+        // 3) Montar URLs públicas absolutas e analisar via visão.
+        $urls = [];
+        foreach ($templates as $t) {
+            if (!empty($t['caminho'])) {
+                $urls[] = APP_URL . $t['caminho'];
+            }
+        }
+
+        $res = ApiHelper::descreverEstiloTemplates($urls);
+        if (!$res['sucesso'] || $res['estilo'] === '') {
+            return '';
+        }
+
+        // 4) Persistir cache.
+        try {
+            Database::execute(
+                "UPDATE marcas SET templates_estilo = :estilo WHERE id = :id",
+                ['estilo' => $res['estilo'], 'id' => $marcaId]
+            );
+        } catch (\Throwable $e) { /* segue sem cache */ }
+
+        return $res['estilo'];
+    }
+
+    /**
      * Retorna a lista de nomes de colunas existentes numa tabela.
      * Usado para montar INSERT/UPDATE só com colunas que realmente existem
      * (evita erro 1054 em bancos com schema desatualizado).
@@ -396,22 +464,47 @@ class MaquinaController
             $conteudos = [];
         }
         
-        // Carregar notícias disponíveis para usar como base
+        // Carregar notícias disponíveis para usar como base.
+        // Usa a empresa da própria marca (funciona para ADMIN e cliente) e a
+        // coluna correta de data (criado_em — não existe "created_at" aqui).
         $noticias = [];
         try {
             $noticias = Database::query(
-                "SELECT id, titulo FROM noticias WHERE empresa_id = (SELECT empresa_id FROM usuarios WHERE id = :user_id) ORDER BY created_at DESC LIMIT 10",
-                ['user_id' => Auth::id()]
+                "SELECT id, titulo FROM noticias
+                 WHERE empresa_id = :empresa_id AND arquivada = 0
+                 ORDER BY data_publicacao DESC, criado_em DESC
+                 LIMIT 30",
+                ['empresa_id' => (int) ($marca['empresa_id'] ?? 0)]
             );
         } catch (\Exception $e) {
-            // Tabela pode não existir - usar array vazio
-            $noticias = [];
+            // Fallback sem a coluna arquivada, caso o schema seja mais antigo.
+            try {
+                $noticias = Database::query(
+                    "SELECT id, titulo FROM noticias WHERE empresa_id = :empresa_id ORDER BY criado_em DESC LIMIT 30",
+                    ['empresa_id' => (int) ($marca['empresa_id'] ?? 0)]
+                );
+            } catch (\Exception $e2) {
+                $noticias = [];
+            }
         }
         
+        // Documentos da Biblioteca (base de literatura) da empresa da marca,
+        // para gerar conteúdo educativo via RAG.
+        $biblioteca = [];
+        try {
+            require_once APP_PATH . '/Controllers/ConteudoController.php';
+            $biblioteca = ConteudoController::obterLiteraturaBiblioteca((int) ($marca['empresa_id'] ?? 0));
+            // Só expõe id/nome para a view (o conteúdo é usado no backend na geração).
+            $biblioteca = array_map(fn($d) => ['id' => $d['id'], 'nome' => $d['nome']], $biblioteca);
+        } catch (\Throwable $e) {
+            $biblioteca = [];
+        }
+
         $dados = [
             'marca' => $marca,
             'conteudos' => $conteudos,
             'noticias' => $noticias,
+            'biblioteca' => $biblioteca,
         ];
         require VIEW_PATH . '/maquina/marca.php';
     }
@@ -427,6 +520,9 @@ class MaquinaController
         $objetivo = htmlspecialchars(trim($_POST['objetivo'] ?? 'educar'));
         $estiloImagem = htmlspecialchars(trim($_POST['estilo_imagem'] ?? 'ia'));
         $noticiaId = (int) ($_POST['noticia_id'] ?? 0);
+        // Fonte do conteúdo: 'tema' (livre), 'noticia' ou 'biblioteca' (RAG na literatura).
+        $fonte = htmlspecialchars(trim($_POST['fonte'] ?? ($noticiaId > 0 ? 'noticia' : 'tema')));
+        $bibliotecaIds = array_map('intval', (array) ($_POST['biblioteca_ids'] ?? []));
 
         if (empty($tema)) {
             header('Content-Type: application/json');
@@ -442,17 +538,23 @@ class MaquinaController
             exit;
         }
 
-        // 1.5. Carregar dados contextuais da jornada do cliente
+        // 1.5. Carregar dados contextuais da jornada do cliente.
+        // Usa a empresa da própria marca (funciona para ADMIN e cliente).
         $contextoJornada = [];
-        $empresaId = Auth::empresa();
+        $empresaId = (int) ($marca['empresa_id'] ?? 0) ?: (int) Auth::empresa();
         if ($empresaId) {
             require_once APP_PATH . '/Helpers/JornadaCliente.php';
             $contextoJornada = JornadaCliente::extrairDadosContextuais($empresaId);
         }
 
-        // 2. Preparar base de notícia se selecionada
-        $noticiaBase = null;
-        if ($noticiaId > 0) {
+        // 2. Preparar a BASE do conteúdo conforme a fonte escolhida.
+        //    - noticia: usa a análise da notícia selecionada.
+        //    - biblioteca: faz RAG sobre os PDFs da literatura (trechos relevantes ao tema).
+        //    - tema: sem base extra (conteúdo livre a partir do tema).
+        $noticiaBase = null;   // base para posts a partir de notícia
+        $literaturaBase = null; // base (RAG) para conteúdo educativo da biblioteca
+
+        if ($fonte === 'noticia' && $noticiaId > 0) {
             try {
                 $noticia = Database::queryOne("SELECT titulo, bloco1_noticia, bloco2_significa, bloco3_o_que_fazer FROM noticias WHERE id = :id", ['id' => $noticiaId]);
                 if ($noticia) {
@@ -461,10 +563,18 @@ class MaquinaController
             } catch (\Exception $e) {
                 // Ignorar se tabela não existir
             }
+        } elseif ($fonte === 'biblioteca') {
+            require_once APP_PATH . '/Controllers/ConteudoController.php';
+            $literaturaBase = ConteudoController::recuperarTrechosRelevantes($empresaId, $tema, $bibliotecaIds);
+            if ($literaturaBase === '') {
+                header('Content-Type: application/json');
+                echo json_encode(['sucesso' => false, 'erro' => 'Não encontrei conteúdo utilizável na Biblioteca para este tema. Verifique se os PDFs foram processados.']);
+                exit;
+            }
         }
 
         // 3. PASSO 1 — Geração de texto via IA com contexto da jornada
-        $prompt = ApiHelper::buildPromptConteudoContextualizado($marca, $tipo, $tema, $objetivo, $noticiaBase, $contextoJornada);
+        $prompt = ApiHelper::buildPromptConteudoContextualizado($marca, $tipo, $tema, $objetivo, $noticiaBase, $contextoJornada, $literaturaBase);
         $resIA = ApiHelper::chamarAnalise($prompt, true);
 
         if (!$resIA['sucesso'] || !is_array($resIA['conteudo'])) {
@@ -483,10 +593,16 @@ class MaquinaController
         // 4. PASSO 2 — Geração e download de imagens (se IA ativo)
         $imagensLocais = [];
         if ($estiloImagem === 'ia' && isset($conteudoGerado['slides'])) {
+            // Estilo visual extraído dos TEMPLATES da marca (referência de imagem).
+            // O DALL-E não aceita imagem de referência, então usamos a descrição
+            // textual do estilo dos templates para guiar a geração.
+            $estiloTemplates = $this->obterEstiloTemplates($marcaId);
+            $refTemplates = $estiloTemplates !== '' ? ' — Estilo visual de referência (siga fielmente): ' . $estiloTemplates : '';
+
             foreach ($conteudoGerado['slides'] as $index => &$slide) {
                 if (!empty($slide['prompt_imagem'])) {
-                    // Combinar prompt da marca + prompt do slide
-                    $promptCompleto = $marca['prompt_dalle'] . ' — ' . $slide['prompt_imagem'] . ' — Não incluir texto, palavras ou números na imagem.';
+                    // Combinar prompt da marca + prompt do slide + estilo dos templates
+                    $promptCompleto = $marca['prompt_dalle'] . ' — ' . $slide['prompt_imagem'] . $refTemplates . ' — Não incluir texto, palavras ou números na imagem.';
                     
                     // Gerar imagem via DALL-E
                     $imgResult = ApiHelper::gerarImagem($promptCompleto, '1024x1024');
@@ -505,8 +621,8 @@ class MaquinaController
                             $slide['imagem_url'] = 'https://placehold.co/1080x1080/1E3A5F/ffffff?text=Erro+Download';
                         }
                     } else {
-                        // Tentar com prompt simplificado
-                        $promptSimples = $marca['prompt_dalle'] . ' — estilo corporativo moderno, sem texto';
+                        // Tentar com prompt simplificado (mantendo o estilo dos templates)
+                        $promptSimples = $marca['prompt_dalle'] . $refTemplates . ' — estilo corporativo moderno, sem texto';
                         $imgResult2 = ApiHelper::gerarImagem($promptSimples, '1024x1024');
                         
                         if ($imgResult2['sucesso']) {
@@ -1082,7 +1198,7 @@ class MaquinaController
         try {
             // Carregar marca para prompt base
             $marca = Database::queryOne(
-                "SELECT m.prompt_dalle FROM marcas m 
+                "SELECT m.id, m.prompt_dalle FROM marcas m 
                  JOIN conteudos_marca c ON m.id = c.marca_id 
                  WHERE c.id = :id",
                 ['id' => $conteudoId]
@@ -1094,8 +1210,12 @@ class MaquinaController
                 exit;
             }
             
+            // Estilo dos templates da marca (mesma referência usada na geração).
+            $estiloTemplates = $this->obterEstiloTemplates((int) $marca['id']);
+            $refTemplates = $estiloTemplates !== '' ? ' — Estilo visual de referência (siga fielmente): ' . $estiloTemplates : '';
+
             // Gerar nova imagem
-            $promptCompleto = $marca['prompt_dalle'] . ' — ' . $promptEditado . ' — Não incluir texto na imagem.';
+            $promptCompleto = $marca['prompt_dalle'] . ' — ' . $promptEditado . $refTemplates . ' — Não incluir texto na imagem.';
             $imgResult = ApiHelper::gerarImagem($promptCompleto, '1024x1024');
             
             if (!$imgResult['sucesso']) {
@@ -1382,6 +1502,9 @@ class MaquinaController
             // Tabela pode não existir ainda — ignora mas mantém o arquivo
         }
 
+        // Invalida o cache de estilo dos templates (será recalculado na próxima geração).
+        $this->invalidarEstiloTemplates($marcaId);
+
         Logger::acao('Template uploaded', ['marca_id' => $marcaId, 'arquivo' => $nomeArquivo]);
 
         header('Content-Type: application/json');
@@ -1429,11 +1552,15 @@ class MaquinaController
         $id = (int) ($_POST['template_id'] ?? 0);
 
         try {
-            $template = Database::queryOne("SELECT caminho FROM marca_templates WHERE id = :id", ['id' => $id]);
+            $template = Database::queryOne("SELECT marca_id, caminho FROM marca_templates WHERE id = :id", ['id' => $id]);
             if ($template && file_exists(PUBLIC_PATH . $template['caminho'])) {
                 unlink(PUBLIC_PATH . $template['caminho']);
             }
             Database::execute("DELETE FROM marca_templates WHERE id = :id", ['id' => $id]);
+            // Invalida o cache de estilo (os templates mudaram).
+            if (!empty($template['marca_id'])) {
+                $this->invalidarEstiloTemplates((int) $template['marca_id']);
+            }
         } catch (\Exception $e) {}
 
         Logger::acao('Template removido', ['id' => $id]);

@@ -261,14 +261,24 @@ class DocumentoProcessor
     private static function processarComIA(int $documentoId, string $caminhoArquivo): void
     {
         try {
-            // Extrair texto do documento
-            $textoExtraido = self::extrairTexto($caminhoArquivo);
-            if (!$textoExtraido) {
+            // Extrair texto do documento usando o extrator robusto (PDF/DOCX/TXT...),
+            // essencial para o RAG da Biblioteca funcionar com conteúdo real.
+            $caminhoCompleto = (defined('PUBLIC_PATH') ? PUBLIC_PATH : '') . $caminhoArquivo;
+            $textoExtraido = self::extrairTextoDeArquivoAbsoluto($caminhoCompleto, basename($caminhoArquivo));
+
+            // Fallback para o extrator antigo, se o robusto não trouxe nada.
+            if (trim((string) $textoExtraido) === '') {
+                $textoExtraido = (string) self::extrairTexto($caminhoArquivo);
+            }
+            if (trim($textoExtraido) === '') {
                 return;
             }
+            // Limita o tamanho enviado à IA (documentos grandes) — o texto completo
+            // fica salvo em conteudo_extraido para o RAG.
+            $textoParaIA = mb_substr($textoExtraido, 0, 12000);
             
             // Chamar IA para análise
-            $prompt = self::buildPromptAnaliseDocumento($textoExtraido);
+            $prompt = self::buildPromptAnaliseDocumento($textoParaIA);
             $analiseIA = ApiHelper::chamarAnalise($prompt, true);
             
             if ($analiseIA['sucesso'] && is_array($analiseIA['conteudo'])) {
@@ -303,6 +313,15 @@ class DocumentoProcessor
                         );
                     }
                 }
+            } else {
+                // A análise por IA falhou, mas o TEXTO extraído é o essencial para
+                // o RAG da Biblioteca — salva mesmo assim (sem insights).
+                Database::execute(
+                    "UPDATE documentos_empresa
+                     SET processado_ia = 1, conteudo_extraido = :conteudo, data_processamento = NOW()
+                     WHERE id = :id",
+                    ['id' => $documentoId, 'conteudo' => $textoExtraido]
+                );
             }
             
         } catch (Exception $e) {
@@ -310,6 +329,15 @@ class DocumentoProcessor
                 'documento_id' => $documentoId,
                 'erro' => $e->getMessage()
             ]);
+            // Garante que o texto extraído fique salvo para o RAG, mesmo em erro.
+            if (!empty($textoExtraido)) {
+                try {
+                    Database::execute(
+                        "UPDATE documentos_empresa SET conteudo_extraido = :conteudo WHERE id = :id AND (conteudo_extraido IS NULL OR conteudo_extraido = '')",
+                        ['id' => $documentoId, 'conteudo' => $textoExtraido]
+                    );
+                } catch (\Throwable $e2) { /* ignora */ }
+            }
         }
     }
     

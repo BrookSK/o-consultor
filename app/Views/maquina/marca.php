@@ -53,6 +53,7 @@
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Tema/Assunto *</label>
                         <input type="text" name="tema" required class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary" placeholder="Ex: Como proteger sua empresa contra ransomware">
+                        <p class="text-xs text-gray-400 mt-1">Na fonte "Biblioteca", a IA busca na sua literatura os trechos que tratam deste tema, lê e monta um conteúdo educativo (começo, meio e fim).</p>
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Objetivo</label>
@@ -60,15 +61,43 @@
                             <option value="educar">Educar</option><option value="engajar">Engajar</option><option value="converter">Converter</option><option value="inspirar">Inspirar</option><option value="informar">Informar</option>
                         </select>
                     </div>
-                    <div x-data="{ usarNoticia: false }">
-                        <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" x-model="usarNoticia" class="w-4 h-4 text-primary rounded"> Usar notícia da Central de Conteúdo</label>
-                        <div x-show="usarNoticia" class="mt-2">
+                    <div x-data="{ fonte: 'tema' }">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Fonte do conteúdo</label>
+                        <select name="fonte" x-model="fonte" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                            <option value="tema">Apenas o tema (livre)</option>
+                            <option value="noticia">📰 Notícia da Central de Conteúdo</option>
+                            <option value="biblioteca">📚 Biblioteca (conteúdo educativo)</option>
+                        </select>
+
+                        <!-- Notícia -->
+                        <div x-show="fonte === 'noticia'" x-transition class="mt-2">
                             <select name="noticia_id" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
-                                <option value="">Selecione...</option>
+                                <option value="">Selecione a notícia...</option>
                                 <?php foreach ($dados['noticias'] as $n): ?>
                                 <option value="<?= $n['id'] ?>"><?= htmlspecialchars($n['titulo']) ?></option>
                                 <?php endforeach; ?>
                             </select>
+                            <p class="text-xs text-gray-400 mt-1">O conteúdo será baseado na análise desta notícia.</p>
+                        </div>
+
+                        <!-- Biblioteca -->
+                        <div x-show="fonte === 'biblioteca'" x-transition class="mt-2">
+                            <?php if (empty($dados['biblioteca'])): ?>
+                            <p class="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                                Nenhum documento na Biblioteca. Adicione PDFs na Central de Conteúdo &gt; Biblioteca para gerar conteúdo educativo a partir da sua literatura.
+                            </p>
+                            <?php else: ?>
+                            <label class="block text-xs text-gray-500 mb-1">Documentos de referência (a IA vai ler e usar os mais relevantes ao tema)</label>
+                            <div class="max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-1">
+                                <?php foreach ($dados['biblioteca'] as $doc): ?>
+                                <label class="flex items-center gap-2 text-sm cursor-pointer py-1">
+                                    <input type="checkbox" name="biblioteca_ids[]" value="<?= (int) $doc['id'] ?>" class="w-4 h-4 text-primary rounded">
+                                    <span class="truncate">📄 <?= htmlspecialchars($doc['nome']) ?></span>
+                                </label>
+                                <?php endforeach; ?>
+                            </div>
+                            <p class="text-xs text-gray-400 mt-1">Deixe todos desmarcados para a IA considerar toda a biblioteca.</p>
+                            <?php endif; ?>
                         </div>
                     </div>
                     <div>
@@ -152,10 +181,16 @@
 // Carregar templates salvos ao abrir a aba
 document.addEventListener('DOMContentLoaded', carregarTemplates);
 
+let templatesCarregados = false;
 async function carregarTemplates() {
+    // Evita renderização duplicada caso a função seja chamada mais de uma vez.
+    if (templatesCarregados) return;
+    templatesCarregados = true;
     try {
         const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/templates?marca_id=<?= $marca['id'] ?>');
         const data = await res.json();
+        // Remove cards já renderizados (mantém o placeholder de upload).
+        document.querySelectorAll('#grid-templates [id^="template-"]').forEach(el => el.remove());
         if (data.sucesso && data.templates.length > 0) {
             const grid = document.getElementById('grid-templates');
             const placeholder = document.getElementById('upload-placeholder');
@@ -164,7 +199,7 @@ async function carregarTemplates() {
                 grid.insertBefore(card, placeholder);
             });
         }
-    } catch(e) {}
+    } catch(e) { templatesCarregados = false; }
 }
 
 async function uploadTemplate(input) {
@@ -367,8 +402,8 @@ document.addEventListener('DOMContentLoaded', function() {
             }, 100);
         }
     });
-    
-    carregarTemplates();
+    // Nota: carregarTemplates() já é chamado no DOMContentLoaded do bloco de
+    // templates acima — não chamar de novo aqui (causava templates duplicados).
 });
 
 // === GERAÇÃO DE CONTEÚDO ===

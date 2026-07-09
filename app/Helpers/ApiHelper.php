@@ -414,6 +414,71 @@ class ApiHelper
     }
 
     /**
+     * Analisa imagens de referência (templates da marca) via visão (GPT-4o) e
+     * devolve uma DESCRIÇÃO textual do estilo visual comum entre elas.
+     * Essa descrição é usada para guiar o DALL-E (que não aceita imagem de
+     * referência) a gerar imagens no mesmo estilo dos templates.
+     *
+     * @param array $urlsImagens URLs públicas (https) das imagens de referência
+     * @return array ['sucesso'=>bool, 'estilo'=>string, 'erro'=>string|null]
+     */
+    public static function descreverEstiloTemplates(array $urlsImagens): array
+    {
+        $apiKey = self::config('openai_key');
+        if (empty($apiKey)) {
+            return ['sucesso' => false, 'estilo' => '', 'erro' => 'Chave OpenAI não configurada.'];
+        }
+
+        // Filtra URLs válidas e limita a 6 imagens (custo/tempo).
+        $urls = array_values(array_filter($urlsImagens, fn($u) => filter_var($u, FILTER_VALIDATE_URL)));
+        if (empty($urls)) {
+            return ['sucesso' => false, 'estilo' => '', 'erro' => 'Nenhuma imagem de referência válida.'];
+        }
+        $urls = array_slice($urls, 0, 6);
+
+        $instrucao = 'Você é diretor de arte. Analise as imagens de referência a seguir (são posts/templates de uma marca) '
+            . 'e descreva, em um único parágrafo objetivo em português, o ESTILO VISUAL comum entre elas para servir de guia '
+            . 'na geração de novas imagens: paleta de cores predominante, tipo de iluminação, composição/enquadramento, '
+            . 'texturas/estética (ex.: minimalista, 3D, flat, fotográfico, cyberpunk), uso de gradientes, clima/mood e '
+            . 'elementos gráficos recorrentes. NÃO descreva o texto escrito nas imagens nem o conteúdo específico — foque '
+            . 'apenas no estilo visual reproduzível. Responda apenas com a descrição, sem títulos.';
+
+        // Monta o content multimodal (texto + imagens) para o chat completions.
+        $content = [['type' => 'text', 'text' => $instrucao]];
+        foreach ($urls as $u) {
+            $content[] = ['type' => 'image_url', 'image_url' => ['url' => $u]];
+        }
+
+        $model = self::config('openai_modelo_leitura', 'gpt-4o');
+        $resultado = self::executarCurl(
+            'https://api.openai.com/v1/chat/completions',
+            [
+                'Authorization: Bearer ' . $apiKey,
+                'Content-Type: application/json',
+            ],
+            [
+                'model' => $model,
+                'messages' => [['role' => 'user', 'content' => $content]],
+                'max_tokens' => 600,
+            ],
+            'OpenAI-Visao',
+            90
+        );
+
+        if (!$resultado['sucesso']) {
+            return ['sucesso' => false, 'estilo' => '', 'erro' => $resultado['erro'] ?? 'Falha na análise de estilo.'];
+        }
+
+        $texto = $resultado['dados']['choices'][0]['message']['content'] ?? '';
+        $texto = trim((string) $texto);
+        if ($texto === '') {
+            return ['sucesso' => false, 'estilo' => '', 'erro' => 'A IA não retornou descrição de estilo.'];
+        }
+
+        return ['sucesso' => true, 'estilo' => $texto, 'erro' => null];
+    }
+
+    /**
      * Gera imagem via DALL-E 3
      *
      * @param string $prompt Prompt descritivo da imagem
@@ -1545,9 +1610,32 @@ Responda APENAS em JSON válido, sem explicações.";
     /**
      * Gera prompt contextualizado com dados da jornada do cliente
      */
-    public static function buildPromptConteudoContextualizado(array $marca, string $tipo, string $tema, string $objetivo, ?string $noticiaBase = null, array $contextoJornada = []): string
+    public static function buildPromptConteudoContextualizado(array $marca, string $tipo, string $tema, string $objetivo, ?string $noticiaBase = null, array $contextoJornada = [], ?string $literaturaBase = null): string
     {
         $contextoNoticia = $noticiaBase ? "\n\nBASEADO NA NOTÍCIA:\n{$noticiaBase}" : '';
+
+        // Base de literatura (RAG na Biblioteca): trechos reais dos PDFs do cliente.
+        $contextoLiteratura = '';
+        $regrasEducativo = '';
+        if (!empty($literaturaBase)) {
+            $contextoLiteratura = "\n\n📚 BASE DE CONHECIMENTO — LITERATURA DO CLIENTE (trechos reais extraídos dos documentos da biblioteca, recuperados por relevância ao tema \"{$tema}\"):\n"
+                . "----------------------------------------\n" . $literaturaBase . "\n----------------------------------------\n"
+                . "Esta é a sua FONTE PRIMÁRIA. Estude estes trechos, extraia os conceitos, dados, exemplos e definições que tratam do tema e transforme em conhecimento didático.";
+
+            // Regras específicas para conteúdo EDUCATIVO baseado na literatura.
+            $regrasEducativo = "
+
+🎓 DIRETRIZES DE CONTEÚDO EDUCATIVO (OBRIGATÓRIAS — a fonte é a biblioteca do cliente):
+1. FIDELIDADE: baseie-se nos trechos da literatura acima. Não invente fatos, números ou citações que contradigam a fonte. Se algo não estiver na fonte, não afirme como verdade absoluta.
+2. FOCO NO TEMA: todo o conteúdo deve girar em torno do tema \"{$tema}\". Selecione, dentro da literatura, o que é realmente relevante para ele.
+3. ESTRUTURA COM COMEÇO, MEIO E FIM (narrativa progressiva entre os slides):
+   • ABERTURA (capa + 1º slide): um gancho forte — uma pergunta, um dado curioso ou um problema real que desperte interesse.
+   • DESENVOLVIMENTO (slides do meio): explique o conceito de forma didática, em etapas lógicas que se conectam. Traga contexto, o 'porquê', exemplos práticos, curiosidades e insights extraídos da literatura. Cada slide aprofunda o anterior.
+   • FECHAMENTO (últimos slides): síntese do aprendizado + uma conclusão que agregue valor + CTA coerente com o objetivo.
+4. VALOR REAL: o post deve ENSINAR algo. Priorize utilidade, clareza e profundidade acessível — nada de texto genérico ou raso. Traga pelo menos uma curiosidade ou insight não óbvio.
+5. DIDÁTICA: linguagem clara, explique termos técnicos, use analogias quando ajudar. Cada slide deve fazer sentido sozinho e também na sequência.
+6. QUANTIDADE: gere slides suficientes para desenvolver o raciocínio completo (para carrossel, priorize 6 a 9 slides bem encadeados).";
+        }
 
         // Construir contexto da jornada
         $contextoPersonalizado = '';
@@ -1611,8 +1699,8 @@ PROMPT MASTER DA MARCA:
 {$marca['prompt_master']}{$contextoPersonalizado}
 
 TAREFA:
-Crie um {$tipo} sobre o tema: {$tema}{$contextoNoticia}
-Objetivo: {$objetivo}
+Crie um {$tipo} sobre o tema: {$tema}{$contextoNoticia}{$contextoLiteratura}
+Objetivo: {$objetivo}{$regrasEducativo}
 
 {$instrucoesTipo}
 

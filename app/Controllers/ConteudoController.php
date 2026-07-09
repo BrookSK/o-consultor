@@ -627,6 +627,134 @@ class ConteudoController
         ], $docs);
     }
 
+    /**
+     * RAG simples (sem embeddings): recupera os trechos mais relevantes da
+     * Biblioteca para um tema. Quebra o texto extraído dos PDFs em blocos,
+     * pontua cada bloco pela sobreposição de palavras-chave do tema e retorna
+     * os melhores blocos concatenados (com a fonte), prontos para o prompt.
+     *
+     * @param int   $empresaId
+     * @param string $tema         Tema/assunto informado pelo usuário
+     * @param int[] $documentoIds  IDs específicos (vazio = toda a biblioteca)
+     * @param int   $maxTrechos    Máximo de blocos retornados
+     * @return string Texto com os trechos relevantes, ou '' se nada útil.
+     */
+    public static function recuperarTrechosRelevantes(int $empresaId, string $tema, array $documentoIds = [], int $maxTrechos = 6): string
+    {
+        // Buscar documentos (com texto já extraído pela IA no upload).
+        try {
+            $sql = "SELECT id, nome_original, conteudo_extraido
+                    FROM documentos_empresa
+                    WHERE empresa_id = :empresa_id AND biblioteca = 1 AND ativo = 1
+                      AND conteudo_extraido IS NOT NULL AND conteudo_extraido <> ''";
+            $params = ['empresa_id' => $empresaId];
+            if (!empty($documentoIds)) {
+                $ids = array_map('intval', $documentoIds);
+                $sql .= ' AND id IN (' . implode(',', $ids) . ')';
+            }
+            $docs = Database::query($sql, $params);
+        } catch (\Throwable $e) {
+            return '';
+        }
+
+        if (empty($docs)) {
+            return '';
+        }
+
+        // Tokeniza o tema em palavras-chave relevantes (>=4 letras, sem acento).
+        $normalizar = static function (string $s): string {
+            $s = mb_strtolower($s, 'UTF-8');
+            $s = strtr($s, ['á'=>'a','à'=>'a','ã'=>'a','â'=>'a','é'=>'e','ê'=>'e','í'=>'i','ó'=>'o','ô'=>'o','õ'=>'o','ú'=>'u','ç'=>'c']);
+            return $s;
+        };
+        $stop = ['para','como','sobre','entre','pelos','pelas','dos','das','uma','umas','uns','que','com','por','the','and','de','da','do','em','no','na'];
+        $temaNorm = $normalizar($tema);
+        preg_match_all('/[a-z0-9]{4,}/', $temaNorm, $mm);
+        $keywords = array_values(array_diff(array_unique($mm[0] ?? []), $stop));
+
+        // Quebra cada documento em blocos com JANELA DESLIZANTE (sobreposição),
+        // para não cortar um conceito ao meio entre dois blocos.
+        $tamanho = 900;
+        $passo = 600; // overlap de 300 chars
+        $blocosPontuados = [];
+        $idxGlobal = 0;
+        foreach ($docs as $doc) {
+            $texto = (string) $doc['conteudo_extraido'];
+            $nome = (string) $doc['nome_original'];
+            $total = mb_strlen($texto);
+            for ($i = 0; $i < $total; $i += $passo) {
+                $bloco = trim(mb_substr($texto, $i, $tamanho));
+                if (mb_strlen($bloco) < 80) continue;
+                $blocoNorm = $normalizar($bloco);
+
+                // Pontuação: ocorrências totais + BÔNUS forte por diversidade de
+                // keywords distintas presentes (um trecho que cobre vários termos
+                // do tema é mais relevante que um que repete um só termo).
+                $ocorrencias = 0;
+                $distintas = 0;
+                foreach ($keywords as $kw) {
+                    $c = substr_count($blocoNorm, $kw);
+                    if ($c > 0) { $ocorrencias += $c; $distintas++; }
+                }
+                $score = $ocorrencias + ($distintas * 3);
+
+                $blocosPontuados[] = [
+                    'score' => $score,
+                    'distintas' => $distintas,
+                    'ordem' => $idxGlobal++,
+                    'nome' => $nome,
+                    'texto' => $bloco,
+                ];
+                if ($i + $tamanho >= $total) break;
+            }
+        }
+
+        if (empty($blocosPontuados)) {
+            return '';
+        }
+
+        // Há relevância por keyword?
+        $temKeyword = false;
+        foreach ($blocosPontuados as $b) { if ($b['score'] > 0) { $temKeyword = true; break; } }
+
+        if ($temKeyword) {
+            // Ordena por score desc; empate pela ordem original (coerência de leitura).
+            usort($blocosPontuados, function ($a, $b) {
+                return $b['score'] <=> $a['score'] ?: $a['ordem'] <=> $b['ordem'];
+            });
+            $blocosPontuados = array_values(array_filter($blocosPontuados, fn($b) => $b['score'] > 0));
+
+            // Diversifica fontes: no máximo 3 trechos por documento, para o post
+            // não ficar preso a um único material quando há vários relevantes.
+            $porFonte = [];
+            $selecionados = [];
+            foreach ($blocosPontuados as $b) {
+                $porFonte[$b['nome']] = ($porFonte[$b['nome']] ?? 0);
+                if ($porFonte[$b['nome']] >= 3) continue;
+                $porFonte[$b['nome']]++;
+                $selecionados[] = $b;
+                if (count($selecionados) >= $maxTrechos) break;
+            }
+        } else {
+            // Tema genérico/sem match: usa os primeiros blocos (introduções costumam
+            // conter a visão geral do material).
+            $selecionados = array_slice($blocosPontuados, 0, $maxTrechos);
+        }
+
+        if (empty($selecionados)) {
+            return '';
+        }
+
+        // Reordena os selecionados pela ordem original para manter fluência de leitura.
+        usort($selecionados, fn($a, $b) => $a['ordem'] <=> $b['ordem']);
+
+        $saida = '';
+        foreach ($selecionados as $b) {
+            $saida .= "[Fonte: {$b['nome']}]\n{$b['texto']}\n\n";
+        }
+        return trim($saida);
+    }
+
     // ===== REAL DATA METHODS =====
 
     /**
