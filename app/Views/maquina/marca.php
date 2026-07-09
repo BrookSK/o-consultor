@@ -443,10 +443,10 @@ document.getElementById('form-gerar').addEventListener('submit', async function(
             slides.forEach((s, index) => {
                 const pendente = s.imagem_pendente || (data.slides_pendentes || []).includes(index);
                 const imgHtml = s.imagem_url
-                    ? `<img src="${s.imagem_url}" class="w-full h-32 object-cover" loading="lazy">`
+                    ? `<img src="${s.imagem_url}" class="w-full aspect-[4/5] object-cover" loading="lazy">`
                     : (pendente
-                        ? `<div class="w-full h-32 bg-gray-100 flex items-center justify-center text-xs text-gray-400" id="slide-img-${index}"><div class="inline-block w-5 h-5 border-2 border-gray-300 border-t-accent rounded-full animate-spin mr-2"></div> Gerando imagem...</div>`
-                        : `<div class="w-full h-32 bg-gray-100 flex items-center justify-center text-3xl">🖼️</div>`);
+                        ? `<div class="w-full aspect-[4/5] bg-gray-100 flex items-center justify-center text-xs text-gray-400" id="slide-img-${index}"><div class="inline-block w-5 h-5 border-2 border-gray-300 border-t-accent rounded-full animate-spin mr-2"></div> Gerando imagem...</div>`
+                        : `<div class="w-full aspect-[4/5] bg-gray-100 flex items-center justify-center text-3xl">🖼️</div>`);
                 html += `<div class="border rounded-lg overflow-hidden" data-slide="${index}">
                     ${imgHtml}
                     <div class="p-3"><p class="text-xs text-gray-600">${s.texto || 'Slide ' + (index + 1)}</p></div>
@@ -501,7 +501,7 @@ async function gerarImagensSequencial(conteudoId, indices) {
                 const alvo = container.querySelector('img, div');
                 const img = document.createElement('img');
                 img.src = data.imagem_url;
-                img.className = 'w-full h-32 object-cover';
+                img.className = 'w-full aspect-[4/5] object-cover';
                 img.loading = 'lazy';
                 if (alvo) alvo.replaceWith(img);
             } else if (container) {

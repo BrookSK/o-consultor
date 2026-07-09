@@ -117,6 +117,40 @@ class MaquinaController
     }
 
     /**
+     * Limpa o texto de um slide: remove emojis e símbolos (que quebram o layout
+     * e às vezes corrompem no encoding), normaliza espaços. Mantém acentos e
+     * pontuação comum do português.
+     */
+    private function limparTextoSlide(string $texto): string
+    {
+        // Remove emojis e pictogramas (blocos Unicode de símbolos/emoji).
+        $texto = preg_replace('/[\x{1F000}-\x{1FAFF}\x{2600}-\x{27BF}\x{2190}-\x{21FF}\x{2B00}-\x{2BFF}\x{FE00}-\x{FE0F}\x{1F1E6}-\x{1F1FF}]/u', '', $texto);
+        // Remove caracteres de controle.
+        $texto = preg_replace('/[\x{0000}-\x{001F}\x{007F}]/u', ' ', $texto);
+        // Colapsa espaços.
+        $texto = preg_replace('/[ \t]+/', ' ', (string) $texto);
+        return trim((string) $texto);
+    }
+
+    /**
+     * Tamanho da imagem conforme o tipo/rede. Instagram feed e story usam
+     * formato vertical (retrato). Os tamanhos válidos da API são 1024x1024,
+     * 1024x1792 (retrato) e 1792x1024 (paisagem).
+     */
+    private function tamanhoImagemPorTipo(string $tipo): string
+    {
+        switch ($tipo) {
+            case 'story':
+            case 'reels':
+            case 'carrossel':
+            case 'post':
+                return '1024x1792'; // vertical (feed/story moderno do Instagram)
+            default:
+                return '1024x1792';
+        }
+    }
+
+    /**
      * Retorna a descrição do estilo visual dos templates da marca (para guiar o
      * DALL-E). Usa cache em marcas.templates_estilo; se vazio e houver templates,
      * analisa as imagens via visão (GPT-4o) e persiste o resultado.
@@ -124,14 +158,16 @@ class MaquinaController
      */
     private function obterEstiloTemplates(int $marcaId): string
     {
-        // 1) Cache existente.
+        // 1) Cache existente (coluna templates_estilo pode não existir ainda —
+        //    nesse caso apenas seguimos para analisar os templates).
+        $temColunaCache = true;
         try {
             $row = Database::queryOne("SELECT templates_estilo FROM marcas WHERE id = :id", ['id' => $marcaId]);
             if ($row && !empty(trim((string) ($row['templates_estilo'] ?? '')))) {
                 return (string) $row['templates_estilo'];
             }
         } catch (\Throwable $e) {
-            return ''; // coluna não existe ainda
+            $temColunaCache = false; // coluna não existe; segue sem cache
         }
 
         // 2) Buscar templates da marca.
@@ -160,13 +196,15 @@ class MaquinaController
             return '';
         }
 
-        // 4) Persistir cache.
-        try {
-            Database::execute(
-                "UPDATE marcas SET templates_estilo = :estilo WHERE id = :id",
-                ['estilo' => $res['estilo'], 'id' => $marcaId]
-            );
-        } catch (\Throwable $e) { /* segue sem cache */ }
+        // 4) Persistir cache (só se a coluna existir).
+        if ($temColunaCache) {
+            try {
+                Database::execute(
+                    "UPDATE marcas SET templates_estilo = :estilo WHERE id = :id",
+                    ['estilo' => $res['estilo'], 'id' => $marcaId]
+                );
+            } catch (\Throwable $e) { /* segue sem cache */ }
+        }
 
         return $res['estilo'];
     }
@@ -599,6 +637,16 @@ class MaquinaController
         $conteudoGerado['marca_id'] = $marcaId;
         $conteudoGerado['noticia_id'] = $noticiaId ?: null;
 
+        // Limpa o TEXTO dos slides: remove emojis/símbolos e caracteres quebrados
+        // (a IA às vezes insere emojis cujo encoding corrompe, ex.: "🚀"→"680").
+        if (isset($conteudoGerado['slides']) && is_array($conteudoGerado['slides'])) {
+            foreach ($conteudoGerado['slides'] as &$s) {
+                if (isset($s['texto'])) $s['texto'] = $this->limparTextoSlide((string) $s['texto']);
+                if (isset($s['texto_secundario'])) $s['texto_secundario'] = $this->limparTextoSlide((string) $s['texto_secundario']);
+            }
+            unset($s);
+        }
+
         // 4. PASSO 2 — As imagens NÃO são geradas aqui (cada imagem no DALL-E leva
         //    ~10-20s; gerar N imagens numa única request estoura o timeout do proxy → 504).
         //    Marcamos os slides que precisam de imagem como "pendente" e o front-end
@@ -630,7 +678,7 @@ class MaquinaController
                     'tema' => $tema,
                     'objetivo' => $objetivo,
                     'noticia_id' => $noticiaId ?: null,
-                    'slides' => json_encode($conteudoGerado['slides'] ?? []),
+                    'slides' => json_encode($conteudoGerado['slides'] ?? [], JSON_UNESCAPED_UNICODE),
                     'legenda' => $conteudoGerado['legenda'] ?? '',
                     'hashtags' => $conteudoGerado['hashtags'] ?? '',
                     'imagens' => json_encode([])
@@ -678,7 +726,7 @@ class MaquinaController
 
         try {
             $conteudo = Database::queryOne(
-                "SELECT c.slides, c.marca_id, m.prompt_dalle
+                "SELECT c.slides, c.marca_id, c.tipo, m.prompt_dalle
                  FROM conteudos_marca c JOIN marcas m ON c.marca_id = m.id
                  WHERE c.id = :id AND c.usuario_id = :user_id",
                 ['id' => $conteudoId, 'user_id' => Auth::id()]
@@ -698,7 +746,7 @@ class MaquinaController
             $promptImagem = (string) ($slides[$slideIndex]['prompt_imagem'] ?? '');
             if ($promptImagem === '') {
                 $slides[$slideIndex]['imagem_pendente'] = false;
-                Database::execute("UPDATE conteudos_marca SET slides = :s WHERE id = :id", ['s' => json_encode($slides), 'id' => $conteudoId]);
+                Database::execute("UPDATE conteudos_marca SET slides = :s WHERE id = :id", ['s' => json_encode($slides, JSON_UNESCAPED_UNICODE), 'id' => $conteudoId]);
                 echo json_encode(['sucesso' => true, 'imagem_url' => '', 'vazio' => true]);
                 exit;
             }
@@ -707,13 +755,16 @@ class MaquinaController
             $estiloTemplates = $this->obterEstiloTemplates($marcaId);
             $refTemplates = $estiloTemplates !== '' ? ' — Estilo visual de referência (siga fielmente): ' . $estiloTemplates : '';
 
-            $promptCompleto = $conteudo['prompt_dalle'] . ' — ' . $promptImagem . $refTemplates . ' — Não incluir texto, palavras ou números na imagem.';
-            $imgResult = ApiHelper::gerarImagem($promptCompleto, '1024x1024');
+            // Formato vertical (retrato) para feed do Instagram; story também vertical.
+            $tamanho = $this->tamanhoImagemPorTipo((string) ($conteudo['tipo'] ?? ''));
+
+            $promptCompleto = $conteudo['prompt_dalle'] . ' — ' . $promptImagem . $refTemplates . ' — Formato vertical para post de Instagram (retrato), composição centralizada com margens de segurança. Não incluir texto, palavras, letras ou números na imagem.';
+            $imgResult = ApiHelper::gerarImagem($promptCompleto, $tamanho);
 
             if (!$imgResult['sucesso'] || empty($imgResult['url'])) {
                 // Tentar prompt simplificado
-                $promptSimples = $conteudo['prompt_dalle'] . $refTemplates . ' — estilo corporativo moderno, sem texto';
-                $imgResult = ApiHelper::gerarImagem($promptSimples, '1024x1024');
+                $promptSimples = $conteudo['prompt_dalle'] . $refTemplates . ' — estilo corporativo moderno, formato vertical de Instagram, sem texto';
+                $imgResult = ApiHelper::gerarImagem($promptSimples, $tamanho);
                 $promptCompleto = $promptSimples;
             }
 
@@ -732,7 +783,7 @@ class MaquinaController
             $slides[$slideIndex]['imagem_url'] = $urlPublica;
             $slides[$slideIndex]['imagem_pendente'] = false;
 
-            Database::execute("UPDATE conteudos_marca SET slides = :s WHERE id = :id", ['s' => json_encode($slides), 'id' => $conteudoId]);
+            Database::execute("UPDATE conteudos_marca SET slides = :s WHERE id = :id", ['s' => json_encode($slides, JSON_UNESCAPED_UNICODE), 'id' => $conteudoId]);
 
             // Registrar na tabela de controle (best-effort).
             try {

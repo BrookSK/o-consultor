@@ -539,11 +539,26 @@ class ApiHelper
      */
     private static function gerarImagemRequest(string $apiKey, string $modelo, string $prompt, string $size): array
     {
+        // Normaliza o tamanho conforme o modelo (cada um aceita tamanhos diferentes):
+        //  - orientação desejada é derivada do $size recebido (quadrado/retrato/paisagem);
+        //  - gpt-image-1: 1024x1024 | 1024x1536 (retrato) | 1536x1024 (paisagem);
+        //  - dall-e-3:    1024x1024 | 1024x1792 (retrato) | 1792x1024 (paisagem);
+        //  - dall-e-2:    apenas 1024x1024.
+        [$w, $h] = array_map('intval', array_pad(explode('x', $size), 2, 1024));
+        $orientacao = $h > $w ? 'retrato' : ($w > $h ? 'paisagem' : 'quadrado');
+        if (stripos($modelo, 'dall-e-2') !== false) {
+            $sizeModelo = '1024x1024';
+        } elseif (stripos($modelo, 'dall-e') !== false) {
+            $sizeModelo = $orientacao === 'retrato' ? '1024x1792' : ($orientacao === 'paisagem' ? '1792x1024' : '1024x1024');
+        } else { // gpt-image-1 e afins
+            $sizeModelo = $orientacao === 'retrato' ? '1024x1536' : ($orientacao === 'paisagem' ? '1536x1024' : '1024x1024');
+        }
+
         $body = [
             'model'  => $modelo,
             'prompt' => $prompt,
             'n'      => 1,
-            'size'   => $size,
+            'size'   => $sizeModelo,
         ];
         // 'quality' e 'response_format' têm valores/aceitação diferentes por modelo.
         if (stripos($modelo, 'dall-e') !== false) {
@@ -1734,11 +1749,12 @@ REGRAS IMPORTANTES:
 2. Para prompt_imagem, use o estilo: {$marca['prompt_dalle']}
 3. NÃO incluir texto, palavras ou números nas descrições de imagem
 4. Manter consistência com o tom de voz e arquétipo da marca
-5. Slides de carrossel: máximo 50 caracteres por linha de texto
-6. Legenda: incluir call-to-action relevante ao objetivo
-7. PERSONALIZAÇÃO: Use o contexto da jornada para tornar o conteúdo mais específico e relevante
+5. O campo 'texto' de cada slide deve ser uma frase/parágrafo CLARO e COMPLETO em português, com sentido próprio. NÃO use emojis, símbolos, códigos ou caracteres especiais no 'texto' dos slides — apenas texto limpo.
+6. O conteúdo deve ser COERENTE e encadeado: capa com gancho, slides de desenvolvimento que se conectam, e fechamento com conclusão + CTA. Nada de frases soltas ou aleatórias.
+7. Legenda: texto corrido natural com call-to-action relevante ao objetivo (emojis são permitidos APENAS na legenda, com moderação).
+8. PERSONALIZAÇÃO: Use o contexto da jornada para tornar o conteúdo mais específico e relevante
 
-Responda APENAS em JSON válido, sem explicações.";
+Responda APENAS em JSON válido e bem formado, em português, sem explicações fora do JSON.";
     }
 
     /**
