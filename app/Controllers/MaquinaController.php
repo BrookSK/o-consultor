@@ -104,6 +104,25 @@ class MaquinaController
     }
 
     /**
+     * Retorna a lista de nomes de colunas existentes numa tabela.
+     * Usado para montar INSERT/UPDATE só com colunas que realmente existem
+     * (evita erro 1054 em bancos com schema desatualizado).
+     */
+    private function colunasDaTabela(string $tabela): array
+    {
+        try {
+            $rows = Database::query(
+                "SELECT COLUMN_NAME FROM information_schema.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t",
+                ['t' => $tabela]
+            );
+            return array_column($rows, 'COLUMN_NAME');
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
      * Agrega os dados da empresa vindos de: tabela empresas, último diagnóstico
      * concluído, perfil de busca (central de conteúdo) e marca já cadastrada.
      * Retorna um array pronto para o front preencher os campos do wizard.
@@ -293,20 +312,35 @@ class MaquinaController
             exit;
         }
 
+        // Campos extras que não vêm de $_POST mas devem ser gravados.
+        $dadosMarca['brand_book_criado'] = 1;
+
         try {
-            // Salvar no banco
-            $marcaId = Database::execute(
-                "INSERT INTO marcas (empresa_id, nome, nicho, publico_alvo, produtos_servicos, diferenciais_competitivos, 
-                                   concorrentes, objetivos_conteudo, tom, arquetipo, palavras_usa, palavras_nunca, 
-                                   formatos_preferenciais, paleta_cores, fonte_principal, fonte_secundaria, 
-                                   estilo_visual, direcao_foto, prompt_master, prompt_dalle, brand_book_criado, criado_em)
-                 VALUES (:empresa_id, :nome, :nicho, :publico_alvo, :produtos_servicos, :diferenciais_competitivos, 
-                        :concorrentes, :objetivos_conteudo, :tom, :arquetipo, :palavras_usa, :palavras_nunca, 
-                        :formatos_preferenciais, :paleta_cores, :fonte_principal, :fonte_secundaria, 
-                        :estilo_visual, :direcao_foto, :prompt_master, :prompt_dalle, 1, NOW())",
-                $dadosMarca
+            // Monta o INSERT dinamicamente apenas com as colunas que EXISTEM na
+            // tabela. Em ambientes onde a `marcas` foi criada por uma versão antiga
+            // (sem produtos_servicos etc.), isso evita o erro 1054 e salva o que dá.
+            $colunasExistentes = $this->colunasDaTabela('marcas');
+            $dadosFiltrados = array_intersect_key($dadosMarca, array_flip($colunasExistentes));
+
+            if (empty($dadosFiltrados['empresa_id']) || empty($dadosFiltrados['nome'])) {
+                // Garantia mínima (empresa_id e nome devem sempre existir na tabela).
+                $dadosFiltrados['empresa_id'] = $empresaId;
+                $dadosFiltrados['nome'] = $dadosMarca['nome'];
+            }
+
+            $colunas = array_keys($dadosFiltrados);
+            $placeholders = array_map(fn($c) => ':' . $c, $colunas);
+            $listaColunas = implode(', ', $colunas);
+            $listaValores = implode(', ', $placeholders);
+            // criado_em, se a coluna existir.
+            $sufixoCriadoEm = in_array('criado_em', $colunasExistentes, true) ? ', criado_em' : '';
+            $sufixoCriadoEmVal = in_array('criado_em', $colunasExistentes, true) ? ', NOW()' : '';
+
+            Database::execute(
+                "INSERT INTO marcas ({$listaColunas}{$sufixoCriadoEm}) VALUES ({$listaValores}{$sufixoCriadoEmVal})",
+                $dadosFiltrados
             );
-            
+
             $marcaId = Database::lastInsertId();
 
             Logger::acao('Nova marca cadastrada com integração', [
