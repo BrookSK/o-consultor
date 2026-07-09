@@ -494,19 +494,23 @@ let geracaoImagens = {
     idxAtual: null,            // slide sendo gerado agora
 };
 
-// Cancela um slide específico. Se for o que está gerando agora, aborta a request.
+// Cancela um slide específico (marca na fila do servidor; o que ainda não
+// começou não será gerado).
 function cancelarImagemSlide(idx) {
     geracaoImagens.canceladosSlide[idx] = true;
-    if (geracaoImagens.idxAtual === idx && geracaoImagens.controllerAtual) {
-        geracaoImagens.controllerAtual.abort();
-    }
+    if (geracaoImagens.conteudoId) cancelarImagemSlideServidor(geracaoImagens.conteudoId, idx);
     marcarSlideCancelado(idx);
 }
 
-// Cancela toda a geração restante.
+// Cancela toda a geração restante (marca todos os pendentes na fila do servidor).
 function cancelarTodasImagens() {
     geracaoImagens.cancelarTudo = true;
-    if (geracaoImagens.controllerAtual) geracaoImagens.controllerAtual.abort();
+    if (geracaoImagens.conteudoId) {
+        const fd = new FormData();
+        fd.append('csrf_token', '<?= Csrf::token() ?>');
+        fd.append('conteudo_id', geracaoImagens.conteudoId);
+        fetch('<?= APP_URL ?>/maquina-de-conteudo/cancelar-imagens', { method: 'POST', body: fd }).catch(() => {});
+    }
     const status = document.getElementById('status-imagens');
     if (status) status.textContent = '✕ Cancelando...';
 }
@@ -520,80 +524,136 @@ function marcarSlideCancelado(idx) {
     }
 }
 
-// Gera as imagens dos slides pendentes SEQUENCIALMENTE (1 request por imagem),
-// atualizando o preview conforme cada uma fica pronta. Suporta cancelamento
-// individual (por slide) e global (cancelar todas).
+// As imagens são geradas em BACKGROUND (worker no servidor) porque cada uma
+// leva mais que o timeout do proxy. Aqui apenas fazemos POLLING do status e
+// atualizamos o preview conforme cada imagem fica pronta.
 async function gerarImagensSequencial(conteudoId, indices) {
     const status = document.getElementById('status-imagens');
     const btnCancelarTodas = document.getElementById('btn-cancelar-imagens');
     if (btnCancelarTodas) btnCancelarTodas.classList.remove('hidden');
 
-    // Reset do estado de controle.
-    geracaoImagens = { cancelarTudo: false, canceladosSlide: {}, controllerAtual: null, idxAtual: null };
+    geracaoImagens = { cancelarTudo: false, canceladosSlide: {}, controllerAtual: null, idxAtual: null, conteudoId };
 
-    let feitas = 0;
-    for (const idx of indices) {
+    const esperar = (ms) => new Promise(r => setTimeout(r, ms));
+    const total = indices.length;
+    const maxTentativas = 120; // ~4 min (2s entre polls)
+
+    for (let t = 0; t < maxTentativas; t++) {
         if (geracaoImagens.cancelarTudo) break;
-        if (geracaoImagens.canceladosSlide[idx]) { feitas++; continue; }
 
-        const ph = document.getElementById('slide-img-' + idx);
-        const txt = ph ? ph.querySelector('.slide-status-txt') : null;
-        if (txt) txt.textContent = 'Gerando imagem...';
-        if (status) status.textContent = `🎨 Gerando imagem ${feitas + 1}/${indices.length}...`;
-
-        geracaoImagens.idxAtual = idx;
-        geracaoImagens.controllerAtual = new AbortController();
-
+        let data;
         try {
-            const fd = new FormData();
-            fd.append('csrf_token', '<?= Csrf::token() ?>');
-            fd.append('conteudo_id', conteudoId);
-            fd.append('slide_index', idx);
-            const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/gerar-imagem-slide', { method: 'POST', body: fd, signal: geracaoImagens.controllerAtual.signal });
-            const data = await res.json();
+            const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/status-imagens?conteudo_id=' + conteudoId + '&_=' + Date.now());
+            data = await res.json();
+        } catch (e) { await esperar(2000); continue; }
+
+        if (!data || !data.sucesso) { await esperar(2000); continue; }
+
+        // Fallback: se não há worker (exec/cron), processa 1 imagem via HTTP.
+        // (best-effort; se der timeout no proxy, o polling segue mesmo assim)
+        fetch('<?= APP_URL ?>/maquina-de-conteudo/processar-fila-imagens?_=' + Date.now()).catch(() => {});
+
+        let prontas = 0;
+        (data.itens || []).forEach(item => {
+            const idx = item.slide_index;
             const container = document.querySelector(`[data-slide="${idx}"]`);
-
-            // Se o usuário cancelou este slide durante a geração, descarta o resultado.
-            if (geracaoImagens.canceladosSlide[idx]) { marcarSlideCancelado(idx); feitas++; continue; }
-
-            if (data.sucesso && data.imagem_url && container) {
-                const alvo = container.querySelector('img, div');
-                const img = document.createElement('img');
-                img.src = data.imagem_url;
-                img.className = 'w-full aspect-[4/5] object-cover';
-                img.loading = 'lazy';
-                if (alvo) alvo.replaceWith(img);
-                if (data.metodo !== 'referencia' && data.aviso_ref && typeof Toast !== 'undefined') {
-                    Toast.erro('Imagem gerada SEM os templates de referência. Motivo: ' + data.aviso_ref);
+            if (item.status === 'concluido' && item.imagem_url && container) {
+                prontas++;
+                const jaTem = container.querySelector('img');
+                if (!jaTem) {
+                    const alvo = container.querySelector('div');
+                    const img = document.createElement('img');
+                    img.src = item.imagem_url;
+                    img.className = 'w-full aspect-[4/5] object-cover';
+                    img.loading = 'lazy';
+                    if (alvo) alvo.replaceWith(img);
+                    // Adiciona controles de regeneração com instrução dentro do card.
+                    adicionarControlesRegeneracao(container, conteudoId, idx);
                 }
-            } else if (container) {
+            } else if (item.status === 'erro' && container) {
                 const p = container.querySelector('#slide-img-' + idx);
-                if (p) { p.className = 'w-full aspect-[4/5] bg-gray-100 flex items-center justify-center text-3xl'; p.textContent = '🖼️'; }
+                if (p && !p.querySelector('img')) { p.className = 'w-full aspect-[4/5] bg-gray-100 flex items-center justify-center text-xs text-red-400'; p.textContent = 'Falha'; }
             }
-        } catch (e) {
-            // AbortError = cancelamento (individual ou global): não é erro real.
-            if (e.name === 'AbortError') {
-                marcarSlideCancelado(idx);
-                if (geracaoImagens.cancelarTudo) break;
-            }
-            // outros erros: segue para a próxima imagem
+        });
+
+        if (status) status.textContent = `🎨 Gerando imagens ${prontas}/${total}...`;
+
+        if (data.concluido) {
+            if (status) status.textContent = '✅ Concluído';
+            if (btnCancelarTodas) btnCancelarTodas.classList.add('hidden');
+            if (typeof Toast !== 'undefined') Toast.sucesso('Imagens geradas!');
+            return;
         }
-        feitas++;
+
+        await esperar(2000);
     }
 
-    geracaoImagens.idxAtual = null;
-    geracaoImagens.controllerAtual = null;
     if (btnCancelarTodas) btnCancelarTodas.classList.add('hidden');
-
     if (geracaoImagens.cancelarTudo) {
-        // Marca como cancelados os slides que ainda estavam pendentes.
-        indices.forEach(i => marcarSlideCancelado(i));
-        if (status) status.textContent = '✕ Geração cancelada';
-        if (typeof Toast !== 'undefined') Toast.sucesso('Geração de imagens cancelada.');
-    } else {
-        if (status) status.textContent = '✅ Concluído';
-        if (typeof Toast !== 'undefined') Toast.sucesso('Imagens geradas!');
+        if (status) status.textContent = '✕ Cancelado (as imagens já em geração podem concluir no servidor)';
+    } else if (status) {
+        status.textContent = '⏳ As imagens continuam sendo geradas em segundo plano. Recarregue em instantes.';
     }
+}
+
+// Adiciona, dentro do card do slide, um textarea + botão para regenerar a
+// imagem com uma instrução de ajuste do usuário (corrige só aquela imagem).
+function adicionarControlesRegeneracao(container, conteudoId, idx) {
+    if (!container || container.querySelector('.regen-box')) return;
+    const box = document.createElement('div');
+    box.className = 'regen-box p-3 border-t border-gray-100';
+    box.innerHTML =
+        '<textarea class="regen-txt w-full px-2 py-1.5 border border-gray-300 rounded text-xs outline-none focus:border-primary resize-none" rows="2" placeholder="O que ajustar nesta imagem? Ex.: fundo mais claro, incluir uma pessoa, tom mais sério..."></textarea>'
+        + '<button type="button" class="regen-btn mt-2 w-full px-3 py-1.5 bg-primary text-white rounded text-xs font-medium hover:bg-primary-700">🔄 Regenerar esta imagem</button>';
+    container.appendChild(box);
+    box.querySelector('.regen-btn').addEventListener('click', () => regenerarComInstrucao(conteudoId, idx, container));
+}
+
+async function regenerarComInstrucao(conteudoId, idx, container) {
+    const txt = container.querySelector('.regen-txt');
+    const btn = container.querySelector('.regen-btn');
+    const instrucao = txt ? txt.value.trim() : '';
+    if (btn) { btn.disabled = true; btn.textContent = '🔄 Regenerando...'; }
+
+    // Mostra estado de carregamento na própria imagem.
+    const img = container.querySelector('img');
+    if (img) img.style.opacity = '0.4';
+
+    try {
+        const fd = new FormData();
+        fd.append('csrf_token', '<?= Csrf::token() ?>');
+        fd.append('conteudo_id', conteudoId);
+        fd.append('slide_index', idx);
+        fd.append('instrucao', instrucao);
+        const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/gerar-imagem-slide', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.sucesso && data.imagem_url) {
+            if (img) { img.src = data.imagem_url + '?t=' + Date.now(); img.style.opacity = '1'; }
+            if (typeof Toast !== 'undefined') Toast.sucesso('Imagem regenerada!');
+            if (data.metodo !== 'referencia' && data.aviso_ref && typeof Toast !== 'undefined') {
+                Toast.erro('Gerada SEM os templates de referência. Motivo: ' + data.aviso_ref);
+            }
+        } else {
+            if (img) img.style.opacity = '1';
+            if (typeof Toast !== 'undefined') Toast.erro(data.erro || 'Falha ao regenerar.'); else alert(data.erro || 'Falha ao regenerar.');
+        }
+    } catch (e) {
+        if (img) img.style.opacity = '1';
+        alert('Erro de conexão ao regenerar.');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '🔄 Regenerar esta imagem'; }
+    }
+}
+
+// Cancela a geração de UM slide no servidor (marca como cancelado na fila).
+async function cancelarImagemSlideServidor(conteudoId, idx) {
+    try {
+        const fd = new FormData();
+        fd.append('csrf_token', '<?= Csrf::token() ?>');
+        fd.append('conteudo_id', conteudoId);
+        fd.append('slide_index', idx);
+        await fetch('<?= APP_URL ?>/maquina-de-conteudo/cancelar-imagem-slide', { method: 'POST', body: fd });
+    } catch (e) { /* best-effort */ }
 }
 
 // === CALENDÁRIO EDITORIAL ===

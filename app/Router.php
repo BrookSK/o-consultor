@@ -238,6 +238,10 @@ class Router
         $this->post('maquina-de-conteudo/aprovar', 'MaquinaController', 'aprovar');
         $this->post('maquina-de-conteudo/regenerar-imagem', 'MaquinaController', 'regenerarImagem');
         $this->post('maquina-de-conteudo/gerar-imagem-slide', 'MaquinaController', 'gerarImagemSlide'); // Gera 1 imagem por vez (evita timeout)
+        $this->get('maquina-de-conteudo/status-imagens', 'MaquinaController', 'statusImagensConteudo'); // Polling do status das imagens (background)
+        $this->get('maquina-de-conteudo/processar-fila-imagens', 'MaquinaController', 'processarFilaImagensHttp'); // Fallback: processa 1 imagem via HTTP
+        $this->post('maquina-de-conteudo/cancelar-imagem-slide', 'MaquinaController', 'cancelarImagemSlide'); // Cancela 1 imagem pendente
+        $this->post('maquina-de-conteudo/cancelar-imagens', 'MaquinaController', 'cancelarImagens'); // Cancela todas pendentes
         $this->post('maquina-de-conteudo/upload-imagem', 'MaquinaController', 'uploadImagem');
         $this->post('maquina-de-conteudo/atualizar-slide', 'MaquinaController', 'atualizarSlide');
         $this->post('maquina-de-conteudo/upload-template', 'MaquinaController', 'uploadTemplate');

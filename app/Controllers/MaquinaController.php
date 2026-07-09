@@ -159,6 +159,77 @@ class MaquinaController
     }
 
     /**
+     * Carrega os templates da marca (com descrição e adequação), incluindo
+     * caminho absoluto no disco. Usado para seleção inteligente do template.
+     */
+    private function carregarTemplatesMarca(int $marcaId): array
+    {
+        try {
+            $rows = Database::query(
+                "SELECT id, caminho, nome_original, descricao, adequado_para
+                 FROM marca_templates WHERE marca_id = :id ORDER BY criado_em ASC",
+                ['id' => $marcaId]
+            );
+        } catch (\Throwable $e) {
+            // Sem as colunas de descrição (migration 044 não rodada).
+            try {
+                $rows = Database::query(
+                    "SELECT id, caminho, nome_original FROM marca_templates WHERE marca_id = :id ORDER BY criado_em ASC",
+                    ['id' => $marcaId]
+                );
+            } catch (\Throwable $e2) {
+                return [];
+            }
+        }
+        $out = [];
+        foreach ($rows as $r) {
+            $abs = (defined('PUBLIC_PATH') ? PUBLIC_PATH : '') . (string) $r['caminho'];
+            if (!is_file($abs)) continue;
+            $out[] = [
+                'id' => (int) $r['id'],
+                'abs' => $abs,
+                'nome' => (string) ($r['nome_original'] ?? ''),
+                'descricao' => (string) ($r['descricao'] ?? ''),
+                'adequado_para' => (string) ($r['adequado_para'] ?? ''),
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * Escolhe, entre os templates da marca, o que melhor se adapta ao conteúdo
+     * (tipo + tema), usando as descrições/adequação geradas pela IA no upload.
+     * Retorna o índice do template escolhido (0 se não for possível decidir).
+     */
+    private function escolherTemplateParaConteudo(array $templates, string $tipo, string $tema): int
+    {
+        if (count($templates) <= 1) return 0;
+
+        // Se nenhum template tem descrição, não há como decidir — usa o primeiro.
+        $temDescricao = false;
+        foreach ($templates as $t) { if ($t['descricao'] !== '' || $t['adequado_para'] !== '') { $temDescricao = true; break; } }
+        if (!$temDescricao) return 0;
+
+        // Monta a lista para a IA escolher.
+        $lista = '';
+        foreach ($templates as $i => $t) {
+            $lista .= "#{$i}: " . ($t['adequado_para'] !== '' ? "[adequado para: {$t['adequado_para']}] " : '')
+                . mb_substr($t['descricao'] !== '' ? $t['descricao'] : $t['nome'], 0, 300) . "\n";
+        }
+        $prompt = "Você vai escolher o template visual mais adequado para um post.\n"
+            . "Tipo de conteúdo: {$tipo}\nTema: {$tema}\n\nTemplates disponíveis:\n{$lista}\n"
+            . "Responda APENAS em JSON: {\"indice\": N} onde N é o número (#) do template mais adequado.";
+        try {
+            $res = ApiHelper::chamarAnalise($prompt, true);
+            if (!empty($res['sucesso']) && is_array($res['conteudo']) && isset($res['conteudo']['indice'])) {
+                $idx = (int) $res['conteudo']['indice'];
+                if ($idx >= 0 && $idx < count($templates)) return $idx;
+            }
+        } catch (\Throwable $e) { /* usa fallback */ }
+        return 0;
+    }
+
+    /**
      * Tamanho da imagem conforme o tipo/rede. Instagram feed e story usam
      * formato vertical (retrato). Os tamanhos válidos da API são 1024x1024,
      * 1024x1792 (retrato) e 1792x1024 (paisagem).
@@ -663,6 +734,20 @@ class MaquinaController
         $conteudoGerado['marca_id'] = $marcaId;
         $conteudoGerado['noticia_id'] = $noticiaId ?: null;
 
+        // Limita a quantidade de slides conforme o tipo (a IA às vezes gera a mais):
+        //  - post: no máximo 3 imagens; story/reels: 1; carrossel: o solicitado.
+        if (isset($conteudoGerado['slides']) && is_array($conteudoGerado['slides'])) {
+            $maxSlides = match ($tipo) {
+                'post' => 3,
+                'story', 'reels' => 1,
+                'carrossel' => $qtdSlides,
+                default => 3,
+            };
+            if (count($conteudoGerado['slides']) > $maxSlides) {
+                $conteudoGerado['slides'] = array_slice($conteudoGerado['slides'], 0, $maxSlides);
+            }
+        }
+
         // Limpa o TEXTO dos slides: remove emojis/símbolos e caracteres quebrados
         // (a IA às vezes insere emojis cujo encoding corrompe, ex.: "🚀"→"680").
         if (isset($conteudoGerado['slides']) && is_array($conteudoGerado['slides'])) {
@@ -717,6 +802,26 @@ class MaquinaController
             $conteudoId = 0;
         }
 
+        // 6. Enfileira as imagens pendentes e dispara o worker em BACKGROUND.
+        //    A geração via gpt-image-1 com referências leva >60s por imagem e
+        //    estoura o timeout do proxy — por isso roda fora do ciclo HTTP.
+        if ($conteudoId > 0 && $gerarImagens && !empty($slidesPendentes)) {
+            $this->garantirTabelaFilaImagens();
+            foreach ($slidesPendentes as $idx) {
+                try {
+                    Database::execute(
+                        "INSERT INTO fila_imagens_conteudo (conteudo_id, slide_index, status, criado_em, atualizado_em)
+                         VALUES (:cid, :idx, 'pendente', NOW(), NOW())
+                         ON DUPLICATE KEY UPDATE status='pendente', tentativas=0, atualizado_em=NOW()",
+                        ['cid' => $conteudoId, 'idx' => $idx]
+                    );
+                } catch (\Throwable $e) {
+                    error_log('[O CONSULTOR][FILA-IMG] Falha ao enfileirar slide ' . $idx . ': ' . $e->getMessage());
+                }
+            }
+            $this->dispararWorkerImagens();
+        }
+
         Logger::acao('Conteúdo (texto) gerado com IA', ['marca_id' => $marcaId, 'tipo' => $tipo, 'tema' => $tema, 'slides_pendentes' => count($slidesPendentes)]);
 
         header('Content-Type: application/json');
@@ -724,11 +829,192 @@ class MaquinaController
             'sucesso' => true,
             'conteudo_id' => $conteudoId,
             'conteudo' => $conteudoGerado,
-            'slides_pendentes' => $slidesPendentes,     // índices que o front vai gerar
+            'slides_pendentes' => $slidesPendentes,     // índices em geração (background)
             'gerar_imagens' => $gerarImagens,
             'redirect_url' => APP_URL . '/maquina-de-conteudo/editar/' . $conteudoId,
-            'mensagem' => 'Texto gerado! Gerando imagens...'
+            'mensagem' => 'Texto gerado! Gerando imagens em segundo plano...'
         ]);
+        exit;
+    }
+
+    /** Cria a tabela da fila de imagens se não existir. */
+    private function garantirTabelaFilaImagens(): void
+    {
+        Database::execute(
+            "CREATE TABLE IF NOT EXISTS fila_imagens_conteudo (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                conteudo_id INT UNSIGNED NOT NULL,
+                slide_index INT NOT NULL,
+                status ENUM('pendente','processando','concluido','erro','cancelado') NOT NULL DEFAULT 'pendente',
+                tentativas INT UNSIGNED NOT NULL DEFAULT 0,
+                mensagem VARCHAR(500) NULL,
+                criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                atualizado_em DATETIME NULL,
+                INDEX idx_conteudo (conteudo_id),
+                INDEX idx_status (status),
+                UNIQUE KEY uk_conteudo_slide (conteudo_id, slide_index)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
+    }
+
+    /** Dispara o worker CLI que processa a fila de imagens (best-effort). */
+    private function dispararWorkerImagens(): void
+    {
+        if (!function_exists('exec')) return;
+        $disabled = explode(',', str_replace(' ', '', (string) ini_get('disable_functions')));
+        if (in_array('exec', $disabled, true)) return;
+
+        $candidatos = [PHP_BINDIR . '/php', '/opt/plesk/php/8.3/bin/php', '/opt/plesk/php/8.2/bin/php', '/usr/bin/php', 'php'];
+        $phpBin = 'php';
+        foreach ($candidatos as $c) {
+            if ($c === 'php' || @is_executable($c)) { $phpBin = $c; break; }
+        }
+        $script = ROOT_PATH . '/worker/processar_imagens.php';
+        if (!file_exists($script)) return;
+
+        $log = ROOT_PATH . '/worker/imagens.log';
+        $cmd = escapeshellcmd($phpBin) . ' ' . escapeshellarg($script) . ' >> ' . escapeshellarg($log) . ' 2>&1 &';
+        @exec($cmd);
+    }
+
+    /**
+     * Processa UM item pendente da fila de imagens. Chamado pelo worker CLI em
+     * loop e também pelo polling HTTP (fallback), gerando 1 imagem por vez.
+     * Retorna array com o resultado do item processado (ou vazio).
+     */
+    public function processarProximaImagemFila(): array
+    {
+        $this->garantirTabelaFilaImagens();
+
+        $item = Database::queryOne(
+            "SELECT * FROM fila_imagens_conteudo
+             WHERE status = 'pendente'
+                OR (status = 'processando' AND atualizado_em < (NOW() - INTERVAL 300 SECOND))
+             ORDER BY id ASC LIMIT 1"
+        );
+        if (!$item) {
+            return ['vazio' => true];
+        }
+
+        $filaId = (int) $item['id'];
+        Database::execute(
+            "UPDATE fila_imagens_conteudo SET status='processando', tentativas=tentativas+1, atualizado_em=NOW() WHERE id=:id",
+            ['id' => $filaId]
+        );
+
+        $res = $this->gerarImagemDoSlide((int) $item['conteudo_id'], (int) $item['slide_index']);
+
+        if (!empty($res['sucesso'])) {
+            Database::execute("UPDATE fila_imagens_conteudo SET status='concluido', mensagem=:m, atualizado_em=NOW() WHERE id=:id",
+                ['m' => ($res['metodo'] ?? ''), 'id' => $filaId]);
+        } else {
+            // Após 3 tentativas, marca erro definitivo.
+            $novoStatus = ((int) $item['tentativas'] >= 2) ? 'erro' : 'pendente';
+            Database::execute("UPDATE fila_imagens_conteudo SET status=:s, mensagem=:m, atualizado_em=NOW() WHERE id=:id",
+                ['s' => $novoStatus, 'm' => substr((string) ($res['erro'] ?? 'falha'), 0, 490), 'id' => $filaId]);
+        }
+
+        return $res + ['conteudo_id' => (int) $item['conteudo_id'], 'slide_index' => (int) $item['slide_index']];
+    }
+
+    /**
+     * Endpoint HTTP: status das imagens de um conteúdo (para polling do front).
+     * Também aciona o worker em background, caso não esteja rodando.
+     */
+    public function statusImagensConteudo(): void
+    {
+        Auth::proteger();
+        header('Content-Type: application/json');
+        $conteudoId = (int) ($_GET['conteudo_id'] ?? 0);
+        if (!$conteudoId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'conteudo_id não informado.']);
+            exit;
+        }
+
+        // Garante que o processamento está andando (best-effort).
+        $this->dispararWorkerImagens();
+
+        try {
+            $conteudo = Database::queryOne(
+                "SELECT slides FROM conteudos_marca WHERE id = :id AND usuario_id = :uid",
+                ['id' => $conteudoId, 'uid' => Auth::id()]
+            );
+            $slides = $conteudo ? (json_decode($conteudo['slides'], true) ?: []) : [];
+
+            $fila = Database::query(
+                "SELECT slide_index, status, mensagem FROM fila_imagens_conteudo WHERE conteudo_id = :id",
+                ['id' => $conteudoId]
+            );
+        } catch (\Throwable $e) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro ao consultar status.']);
+            exit;
+        }
+
+        $itens = [];
+        $pendentes = 0;
+        foreach ($fila as $f) {
+            $idx = (int) $f['slide_index'];
+            if (in_array($f['status'], ['pendente', 'processando'], true)) $pendentes++;
+            $itens[] = [
+                'slide_index' => $idx,
+                'status' => $f['status'],
+                'mensagem' => $f['mensagem'],
+                'imagem_url' => $slides[$idx]['imagem_url'] ?? '',
+            ];
+        }
+
+        echo json_encode(['sucesso' => true, 'itens' => $itens, 'pendentes' => $pendentes, 'concluido' => $pendentes === 0]);
+        exit;
+    }
+
+    /**
+     * Processa 1 item da fila via HTTP (fallback quando não há cron/exec).
+     */
+    public function processarFilaImagensHttp(): void
+    {
+        Auth::proteger();
+        @set_time_limit(180);
+        header('Content-Type: application/json');
+        $res = $this->processarProximaImagemFila();
+        echo json_encode(['sucesso' => true, 'resultado' => $res]);
+        exit;
+    }
+
+    /** Cancela a geração de imagem de UM slide (marca na fila, se ainda pendente). */
+    public function cancelarImagemSlide(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+        $conteudoId = (int) ($_POST['conteudo_id'] ?? 0);
+        $slideIndex = (int) ($_POST['slide_index'] ?? -1);
+        try {
+            // Só cancela o que ainda não começou a processar.
+            Database::execute(
+                "UPDATE fila_imagens_conteudo SET status='cancelado', atualizado_em=NOW()
+                 WHERE conteudo_id = :c AND slide_index = :i AND status = 'pendente'",
+                ['c' => $conteudoId, 'i' => $slideIndex]
+            );
+        } catch (\Throwable $e) { /* ignora */ }
+        echo json_encode(['sucesso' => true]);
+        exit;
+    }
+
+    /** Cancela todas as imagens pendentes de um conteúdo. */
+    public function cancelarImagens(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+        $conteudoId = (int) ($_POST['conteudo_id'] ?? 0);
+        try {
+            Database::execute(
+                "UPDATE fila_imagens_conteudo SET status='cancelado', atualizado_em=NOW()
+                 WHERE conteudo_id = :c AND status = 'pendente'",
+                ['c' => $conteudoId]
+            );
+        } catch (\Throwable $e) { /* ignora */ }
+        echo json_encode(['sucesso' => true]);
         exit;
     }
 
@@ -740,44 +1026,57 @@ class MaquinaController
     {
         Auth::proteger();
         Csrf::verificar();
-        @set_time_limit(90);
+        @set_time_limit(180);
         header('Content-Type: application/json');
 
         $conteudoId = (int) ($_POST['conteudo_id'] ?? 0);
         $slideIndex = (int) ($_POST['slide_index'] ?? -1);
+        $instrucao = trim((string) ($_POST['instrucao'] ?? ''));
         if ($conteudoId <= 0 || $slideIndex < 0) {
             echo json_encode(['sucesso' => false, 'erro' => 'Parâmetros inválidos.']);
             exit;
         }
 
+        $res = $this->gerarImagemDoSlide($conteudoId, $slideIndex, $instrucao);
+        echo json_encode($res);
+        exit;
+    }
+
+    /**
+     * Gera a imagem de UM slide (lógica pura, sem HTTP). Reutilizada pelo
+     * endpoint síncrono e pelo worker de background da fila de imagens.
+     * Retorna array ['sucesso'=>bool, 'imagem_url'=>?string, 'metodo'=>string, 'aviso_ref'=>?string, 'erro'=>?string].
+     */
+    private function gerarImagemDoSlide(int $conteudoId, int $slideIndex, string $instrucaoExtra = ''): array
+    {
         try {
             $conteudo = Database::queryOne(
-                "SELECT c.slides, c.marca_id, c.tipo, m.prompt_dalle
+                "SELECT c.slides, c.marca_id, c.tipo, c.tema, m.prompt_dalle
                  FROM conteudos_marca c JOIN marcas m ON c.marca_id = m.id
-                 WHERE c.id = :id AND c.usuario_id = :user_id",
-                ['id' => $conteudoId, 'user_id' => Auth::id()]
+                 WHERE c.id = :id",
+                ['id' => $conteudoId]
             );
             if (!$conteudo) {
-                echo json_encode(['sucesso' => false, 'erro' => 'Conteúdo não encontrado.']);
-                exit;
+                return ['sucesso' => false, 'erro' => 'Conteúdo não encontrado.'];
             }
 
             $slides = json_decode($conteudo['slides'], true) ?: [];
             if (!isset($slides[$slideIndex])) {
-                echo json_encode(['sucesso' => false, 'erro' => 'Slide não encontrado.']);
-                exit;
+                return ['sucesso' => false, 'erro' => 'Slide não encontrado.'];
             }
 
             $marcaId = (int) $conteudo['marca_id'];
             $promptImagem = (string) ($slides[$slideIndex]['prompt_imagem'] ?? '');
+            // Instrução de ajuste do usuário (regenerar com correção).
+            if ($instrucaoExtra !== '') {
+                $promptImagem = ($promptImagem !== '' ? $promptImagem . '. ' : '') . 'Ajuste solicitado: ' . $instrucaoExtra;
+            }
             if ($promptImagem === '') {
                 $slides[$slideIndex]['imagem_pendente'] = false;
                 Database::execute("UPDATE conteudos_marca SET slides = :s WHERE id = :id", ['s' => json_encode($slides, JSON_UNESCAPED_UNICODE), 'id' => $conteudoId]);
-                echo json_encode(['sucesso' => true, 'imagem_url' => '', 'vazio' => true]);
-                exit;
+                return ['sucesso' => true, 'imagem_url' => '', 'vazio' => true, 'metodo' => 'nenhum', 'aviso_ref' => null];
             }
 
-            // Formato vertical (retrato) para feed do Instagram; story também vertical.
             $tamanho = $this->tamanhoImagemPorTipo((string) ($conteudo['tipo'] ?? ''));
 
             $imgResult = null;
@@ -785,36 +1084,59 @@ class MaquinaController
             $metodo = 'nenhum';
             $avisoRef = null;
 
-            // 1) PREFERENCIAL: gerar USANDO os templates da marca como REFERÊNCIA visual
-            //    real (gpt-image-1 images/edits). É o que garante fidelidade ao estilo.
-            $caminhosRef = $this->caminhosTemplatesLocais($marcaId);
-            error_log('[O CONSULTOR][ImagemRef] marca=' . $marcaId . ' templates_no_disco=' . count($caminhosRef)
-                . ($caminhosRef ? ' | ' . implode(' ; ', $caminhosRef) : ''));
+            // 1) PREFERENCIAL: usar os templates da marca como REFERÊNCIA visual real.
+            //    A IA escolhe o template mais adequado ao tipo/tema; ele vira a
+            //    referência PRINCIPAL e os demais entram como referências extras.
+            $templates = $this->carregarTemplatesMarca($marcaId);
+            $descricaoTemplate = '';
+            $caminhosRef = [];
+            if (!empty($templates)) {
+                $escolhido = $this->escolherTemplateParaConteudo($templates, (string) ($conteudo['tipo'] ?? ''), (string) ($conteudo['tema'] ?? ''));
+                $principal = $templates[$escolhido];
+                $descricaoTemplate = $principal['descricao'] ?? '';
+
+                // Envia o template ESCOLHIDO como referência principal. Para maior
+                // fidelidade a ele, quando há descrição (seleção informada) usa só
+                // o escolhido; caso contrário, envia todos como apoio de estilo.
+                $temDescricoes = false;
+                foreach ($templates as $t) { if ($t['descricao'] !== '') { $temDescricoes = true; break; } }
+                if ($temDescricoes) {
+                    $caminhosRef = [$principal['abs']];
+                } else {
+                    $ordenados = array_merge([$principal], array_values(array_filter($templates, fn($t, $i) => $i !== $escolhido, ARRAY_FILTER_USE_BOTH)));
+                    foreach ($ordenados as $t) { $caminhosRef[] = $t['abs']; }
+                    $caminhosRef = array_slice($caminhosRef, 0, 4);
+                }
+                error_log('[O CONSULTOR][ImagemRef] marca=' . $marcaId . ' refs=' . count($caminhosRef) . ' escolhido=#' . $escolhido);
+            } else {
+                $avisoRef = 'Nenhum template no disco para esta marca.';
+            }
 
             if (!empty($caminhosRef)) {
-                $promptRef = 'Gere uma nova imagem VERTICAL (retrato) para post de Instagram REPLICANDO FIELMENTE o estilo visual das imagens de referência fornecidas. '
-                    . 'Reproduza o MESMO MEIO/ESTÉTICA das referências (se as referências forem fotográficas, gere uma FOTO realista; se forem ilustrações, gere ilustração no mesmo traço), '
-                    . 'a mesma paleta de cores, iluminação, enquadramento, profundidade, texturas e clima. O estilo das referências tem PRIORIDADE sobre qualquer outra instrução. '
-                    . 'Assunto/tema a retratar dentro desse estilo: ' . $promptImagem . '. '
-                    . 'NÃO reproduza o texto que aparece nas referências; a imagem final não deve conter texto, letras, logos ou números.';
+                // Descrição do template escolhido entra como COMPLEMENTO do prompt.
+                $complementoDesc = $descricaoTemplate !== ''
+                    ? ' Estilo de referência a seguir fielmente: ' . mb_substr($descricaoTemplate, 0, 600) . '.'
+                    : '';
+                $promptRef = 'Gere uma nova imagem VERTICAL (retrato) para post de Instagram REPLICANDO FIELMENTE o estilo visual das imagens de referência fornecidas '
+                    . '(MESMO meio/estética, paleta, iluminação, enquadramento, texturas e clima). O estilo das referências tem PRIORIDADE sobre qualquer outra instrução.'
+                    . $complementoDesc
+                    . ' Assunto/tema a retratar dentro desse estilo: ' . $promptImagem . '.'
+                    . ' NÃO reproduza o texto das referências; a imagem final não deve conter texto, letras, logos ou números.';
                 $promptCompleto = $promptRef;
                 $imgResult = ApiHelper::gerarImagemComReferencia($promptRef, $caminhosRef, $tamanho);
                 if (!empty($imgResult['sucesso']) && !empty($imgResult['url'])) {
                     $metodo = 'referencia';
                 } else {
-                    $avisoRef = $imgResult['erro'] ?? 'falha desconhecida na geração por referência';
-                    error_log('[O CONSULTOR][ImagemRef] FALHOU, usando fallback por texto. Motivo: ' . $avisoRef);
+                    $avisoRef = $imgResult['erro'] ?? 'falha na geração por referência';
+                    error_log('[O CONSULTOR][ImagemRef] FALHOU, fallback por texto. Motivo: ' . $avisoRef);
                 }
-            } else {
-                $avisoRef = 'Nenhum template encontrado no disco para esta marca.';
             }
 
-            // 2) FALLBACK: sem templates ou se a geração por referência falhar,
-            //    usa geração por texto guiada pela descrição do estilo.
+            // 2) FALLBACK: geração por texto usando a DESCRIÇÃO do template (complemento/fallback).
             if (!$imgResult || empty($imgResult['sucesso']) || empty($imgResult['url'])) {
-                $estiloTemplates = $this->obterEstiloTemplates($marcaId);
+                $estiloTemplates = $descricaoTemplate !== '' ? $descricaoTemplate : $this->obterEstiloTemplates($marcaId);
                 $refTemplates = $estiloTemplates !== '' ? ' — Estilo visual de referência (siga fielmente): ' . $estiloTemplates : '';
-                $promptCompleto = $conteudo['prompt_dalle'] . ' — ' . $promptImagem . $refTemplates . ' — Formato vertical para post de Instagram (retrato), composição centralizada com margens de segurança. Não incluir texto, palavras, letras ou números na imagem.';
+                $promptCompleto = $conteudo['prompt_dalle'] . ' — ' . $promptImagem . $refTemplates . ' — Formato vertical para post de Instagram (retrato), composição centralizada. Não incluir texto, palavras, letras ou números na imagem.';
                 $imgResult = ApiHelper::gerarImagem($promptCompleto, $tamanho);
                 $metodo = 'texto';
 
@@ -826,23 +1148,19 @@ class MaquinaController
             }
 
             if (!$imgResult['sucesso'] || empty($imgResult['url'])) {
-                echo json_encode(['sucesso' => false, 'erro' => $imgResult['erro'] ?? 'Falha ao gerar imagem.']);
-                exit;
+                return ['sucesso' => false, 'erro' => $imgResult['erro'] ?? 'Falha ao gerar imagem.', 'metodo' => $metodo, 'aviso_ref' => $avisoRef];
             }
 
             $caminhoLocal = $this->baixarImagemDalle($imgResult['url'], $marcaId);
             if (!$caminhoLocal) {
-                echo json_encode(['sucesso' => false, 'erro' => 'Falha ao salvar a imagem.']);
-                exit;
+                return ['sucesso' => false, 'erro' => 'Falha ao salvar a imagem.', 'metodo' => $metodo, 'aviso_ref' => $avisoRef];
             }
 
             $urlPublica = APP_URL . $caminhoLocal;
             $slides[$slideIndex]['imagem_url'] = $urlPublica;
             $slides[$slideIndex]['imagem_pendente'] = false;
-
             Database::execute("UPDATE conteudos_marca SET slides = :s WHERE id = :id", ['s' => json_encode($slides, JSON_UNESCAPED_UNICODE), 'id' => $conteudoId]);
 
-            // Registrar na tabela de controle (best-effort).
             try {
                 Database::execute(
                     "INSERT INTO imagens_conteudo (conteudo_id, slide_index, caminho_original, caminho_local, url_dalle, prompt_usado, status, criado_em)
@@ -851,18 +1169,11 @@ class MaquinaController
                 );
             } catch (\Throwable $e) { /* tabela opcional */ }
 
-            echo json_encode([
-                'sucesso' => true,
-                'imagem_url' => $urlPublica,
-                'slide_index' => $slideIndex,
-                'metodo' => $metodo,          // 'referencia' = usou templates | 'texto' = fallback
-                'aviso_ref' => $avisoRef,     // motivo de não ter usado a referência (se houver)
-            ]);
+            return ['sucesso' => true, 'imagem_url' => $urlPublica, 'slide_index' => $slideIndex, 'metodo' => $metodo, 'aviso_ref' => $avisoRef];
         } catch (\Throwable $e) {
             Logger::error('Erro ao gerar imagem do slide: ' . $e->getMessage());
-            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno ao gerar imagem.']);
+            return ['sucesso' => false, 'erro' => 'Erro interno ao gerar imagem.'];
         }
-        exit;
     }
 
     public function editar(): void
@@ -1664,10 +1975,25 @@ class MaquinaController
             exit;
         }
 
-        // Registrar no banco
+        // IA lê a imagem e descreve o estilo + para que tipos de conteúdo serve.
+        $descricao = '';
+        $adequadoPara = '';
+        try {
+            $analise = ApiHelper::descreverTemplateIndividual(APP_URL . $caminhoRelativo);
+            if (!empty($analise['sucesso'])) {
+                $descricao = $analise['descricao'] ?? '';
+                $adequadoPara = $analise['adequado_para'] ?? '';
+            }
+        } catch (\Throwable $e) {
+            error_log('[O CONSULTOR][Template] Falha ao descrever template: ' . $e->getMessage());
+        }
+
+        // Registrar no banco (com descrição, se as colunas existirem).
+        $templateId = 0;
         try {
             Database::execute(
-                "INSERT INTO marca_templates (marca_id, nome_arquivo, caminho, nome_original, tipo, tamanho, criado_em) VALUES (:marca_id, :nome, :caminho, :original, :tipo, :tamanho, NOW())",
+                "INSERT INTO marca_templates (marca_id, nome_arquivo, caminho, nome_original, tipo, tamanho, descricao, adequado_para, criado_em)
+                 VALUES (:marca_id, :nome, :caminho, :original, :tipo, :tamanho, :descricao, :adequado, NOW())",
                 [
                     'marca_id' => $marcaId,
                     'nome' => $nomeArquivo,
@@ -1675,16 +2001,26 @@ class MaquinaController
                     'original' => $arquivo['name'],
                     'tipo' => $extensao,
                     'tamanho' => $arquivo['size'],
+                    'descricao' => $descricao !== '' ? $descricao : null,
+                    'adequado' => $adequadoPara !== '' ? $adequadoPara : null,
                 ]
             );
+            $templateId = (int) Database::lastInsertId();
         } catch (\Exception $e) {
-            // Tabela pode não existir ainda — ignora mas mantém o arquivo
+            // Colunas descricao/adequado_para podem não existir ainda (migration 044).
+            try {
+                Database::execute(
+                    "INSERT INTO marca_templates (marca_id, nome_arquivo, caminho, nome_original, tipo, tamanho, criado_em) VALUES (:marca_id, :nome, :caminho, :original, :tipo, :tamanho, NOW())",
+                    ['marca_id' => $marcaId, 'nome' => $nomeArquivo, 'caminho' => $caminhoRelativo, 'original' => $arquivo['name'], 'tipo' => $extensao, 'tamanho' => $arquivo['size']]
+                );
+                $templateId = (int) Database::lastInsertId();
+            } catch (\Exception $e2) { /* mantém arquivo */ }
         }
 
         // Invalida o cache de estilo dos templates (será recalculado na próxima geração).
         $this->invalidarEstiloTemplates($marcaId);
 
-        Logger::acao('Template uploaded', ['marca_id' => $marcaId, 'arquivo' => $nomeArquivo]);
+        Logger::acao('Template uploaded', ['marca_id' => $marcaId, 'arquivo' => $nomeArquivo, 'descrito' => $descricao !== '']);
 
         header('Content-Type: application/json');
         echo json_encode([
@@ -1693,7 +2029,7 @@ class MaquinaController
             'arquivo' => [
                 'nome' => $arquivo['name'],
                 'url' => APP_URL . $caminhoRelativo,
-                'id' => Database::lastInsertId() ?? 0,
+                'id' => $templateId,
             ],
         ]);
         exit;

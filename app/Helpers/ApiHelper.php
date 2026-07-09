@@ -576,6 +576,65 @@ class ApiHelper
         return ['sucesso' => false, 'url' => null, 'erro' => 'Resposta sem imagem.'];
     }
 
+    /**
+     * Analisa UMA imagem de template (visão) e devolve uma descrição detalhada
+     * do estilo/composição + para que tipos de conteúdo ela é mais adequada.
+     * Usada no upload do template.
+     *
+     * @param string $urlImagem URL pública (https) da imagem
+     * @return array ['sucesso'=>bool, 'descricao'=>string, 'adequado_para'=>string, 'erro'=>string|null]
+     */
+    public static function descreverTemplateIndividual(string $urlImagem): array
+    {
+        $apiKey = self::config('openai_key');
+        if (empty($apiKey)) {
+            return ['sucesso' => false, 'descricao' => '', 'adequado_para' => '', 'erro' => 'Chave OpenAI não configurada.'];
+        }
+        if (!filter_var($urlImagem, FILTER_VALIDATE_URL)) {
+            return ['sucesso' => false, 'descricao' => '', 'adequado_para' => '', 'erro' => 'URL inválida.'];
+        }
+
+        $instrucao = 'Você é diretor de arte. Analise esta imagem de referência (um template/post de uma marca) e responda em JSON com: '
+            . '{"descricao": "descrição VISUAL detalhada e reproduzível: estilo/estética (fotográfico, 3D, flat, ilustração, cyberpunk...), paleta de cores, iluminação, composição/enquadramento, textura, elementos gráficos e clima — para servir de instrução na geração de novas imagens no mesmo estilo. NÃO descreva o texto escrito na imagem.", '
+            . '"adequado_para": "lista curta separada por vírgula dos tipos de conteúdo/post que combinam com este estilo (ex.: carrossel educativo, post de novidade, anúncio/CTA, citação, bastidores)"}. '
+            . 'Responda APENAS o JSON.';
+
+        $content = [
+            ['type' => 'text', 'text' => $instrucao],
+            ['type' => 'image_url', 'image_url' => ['url' => $urlImagem]],
+        ];
+
+        $model = self::config('openai_modelo_leitura', 'gpt-4o');
+        $resultado = self::executarCurl(
+            'https://api.openai.com/v1/chat/completions',
+            ['Authorization: Bearer ' . $apiKey, 'Content-Type: application/json'],
+            ['model' => $model, 'messages' => [['role' => 'user', 'content' => $content]], 'max_tokens' => 500],
+            'OpenAI-Visao-Template',
+            90
+        );
+
+        if (!$resultado['sucesso']) {
+            return ['sucesso' => false, 'descricao' => '', 'adequado_para' => '', 'erro' => $resultado['erro'] ?? 'Falha na análise.'];
+        }
+
+        $texto = (string) ($resultado['dados']['choices'][0]['message']['content'] ?? '');
+        $json = self::extrairJsonDeTexto($texto);
+        if (is_array($json)) {
+            return [
+                'sucesso' => true,
+                'descricao' => trim((string) ($json['descricao'] ?? '')),
+                'adequado_para' => trim((string) ($json['adequado_para'] ?? '')),
+                'erro' => null,
+            ];
+        }
+        // Se não veio JSON, usa o texto puro como descrição.
+        $texto = trim($texto);
+        if ($texto !== '') {
+            return ['sucesso' => true, 'descricao' => $texto, 'adequado_para' => '', 'erro' => null];
+        }
+        return ['sucesso' => false, 'descricao' => '', 'adequado_para' => '', 'erro' => 'A IA não retornou descrição.'];
+    }
+
     /** MIME por extensão de arquivo de imagem. */
     private static function mimePorExtensao(string $caminho): string
     {
@@ -1819,7 +1878,7 @@ Responda APENAS em JSON válido, sem explicações.";
                 $instrucoesTipo = "Para CARROSSEL gere EXATAMENTE {$qtdSlides} slides (nem mais, nem menos) no JSON, na estrutura: {\"slides\": [{\"numero\": 1, \"tipo\": \"capa\", \"texto\": \"título principal\", \"texto_secundario\": \"subtítulo opcional\", \"prompt_imagem\": \"descrição detalhada da imagem\"}, {\"numero\": 2, \"tipo\": \"conteudo\", \"texto\": \"conteúdo do slide\", \"prompt_imagem\": \"descrição da imagem\"}], \"legenda\": \"texto da legenda com call-to-action\", \"hashtags\": \"#tag1 #tag2 #tag3\"}. O primeiro slide é a capa e o último deve conter a conclusão/CTA. O array 'slides' deve ter {$qtdSlides} itens.";
                 break;
             case 'post':
-                $instrucoesTipo = 'Para POST gere JSON com estrutura: {\"slides\": [{\"numero\": 1, \"tipo\": \"unico\", \"texto\": \"conteúdo principal\", \"prompt_imagem\": \"descrição da imagem\"}], \"legenda\": \"texto da legenda\", \"hashtags\": \"#tag1 #tag2\"}';
+                $instrucoesTipo = 'Para POST gere no MÁXIMO 3 imagens (idealmente 1). JSON: {\"slides\": [{\"numero\": 1, \"tipo\": \"unico\", \"texto\": \"conteúdo principal\", \"prompt_imagem\": \"descrição da cena\"}], \"legenda\": \"texto da legenda\", \"hashtags\": \"#tag1 #tag2\"}. NÃO ultrapasse 3 itens no array slides.';
                 break;
             case 'story':
                 $instrucoesTipo = 'Para STORY gere JSON com estrutura: {\"slides\": [{\"numero\": 1, \"tipo\": \"story\", \"texto\": \"texto curto e impactante\", \"prompt_imagem\": \"descrição da imagem vertical\"}], \"legenda\": \"\", \"hashtags\": \"\"}';
