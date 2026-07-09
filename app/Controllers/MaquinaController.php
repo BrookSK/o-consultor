@@ -782,10 +782,15 @@ class MaquinaController
 
             $imgResult = null;
             $promptCompleto = '';
+            $metodo = 'nenhum';
+            $avisoRef = null;
 
             // 1) PREFERENCIAL: gerar USANDO os templates da marca como REFERÊNCIA visual
             //    real (gpt-image-1 images/edits). É o que garante fidelidade ao estilo.
             $caminhosRef = $this->caminhosTemplatesLocais($marcaId);
+            error_log('[O CONSULTOR][ImagemRef] marca=' . $marcaId . ' templates_no_disco=' . count($caminhosRef)
+                . ($caminhosRef ? ' | ' . implode(' ; ', $caminhosRef) : ''));
+
             if (!empty($caminhosRef)) {
                 $promptRef = 'Crie uma nova imagem VERTICAL para post de Instagram no MESMO estilo visual das imagens de referência fornecidas '
                     . '(mesma paleta, iluminação, composição, tipografia e estética). '
@@ -793,6 +798,14 @@ class MaquinaController
                     . 'Mantenha coesão com a identidade das referências. NÃO copie o texto das referências; a imagem não deve conter texto, letras ou números.';
                 $promptCompleto = $promptRef;
                 $imgResult = ApiHelper::gerarImagemComReferencia($promptRef, $caminhosRef, $tamanho);
+                if (!empty($imgResult['sucesso']) && !empty($imgResult['url'])) {
+                    $metodo = 'referencia';
+                } else {
+                    $avisoRef = $imgResult['erro'] ?? 'falha desconhecida na geração por referência';
+                    error_log('[O CONSULTOR][ImagemRef] FALHOU, usando fallback por texto. Motivo: ' . $avisoRef);
+                }
+            } else {
+                $avisoRef = 'Nenhum template encontrado no disco para esta marca.';
             }
 
             // 2) FALLBACK: sem templates ou se a geração por referência falhar,
@@ -802,6 +815,7 @@ class MaquinaController
                 $refTemplates = $estiloTemplates !== '' ? ' — Estilo visual de referência (siga fielmente): ' . $estiloTemplates : '';
                 $promptCompleto = $conteudo['prompt_dalle'] . ' — ' . $promptImagem . $refTemplates . ' — Formato vertical para post de Instagram (retrato), composição centralizada com margens de segurança. Não incluir texto, palavras, letras ou números na imagem.';
                 $imgResult = ApiHelper::gerarImagem($promptCompleto, $tamanho);
+                $metodo = 'texto';
 
                 if (!$imgResult['sucesso'] || empty($imgResult['url'])) {
                     $promptSimples = $conteudo['prompt_dalle'] . $refTemplates . ' — estilo corporativo moderno, formato vertical de Instagram, sem texto';
@@ -836,7 +850,13 @@ class MaquinaController
                 );
             } catch (\Throwable $e) { /* tabela opcional */ }
 
-            echo json_encode(['sucesso' => true, 'imagem_url' => $urlPublica, 'slide_index' => $slideIndex]);
+            echo json_encode([
+                'sucesso' => true,
+                'imagem_url' => $urlPublica,
+                'slide_index' => $slideIndex,
+                'metodo' => $metodo,          // 'referencia' = usou templates | 'texto' = fallback
+                'aviso_ref' => $avisoRef,     // motivo de não ter usado a referência (se houver)
+            ]);
         } catch (\Throwable $e) {
             Logger::error('Erro ao gerar imagem do slide: ' . $e->getMessage());
             echo json_encode(['sucesso' => false, 'erro' => 'Erro interno ao gerar imagem.']);

@@ -504,6 +504,10 @@ async function gerarImagensSequencial(conteudoId, indices) {
                 img.className = 'w-full aspect-[4/5] object-cover';
                 img.loading = 'lazy';
                 if (alvo) alvo.replaceWith(img);
+                // Avisa se a referência (templates) não foi usada e por quê.
+                if (data.metodo !== 'referencia' && data.aviso_ref && typeof Toast !== 'undefined') {
+                    Toast.erro('Imagem gerada SEM os templates de referência. Motivo: ' + data.aviso_ref);
+                }
             } else if (container) {
                 const ph = container.querySelector('#slide-img-' + idx);
                 if (ph) { ph.className = 'w-full h-32 bg-gray-100 flex items-center justify-center text-3xl'; ph.textContent = '🖼️'; }

@@ -170,7 +170,7 @@ class JornadaCliente
                 ];
             }
         } catch (\Throwable $e) {
-            error_log('[O CONSULTOR][JORNADA] diagnostico ignorado: ' . $e->getMessage());
+            // schema opcional; ignora silenciosamente
         }
 
         // Dados dos SOPs (a coluna 'tags' pode não existir em bancos antigos)
@@ -180,7 +180,7 @@ class JornadaCliente
                 ['empresa_id' => $empresaId]
             );
         } catch (\Throwable $e) {
-            error_log('[O CONSULTOR][JORNADA] sops ignorado: ' . $e->getMessage());
+            // schema opcional; ignora silenciosamente
         }
 
         // Dados do plano de ação
@@ -196,7 +196,7 @@ class JornadaCliente
                 ];
             }
         } catch (\Throwable $e) {
-            error_log('[O CONSULTOR][JORNADA] plano_acao ignorado: ' . $e->getMessage());
+            // schema opcional; ignora silenciosamente
         }
 
         // Perfil de busca de conteúdo
@@ -212,7 +212,7 @@ class JornadaCliente
                 ];
             }
         } catch (\Throwable $e) {
-            error_log('[O CONSULTOR][JORNADA] perfil_busca ignorado: ' . $e->getMessage());
+            // schema opcional; ignora silenciosamente
         }
 
         // Marca registrada
@@ -230,7 +230,7 @@ class JornadaCliente
                 ];
             }
         } catch (\Throwable $e) {
-            error_log('[O CONSULTOR][JORNADA] marca ignorado: ' . $e->getMessage());
+            // schema opcional; ignora silenciosamente
         }
 
         return $contexto;
