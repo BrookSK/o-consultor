@@ -72,87 +72,31 @@ if (!function_exists('renderCardNoticia')) {
 <div class="flex items-center justify-between mb-6">
     <div>
         <h1 class="text-2xl font-bold text-gray-800">Central de Conteúdo</h1>
-        <p class="text-gray-500 mt-1">Notícias, cursos, cases e inteligência de mercado.</p>
+        <p class="text-gray-500 mt-1">Notícias, cursos e sua biblioteca de conteúdo.</p>
     </div>
-    <div class="flex items-center gap-3">
-        <button type="button" onclick="limparNoticias()" class="px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50">🗑️ Limpar todas</button>
-        <?php if (Auth::temAlgumPerfil([Auth::ADMIN_HOLDING, Auth::CONSULTOR_INTERNO])): ?>
-        <a href="<?= APP_URL ?>/central-de-conteudo/admin" class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">⚙️ Gerenciar</a>
-        <?php endif; ?>
-    </div>
+    <?php if (Auth::temAlgumPerfil([Auth::ADMIN_HOLDING, Auth::CONSULTOR_INTERNO])): ?>
+    <a href="<?= APP_URL ?>/central-de-conteudo/admin" class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">⚙️ Gerenciar</a>
+    <?php endif; ?>
 </div>
 
-<!-- 4 Abas -->
+<!-- Abas -->
 <div x-data="{ aba: 'noticias' }">
     <div class="border-b border-gray-200 mb-6">
         <nav class="flex gap-0 overflow-x-auto">
             <button @click="aba = 'noticias'" :class="aba === 'noticias' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap transition">📰 Notícias e Atualidades</button>
             <button @click="aba = 'academy'" :class="aba === 'academy' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap transition">🎓 Academy</button>
-            <button @click="aba = 'casos'" :class="aba === 'casos' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap transition">📋 Casos Reais</button>
-            <button @click="aba = 'inteligencia'" :class="aba === 'inteligencia' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap transition">🧠 Inteligência de Mercado</button>
+            <button @click="aba = 'biblioteca'" :class="aba === 'biblioteca' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap transition">📚 Biblioteca</button>
         </nav>
     </div>
 
     <!-- ABA 1: NOTÍCIAS -->
     <div x-show="aba === 'noticias'" x-transition>
-        <!-- Perfil de Busca (colapsável) -->
-        <div x-data="{ perfilAberto: false }" class="mb-6">
-            <button @click="perfilAberto = !perfilAberto" class="flex items-center gap-2 text-sm text-primary font-medium hover:underline">
-                <svg class="w-4 h-4 transition" :class="perfilAberto && 'rotate-90'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-                ⚙️ Configurar meu perfil de busca
-            </button>
-            <div x-show="perfilAberto" x-transition class="mt-4 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Setor/Nicho</label>
-                        <input type="text" value="<?= htmlspecialchars($dados['perfil_busca']['setor']) ?>" disabled class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-500">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Língua</label>
-                        <input type="text" value="<?= htmlspecialchars($dados['perfil_busca']['lingua']) ?>" disabled class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-500">
-                    </div>
-                    <div class="md:col-span-2">
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Sites de referência</label>
-                        <div id="lista-sites-busca" class="space-y-2">
-                            <?php foreach ($dados['perfil_busca']['sites'] as $site): ?>
-                            <div class="flex items-center gap-2 site-referencia-item">
-                                <input type="url" value="<?= htmlspecialchars($site) ?>" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary" placeholder="https://...">
-                                <button type="button" onclick="this.parentElement.remove()" class="text-red-400 hover:text-red-600 text-lg">&times;</button>
-                            </div>
-                            <?php endforeach; ?>
-                        </div>
-                        <button type="button" onclick="adicionarCampoSite()" class="text-sm text-primary font-medium hover:underline mt-2">+ Adicionar site</button>
-                    </div>
-                    <div class="md:col-span-2">
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Instruções de priorização (prompt mestre)</label>
-                        <p class="text-xs text-gray-400 mb-2">Descreva, em texto livre, que tipo de notícia a IA deve priorizar ou evitar na busca do seu nicho. Ex.: "Priorize lançamentos de produtos, regulamentação e movimentos de concorrentes no setor de energia solar. Evite fofoca, esportes e notícias sem relação com negócios."</p>
-                        <textarea id="instrucoes-busca" rows="4" maxlength="2000"
-                                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"
-                                  placeholder="Ex.: Priorize notícias sobre... Evite..."><?= htmlspecialchars($dados['perfil_busca']['instrucoes'] ?? '') ?></textarea>
-                        <div class="mt-2">
-                            <button type="button" onclick="salvarPerfilBusca()" id="btn-salvar-perfil" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700">💾 Salvar configurações</button>
-                        </div>
-                    </div>
-                    <div class="md:col-span-2">
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Palavras-chave adicionais</label>
-                        <div class="flex flex-wrap gap-2">
-                            <?php foreach (($dados['perfil_busca']['palavras_chave'] ?? []) as $kw): ?>
-                            <span class="px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-medium flex items-center gap-1"><?= htmlspecialchars($kw) ?> <button onclick="this.parentElement.remove()" class="text-primary/50 hover:text-primary">&times;</button></span>
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Frequência</label>
-                        <select class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
-                            <option value="diaria" <?= ($dados['perfil_busca']['frequencia'] ?? '') === 'diaria' ? 'selected' : '' ?>>Diária</option>
-                            <option value="semanal" <?= ($dados['perfil_busca']['frequencia'] ?? '') === 'semanal' ? 'selected' : '' ?>>Semanal</option>
-                        </select>
-                    </div>
-                    <div class="flex items-end gap-3">
-                        <button onclick="buscarAgora()" class="px-4 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-orange-700">🔍 Buscar agora</button>
-                        <span class="text-xs text-gray-400">Último: <?= !empty($dados['perfil_busca']['ultimo_update']) ? date('d/m/Y H:i', strtotime($dados['perfil_busca']['ultimo_update'])) : 'Nunca' ?></span>
-                    </div>
-                </div>
+        <!-- Barra de ações -->
+        <div class="flex items-center justify-between gap-3 mb-4">
+            <button type="button" onclick="abrirModalConfig()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">✏️ Editar informações do conteúdo</button>
+            <div class="flex items-center gap-3">
+                <button onclick="buscarAgora()" class="px-4 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-orange-700">🔍 Buscar agora</button>
+                <button type="button" onclick="limparNoticias()" class="px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50">🗑️ Limpar todas</button>
             </div>
         </div>
 
@@ -216,67 +160,77 @@ if (!function_exists('renderCardNoticia')) {
         </div>
     </div>
 
-    <!-- ABA 3: CASOS REAIS -->
-    <div x-show="aba === 'casos'" x-transition style="display:none;">
-        <div class="flex flex-wrap gap-2 mb-4">
-            <select class="px-3 py-1.5 border border-gray-300 rounded-lg text-xs outline-none"><option>Todos os setores</option><option>Tecnologia</option><option>SaaS</option><option>Varejo</option></select>
+    <!-- ABA 3: BIBLIOTECA -->
+    <div x-show="aba === 'biblioteca'" x-transition style="display:none;">
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+            <h2 class="text-lg font-semibold text-gray-800 mb-1">📚 Biblioteca de conteúdo</h2>
+            <p class="text-sm text-gray-500 mb-4">Envie PDFs (artigos, e-books, estudos, materiais de referência) para formar sua base de literatura. Esses documentos ficam disponíveis para uso na Máquina de Conteúdo.</p>
+
+            <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary transition">
+                <input type="file" id="biblioteca-input" accept=".pdf" multiple class="hidden" onchange="enviarArquivosBiblioteca(this.files)">
+                <label for="biblioteca-input" class="cursor-pointer">
+                    <div class="text-4xl mb-2">📄</div>
+                    <p class="text-sm font-medium text-primary">Clique para selecionar PDFs</p>
+                    <p class="text-xs text-gray-400 mt-1">Somente arquivos PDF, até 5MB cada</p>
+                </label>
+                <div id="biblioteca-upload-status" class="text-xs text-gray-500 mt-3 hidden"></div>
+            </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <?php foreach ($dados['casos'] as $caso): ?>
-            <a href="<?= APP_URL ?>/central-de-conteudo/caso?id=<?= $caso['id'] ?>" class="bg-white rounded-lg shadow-sm border border-gray-200 p-5 hover:shadow-md transition block">
-                <?php if ($caso['exclusivo']): ?>
-                <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-accent/10 text-accent mb-2">⭐ Exclusivo para Clientes</span>
-                <?php endif; ?>
-                <h3 class="text-sm font-semibold text-gray-800 mb-2"><?= htmlspecialchars($caso['titulo']) ?></h3>
-                <span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600"><?= htmlspecialchars($caso['setor']) ?></span>
-                <p class="text-xs text-gray-500 mt-3"><strong>Desafio:</strong> <?= htmlspecialchars($caso['desafio']) ?></p>
-                <p class="text-xs text-green-700 mt-2"><strong>Resultado:</strong> <?= htmlspecialchars($caso['resultado']) ?></p>
-            </a>
-            <?php endforeach; ?>
+        <div id="biblioteca-lista" class="space-y-2">
+            <!-- Documentos carregados via JS -->
+        </div>
+        <div id="biblioteca-vazia" class="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500 text-sm">
+            Nenhum documento na biblioteca ainda. Envie PDFs acima para começar.
         </div>
     </div>
+</div>
 
-    <!-- ABA 4: INTELIGÊNCIA DE MERCADO -->
-    <div x-show="aba === 'inteligencia'" x-transition style="display:none;">
-        <div class="flex flex-wrap gap-2 mb-4">
-            <select class="px-3 py-1.5 border border-gray-300 rounded-lg text-xs outline-none"><option>Todos os tipos</option><option>Tendência</option><option>Regulamentação</option><option>Mercado</option><option>Tecnologia</option></select>
-            <select class="px-3 py-1.5 border border-gray-300 rounded-lg text-xs outline-none"><option>Toda relevância</option><option>Alta</option><option>Média</option></select>
-            <label class="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg text-xs cursor-pointer"><input type="checkbox" class="w-3 h-3"> Apenas do meu setor</label>
-        </div>
-
-        <div class="space-y-4">
-            <?php foreach ($dados['inteligencia'] as $intel):
-                $tipoBadge = match($intel['tipo']) {
-                    'Tendência' => 'bg-purple-100 text-purple-700',
-                    'Regulamentação' => 'bg-red-100 text-red-700',
-                    'Mercado' => 'bg-blue-100 text-blue-700',
-                    'Tecnologia' => 'bg-green-100 text-green-700',
-                    default => 'bg-gray-100 text-gray-700',
-                };
-            ?>
-            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
-                <div class="flex items-start justify-between gap-4">
-                    <div class="flex-1">
-                        <div class="flex items-center gap-2 mb-2">
-                            <span class="text-xs text-gray-400"><?= htmlspecialchars($intel['fonte']) ?></span>
-                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold <?= $tipoBadge ?>"><?= htmlspecialchars($intel['tipo']) ?></span>
-                            <span class="text-xs text-gray-400"><?= date('d/m/Y', strtotime($intel['data'])) ?></span>
+<!-- Modal: Editar informações do conteúdo -->
+<div id="modal-config" class="fixed inset-0 z-50 hidden" aria-modal="true" role="dialog">
+    <div class="absolute inset-0 bg-black/50" onclick="fecharModalConfig()"></div>
+    <div class="relative min-h-full flex items-start justify-center p-4 overflow-y-auto">
+        <div class="bg-white rounded-lg shadow-xl border border-gray-200 w-full max-w-2xl my-8">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                <h3 class="text-lg font-semibold text-gray-800">Editar informações do conteúdo</h3>
+                <button type="button" onclick="fecharModalConfig()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+            </div>
+            <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Setor/Nicho</label>
+                    <input type="text" value="<?= htmlspecialchars($dados['perfil_busca']['setor']) ?>" disabled class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Língua</label>
+                    <input type="text" value="<?= htmlspecialchars($dados['perfil_busca']['lingua']) ?>" disabled class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-500">
+                </div>
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Sites de referência</label>
+                    <div id="lista-sites-busca" class="space-y-2">
+                        <?php foreach ($dados['perfil_busca']['sites'] as $site): ?>
+                        <div class="flex items-center gap-2 site-referencia-item">
+                            <input type="url" value="<?= htmlspecialchars($site) ?>" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary" placeholder="https://...">
+                            <button type="button" onclick="this.parentElement.remove()" class="text-red-400 hover:text-red-600 text-lg">&times;</button>
                         </div>
-                        <h3 class="text-sm font-semibold text-gray-800 mb-2"><?= htmlspecialchars($intel['titulo']) ?></h3>
-                        <p class="text-xs text-gray-600 mb-2"><strong>Impacto:</strong> <?= htmlspecialchars($intel['impacto']) ?></p>
-                        <p class="text-xs text-green-700"><strong>Ação sugerida:</strong> <?= htmlspecialchars($intel['acao']) ?></p>
+                        <?php endforeach; ?>
                     </div>
-                    <div class="flex flex-col gap-1 flex-shrink-0">
-                        <span class="text-xs font-bold px-2 py-0.5 rounded <?= $intel['relevancia'] === 'alta' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600' ?>"><?= ucfirst($intel['relevancia']) ?></span>
-                        <button onclick="salvarItem(this)" class="text-xs text-primary hover:underline">💾 Salvar</button>
-                        <?php if (Auth::temAlgumPerfil([Auth::ADMIN_HOLDING, Auth::CONSULTOR_INTERNO])): ?>
-                        <button onclick="compartilharItem(this, '<?= htmlspecialchars(addslashes($intel['titulo'])) ?>')" class="text-xs text-primary hover:underline">📤 Compartilhar</button>
-                        <?php endif; ?>
-                    </div>
+                    <button type="button" onclick="adicionarCampoSite()" class="text-sm text-primary font-medium hover:underline mt-2">+ Adicionar site</button>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Instruções de priorização (prompt mestre)</label>
+                    <p class="text-xs text-gray-400 mb-2">Descreva, em texto livre, que tipo de notícia a IA deve priorizar ou evitar na busca do seu nicho. Ex.: "Priorize lançamentos de produtos, regulamentação e movimentos de concorrentes no setor de energia solar. Evite fofoca, esportes e notícias sem relação com negócios."</p>
+                    <textarea id="instrucoes-busca" rows="5" maxlength="2000"
+                              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"
+                              placeholder="Ex.: Priorize notícias sobre... Evite..."><?= htmlspecialchars($dados['perfil_busca']['instrucoes'] ?? '') ?></textarea>
+                </div>
+                <div class="md:col-span-2">
+                    <span class="text-xs text-gray-400">Última busca: <?= !empty($dados['perfil_busca']['ultimo_update']) ? date('d/m/Y H:i', strtotime($dados['perfil_busca']['ultimo_update'])) : 'Nunca' ?></span>
                 </div>
             </div>
-            <?php endforeach; ?>
+            <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200">
+                <button type="button" onclick="fecharModalConfig()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">Cancelar</button>
+                <button type="button" onclick="salvarPerfilBusca()" id="btn-salvar-perfil" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700">💾 Salvar configurações</button>
+            </div>
         </div>
     </div>
 </div>
@@ -312,6 +266,7 @@ async function salvarPerfilBusca() {
 
         if (data.sucesso) {
             if (typeof Toast !== 'undefined') Toast.sucesso(data.mensagem); else alert(data.mensagem);
+            fecharModalConfig();
         } else {
             const msg = data.erro || 'Erro ao salvar sites.';
             if (typeof Toast !== 'undefined') Toast.erro(msg); else alert(msg);
@@ -321,6 +276,106 @@ async function salvarPerfilBusca() {
     } finally {
         btn.disabled = false;
         btn.textContent = original;
+    }
+}
+
+// ===== Modal de configuração =====
+function abrirModalConfig() {
+    const m = document.getElementById('modal-config');
+    if (m) { m.classList.remove('hidden'); document.body.style.overflow = 'hidden'; }
+}
+function fecharModalConfig() {
+    const m = document.getElementById('modal-config');
+    if (m) { m.classList.add('hidden'); document.body.style.overflow = ''; }
+}
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') fecharModalConfig();
+});
+
+// ===== Biblioteca (upload de PDFs) =====
+function renderizarBiblioteca(documentos) {
+    const lista = document.getElementById('biblioteca-lista');
+    const vazia = document.getElementById('biblioteca-vazia');
+    if (!lista || !vazia) return;
+
+    if (!documentos || !documentos.length) {
+        lista.innerHTML = '';
+        vazia.classList.remove('hidden');
+        return;
+    }
+    vazia.classList.add('hidden');
+
+    const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    lista.innerHTML = documentos.map(d => {
+        const data = d.data ? new Date(d.data).toLocaleDateString('pt-BR') : '';
+        return '<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex items-center justify-between gap-4" data-doc-id="' + d.id + '">'
+            + '<div class="flex items-center gap-3 min-w-0">'
+            + '<span class="text-2xl">📄</span>'
+            + '<div class="min-w-0">'
+            + '<p class="text-sm font-medium text-gray-800 truncate">' + esc(d.nome) + '</p>'
+            + '<p class="text-xs text-gray-400">' + esc(d.tamanho) + (data ? ' • ' + data : '') + '</p>'
+            + '</div></div>'
+            + '<button type="button" onclick="excluirDocumentoBiblioteca(' + d.id + ', this)" class="text-gray-400 hover:text-red-600 text-sm flex-shrink-0" title="Excluir">🗑️</button>'
+            + '</div>';
+    }).join('');
+}
+
+async function enviarArquivosBiblioteca(files) {
+    if (!files || !files.length) return;
+    const status = document.getElementById('biblioteca-upload-status');
+    if (status) { status.classList.remove('hidden'); status.textContent = 'Enviando ' + files.length + ' arquivo(s)...'; }
+
+    const formData = new FormData();
+    formData.append('csrf_token', '<?= Csrf::token() ?>');
+    for (let i = 0; i < files.length; i++) {
+        formData.append('documentos[]', files[i]);
+    }
+
+    try {
+        const res = await fetch('<?= APP_URL ?>/central-de-conteudo/biblioteca-upload', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (data.sucesso || Array.isArray(data.documentos)) {
+            renderizarBiblioteca(data.documentos || []);
+            const msg = data.mensagem || 'Upload concluído!';
+            if (typeof Toast !== 'undefined') Toast.sucesso(msg); else alert(msg);
+        } else {
+            const msg = data.erro || 'Erro no upload.';
+            if (typeof Toast !== 'undefined') Toast.erro(msg); else alert(msg);
+        }
+    } catch (e) {
+        alert('Erro de conexão ao enviar arquivos.');
+    } finally {
+        if (status) status.classList.add('hidden');
+        const input = document.getElementById('biblioteca-input');
+        if (input) input.value = '';
+    }
+}
+
+async function excluirDocumentoBiblioteca(id, btn) {
+    if (!confirm('Excluir este documento da biblioteca?')) return;
+    if (btn) btn.disabled = true;
+
+    const formData = new FormData();
+    formData.append('csrf_token', '<?= Csrf::token() ?>');
+    formData.append('documento_id', id);
+
+    try {
+        const res = await fetch('<?= APP_URL ?>/central-de-conteudo/biblioteca-excluir', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (data.sucesso) {
+            const card = document.querySelector('[data-doc-id="' + id + '"]');
+            if (card) card.remove();
+            const lista = document.getElementById('biblioteca-lista');
+            if (lista && !lista.querySelector('[data-doc-id]')) renderizarBiblioteca([]);
+            if (typeof Toast !== 'undefined') Toast.sucesso(data.mensagem); else alert(data.mensagem);
+        } else {
+            if (btn) btn.disabled = false;
+            const msg = data.erro || 'Erro ao excluir.';
+            if (typeof Toast !== 'undefined') Toast.erro(msg); else alert(msg);
+        }
+    } catch (e) {
+        if (btn) btn.disabled = false;
+        alert('Erro de conexão ao excluir documento.');
     }
 }
 
@@ -605,25 +660,9 @@ document.addEventListener('DOMContentLoaded', function() {
     if (document.querySelector('#feed-noticias')) {
         preencherImagensFaltantes();
     }
+    // Renderiza a biblioteca com os documentos já carregados do PHP.
+    renderizarBiblioteca(<?= json_encode($dados['biblioteca'] ?? [], JSON_UNESCAPED_UNICODE) ?>);
 });
-
-function salvarItem(btn) {
-    btn.innerHTML = '✓ Salvo';
-    btn.className = 'text-xs text-green-600 font-semibold';
-    btn.disabled = true;
-    if (typeof Toast !== 'undefined') Toast.sucesso('Conteúdo salvo nos seus favoritos!');
-}
-
-function compartilharItem(btn, titulo) {
-    const url = window.location.href;
-    if (navigator.clipboard) {
-        navigator.clipboard.writeText(titulo + ' — ' + url);
-    }
-    btn.innerHTML = '✓ Copiado';
-    btn.className = 'text-xs text-green-600 font-semibold';
-    setTimeout(() => { btn.innerHTML = '📤 Compartilhar'; btn.className = 'text-xs text-primary hover:underline'; }, 3000);
-    if (typeof Toast !== 'undefined') Toast.sucesso('Link copiado para a área de transferência!');
-}
 </script>
 
 <?php $conteudo = ob_get_clean(); ?>

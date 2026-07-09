@@ -34,9 +34,8 @@ class ConteudoController
         $dados = [
             'noticias' => $resultadoNoticias['itens'],
             'paginacao' => $resultadoNoticias['paginacao'],
-            'casos' => $this->getCasosReais($empresaId), // Casos reais
-            'inteligencia' => $this->getInteligenciaReais($empresaId), // Inteligência real
             'perfil_busca' => $perfilBusca,
+            'biblioteca' => $this->listarDocumentosBiblioteca($empresaId),
             'academy_url' => Configuracao::get('academy_url', 'https://myacademy.com.br'),
             'usuario' => Auth::usuario(),
         ];
@@ -426,6 +425,206 @@ class ConteudoController
             echo json_encode(['sucesso' => false, 'erro' => 'Erro ao limpar notícias.']);
         }
         exit;
+    }
+
+    // ===== BIBLIOTECA (base de literatura em PDF para a Máquina de Conteúdo) =====
+
+    /**
+     * Retorna os documentos da Biblioteca da empresa (JSON) para o front listar.
+     */
+    public function bibliotecaListar(): void
+    {
+        Auth::proteger();
+        header('Content-Type: application/json');
+
+        $empresaId = Auth::empresa();
+        if (!$empresaId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Selecione uma empresa específica no menu do topo.']);
+            exit;
+        }
+
+        echo json_encode(['sucesso' => true, 'documentos' => $this->listarDocumentosBiblioteca($empresaId)]);
+        exit;
+    }
+
+    /**
+     * Upload de PDF(s) para a Biblioteca. Reaproveita o DocumentoProcessor e
+     * marca os documentos com a flag `biblioteca = 1`.
+     */
+    public function bibliotecaUpload(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $empresaId = Auth::empresa();
+        $usuarioId = Auth::id();
+        if (!$empresaId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Selecione uma empresa específica no menu do topo.']);
+            exit;
+        }
+
+        if (empty($_FILES['documentos']) || empty($_FILES['documentos']['tmp_name'])) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Nenhum arquivo enviado.']);
+            exit;
+        }
+
+        if (!class_exists('DocumentoProcessor')) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Sistema de processamento de documentos indisponível.']);
+            exit;
+        }
+
+        try {
+            $resultados = DocumentoProcessor::processarUploads($_FILES['documentos'], $empresaId, $usuarioId);
+
+            // Marca como biblioteca os documentos recém-criados com sucesso.
+            foreach ($resultados as $r) {
+                if (!empty($r['sucesso']) && !empty($r['documento_id'])) {
+                    try {
+                        Database::execute(
+                            "UPDATE documentos_empresa SET biblioteca = 1 WHERE id = :id AND empresa_id = :empresa_id",
+                            ['id' => $r['documento_id'], 'empresa_id' => $empresaId]
+                        );
+                    } catch (\Throwable $e) {
+                        error_log('[O CONSULTOR][BIBLIOTECA] Flag biblioteca ausente (migration 039?): ' . $e->getMessage());
+                    }
+                }
+            }
+
+            $sucessos = array_filter($resultados, fn($r) => !empty($r['sucesso']));
+            $falhas = array_filter($resultados, fn($r) => empty($r['sucesso']));
+
+            $mensagem = count($sucessos) . ' arquivo(s) enviado(s) com sucesso';
+            if (!empty($falhas)) {
+                $mensagem .= ', ' . count($falhas) . ' falha(s)';
+            }
+
+            Logger::acao('Upload para Biblioteca', ['empresa_id' => $empresaId, 'sucessos' => count($sucessos), 'falhas' => count($falhas)]);
+
+            echo json_encode([
+                'sucesso' => !empty($sucessos),
+                'mensagem' => $mensagem,
+                'resultados' => $resultados,
+                'documentos' => $this->listarDocumentosBiblioteca($empresaId),
+            ]);
+        } catch (Exception $e) {
+            Logger::error('Erro no upload da Biblioteca: ' . $e->getMessage());
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro ao enviar arquivos.']);
+        }
+        exit;
+    }
+
+    /**
+     * Exclui um documento da Biblioteca (registro + arquivo do disco).
+     */
+    public function bibliotecaExcluir(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $empresaId = Auth::empresa();
+        if (!$empresaId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Selecione uma empresa específica no menu do topo.']);
+            exit;
+        }
+
+        $documentoId = (int) ($_POST['documento_id'] ?? 0);
+        if ($documentoId === 0) {
+            echo json_encode(['sucesso' => false, 'erro' => 'ID do documento é obrigatório.']);
+            exit;
+        }
+
+        try {
+            $doc = Database::queryOne(
+                "SELECT caminho_arquivo FROM documentos_empresa WHERE id = :id AND empresa_id = :empresa_id AND biblioteca = 1",
+                ['id' => $documentoId, 'empresa_id' => $empresaId]
+            );
+            if (!$doc) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Documento não encontrado.']);
+                exit;
+            }
+
+            Database::execute(
+                "DELETE FROM documentos_empresa WHERE id = :id AND empresa_id = :empresa_id",
+                ['id' => $documentoId, 'empresa_id' => $empresaId]
+            );
+
+            // Remove o arquivo físico (best-effort).
+            if (defined('PUBLIC_PATH') && !empty($doc['caminho_arquivo'])) {
+                $caminho = PUBLIC_PATH . $doc['caminho_arquivo'];
+                if (is_file($caminho)) @unlink($caminho);
+            }
+
+            Logger::acao('Documento da Biblioteca excluído', ['documento_id' => $documentoId, 'empresa_id' => $empresaId]);
+            echo json_encode(['sucesso' => true, 'mensagem' => 'Documento excluído!']);
+        } catch (Exception $e) {
+            Logger::error('Erro ao excluir documento da Biblioteca: ' . $e->getMessage());
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro ao excluir documento.']);
+        }
+        exit;
+    }
+
+    /**
+     * Lista documentos da Biblioteca de uma empresa (formatado para exibição).
+     * Público/estático-friendly para o próximo passo (Máquina de Conteúdo) reutilizar.
+     */
+    public function listarDocumentosBiblioteca(int $empresaId): array
+    {
+        try {
+            $docs = Database::query(
+                "SELECT id, nome_original, tamanho_bytes, tipo_mime, processado_ia, criado_em
+                 FROM documentos_empresa
+                 WHERE empresa_id = :empresa_id AND biblioteca = 1 AND ativo = 1
+                 ORDER BY criado_em DESC",
+                ['empresa_id' => $empresaId]
+            );
+        } catch (\Throwable $e) {
+            // Coluna biblioteca pode não existir ainda (migration 039 não rodada).
+            return [];
+        }
+
+        return array_map(function ($d) {
+            $bytes = (int) $d['tamanho_bytes'];
+            $tamanho = $bytes > 0 ? round($bytes / (1024 * ($bytes >= 1048576 ? 1024 : 1)), 1) . ($bytes >= 1048576 ? ' MB' : ' KB') : '';
+            return [
+                'id' => (int) $d['id'],
+                'nome' => $d['nome_original'],
+                'tamanho' => $tamanho,
+                'processado' => (bool) $d['processado_ia'],
+                'data' => $d['criado_em'],
+            ];
+        }, $docs);
+    }
+
+    /**
+     * Retorna o conteúdo textual dos documentos da Biblioteca de uma empresa,
+     * pronto para ser injetado como contexto na Máquina de Conteúdo (próximo passo).
+     * Cada item traz nome e o texto extraído (conteudo_extraido); documentos ainda
+     * não processados pela IA são incluídos apenas com o nome.
+     *
+     * @return array<int, array{id:int, nome:string, conteudo:string}>
+     */
+    public static function obterLiteraturaBiblioteca(int $empresaId, int $limite = 20): array
+    {
+        try {
+            $docs = Database::query(
+                "SELECT id, nome_original, conteudo_extraido
+                 FROM documentos_empresa
+                 WHERE empresa_id = :empresa_id AND biblioteca = 1 AND ativo = 1
+                 ORDER BY criado_em DESC
+                 LIMIT {$limite}",
+                ['empresa_id' => $empresaId]
+            );
+        } catch (\Throwable $e) {
+            return [];
+        }
+
+        return array_map(fn($d) => [
+            'id' => (int) $d['id'],
+            'nome' => (string) $d['nome_original'],
+            'conteudo' => (string) ($d['conteudo_extraido'] ?? ''),
+        ], $docs);
     }
 
     // ===== REAL DATA METHODS =====

@@ -197,6 +197,9 @@ class Router
         $this->post('central-de-conteudo/criar-conteudo', 'ConteudoController', 'criarConteudoDeNoticia');
         $this->post('central-de-conteudo/excluir-noticia', 'ConteudoController', 'excluirNoticia');
         $this->post('central-de-conteudo/limpar-noticias', 'ConteudoController', 'limparNoticias');
+        $this->get('central-de-conteudo/biblioteca', 'ConteudoController', 'bibliotecaListar');
+        $this->post('central-de-conteudo/biblioteca-upload', 'ConteudoController', 'bibliotecaUpload');
+        $this->post('central-de-conteudo/biblioteca-excluir', 'ConteudoController', 'bibliotecaExcluir');
         $this->get('central-de-conteudo/admin', 'ConteudoController', 'admin');
 
         // Sistema de Notícias por IA (F-09)
