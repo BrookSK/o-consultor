@@ -1848,7 +1848,7 @@ Objetivo: {$objetivo}{$regrasEducativo}
 {$instrucoesTipo}
 
 REGRAS IMPORTANTES:
-1. Cada slide deve ter um 'prompt_imagem' descrevendo uma CENA VISUAL CONCRETA e específica ligada ao tema (pessoas, ambientes, objetos, situações reais), NÃO uma coleção de ícones/símbolos abstratos. Ex.: em vez de "ícones de cadeado e nuvem", prefira "profissional de TI analisando painéis de segurança em um escritório moderno".
+1. Cada slide deve ter um 'prompt_imagem' descrevendo uma CENA VISUAL CONCRETA e específica ligada ao tema (pessoas, ambientes, objetos, situações reais), NÃO uma coleção de ícones/símbolos abstratos. Ex.: em vez de 'ícones de cadeado e nuvem', prefira 'profissional de TI analisando painéis de segurança em um escritório moderno'.
 2. NÃO defina paleta/estética no prompt_imagem: o estilo visual (cores, iluminação, traço) virá das imagens de referência da marca. Descreva apenas O QUE aparece na cena.
 3. NÃO incluir texto, palavras ou números nas descrições de imagem
 4. Manter consistência com o tom de voz e arquétipo da marca
