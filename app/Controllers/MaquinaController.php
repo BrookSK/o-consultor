@@ -543,8 +543,14 @@ class MaquinaController
         $contextoJornada = [];
         $empresaId = (int) ($marca['empresa_id'] ?? 0) ?: (int) Auth::empresa();
         if ($empresaId) {
-            require_once APP_PATH . '/Helpers/JornadaCliente.php';
-            $contextoJornada = JornadaCliente::extrairDadosContextuais($empresaId);
+            try {
+                require_once APP_PATH . '/Helpers/JornadaCliente.php';
+                $contextoJornada = JornadaCliente::extrairDadosContextuais($empresaId);
+            } catch (\Throwable $e) {
+                // Contexto da jornada é opcional; não deve impedir a geração.
+                error_log('[O CONSULTOR][GERAR] Falha ao extrair jornada (ignorada): ' . $e->getMessage());
+                $contextoJornada = [];
+            }
         }
 
         // 2. Preparar a BASE do conteúdo conforme a fonte escolhida.

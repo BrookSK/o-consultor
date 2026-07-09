@@ -152,66 +152,85 @@ class JornadaCliente
             'timestamp' => date('Y-m-d H:i:s')
         ];
 
+        // Cada bloco abaixo é tolerante a falhas: em bancos com schema diferente,
+        // uma coluna/tabela ausente NÃO deve derrubar a geração de conteúdo.
+        // O contexto da jornada é opcional (enriquece o prompt, não é obrigatório).
+
         // Dados do diagnóstico
-        $diagnostico = Database::queryOne(
-            "SELECT respostas, pontuacao FROM diagnosticos WHERE empresa_id = :empresa_id AND status = 'concluido' ORDER BY criado_em DESC LIMIT 1",
-            ['empresa_id' => $empresaId]
-        );
-        
-        if ($diagnostico) {
-            $contexto['diagnostico'] = [
-                'respostas' => json_decode($diagnostico['respostas'], true),
-                'pontuacao' => $diagnostico['pontuacao'],
-                'nivel_maturidade' => $diagnostico['pontuacao']
-            ];
+        try {
+            $diagnostico = Database::queryOne(
+                "SELECT respostas, pontuacao FROM diagnosticos WHERE empresa_id = :empresa_id AND status = 'concluido' ORDER BY criado_em DESC LIMIT 1",
+                ['empresa_id' => $empresaId]
+            );
+            if ($diagnostico) {
+                $contexto['diagnostico'] = [
+                    'respostas' => json_decode($diagnostico['respostas'], true),
+                    'pontuacao' => $diagnostico['pontuacao'],
+                    'nivel_maturidade' => $diagnostico['pontuacao']
+                ];
+            }
+        } catch (\Throwable $e) {
+            error_log('[O CONSULTOR][JORNADA] diagnostico ignorado: ' . $e->getMessage());
         }
 
-        // Dados dos SOPs
-        $sops = Database::query(
-            "SELECT titulo, departamento, tags FROM sops WHERE empresa_id = :empresa_id AND status = 'ativo'",
-            ['empresa_id' => $empresaId]
-        );
-        $contexto['sops'] = $sops;
+        // Dados dos SOPs (a coluna 'tags' pode não existir em bancos antigos)
+        try {
+            $contexto['sops'] = Database::query(
+                "SELECT titulo, departamento FROM sops WHERE empresa_id = :empresa_id AND status = 'ativo'",
+                ['empresa_id' => $empresaId]
+            );
+        } catch (\Throwable $e) {
+            error_log('[O CONSULTOR][JORNADA] sops ignorado: ' . $e->getMessage());
+        }
 
         // Dados do plano de ação
-        $plano = Database::queryOne(
-            "SELECT objetivos, areas_foco FROM planos_acao WHERE empresa_id = :empresa_id AND status IN ('ativo', 'concluido') ORDER BY criado_em DESC LIMIT 1",
-            ['empresa_id' => $empresaId]
-        );
-        
-        if ($plano) {
-            $contexto['plano_acao'] = [
-                'objetivos' => json_decode($plano['objetivos'], true),
-                'areas_foco' => json_decode($plano['areas_foco'], true)
-            ];
+        try {
+            $plano = Database::queryOne(
+                "SELECT objetivos, areas_foco FROM planos_acao WHERE empresa_id = :empresa_id AND status IN ('ativo', 'concluido') ORDER BY criado_em DESC LIMIT 1",
+                ['empresa_id' => $empresaId]
+            );
+            if ($plano) {
+                $contexto['plano_acao'] = [
+                    'objetivos' => json_decode($plano['objetivos'] ?? '[]', true),
+                    'areas_foco' => json_decode($plano['areas_foco'] ?? '[]', true)
+                ];
+            }
+        } catch (\Throwable $e) {
+            error_log('[O CONSULTOR][JORNADA] plano_acao ignorado: ' . $e->getMessage());
         }
 
         // Perfil de busca de conteúdo
-        $perfilBusca = Database::queryOne(
-            "SELECT palavras_chave, sites_referencia FROM empresa_perfil_busca WHERE empresa_id = :empresa_id LIMIT 1",
-            ['empresa_id' => $empresaId]
-        );
-        
-        if ($perfilBusca) {
-            $contexto['perfil_conteudo'] = [
-                'palavras_chave' => json_decode($perfilBusca['palavras_chave'], true),
-                'sites_referencia' => explode(',', $perfilBusca['sites_referencia'])
-            ];
+        try {
+            $perfilBusca = Database::queryOne(
+                "SELECT palavras_chave, sites_referencia FROM empresa_perfil_busca WHERE empresa_id = :empresa_id LIMIT 1",
+                ['empresa_id' => $empresaId]
+            );
+            if ($perfilBusca) {
+                $contexto['perfil_conteudo'] = [
+                    'palavras_chave' => json_decode($perfilBusca['palavras_chave'] ?? '[]', true),
+                    'sites_referencia' => explode(',', (string) ($perfilBusca['sites_referencia'] ?? ''))
+                ];
+            }
+        } catch (\Throwable $e) {
+            error_log('[O CONSULTOR][JORNADA] perfil_busca ignorado: ' . $e->getMessage());
         }
 
         // Marca registrada
-        $marca = Database::queryOne(
-            "SELECT nome, arquetipo, tom_voz, palavras_chave FROM marcas WHERE empresa_id = :empresa_id AND ativo = 1 LIMIT 1",
-            ['empresa_id' => $empresaId]
-        );
-        
-        if ($marca) {
-            $contexto['marca'] = [
-                'nome' => $marca['nome'],
-                'arquetipo' => $marca['arquetipo'],
-                'tom_voz' => $marca['tom_voz'],
-                'palavras_chave' => json_decode($marca['palavras_chave'], true)
-            ];
+        try {
+            $marca = Database::queryOne(
+                "SELECT nome, arquetipo, tom_voz, palavras_chave FROM marcas WHERE empresa_id = :empresa_id AND ativo = 1 LIMIT 1",
+                ['empresa_id' => $empresaId]
+            );
+            if ($marca) {
+                $contexto['marca'] = [
+                    'nome' => $marca['nome'],
+                    'arquetipo' => $marca['arquetipo'],
+                    'tom_voz' => $marca['tom_voz'] ?? null,
+                    'palavras_chave' => json_decode($marca['palavras_chave'] ?? '[]', true)
+                ];
+            }
+        } catch (\Throwable $e) {
+            error_log('[O CONSULTOR][JORNADA] marca ignorado: ' . $e->getMessage());
         }
 
         return $contexto;
