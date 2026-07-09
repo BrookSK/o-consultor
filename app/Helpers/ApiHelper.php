@@ -1445,12 +1445,19 @@ Responda APENAS em formato JSON válido com a estrutura:
     /**
      * Gera prompt para busca de notícias (Perplexity)
      */
-    public static function buildPromptBuscaNoticias(string $setor, string $lingua, array $sites): string
+    public static function buildPromptBuscaNoticias(string $setor, string $lingua, array $sites, string $instrucoes = ''): string
     {
         $sitesStr = implode(', ', $sites);
 
+        // Instruções livres do usuário (prompt mestre) sobre o que priorizar/evitar.
+        $blocoInstrucoes = '';
+        $instrucoes = trim($instrucoes);
+        if ($instrucoes !== '') {
+            $blocoInstrucoes = "\n\nINSTRUÇÕES DE PRIORIZAÇÃO (definidas pelo usuário — siga-as rigorosamente ao escolher e ordenar as notícias):\n{$instrucoes}\n";
+        }
+
         return "Busque as 10 notícias mais recentes e relevantes para empresas do setor {$setor} em {$lingua}.
-Priorize conteúdo dos seguintes sites: {$sitesStr}
+Priorize conteúdo dos seguintes sites: {$sitesStr}{$blocoInstrucoes}
 Formato de resposta: JSON com array de objetos, cada um com: titulo, url, fonte, data, resumo_bruto, setor.
 Busque apenas conteúdo publicado nos últimos 7 dias.
 Não inclua notícias duplicadas ou sem relevância para o setor.

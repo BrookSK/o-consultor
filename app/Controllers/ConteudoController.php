@@ -153,6 +153,13 @@ class ConteudoController
             }
         }
 
+        // Instruções livres (prompt mestre) sobre que tipo de notícia priorizar.
+        $instrucoes = trim((string) ($_POST['instrucoes'] ?? ''));
+        // Limite defensivo para não estourar o prompt.
+        if (mb_strlen($instrucoes) > 2000) {
+            $instrucoes = mb_substr($instrucoes, 0, 2000);
+        }
+
         try {
             // A lista exibida na tela é a fonte da verdade: substitui TODOS os sites
             // da empresa (inclusive os que a IA adicionou automaticamente), para que
@@ -168,6 +175,16 @@ class ConteudoController
                      VALUES (:empresa_id, :site_url, 1, 'usuario', NOW())",
                     ['empresa_id' => $empresaId, 'site_url' => $url]
                 );
+            }
+
+            // Salvar instruções de priorização na empresa (tolerante a coluna ausente).
+            try {
+                Database::execute(
+                    "UPDATE empresas SET instrucoes_busca_noticias = :instrucoes WHERE id = :id",
+                    ['instrucoes' => $instrucoes !== '' ? $instrucoes : null, 'id' => $empresaId]
+                );
+            } catch (\Throwable $e) {
+                error_log('[O CONSULTOR][PERFIL-BUSCA] Coluna instrucoes_busca_noticias ausente (migration 038 não rodada?): ' . $e->getMessage());
             }
 
             Logger::acao('Perfil de busca atualizado', ['empresa_id' => $empresaId, 'total_sites' => count($sitesValidos)]);
@@ -496,11 +513,18 @@ class ConteudoController
      */
     private function buscarPerfilBusca(int $empresaId): array
     {
-        // Buscar dados da empresa
-        $empresa = Database::queryOne(
-            "SELECT segmento, lingua_principal FROM empresas WHERE id = :id",
-            ['id' => $empresaId]
-        );
+        // Buscar dados da empresa (instrucoes_busca_noticias pode não existir ainda).
+        try {
+            $empresa = Database::queryOne(
+                "SELECT segmento, lingua_principal, instrucoes_busca_noticias FROM empresas WHERE id = :id",
+                ['id' => $empresaId]
+            );
+        } catch (\Throwable $e) {
+            $empresa = Database::queryOne(
+                "SELECT segmento, lingua_principal FROM empresas WHERE id = :id",
+                ['id' => $empresaId]
+            );
+        }
 
         // Buscar sites de referência
         $sites = Database::query(
@@ -522,6 +546,7 @@ class ConteudoController
             'setor' => $empresa['segmento'] ?? 'Tecnologia',
             'lingua' => $empresa['lingua_principal'] ?? 'Português',
             'sites' => array_column($sites, 'site_url'),
+            'instrucoes' => $empresa['instrucoes_busca_noticias'] ?? '',
         ];
 
         // Buscar palavras-chave e configurações reais da empresa

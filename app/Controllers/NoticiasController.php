@@ -175,7 +175,7 @@ class NoticiasController
     {
         // Buscar configuração da empresa
         $empresa = Database::queryOne(
-            "SELECT nome, segmento, lingua_principal FROM empresas WHERE id = :id",
+            "SELECT nome, segmento, lingua_principal, instrucoes_busca_noticias FROM empresas WHERE id = :id",
             ['id' => $empresaId]
         );
 
@@ -207,6 +207,7 @@ class NoticiasController
         $sitesArray = array_column($sites, 'site_url');
         $setor = $empresa['segmento'] ?? 'Tecnologia';
         $lingua = $empresa['lingua_principal'] ?? 'Português';
+        $instrucoes = (string) ($empresa['instrucoes_busca_noticias'] ?? '');
 
         // Iniciar log de busca
         $logId = $this->criarLogBusca($empresaId, $isManual ? 'manual' : 'automatica', $sitesArray);
@@ -222,7 +223,7 @@ class NoticiasController
             // Tentar Perplexity primeiro
             if (Configuracao::apiAtiva('perplexity')) {
                 $apiUtilizada = 'perplexity';
-                $prompt = ApiHelper::buildPromptBuscaNoticias($setor, $lingua, $sitesArray);
+                $prompt = ApiHelper::buildPromptBuscaNoticias($setor, $lingua, $sitesArray, $instrucoes);
                 $resultado = ApiHelper::chamarPerplexity($prompt, null, true);
 
                 if ($resultado['sucesso'] && is_array($resultado['conteudo'])) {
@@ -947,7 +948,7 @@ class NoticiasController
         $empresaId = (int) $pedido['empresa_id'];
 
         $empresa = Database::queryOne(
-            "SELECT nome, segmento, lingua_principal FROM empresas WHERE id = :id",
+            "SELECT nome, segmento, lingua_principal, instrucoes_busca_noticias FROM empresas WHERE id = :id",
             ['id' => $empresaId]
         );
         if (!$empresa) {
@@ -979,6 +980,7 @@ class NoticiasController
         $sitesArray = array_column($sites, 'site_url');
         $setor = $empresa['segmento'] ?? 'Tecnologia';
         $lingua = $empresa['lingua_principal'] ?? 'Português';
+        $instrucoes = (string) ($empresa['instrucoes_busca_noticias'] ?? '');
 
         $logId = $pedido['log_id'] ?: $this->criarLogBusca($empresaId, $pedido['tipo_busca'], $sitesArray);
 
@@ -986,7 +988,7 @@ class NoticiasController
         $imagensBusca = [];
         if (Configuracao::apiAtiva('perplexity')) {
             $apiUtilizada = 'perplexity';
-            $prompt = ApiHelper::buildPromptBuscaNoticias($setor, $lingua, $sitesArray);
+            $prompt = ApiHelper::buildPromptBuscaNoticias($setor, $lingua, $sitesArray, $instrucoes);
             $resultado = ApiHelper::chamarPerplexity($prompt, null, true);
             if ($resultado['sucesso'] && is_array($resultado['conteudo'])) {
                 $noticias = $resultado['conteudo'];
