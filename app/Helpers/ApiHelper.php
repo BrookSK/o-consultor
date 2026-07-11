@@ -2055,15 +2055,22 @@ REGRAS PARA CONTEÚDO DE NOTÍCIA (OBRIGATÓRIAS):
                 // A instrução de distribuição da narrativa MUDA conforme quantos
                 // slides de conteúdo (miolo) existem — o conteúdo NUNCA pode ficar
                 // pela metade, mesmo com 1 único miolo.
+                // Recomendações do "o que fazer" precisam ser REALISTAS e ao alcance
+                // de pequenas e médias empresas brasileiras — nada de soluções caras
+                // ou corporativas (ex.: "parceria estratégica com a Microsoft",
+                // "grandes programas de treinamento", "contratar consultoria cara").
+                $caminhoRealista = "As recomendações do CAMINHO devem ser PRÁTICAS, SIMPLES e ao alcance de uma PEQUENA ou MÉDIA empresa brasileira, com pouco ou nenhum custo: ações do dia a dia que qualquer negócio pequeno consegue fazer (ex.: manter sistemas e aplicativos atualizados, ativar atualização automática, fazer backups regulares, usar senhas fortes e verificação em duas etapas, orientar a equipe sobre golpes comuns, desconfiar de links e e-mails suspeitos). É PROIBIDO sugerir soluções fora da realidade de uma empresa pequena, como firmar parceria estratégica com grandes fabricantes, contratar consultorias caras, montar áreas ou programas corporativos de treinamento, ou adquirir ferramentas empresariais de alto custo. Fale de atitudes acessíveis e concretas.";
+
                 if ($qtdMiolo <= 1) {
                     $distribuicao = "Há APENAS 1 slide de conteúdo (miolo). Ele SOZINHO precisa RESUMIR a notícia inteira com COMEÇO, MEIO e FIM em um texto coeso e completo: "
                         . "(começo) o que aconteceu / o fato + dado principal; (meio) o que isso significa na prática e o risco de não agir; (fim) o que fazer a respeito. "
+                        . $caminhoRealista . " "
                         . "NÃO deixe o assunto pela metade — o slide deve fechar a ideia por completo, ainda que de forma condensada.";
                 } else {
                     $distribuicao = "Distribua a narrativa nos {$qtdMiolo} slides de conteúdo garantindo COMEÇO, MEIO e FIM completos ao longo deles: "
                         . "COMEÇO (primeiro(s) slide(s) de conteúdo): o FATO — o que aconteceu, contexto e dados concretos. "
                         . "MEIO: o que isso SIGNIFICA na prática para as empresas do setor (em terceira pessoa/geral, ex.: 'negócios que...'), tocando na DOR e no risco de não agir — sem usar 'sua empresa'/'você'. "
-                        . "FIM (último(s) slide(s) de conteúdo): o CAMINHO — o que fazer a respeito, de forma prática. "
+                        . "FIM (último(s) slide(s) de conteúdo): o CAMINHO — o que fazer a respeito, de forma prática. " . $caminhoRealista . " "
                         . "A soma dos slides de conteúdo DEVE contar a notícia por inteiro, sem deixar nada pela metade e sem repetir.";
                 }
 
