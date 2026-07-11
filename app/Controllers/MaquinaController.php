@@ -1850,54 +1850,47 @@ class MaquinaController
             $tituloImg = trim(preg_replace('/\s+/', ' ', $revisado[0] ?? $tituloImg));
             $subImg = trim(preg_replace('/\s+/', ' ', $revisado[1] ?? $subImg));
 
+            // =================================================================
+            // MONTAGEM DO TEXTO DA ARTE — controlada pelo PERFIL VISUAL da marca.
+            // O código NÃO define mais layout/tipografia/cores/posições (nada
+            // hardcoded): ele apenas informa (a) o PAPEL do slide, (b) os TEXTOS
+            // EXATOS que devem aparecer e (c) regras universais de grafia/completude.
+            // Todo o COMO (fontes, pesos, tamanhos, hierarquia, posição, cores,
+            // espaçamento, tratamento de risco) vem do campo "Perfil visual da
+            // marca" (templates_estilo) + prompt mestre, editáveis pelo usuário.
+            // =================================================================
+            $regrasTextoUniversais = ' REGRA UNIVERSAL DE TEXTO (sempre): escreva CADA texto EXATAMENTE como fornecido, em português, letra por letra, sem alterar, traduzir, abreviar nem trocar palavras. É PROIBIDO cortar, truncar ou deixar qualquer palavra/frase pela metade (sem reticências). Todo texto deve caber COMPLETO: se faltar espaço, reduza a fonte e/ou use mais linhas até caber inteiro. O layout, a tipografia, os pesos, os tamanhos, as cores e o posicionamento do texto devem seguir ESTRITAMENTE a diretriz de identidade visual da marca definida acima.';
+
             $instrucaoTexto = '';
-            // FECHAMENTO: o último slide é uma arte de encerramento com o LOGO da
-            // empresa em destaque no centro, fundo clean, SEM headline provocativa.
             if ($papel === 'fechamento') {
-                $instrucaoTexto = ' ARTE DE FECHAMENTO DE CARROSSEL: composição minimalista e muito CLEAN, fundo simples e uniforme com bastante espaço negativo, transmitindo encerramento elegante. NÃO escreva headline nem títulos grandes. O elemento central é o LOGO da marca, bem posicionado e com respiro. Opcionalmente, uma frase curta e discreta de chamada final (CTA) em fonte fina, pequena, alinhada de forma equilibrada — mas o protagonista é o logo. Visual sóbrio e profissional.';
+                // Fechamento: papel + (opcional) frase; o COMO vem do perfil visual.
+                $instrucaoTexto = ' PAPEL DO SLIDE: FECHAMENTO/ENCERRAMENTO do carrossel. Trate a composição de fechamento conforme a identidade visual da marca (o logo será aplicado depois, fora da geração — não desenhe logo).'
+                    . ($tituloImg !== '' ? ' Se houver texto de encerramento, use EXATAMENTE: "' . $tituloImg . '".' : ' Não é obrigatório texto neste slide.')
+                    . $regrasTextoUniversais;
             } elseif ($papel === 'miolo' && $tituloImg !== '') {
-                // MIOLO: slide de CONTEÚDO. Rótulo convidativo em destaque (topo) +
-                // parágrafo informativo abaixo. Layout de leitura limpo (não capa).
+                // Miolo: rótulo (texto_secundario) + parágrafo (texto). Só os DADOS.
                 $rotuloMiolo = $subImg !== '' ? $subImg : '';
-                $instrucaoTexto = ' SLIDE DE CONTEÚDO (miolo do carrossel), foco em LEITURA e informação, mantendo a identidade visual (cores/tipografia) das referências da marca:'
-                    . ($rotuloMiolo !== ''
-                        ? ' RÓTULO SUPERIOR em destaque (bold, cor de acento da marca, alinhado à esquerda, no topo do bloco de texto), EXATAMENTE: "' . $rotuloMiolo . '".'
-                        : '')
-                    . ' PARÁGRAFO de conteúdo abaixo do rótulo, em fonte de leitura (peso normal), EXATAMENTE como fornecido (em português, sem alterar, traduzir ou trocar palavras), alinhado à esquerda: "' . $tituloImg . '".'
-                    . ' FUNDO CLEAN e uniforme, com bastante espaço livre e alto contraste entre texto e fundo para leitura confortável. Poucos elementos gráficos, muito espaço negativo. Tipografia da marca, hierarquia clara (rótulo em destaque, parágrafo em peso normal).'
-                    . ' Mantenha CONTINUIDADE visual com os outros slides do carrossel (mesma linha estética), mas com layout próprio de slide de conteúdo.'
-                    . ' GRAFIA E COMPLETUDE (CRÍTICO): renderize CADA palavra por inteiro, letra por letra, sem erros. É PROIBIDO cortar, truncar ou deixar frases/palavras pela metade. TODO o texto deve caber COMPLETO: se necessário, reduza a fonte e/ou use mais linhas até caber inteiro, mas NUNCA omita ou corte texto, nem troque letras.';
+                $instrucaoTexto = ' PAPEL DO SLIDE: CONTEÚDO/MIOLO (slide de leitura, não é capa).'
+                    . ($rotuloMiolo !== '' ? ' RÓTULO/TÍTULO DE APOIO (exato): "' . $rotuloMiolo . '".' : '')
+                    . ' TEXTO PRINCIPAL DE LEITURA (exato): "' . $tituloImg . '".'
+                    . ' Aplique a este slide de conteúdo o tratamento visual de "slide de miolo/leitura" definido na identidade visual da marca (fundo, tipografia, hierarquia entre rótulo e parágrafo, cores e espaçamento).'
+                    . $regrasTextoUniversais;
             } elseif ($tituloImg !== '') {
-                // Tag superior: rótulo COMPLETO gerado pela IA (nunca um fragmento
-                // cortado do tema). Se a IA não devolveu, usa um rótulo genérico.
+                // Capa/único: tag + título + subtítulo. Só os DADOS + papel.
+                $tagSuperior = '';
                 if (!empty($tagArte)) {
-                    $tagSuperior = strtoupper($tagArte);
+                    $tagSuperior = $tagArte;
                 } else {
-                    // Fallback: usa o tema inteiro se for curto (até 4 palavras),
-                    // senão um rótulo neutro — nunca corta no meio de uma frase.
                     $palavrasTema = array_values(array_filter(preg_split('/\s+/', trim((string) ($conteudo['tema'] ?? ''))), fn($x) => $x !== ''));
-                    $tagSuperior = (count($palavrasTema) > 0 && count($palavrasTema) <= 4)
-                        ? strtoupper(implode(' ', $palavrasTema))
-                        : 'FIQUE POR DENTRO';
+                    $tagSuperior = (count($palavrasTema) > 0 && count($palavrasTema) <= 4) ? implode(' ', $palavrasTema) : '';
                 }
-                // IMPORTANTE: reestruturar APENAS a HIERARQUIA/ESTRUTURA do texto.
-                // Paleta, cores, tipografia da marca e estética vêm dos TEMPLATES de
-                // referência — não impor cores/paleta aqui.
-                $instrucaoTexto = ' SISTEMA EDITORIAL DE TEXTO (reestruture APENAS a hierarquia e a estrutura do texto; MANTENHA a paleta de cores, a tipografia e a identidade visual das imagens de referência da marca):'
-                    . ' NÍVEL 1 — TAG SUPERIOR: rótulo de contexto curto em CAIXA ALTA (máx. 3-4 palavras), fonte condensada/bold em tamanho PEQUENO, funcionando como um selo ACIMA do título (não faz parte do título), alinhado à ESQUERDA, nunca centralizado: "' . $tagSuperior . '".'
-                    . ' NÍVEL 2 — TÍTULO PRINCIPAL: o PESO MÁXIMO da família tipográfica (extra bold/black), tamanho grande ocupando a maior área de destaque, em 1 a 2 LINHAS CURTAS, com line-height REDUZIDO (linhas coladas, bloco compacto), alinhado à ESQUERDA. Texto EXATO (em português), sem alterar nenhuma palavra: "' . $tituloImg . '".'
-                    . ($subImg !== '' ? ' NÍVEL 3 — SUBTÍTULO/FECHAMENTO: fonte FINA (light) ou itálica (o PESO MÍNIMO), tamanho sensivelmente menor que o título (proporção ~1:3 a 1:4), MESMO alinhamento à esquerda: "' . $subImg . '".' : ' NÍVEL 3 — opcional: se houver subtítulo, use fonte fina/light bem menor que o título, alinhado à esquerda.')
-                    . ' HIERARQUIA DE 3 NÍVEIS OBRIGATÓRIA (tag pequena → título pesado → subtítulo fino): NUNCA use o mesmo peso de fonte em dois níveis, e mantenha um EIXO ÚNICO de alinhamento à esquerda em todo o bloco (nunca misturar centralizado com alinhado à esquerda).'
-                    . ($palavraDestaque !== '' ? ' Dê destaque de cor de acento da marca a APENAS a palavra "' . $palavraDestaque . '" do título.' : '')
-                    . ' ESPAÇAMENTO E POSIÇÃO: bloco de texto concentrado numa única área da METADE INFERIOR do frame, porém ELEVADO cerca de 20% acima da base (deixando uma margem inferior generosa/respiro abaixo do texto), ocupando no MÁXIMO 40-50% da altura; alinhado à esquerda, nunca colado na borda de baixo, nunca espalhado ou centralizado no meio da composição.'
-                    . ' PONTUAÇÃO: evite símbolos de pontuação em tamanho desproporcional; se houver, mantenha no mesmo tamanho da fonte do título, nunca maior.'
-                    . ' DESIGN AVANÇADO (acabamento editorial premium, nível de revista/branding): use grid e alinhamento precisos, generoso espaço negativo, uma pequena linha/filete ou elemento gráfico sutil de acento para ancorar o bloco, contraste forte entre o título pesado e o subtítulo fino, e integração elegante entre o texto e a cena (o texto pousa sobre uma área de respiro da imagem, sem poluição). Composição sofisticada, limpa e moderna — nada de visual amador tipo "documento de Word".'
-                    . ' GRAFIA E COMPLETUDE (CRÍTICO): escreva CADA texto (tag, título e subtítulo) POR INTEIRO e EXATAMENTE como fornecido, letra por letra, em português correto e com acentuação. É TERMINANTEMENTE PROIBIDO cortar, truncar, abreviar ou deixar qualquer palavra/frase pela metade (nada de reticências, palavras cortadas ou linhas interrompidas). Todo texto deve caber COMPLETO dentro da arte: se faltar espaço, REDUZA o tamanho da fonte e/ou quebre em mais linhas até caber inteiro — mas NUNCA omita ou corte texto. Não invente nem troque letras.'
-                    . ($papel === 'miolo'
-                        ? ' SLIDE DE MIOLO (LEITURA LIMPA): este é um slide de conteúdo no meio do carrossel. O FUNDO deve ser CLEAN, simples e com bastante espaço livre, priorizando a LEGIBILIDADE do texto. Evite cena visual pesada ou poluída atrás do texto; menos elementos, mais respiro. A composição deve manter continuidade visual com os slides vizinhos (mesma linha estética), variando o suficiente para não ficar repetitiva.'
-                        : ($papel === 'capa'
-                            ? ' SLIDE DE CAPA: pode ter presença visual mais forte e impactante para atrair o clique, mantendo a headline como protagonista.'
-                            : ''));
+                $instrucaoTexto = ' PAPEL DO SLIDE: ' . ($papel === 'capa' ? 'CAPA (abertura do carrossel).' : 'POST/ÚNICO.')
+                    . ($tagSuperior !== '' ? ' TAG/RÓTULO SUPERIOR (exato): "' . $tagSuperior . '".' : '')
+                    . ' TÍTULO PRINCIPAL (exato): "' . $tituloImg . '".'
+                    . ($subImg !== '' ? ' SUBTÍTULO (exato): "' . $subImg . '".' : '')
+                    . ($palavraDestaque !== '' ? ' Palavra a destacar com a cor de acento: "' . $palavraDestaque . '".' : '')
+                    . ' Aplique a hierarquia, tipografia, pesos, tamanhos, cores, alinhamento e posicionamento do texto EXATAMENTE conforme a identidade visual da marca definida acima.'
+                    . $regrasTextoUniversais;
             }
 
             $imgResult = null;
@@ -1950,39 +1943,38 @@ class MaquinaController
             $temLogo = false;
             $instrucaoLogo = ' NÃO inclua nenhum logotipo, marca-d\'água, nome de empresa ou texto de marca na imagem (a identidade visual/logo será aplicada depois, fora da geração). A imagem deve conter apenas a cena e a headline indicada.';
 
-            if (!empty($caminhosRef)) {
-                // PROMPT MESTRE da marca (prompt_dalle) define a paleta oficial.
-                $promptMestre = trim((string) ($conteudo['prompt_dalle'] ?? ''));
-                $temIdentidadeMarca = ($promptMestre !== '' || $this->obterEstiloTemplates($marcaId) !== '');
+            // IDENTIDADE VISUAL da marca = prompt mestre (prompt_dalle) + perfil
+            // visual (templates_estilo). ÚNICA fonte de layout/paleta/tipografia/
+            // estética, editável pelo usuário (sem truncagem agressiva). Definida
+            // aqui para valer tanto no caminho por referência quanto no fallback.
+            $promptMestre = trim((string) ($conteudo['prompt_dalle'] ?? ''));
+            $perfilMarca = $this->obterEstiloTemplates($marcaId);
+            $temIdentidadeMarca = ($promptMestre !== '' || $perfilMarca !== '');
+            $identidadeVisual = trim($promptMestre . ($promptMestre !== '' && $perfilMarca !== '' ? "\n\n" : '') . $perfilMarca);
+            $blocoMestre = $identidadeVisual !== ''
+                ? 'DIRETRIZ DE IDENTIDADE VISUAL DA MARCA (OBRIGATÓRIA, PRIORIDADE MÁXIMA sobre qualquer outra instrução — define TODA a estética, paleta de cores, iluminação, tipografia, hierarquia, layout e posicionamento; siga à risca): ' . $identidadeVisual . ' '
+                : '';
 
-                // Descrição do template: quando a marca TEM identidade/paleta própria,
-                // o template contribui APENAS com composição, enquadramento e layout —
-                // NUNCA com cores/paleta (senão um template vermelho puxa tudo para
-                // vermelho e sobrepõe o azul da marca). Só usa a paleta do template
-                // quando a marca não define paleta própria.
+            // Sinaliza o teor do slide (risco vs neutro). O tratamento visual de
+            // cada modo é definido pelo usuário na identidade visual (não hardcoded).
+            $textoAnalise = mb_strtolower($headline . ' ' . $subheadline . ' ' . $promptImagem . ' ' . (string) ($conteudo['tema'] ?? ''));
+            $termosRisco = ['risco', 'perigo', 'ameaç', 'alerta', 'golpe', 'ataque', 'ataques', 'invas', 'vazamento', 'fraude', 'vulnerab', 'falha', 'brecha', 'expost', 'exposi', 'prejuízo', 'prejuizo', 'crime', 'hacker', 'malware', 'ransomware', 'roubo', 'urgente', 'urgência', 'urgencia', 'crítico', 'critico', 'sequestro'];
+            $ehRisco = false;
+            foreach ($termosRisco as $tr) { if (mb_strpos($textoAnalise, $tr) !== false) { $ehRisco = true; break; } }
+            $blocoMestre .= $ehRisco
+                ? ' CONTEXTO DESTE SLIDE: comunica PERIGO/RISCO/ALERTA — aplique o tratamento visual de "risco/alerta" descrito na identidade visual da marca acima. '
+                : ' CONTEXTO DESTE SLIDE: informativo/neutro — aplique o tratamento visual padrão descrito na identidade visual da marca acima. ';
+
+            if (!empty($caminhosRef)) {
+                // Descrição do template: com identidade própria, contribui APENAS
+                // com composição/enquadramento/layout — nunca com cores/paleta.
                 $complementoDesc = '';
                 if ($descricaoTemplate !== '') {
                     $complementoDesc = $temIdentidadeMarca
-                        ? ' Guia de COMPOSIÇÃO do template (use APENAS o enquadramento, a disposição dos elementos, o layout e a hierarquia; IGNORE TOTALMENTE as cores/paleta descritas para o template — a PALETA vem exclusivamente da identidade da marca, definida acima): ' . mb_substr($descricaoTemplate, 0, 600) . '.'
-                        : ' Guia de ESTILO do template (use cores, iluminação, composição e tipografia; ignore o assunto/personagens descritos): ' . mb_substr($descricaoTemplate, 0, 600) . '.';
+                        ? ' Referência de COMPOSIÇÃO do template (use SOMENTE enquadramento, disposição dos elementos e hierarquia; as CORES/PALETA vêm exclusivamente da identidade da marca): ' . mb_substr($descricaoTemplate, 0, 500) . '.'
+                        : ' Guia de ESTILO do template (use cores, iluminação, composição e tipografia; ignore o assunto/personagens descritos): ' . mb_substr($descricaoTemplate, 0, 500) . '.';
                 }
-                // PERFIL CONSOLIDADO da marca (modelo próprio) — identidade de ESTILO.
-                $perfilMarca = $this->obterEstiloTemplates($marcaId);
-                if ($perfilMarca !== '') {
-                    $complementoDesc .= ' Identidade visual GERAL da marca (SIGA para estética, PALETA DE CORES, iluminação e tipografia — esta é a fonte oficial de cores, tem prioridade sobre o template): ' . mb_substr($perfilMarca, 0, 900) . '.';
-                }
-                // Anexa o logo como referência adicional (mantendo o limite de 4 total).
-                $refsComLogo = $caminhosRef;
-                if ($temLogo) {
-                    $refsComLogo = array_slice($caminhosRef, 0, 3);
-                    $refsComLogo[] = $logoAbs;
-                }
-                // PROMPT MESTRE da marca (campo prompt_dalle): define a IDENTIDADE
-                // VISUAL obrigatória (paleta, estética, iluminação). Tem PRIORIDADE
-                // MÁXIMA — entra no INÍCIO do prompt. ($promptMestre já obtido acima.)
-                $blocoMestre = $promptMestre !== ''
-                    ? 'DIRETRIZ DE IDENTIDADE VISUAL DA MARCA (OBRIGATÓRIA e com PRIORIDADE MÁXIMA sobre qualquer outra instrução — siga à risca a estética, a PALETA DE CORES e a iluminação descritas; NÃO troque as cores da marca por outras, mesmo que o assunto sugira cores como vermelho/alerta): ' . $promptMestre . ' '
-                    : '';
+                $refsComLogo = $caminhosRef; // sem logo (aplicado na edição)
 
                 $promptRef = $blocoMestre
                     . 'Gere uma nova imagem VERTICAL (retrato) para post de Instagram seguindo a identidade visual acima e replicando o ESTILO VISUAL (meio/estética, paleta, iluminação, enquadramento, texturas, tipografia e clima) das imagens de referência fornecidas. '
@@ -1991,9 +1983,10 @@ class MaquinaController
                     . ' Assunto/cena a retratar (este é o ÚNICO conteúdo que deve aparecer, renderizado no estilo acima): ' . $promptImagem . '.'
                     . $instrucaoTexto
                     . $instrucaoLogo
-                    . ' PALETA (REFORÇO): respeite estritamente a paleta da marca definida na diretriz de identidade visual; o vermelho/laranja só pode aparecer como acento pontual (se a marca permitir), NUNCA dominando o fundo ou a composição.'
-                    . ' NÃO copie o texto que aparece nas imagens de referência (use-as apenas como estilo); a única escrita permitida na imagem é a HEADLINE indicada acima.';
+                    . ' A PALETA DE CORES e todo o tratamento visual seguem EXCLUSIVAMENTE a diretriz de identidade visual da marca no início deste prompt.'
+                    . ' NÃO copie o texto que aparece nas imagens de referência (use-as apenas como estilo); a única escrita permitida na imagem é a que foi indicada acima.';
                 $promptCompleto = $promptRef;
+                $this->logImagem('[ImagemGer] slide=' . $slideIndex . ' contexto=' . ($ehRisco ? 'risco' : 'neutro') . ' identidade=' . ($temIdentidadeMarca ? 'sim' : 'nao'));
                 $imgResult = ApiHelper::gerarImagemComReferencia($promptRef, $refsComLogo, $tamanho, $qualidade);
                 if (!empty($imgResult['sucesso']) && !empty($imgResult['url'])) {
                     $metodo = 'referencia';
@@ -2005,14 +1998,17 @@ class MaquinaController
 
             // 2) FALLBACK: geração por texto usando a DESCRIÇÃO do template (complemento/fallback).
             if (!$imgResult || empty($imgResult['sucesso']) || empty($imgResult['url'])) {
-                $estiloTemplates = $descricaoTemplate !== '' ? $descricaoTemplate : $this->obterEstiloTemplates($marcaId);
-                $refTemplates = $estiloTemplates !== '' ? ' — Estilo visual de referência (siga fielmente): ' . $estiloTemplates : '';
-                $promptCompleto = $conteudo['prompt_dalle'] . ' — ' . $promptImagem . $refTemplates . ' — Formato vertical para post de Instagram (retrato), composição centralizada.' . $instrucaoTexto;
+                // Fallback por texto: usa a MESMA diretriz de identidade visual
+                // (prompt mestre + perfil) para manter o controle do usuário.
+                $promptCompleto = $blocoMestre
+                    . 'Gere uma imagem VERTICAL (retrato) para post de Instagram seguindo estritamente a identidade visual acima. Cena a retratar: ' . $promptImagem . '.'
+                    . $instrucaoTexto . $instrucaoLogo
+                    . ' A PALETA DE CORES e todo o tratamento visual seguem EXCLUSIVAMENTE a diretriz de identidade visual da marca no início deste prompt.';
                 $imgResult = ApiHelper::gerarImagem($promptCompleto, $tamanho, $qualidade);
                 $metodo = 'texto';
 
                 if (!$imgResult['sucesso'] || empty($imgResult['url'])) {
-                    $promptSimples = $conteudo['prompt_dalle'] . $refTemplates . ' — estilo corporativo moderno, formato vertical de Instagram.' . $instrucaoTexto;
+                    $promptSimples = $blocoMestre . 'Gere uma imagem VERTICAL (retrato) para post de Instagram seguindo a identidade visual acima. Cena: ' . $promptImagem . '.' . $instrucaoTexto;
                     $imgResult = ApiHelper::gerarImagem($promptSimples, $tamanho, $qualidade);
                     $promptCompleto = $promptSimples;
                 }
