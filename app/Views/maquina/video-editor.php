@@ -25,11 +25,9 @@
     <div class="lg:col-span-3">
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
             <div class="flex items-center justify-between mb-3">
-                <h4 class="text-sm font-semibold text-gray-700">🖼️ Imagens</h4>
-                <label class="text-xs text-primary cursor-pointer hover:underline">+ Adicionar
-                    <input type="file" accept="image/*" class="hidden" onchange="adicionarImagem(this)">
-                </label>
+                <h4 class="text-sm font-semibold text-gray-700">🖼️ Imagens do post</h4>
             </div>
+            <p class="text-[11px] text-gray-400 mb-2">As imagens são as que já foram geradas para este post.</p>
             <div id="lista-imagens" class="space-y-2 max-h-[520px] overflow-y-auto"></div>
         </div>
     </div>
@@ -188,6 +186,7 @@ const VIDEO_CONF = {
     csrf: '<?= Csrf::token() ?>',
     base: '<?= APP_URL ?>',
     estado: <?= json_encode($dados['estado'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+    imagensPost: <?= json_encode(array_values($dados['imagens_post'] ?? []), JSON_UNESCAPED_SLASHES) ?>,
     videoUrl: <?= json_encode($dados['video_url'] ?? '') ?>,
 };
 </script>

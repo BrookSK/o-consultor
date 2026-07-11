@@ -68,6 +68,28 @@ class VideoController
             $u = trim((string) ($s['imagem_url'] ?? ''));
             if ($u !== '') $imgs[] = $u;
         }
+        // Fallback: se os slides não têm imagem_url salva, busca na tabela
+        // imagens_conteudo (imagens ativas geradas para este post, por slide).
+        if (empty($imgs)) {
+            try {
+                $rows = Database::query(
+                    "SELECT slide_index, caminho_local FROM imagens_conteudo
+                     WHERE conteudo_id = :cid AND status = 'ativo' AND caminho_local IS NOT NULL
+                     ORDER BY slide_index ASC, id DESC",
+                    ['cid' => (int) $conteudo['id']]
+                );
+                $vistos = [];
+                foreach ($rows as $r) {
+                    $idx = (int) $r['slide_index'];
+                    if (isset($vistos[$idx])) continue; // 1 por slide (a mais recente)
+                    $cam = trim((string) ($r['caminho_local'] ?? ''));
+                    if ($cam === '') continue;
+                    $vistos[$idx] = true;
+                    // caminho_local costuma ser relativo (/uploads/...); vira URL absoluta.
+                    $imgs[] = (strpos($cam, 'http') === 0) ? $cam : (APP_URL . $cam);
+                }
+            } catch (\Throwable $e) { /* segue sem fallback */ }
+        }
         return $imgs;
     }
 
@@ -176,7 +198,9 @@ class VideoController
     private function dirProjeto(int $conteudoId): string
     {
         $dir = PUBLIC_PATH . '/uploads/videos/' . $conteudoId;
-        if (!is_dir($dir)) @mkdir($dir, 0755, true);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
         return $dir;
     }
 
@@ -200,12 +224,19 @@ class VideoController
             exit;
         }
         $dir = $this->dirProjeto($conteudoId);
-        $nome = $tipo . '_' . uniqid() . '.' . $ext;
-        $rel = '/uploads/videos/' . $conteudoId . '/' . $nome;
-        if (!move_uploaded_file($_FILES['audio']['tmp_name'], $dir . '/' . $nome)) {
-            echo json_encode(['sucesso' => false, 'erro' => 'Falha ao salvar o áudio.']);
+        if (!is_dir($dir) || !is_writable($dir)) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Sem permissão de escrita em uploads/videos. Ajuste as permissões da pasta no servidor.']);
             exit;
         }
+        $nome = $tipo . '_' . uniqid() . '.' . $ext;
+        $rel = '/uploads/videos/' . $conteudoId . '/' . $nome;
+        $destino = $dir . '/' . $nome;
+        // move_uploaded_file é o correto; fallback para copy caso o SAPI difira.
+        if (!@move_uploaded_file($_FILES['audio']['tmp_name'], $destino) && !@copy($_FILES['audio']['tmp_name'], $destino)) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Falha ao salvar o áudio no servidor.']);
+            exit;
+        }
+        Logger::acao('Áudio de vídeo enviado', ['conteudo_id' => $conteudoId, 'tipo' => $tipo]);
         echo json_encode(['sucesso' => true, 'url' => APP_URL . $rel]);
         exit;
     }

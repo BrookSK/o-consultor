@@ -10,6 +10,13 @@
     // Estado do projeto (clonado do servidor).
     let estado = conf.estado || {};
     estado.imagens = estado.imagens || [];
+    // Se o estado salvo não tiver imagens, reidrata com as imagens JÁ geradas do
+    // post (o usuário não precisa adicionar nada manualmente).
+    if ((!estado.imagens || estado.imagens.length === 0) && Array.isArray(conf.imagensPost) && conf.imagensPost.length > 0) {
+        estado.imagens = conf.imagensPost.map(function (u) {
+            return { url: u, duracao: 3, transicao: 'fade', movimento: 'zoom_in' };
+        });
+    }
     estado.narracao = estado.narracao || { url: '', volume: 1, texto: '' };
     estado.musica = estado.musica || { url: '', volume: 0.5, loop: true, reduzir_na_narracao: true };
     estado.textos = estado.textos || [];
@@ -262,20 +269,35 @@
     // ---------- Áudio (narração / música) ----------
     window.uploadAudio = async function (input, tipo) {
         if (!input.files || !input.files[0]) return;
+        const arq = input.files[0];
+        const infoEl = document.getElementById(tipo === 'musica' ? 'musica-info' : 'narracao-info');
+        if (infoEl) infoEl.textContent = 'Enviando ' + arq.name + '...';
         const fd = new FormData();
         fd.append('csrf_token', conf.csrf);
         fd.append('conteudo_id', conf.conteudoId);
         fd.append('tipo', tipo);
-        fd.append('audio', input.files[0]);
+        fd.append('audio', arq);
         try {
             const r = await fetch(conf.base + '/maquina-de-conteudo/video/upload-audio', { method: 'POST', body: fd });
-            const d = await r.json();
+            const txt = await r.text();
+            let d;
+            try { d = JSON.parse(txt); }
+            catch (e) {
+                // Resposta não-JSON (ex.: 413 do servidor, 403 CSRF, erro PHP).
+                const msg = r.status === 413 ? 'Arquivo muito grande para o servidor (limite de upload).'
+                    : (r.status === 403 ? 'Sessão expirada. Recarregue a página.' : ('Erro do servidor (HTTP ' + r.status + '): ' + txt.slice(0, 200)));
+                if (infoEl) infoEl.textContent = 'Falha no envio.';
+                alert(msg);
+                input.value = '';
+                return;
+            }
             if (d.sucesso && d.url) {
                 if (tipo === 'narracao') { estado.narracao.url = d.url; aplicarNarracao(); }
                 else { estado.musica.url = d.url; aplicarMusica(); }
                 renderTimeline();
-            } else alert(d.erro || 'Falha no upload.');
-        } catch (e) { alert('Erro de conexão.'); }
+                salvarProjeto(false);
+            } else { if (infoEl) infoEl.textContent = 'Falha no envio.'; alert(d.erro || 'Falha no upload.'); }
+        } catch (e) { if (infoEl) infoEl.textContent = 'Falha no envio.'; alert('Erro de conexão: ' + (e.message || e)); }
         input.value = '';
     };
     function aplicarNarracao() {
@@ -329,7 +351,8 @@
             fd.append('texto', texto);
             fd.append('voz_id', voz);
             const r = await fetch(conf.base + '/maquina-de-conteudo/video/gerar-narracao', { method: 'POST', body: fd });
-            const d = await r.json();
+            const t = await r.text();
+            let d; try { d = JSON.parse(t); } catch (e) { alert('Erro do servidor (HTTP ' + r.status + '): ' + t.slice(0, 200)); if (btn) { btn.disabled = false; btn.textContent = 'Gerar'; } return; }
             if (d.sucesso && d.url) {
                 estado.narracao.url = d.url; estado.narracao.texto = texto; estado.narracao.voz_id = voz;
                 estado.narracao.versoes = estado.narracao.versoes || []; estado.narracao.versoes.push(d.url);
