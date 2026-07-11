@@ -253,6 +253,22 @@ class MaquinaController
      * @param string[] $textos
      * @return string[]
      */
+    /**
+     * Grava uma linha no log dedicado de imagens (storage/logs/imagens_requests.log),
+     * além do error_log. Usado para auditar o fluxo de geração (útil em background,
+     * onde o error_log do PHP-FPM às vezes não aparece no log do Plesk).
+     */
+    private function logImagem(string $mensagem): void
+    {
+        $linha = '[O CONSULTOR]' . $mensagem;
+        error_log($linha);
+        try {
+            $logDir = ROOT_PATH . '/storage/logs';
+            if (!is_dir($logDir)) @mkdir($logDir, 0755, true);
+            @file_put_contents($logDir . '/imagens_requests.log', '[' . date('Y-m-d H:i:s') . '] ' . $linha . PHP_EOL, FILE_APPEND | LOCK_EX);
+        } catch (\Throwable $e) { /* best-effort */ }
+    }
+
     private function revisarOrtografia(array $textos): array
     {
         $limpos = array_map(fn($t) => trim((string) $t), $textos);
@@ -1333,7 +1349,7 @@ class MaquinaController
             // Qualidade escolhida (impacta o custo). Padrão low se ausente.
             $qualidade = strtolower(trim((string) ($conteudo['qualidade_imagem'] ?? 'low')));
             if (!in_array($qualidade, ['low', 'medium', 'high'], true)) $qualidade = 'low';
-            error_log('[O CONSULTOR][ImagemGer] INICIO conteudo=' . $conteudoId . ' slide=' . $slideIndex . ' qualidade=' . $qualidade);
+            $this->logImagem('[ImagemGer] INICIO conteudo=' . $conteudoId . ' slide=' . $slideIndex . ' qualidade=' . $qualidade);
 
             // Headline a ser ESCRITA dentro da imagem (como nos templates de referência).
             $headline = trim((string) ($slides[$slideIndex]['texto'] ?? ''));

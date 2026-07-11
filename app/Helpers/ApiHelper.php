@@ -854,7 +854,19 @@ class ApiHelper
                 . ' custo_brl=~R$ ' . number_format($brl, 3, ',', '.')
                 . ' | PAYLOAD=' . json_encode($bodyLog, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
+            // 1) error_log (pode não aparecer no PHP-FPM após fastcgi_finish_request).
             error_log($linha);
+
+            // 2) Arquivo DEDICADO e garantido: storage/logs/imagens_requests.log.
+            //    Este é o log que você abre no Plesk para ver o payload e o custo.
+            //    Funciona mesmo em background (o processo continua com acesso ao disco).
+            try {
+                $logDir = ROOT_PATH . '/storage/logs';
+                if (!is_dir($logDir)) @mkdir($logDir, 0755, true);
+                $arquivo = $logDir . '/imagens_requests.log';
+                $registro = '[' . date('Y-m-d H:i:s') . '] ' . $linha . PHP_EOL;
+                @file_put_contents($arquivo, $registro, FILE_APPEND | LOCK_EX);
+            } catch (\Throwable $e2) { /* best-effort */ }
         } catch (\Throwable $e) {
             error_log('[O CONSULTOR][ImagemReq] Falha ao logar requisição: ' . $e->getMessage());
         }
