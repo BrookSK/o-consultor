@@ -74,8 +74,14 @@
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Objetivo</label>
                         <select name="objetivo" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
-                            <option value="educar">Educar</option><option value="engajar">Engajar</option><option value="converter">Converter</option><option value="inspirar">Inspirar</option><option value="informar">Informar</option>
+                            <option value="educar">🎓 Educar (Educativo)</option>
+                            <option value="engajar">💬 Engajar (Engajamento)</option>
+                            <option value="converter">🎯 Converter (Conversão)</option>
+                            <option value="inspirar">💥 Inspirar (Impacto)</option>
+                            <option value="informar">📰 Informar (Notícias)</option>
+                            <option value="institucional">🏢 Institucional</option>
                         </select>
+                        <p class="text-xs text-gray-400 mt-1">A IA escolhe o template classificado com o objetivo correspondente.</p>
                     </div>
                     <div x-data="{ fonte: 'tema' }">
                         <label class="block text-sm font-medium text-gray-700 mb-1">Fonte do conteúdo</label>

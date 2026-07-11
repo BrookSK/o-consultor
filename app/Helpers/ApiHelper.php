@@ -650,7 +650,7 @@ class ApiHelper
             . '(5) TIPOGRAFIA (família aparente serif/sans/condensada, pesos, contraste entre título e apoio, caixa, alinhamento); '
             . '(6) ELEMENTOS GRÁFICOS recorrentes (formas, ícones, molduras, filetes, texturas, ruído, gradientes); '
             . '(7) CLIMA/MOOD (ex.: corporativo sóbrio, energético, premium, minimalista). '
-            . 'Seja específico e objetivo, sem rodeios. NÃO transcreva o texto escrito na imagem.", '
+            . 'FOQUE APENAS no ESTILO reproduzível. NÃO descreva o ASSUNTO/tema concreto da imagem (ex.: NÃO mencione a pessoa específica, país, bandeira, marca ou objeto retratado); descreva só COMO a imagem é feita, não O QUE ela mostra. NÃO transcreva o texto escrito na imagem.", '
             . '"adequado_para": "lista curta separada por vírgula dos tipos de conteúdo/post que combinam com este estilo (ex.: carrossel educativo, post de novidade, anúncio/CTA, citação, bastidores)", '
             . '"categoria": "classifique o OBJETIVO principal deste template em UMA destas opções exatas: noticia (para comunicar fatos/novidades), engajamento (para gerar interação/conversa), impacto (visual forte/provocativo/inspiracional), educativo (ensinar/explicar), conversao (venda/CTA/anúncio), institucional (marca/valores). Responda apenas a palavra-chave."}. '
             . 'Responda APENAS o JSON.';
@@ -2069,7 +2069,9 @@ Objetivo: {$objetivo}{$regrasEducativo}{$regrasNoticia}
 {$instrucoesTipo}
 
 REGRAS IMPORTANTES:
-1. Cada slide deve ter um 'prompt_imagem' descrevendo uma CENA VISUAL CONCRETA e específica ligada ao tema (pessoas, ambientes, objetos, situações reais), NÃO uma coleção de ícones/símbolos abstratos. Ex.: em vez de 'ícones de cadeado e nuvem', prefira 'profissional de TI analisando painéis de segurança em um escritório moderno'.
+1. Cada slide deve ter um 'prompt_imagem' descrevendo uma CENA VISUAL CONCRETA e específica ligada ao ASSUNTO DAQUELE SLIDE (pessoas, ambientes, objetos, situações reais), NÃO uma coleção de ícones/símbolos abstratos.
+1B. VARIEDADE OBRIGATÓRIA ENTRE SLIDES (CRÍTICO): cada slide deve mostrar uma cena CLARAMENTE DIFERENTE das demais — varie o cenário, o ângulo/enquadramento (close, plano médio, plano aberto, vista de cima), os personagens (quantidade, papel, ação), os objetos em foco e o momento retratado. É PROIBIDO repetir a mesma cena genérica em vários slides (ex.: NÃO usar 'profissional olhando monitores' em mais de um slide). Cada 'prompt_imagem' deve ilustrar o CONCEITO ESPECÍFICO do texto daquele slide, como uma sequência visual que evolui — pense em cada slide como um quadro único de uma narrativa, não repetições do mesmo quadro.
+1C. Ancore a cena no conteúdo REAL do slide: se o slide fala de um risco, mostre a situação do risco; se fala de solução, mostre a ação da solução; se fala de dado/resultado, mostre o contexto onde isso aparece. A cena deve ser uma METÁFORA VISUAL do ponto daquele slide, com variação de ambiente e composição.
 2. NÃO defina paleta/estética no prompt_imagem: o estilo visual (cores, iluminação, traço) virá das imagens de referência da marca. Descreva apenas O QUE aparece na cena (cenário/elementos), pois a HEADLINE (campo 'texto') será escrita SOBRE a imagem automaticamente — deixe espaço/área limpa na composição para o texto caber com destaque.
 3. NÃO escreva a headline dentro do prompt_imagem (ela é adicionada à parte); descreva só a cena de fundo.
 4. Manter consistência com o tom de voz e arquétipo da marca

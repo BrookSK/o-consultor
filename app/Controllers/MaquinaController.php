@@ -24,11 +24,12 @@ class MaquinaController
      * categoria de template preferida. Também mapeia a FONTE 'noticia'.
      */
     private const OBJETIVO_PARA_CATEGORIA = [
-        'educar'   => 'educativo',
-        'engajar'  => 'engajamento',
-        'converter'=> 'conversao',
-        'inspirar' => 'impacto',
-        'informar' => 'noticia',
+        'educar'        => 'educativo',
+        'engajar'       => 'engajamento',
+        'converter'     => 'conversao',
+        'inspirar'      => 'impacto',
+        'informar'      => 'noticia',
+        'institucional' => 'institucional',
     ];
 
     public function index(): void
@@ -469,7 +470,7 @@ class MaquinaController
         $prompt = "Você é diretor de arte. Abaixo estão as descrições de VÁRIAS imagens de referência (templates) de uma mesma marca. "
             . "Sintetize um PERFIL VISUAL ÚNICO e COESO da marca — o 'modelo próprio' dela — que capture os padrões COMUNS e consolide as variações, para servir de guia na geração de novas imagens.\n\n"
             . "Descreva em um único texto objetivo (1 parágrafo denso, em português) cobrindo: paleta de cores predominante, tipo de iluminação, composição/enquadramento, tipografia (peso, família, hierarquia), texturas/estética (fotográfico, 3D, flat, etc.), uso de elementos gráficos recorrentes e clima/mood. "
-            . "Onde houver variação entre as referências, indique o padrão dominante. NÃO descreva textos específicos escritos nas imagens; foque no estilo reproduzível.\n\n"
+            . "Onde houver variação entre as referências, indique o padrão dominante. FOQUE APENAS no estilo reproduzível (como as imagens são feitas). NÃO descreva o ASSUNTO/tema concreto (pessoas específicas, países, bandeiras, marcas, objetos) nem textos escritos nas imagens.\n\n"
             . "REFERÊNCIAS:\n" . $lista . "\n\n"
             . "Responda APENAS em JSON: {\"perfil\": \"...\"}";
 
@@ -1755,13 +1756,13 @@ class MaquinaController
             if (!empty($caminhosRef)) {
                 // Descrição do template escolhido entra como COMPLEMENTO do prompt.
                 $complementoDesc = $descricaoTemplate !== ''
-                    ? ' Estilo de referência a seguir fielmente: ' . mb_substr($descricaoTemplate, 0, 600) . '.'
+                    ? ' Guia de ESTILO do template (use apenas cores, iluminação, composição e tipografia; ignore o assunto/personagens descritos): ' . mb_substr($descricaoTemplate, 0, 600) . '.'
                     : '';
                 // PERFIL CONSOLIDADO da marca (modelo próprio, síntese de TODOS os
                 // templates enviados) — reforça a identidade visual única da marca.
                 $perfilMarca = $this->obterEstiloTemplates($marcaId);
                 if ($perfilMarca !== '') {
-                    $complementoDesc .= ' Identidade visual GERAL da marca (mantenha coerência com este perfil): ' . mb_substr($perfilMarca, 0, 700) . '.';
+                    $complementoDesc .= ' Identidade visual GERAL da marca, apenas como referência de ESTILO (mantenha coerência de cores/iluminação/tipografia, sem copiar temas específicos): ' . mb_substr($perfilMarca, 0, 700) . '.';
                 }
                 // Anexa o logo como referência adicional (mantendo o limite de 4 total).
                 $refsComLogo = $caminhosRef;
@@ -1769,10 +1770,10 @@ class MaquinaController
                     $refsComLogo = array_slice($caminhosRef, 0, 3);
                     $refsComLogo[] = $logoAbs;
                 }
-                $promptRef = 'Gere uma nova imagem VERTICAL (retrato) para post de Instagram REPLICANDO FIELMENTE o estilo visual das imagens de referência fornecidas '
-                    . '(MESMO meio/estética, paleta, iluminação, enquadramento, texturas, tipografia e clima). O estilo das referências tem PRIORIDADE sobre qualquer outra instrução.'
+                $promptRef = 'Gere uma nova imagem VERTICAL (retrato) para post de Instagram replicando o ESTILO VISUAL (meio/estética, paleta, iluminação, enquadramento, texturas, tipografia e clima) das imagens de referência fornecidas. '
+                    . 'IMPORTANTE: use as referências e as descrições abaixo APENAS como GUIA DE ESTILO. IGNORE completamente o ASSUNTO, os personagens específicos, símbolos, bandeiras e objetos concretos que aparecem nelas (ex.: pessoas específicas, países, marcas) — eles NÃO devem aparecer na nova imagem. O que deve ser retratado é EXCLUSIVAMENTE a cena descrita em "Assunto/cena" abaixo.'
                     . $complementoDesc
-                    . ' Assunto/cena a retratar dentro desse estilo: ' . $promptImagem . '.'
+                    . ' Assunto/cena a retratar (este é o ÚNICO conteúdo que deve aparecer, renderizado no estilo acima): ' . $promptImagem . '.'
                     . $instrucaoTexto
                     . $instrucaoLogo
                     . ' NÃO copie o texto que aparece nas imagens de referência (use-as apenas como estilo); a única escrita permitida na imagem é a HEADLINE indicada acima.';
