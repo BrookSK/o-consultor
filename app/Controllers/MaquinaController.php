@@ -6,6 +6,31 @@
 
 class MaquinaController
 {
+    /**
+     * Categorias/objetivos de template. Chave = valor salvo no banco;
+     * valor = rótulo exibido na interface.
+     */
+    private const CATEGORIAS_TEMPLATE = [
+        'noticia'       => '📰 Notícias',
+        'engajamento'   => '💬 Engajamento',
+        'impacto'       => '💥 Impacto',
+        'educativo'     => '🎓 Educativo',
+        'conversao'     => '🎯 Conversão',
+        'institucional' => '🏢 Institucional',
+    ];
+
+    /**
+     * Correlação entre o OBJETIVO do conteúdo (select do formulário) e a
+     * categoria de template preferida. Também mapeia a FONTE 'noticia'.
+     */
+    private const OBJETIVO_PARA_CATEGORIA = [
+        'educar'   => 'educativo',
+        'engajar'  => 'engajamento',
+        'converter'=> 'conversao',
+        'inspirar' => 'impacto',
+        'informar' => 'noticia',
+    ];
+
     public function index(): void
     {
         Auth::proteger();
@@ -166,19 +191,28 @@ class MaquinaController
     {
         try {
             $rows = Database::query(
-                "SELECT id, caminho, nome_original, descricao, adequado_para
+                "SELECT id, caminho, nome_original, descricao, adequado_para, categoria
                  FROM marca_templates WHERE marca_id = :id ORDER BY criado_em ASC",
                 ['id' => $marcaId]
             );
         } catch (\Throwable $e) {
-            // Sem as colunas de descrição (migration 044 não rodada).
+            // Sem a coluna categoria (050) — tenta sem ela.
             try {
                 $rows = Database::query(
-                    "SELECT id, caminho, nome_original FROM marca_templates WHERE marca_id = :id ORDER BY criado_em ASC",
+                    "SELECT id, caminho, nome_original, descricao, adequado_para
+                     FROM marca_templates WHERE marca_id = :id ORDER BY criado_em ASC",
                     ['id' => $marcaId]
                 );
             } catch (\Throwable $e2) {
-                return [];
+                // Sem as colunas de descrição (migration 044 não rodada).
+                try {
+                    $rows = Database::query(
+                        "SELECT id, caminho, nome_original FROM marca_templates WHERE marca_id = :id ORDER BY criado_em ASC",
+                        ['id' => $marcaId]
+                    );
+                } catch (\Throwable $e3) {
+                    return [];
+                }
             }
         }
         $out = [];
@@ -191,6 +225,7 @@ class MaquinaController
                 'nome' => (string) ($r['nome_original'] ?? ''),
                 'descricao' => (string) ($r['descricao'] ?? ''),
                 'adequado_para' => (string) ($r['adequado_para'] ?? ''),
+                'categoria' => (string) ($r['categoria'] ?? ''),
             ];
         }
         return $out;
@@ -201,32 +236,64 @@ class MaquinaController
      * (tipo + tema), usando as descrições/adequação geradas pela IA no upload.
      * Retorna o índice do template escolhido (0 se não for possível decidir).
      */
-    private function escolherTemplateParaConteudo(array $templates, string $tipo, string $tema): int
+    private function escolherTemplateParaConteudo(array $templates, string $tipo, string $tema, string $objetivo = '', string $fonte = ''): int
     {
         if (count($templates) <= 1) return 0;
 
-        // Se nenhum template tem descrição, não há como decidir — usa o primeiro.
-        $temDescricao = false;
-        foreach ($templates as $t) { if ($t['descricao'] !== '' || $t['adequado_para'] !== '') { $temDescricao = true; break; } }
-        if (!$temDescricao) return 0;
+        // 1) CATEGORIA ALVO: se a fonte é notícia, prioriza templates da categoria
+        //    'noticia'. Caso contrário, mapeia o objetivo do conteúdo para a
+        //    categoria correspondente (educar→educativo, engajar→engajamento, etc.).
+        $categoriaAlvo = '';
+        if (strtolower($fonte) === 'noticia') {
+            $categoriaAlvo = 'noticia';
+        } elseif ($objetivo !== '') {
+            $categoriaAlvo = self::OBJETIVO_PARA_CATEGORIA[strtolower($objetivo)] ?? '';
+        }
 
-        // Monta a lista para a IA escolher.
+        // Índices dos templates que pertencem à categoria alvo.
+        $candidatos = array_keys($templates);
+        if ($categoriaAlvo !== '') {
+            $daCategoria = [];
+            foreach ($templates as $i => $t) {
+                if (strtolower((string) ($t['categoria'] ?? '')) === $categoriaAlvo) $daCategoria[] = $i;
+            }
+            if (!empty($daCategoria)) {
+                // Só um da categoria: usa direto. Vários: a IA decide entre eles.
+                if (count($daCategoria) === 1) {
+                    error_log('[O CONSULTOR][Template] categoria=' . $categoriaAlvo . ' escolhido direto #' . $daCategoria[0]);
+                    return $daCategoria[0];
+                }
+                $candidatos = $daCategoria;
+            }
+        }
+
+        // Se nenhum template tem descrição, usa o 1º dos candidatos.
+        $temDescricao = false;
+        foreach ($candidatos as $i) { if ($templates[$i]['descricao'] !== '' || $templates[$i]['adequado_para'] !== '') { $temDescricao = true; break; } }
+        if (!$temDescricao) return $candidatos[0];
+
+        // 2) A IA escolhe o melhor DENTRE os candidatos (já filtrados por categoria).
         $lista = '';
-        foreach ($templates as $i => $t) {
-            $lista .= "#{$i}: " . ($t['adequado_para'] !== '' ? "[adequado para: {$t['adequado_para']}] " : '')
+        foreach ($candidatos as $i) {
+            $t = $templates[$i];
+            $cat = $t['categoria'] !== '' ? "[categoria: {$t['categoria']}] " : '';
+            $lista .= "#{$i}: {$cat}" . ($t['adequado_para'] !== '' ? "[adequado para: {$t['adequado_para']}] " : '')
                 . mb_substr($t['descricao'] !== '' ? $t['descricao'] : $t['nome'], 0, 300) . "\n";
         }
+        $ctxObjetivo = $objetivo !== '' ? "Objetivo do conteúdo: {$objetivo}\n" : '';
+        $ctxCategoria = $categoriaAlvo !== '' ? "Categoria ideal: {$categoriaAlvo}\n" : '';
         $prompt = "Você vai escolher o template visual mais adequado para um post.\n"
-            . "Tipo de conteúdo: {$tipo}\nTema: {$tema}\n\nTemplates disponíveis:\n{$lista}\n"
-            . "Responda APENAS em JSON: {\"indice\": N} onde N é o número (#) do template mais adequado.";
+            . "Tipo de conteúdo: {$tipo}\nTema: {$tema}\n{$ctxObjetivo}{$ctxCategoria}\nTemplates disponíveis:\n{$lista}\n"
+            . "Escolha o mais alinhado ao objetivo/categoria e ao tema. Responda APENAS em JSON: {\"indice\": N} onde N é o número (#) do template.";
         try {
             $res = ApiHelper::chamarAnalise($prompt, true);
             if (!empty($res['sucesso']) && is_array($res['conteudo']) && isset($res['conteudo']['indice'])) {
                 $idx = (int) $res['conteudo']['indice'];
-                if ($idx >= 0 && $idx < count($templates)) return $idx;
+                // Só aceita se o índice estiver entre os candidatos válidos.
+                if (in_array($idx, $candidatos, true)) return $idx;
             }
         } catch (\Throwable $e) { /* usa fallback */ }
-        return 0;
+        return $candidatos[0];
     }
 
     /**
@@ -357,6 +424,83 @@ class MaquinaController
      * analisa as imagens via visão (GPT-4o) e persiste o resultado.
      * Retorna string vazia se não houver templates ou não for possível analisar.
      */
+    /**
+     * Consolida as DESCRIÇÕES INDIVIDUAIS de TODOS os templates da marca num
+     * único "perfil de estilo" coeso — o modelo visual próprio da marca. É
+     * recalculado a cada upload/remoção de template. Persiste em
+     * marcas.templates_estilo (usado na geração como referência de estilo).
+     *
+     * @return string O perfil consolidado (ou '' se não houver descrições).
+     */
+    private function consolidarPerfilTemplates(int $marcaId): string
+    {
+        // 1) Reúne as descrições individuais já geradas no upload de cada template.
+        try {
+            $rows = Database::query(
+                "SELECT nome_original, descricao, adequado_para
+                 FROM marca_templates WHERE marca_id = :id ORDER BY criado_em ASC",
+                ['id' => $marcaId]
+            );
+        } catch (\Throwable $e) {
+            return ''; // sem colunas de descrição (migration 044)
+        }
+
+        $descricoes = [];
+        foreach ($rows as $i => $r) {
+            $d = trim((string) ($r['descricao'] ?? ''));
+            if ($d === '') continue;
+            $ad = trim((string) ($r['adequado_para'] ?? ''));
+            $descricoes[] = 'Template ' . ($i + 1) . ($ad !== '' ? ' (adequado para: ' . $ad . ')' : '') . ': ' . $d;
+        }
+
+        // Nenhuma descrição individual disponível ainda.
+        if (empty($descricoes)) return '';
+
+        // 2) Com uma única descrição, o perfil é ela mesma (não precisa de IA).
+        if (count($descricoes) === 1) {
+            $perfil = preg_replace('/^Template \d+[^:]*:\s*/', '', $descricoes[0]);
+            $this->salvarPerfilTemplates($marcaId, $perfil);
+            return $perfil;
+        }
+
+        // 3) Várias referências: a IA sintetiza um PERFIL VISUAL ÚNICO e coeso,
+        //    extraindo os padrões comuns e consolidando as variações.
+        $lista = implode("\n\n", $descricoes);
+        $prompt = "Você é diretor de arte. Abaixo estão as descrições de VÁRIAS imagens de referência (templates) de uma mesma marca. "
+            . "Sintetize um PERFIL VISUAL ÚNICO e COESO da marca — o 'modelo próprio' dela — que capture os padrões COMUNS e consolide as variações, para servir de guia na geração de novas imagens.\n\n"
+            . "Descreva em um único texto objetivo (1 parágrafo denso, em português) cobrindo: paleta de cores predominante, tipo de iluminação, composição/enquadramento, tipografia (peso, família, hierarquia), texturas/estética (fotográfico, 3D, flat, etc.), uso de elementos gráficos recorrentes e clima/mood. "
+            . "Onde houver variação entre as referências, indique o padrão dominante. NÃO descreva textos específicos escritos nas imagens; foque no estilo reproduzível.\n\n"
+            . "REFERÊNCIAS:\n" . $lista . "\n\n"
+            . "Responda APENAS em JSON: {\"perfil\": \"...\"}";
+
+        try {
+            $res = ApiHelper::chamarAnalise($prompt, true, 900);
+            if (!empty($res['sucesso']) && is_array($res['conteudo'])) {
+                $perfil = trim((string) ($res['conteudo']['perfil'] ?? ''));
+                if ($perfil !== '') {
+                    $this->salvarPerfilTemplates($marcaId, $perfil);
+                    return $perfil;
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[O CONSULTOR][Template] Falha ao consolidar perfil: ' . $e->getMessage());
+        }
+
+        // Fallback: concatena as descrições (sem síntese) e salva.
+        $perfil = implode(' ', array_map(fn($d) => preg_replace('/^Template \d+[^:]*:\s*/', '', $d), $descricoes));
+        $perfil = mb_substr($perfil, 0, 1500);
+        $this->salvarPerfilTemplates($marcaId, $perfil);
+        return $perfil;
+    }
+
+    /** Persiste o perfil consolidado em marcas.templates_estilo (se a coluna existir). */
+    private function salvarPerfilTemplates(int $marcaId, string $perfil): void
+    {
+        try {
+            Database::execute("UPDATE marcas SET templates_estilo = :e WHERE id = :id", ['e' => $perfil, 'id' => $marcaId]);
+        } catch (\Throwable $e) { /* coluna pode não existir (migration 041) */ }
+    }
+
     private function obterEstiloTemplates(int $marcaId): string
     {
         // 1) Cache existente (coluna templates_estilo pode não existir ainda —
@@ -765,11 +909,19 @@ class MaquinaController
             $biblioteca = [];
         }
 
+        // Perfil visual consolidado (modelo próprio da marca, a partir dos templates).
+        $perfilTemplates = '';
+        try {
+            $rowPerfil = Database::queryOne("SELECT templates_estilo FROM marcas WHERE id = :id", ['id' => $marcaId]);
+            $perfilTemplates = trim((string) ($rowPerfil['templates_estilo'] ?? ''));
+        } catch (\Throwable $e) { $perfilTemplates = ''; }
+
         $dados = [
             'marca' => $marca,
             'conteudos' => $conteudos,
             'noticias' => $noticias,
             'biblioteca' => $biblioteca,
+            'perfil_templates' => $perfilTemplates,
         ];
         require VIEW_PATH . '/maquina/marca.php';
     }
@@ -833,7 +985,12 @@ class MaquinaController
 
         if ($fonte === 'noticia' && $noticiaId > 0) {
             try {
-                $noticia = Database::queryOne("SELECT titulo, fonte, url, bloco1_noticia, bloco2_significa, bloco3_o_que_fazer FROM noticias WHERE id = :id", ['id' => $noticiaId]);
+                try {
+                    $noticia = Database::queryOne("SELECT titulo, fonte, url, resumo, resumo_bruto, bloco1_noticia, bloco2_significa, bloco3_o_que_fazer FROM noticias WHERE id = :id", ['id' => $noticiaId]);
+                } catch (\Throwable $eCol) {
+                    // Coluna 'resumo' pode não existir em schemas antigos.
+                    $noticia = Database::queryOne("SELECT titulo, fonte, url, resumo_bruto, bloco1_noticia, bloco2_significa, bloco3_o_que_fazer FROM noticias WHERE id = :id", ['id' => $noticiaId]);
+                }
                 if ($noticia) {
                     // Fonte/URL de origem para a legenda citar a referência.
                     $fonteNome = trim((string) ($noticia['fonte'] ?? ''));
@@ -844,14 +1001,28 @@ class MaquinaController
                             . ($fonteNome !== '' ? $fonteNome : 'fonte original')
                             . ($fonteUrl !== '' ? ' — ' . $fonteUrl : '');
                     }
-                    $noticiaBase = 'Título: ' . $noticia['titulo'] . "\n\n"
-                        . $noticia['bloco1_noticia'] . "\n\n"
-                        . $noticia['bloco2_significa'] . "\n\n"
-                        . $noticia['bloco3_o_que_fazer']
-                        . $creditoLinhas;
+                    // Monta a base só com os campos que realmente têm conteúdo.
+                    // Fallback para resumo/resumo_bruto quando os blocos estão vazios
+                    // (evita legenda genérica por falta de contexto da notícia).
+                    $partes = array_filter([
+                        trim((string) ($noticia['titulo'] ?? '')) !== '' ? 'Título: ' . $noticia['titulo'] : '',
+                        trim((string) ($noticia['bloco1_noticia'] ?? '')),
+                        trim((string) ($noticia['bloco2_significa'] ?? '')),
+                        trim((string) ($noticia['bloco3_o_que_fazer'] ?? '')),
+                    ], fn($p) => $p !== '');
+                    $corpo = implode("\n\n", $partes);
+                    // Se os blocos vieram vazios, usa o resumo disponível.
+                    if (trim(preg_replace('/^Título:.*$/m', '', $corpo)) === '') {
+                        $resumo = trim((string) ($noticia['resumo'] ?? '')) ?: trim((string) ($noticia['resumo_bruto'] ?? ''));
+                        if ($resumo !== '') $corpo .= "\n\n" . $resumo;
+                    }
+                    $noticiaBase = $corpo . $creditoLinhas;
+                    $this->logImagem('[Texto] noticia carregada id=' . $noticiaId . ' base_chars=' . mb_strlen($noticiaBase));
+                } else {
+                    $this->logImagem('[Texto] AVISO: noticia id=' . $noticiaId . ' NAO encontrada — legenda sairá genérica.');
                 }
             } catch (\Exception $e) {
-                // Ignorar se tabela não existir
+                $this->logImagem('[Texto] ERRO ao carregar noticia id=' . $noticiaId . ': ' . $e->getMessage());
             }
         } elseif ($fonte === 'biblioteca') {
             require_once APP_PATH . '/Controllers/ConteudoController.php';
@@ -866,6 +1037,11 @@ class MaquinaController
         // 3. PASSO 1 — Geração de texto via IA com contexto da jornada.
         // Usa um limite de tokens folgado para o JSON do conteúdo não ser cortado.
         $prompt = ApiHelper::buildPromptConteudoContextualizado($marca, $tipo, $tema, $objetivo, $noticiaBase, $contextoJornada, $literaturaBase, $qtdSlides);
+        // Log de auditoria: registra a FONTE e se a notícia/biblioteca chegou ao prompt.
+        $this->logImagem('[Texto] fonte=' . $fonte . ' noticia_id=' . $noticiaId
+            . ' tem_noticiaBase=' . ($noticiaBase ? 'sim' : 'NAO')
+            . ' tem_literatura=' . ($literaturaBase ? 'sim' : 'nao')
+            . ' prompt_chars=' . mb_strlen($prompt));
         $resIA = ApiHelper::chamarAnalise($prompt, true, 6000);
 
         if (!$resIA['sucesso'] || !is_array($resIA['conteudo'])) {
@@ -932,8 +1108,8 @@ class MaquinaController
         // 5. Salvar no banco (rascunho automático) — rápido, cabe no timeout.
         try {
             Database::execute(
-                "INSERT INTO conteudos_marca (marca_id, usuario_id, tipo, tema, objetivo, noticia_id, slides, legenda, hashtags, status, imagens_locais, qualidade_imagem, criado_em) 
-                 VALUES (:marca_id, :user_id, :tipo, :tema, :objetivo, :noticia_id, :slides, :legenda, :hashtags, 'rascunho', :imagens, :qualidade, NOW())",
+                "INSERT INTO conteudos_marca (marca_id, usuario_id, tipo, tema, objetivo, noticia_id, slides, legenda, hashtags, status, imagens_locais, qualidade_imagem, prompt_texto, fonte_conteudo, criado_em) 
+                 VALUES (:marca_id, :user_id, :tipo, :tema, :objetivo, :noticia_id, :slides, :legenda, :hashtags, 'rascunho', :imagens, :qualidade, :prompt_texto, :fonte, NOW())",
                 [
                     'marca_id' => $marcaId,
                     'user_id' => Auth::id(),
@@ -946,6 +1122,8 @@ class MaquinaController
                     'hashtags' => $conteudoGerado['hashtags'] ?? '',
                     'imagens' => json_encode([]),
                     'qualidade' => $qualidadeImagem,
+                    'prompt_texto' => $prompt,
+                    'fonte' => $fonte,
                 ]
             );
             $conteudoId = Database::lastInsertId();
@@ -1256,14 +1434,32 @@ class MaquinaController
             $prompt = '';
         }
 
+        // Prompt de TEXTO (legenda) e fonte usada — para explicar por que a
+        // legenda ficou como ficou (tema livre x notícia x biblioteca).
+        $promptTexto = '';
+        $fonteConteudo = '';
+        $legenda = '';
+        try {
+            $c = Database::queryOne(
+                "SELECT prompt_texto, fonte_conteudo, legenda FROM conteudos_marca WHERE id = :id",
+                ['id' => $conteudoId]
+            );
+            $promptTexto = (string) ($c['prompt_texto'] ?? '');
+            $fonteConteudo = (string) ($c['fonte_conteudo'] ?? '');
+            $legenda = (string) ($c['legenda'] ?? '');
+        } catch (\Throwable $e) { /* colunas podem não existir ainda */ }
+
         if ($formato === 'json') {
             header('Content-Type: application/json');
             echo json_encode([
-                'sucesso' => $prompt !== '',
+                'sucesso' => $prompt !== '' || $promptTexto !== '',
                 'conteudo_id' => $conteudoId,
                 'slide_index' => $slideIndex,
                 'criado_em' => $criadoEm,
-                'prompt' => $prompt,
+                'fonte_conteudo' => $fonteConteudo,
+                'prompt_imagem' => $prompt,
+                'prompt_texto' => $promptTexto,
+                'legenda' => $legenda,
                 'tamanho_chars' => mb_strlen($prompt),
             ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             exit;
@@ -1272,26 +1468,50 @@ class MaquinaController
         // Página HTML simples e legível (texto puro em bloco).
         header('Content-Type: text/html; charset=utf-8');
         $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
-        $titulo = 'Prompt da imagem — conteúdo ' . $conteudoId . ' / slide ' . $slideIndex;
+        $fonteLabel = match ($fonteConteudo) {
+            'noticia' => '📰 Notícia da Central de Conteúdo',
+            'biblioteca' => '📚 Biblioteca (RAG)',
+            'tema' => '✏️ Apenas o tema (livre)',
+            default => $fonteConteudo !== '' ? $fonteConteudo : '—',
+        };
+        $titulo = 'Prompts — conteúdo ' . $conteudoId . ' / slide ' . $slideIndex;
+
+        $bloco = function (string $titulo, string $conteudoTxt, string $idAlvo, string $vazioMsg) use ($esc): string {
+            if (trim($conteudoTxt) === '') {
+                return '<h2>' . $esc($titulo) . '</h2><p class="empty">' . $esc($vazioMsg) . '</p>';
+            }
+            return '<h2>' . $esc($titulo) . ' <span class="len">(' . mb_strlen($conteudoTxt) . ' caracteres)</span></h2>'
+                . '<pre id="' . $idAlvo . '">' . $esc($conteudoTxt) . '</pre>'
+                . '<button class="btn" onclick="navigator.clipboard.writeText(document.getElementById(\'' . $idAlvo . '\').innerText);this.textContent=\'Copiado!\'">Copiar</button>';
+        };
+
         echo '<!doctype html><html lang="pt-br"><head><meta charset="utf-8">'
             . '<meta name="viewport" content="width=device-width, initial-scale=1">'
             . '<title>' . $esc($titulo) . '</title>'
             . '<style>body{font-family:system-ui,Segoe UI,Arial,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:24px}'
-            . '.card{max-width:900px;margin:0 auto;background:#1e293b;border:1px solid #334155;border-radius:12px;padding:24px}'
-            . 'h1{font-size:18px;margin:0 0 4px}.meta{color:#94a3b8;font-size:13px;margin-bottom:16px}'
-            . 'pre{white-space:pre-wrap;word-wrap:break-word;background:#0b1220;border:1px solid #334155;border-radius:8px;padding:16px;font-size:13px;line-height:1.6}'
-            . '.btn{display:inline-block;margin-top:16px;background:#2563eb;color:#fff;text-decoration:none;padding:8px 14px;border-radius:8px;font-size:13px;cursor:pointer;border:none}'
-            . '.empty{color:#f87171}</style></head><body><div class="card">'
+            . '.card{max-width:900px;margin:0 auto 20px;background:#1e293b;border:1px solid #334155;border-radius:12px;padding:24px}'
+            . 'h1{font-size:18px;margin:0 0 4px}h2{font-size:15px;margin:20px 0 8px;color:#93c5fd}'
+            . '.len{color:#64748b;font-size:12px;font-weight:normal}'
+            . '.meta{color:#94a3b8;font-size:13px;margin-bottom:8px}'
+            . '.tag{display:inline-block;background:#0b1220;border:1px solid #334155;border-radius:999px;padding:3px 10px;font-size:12px;color:#e2e8f0}'
+            . 'pre{white-space:pre-wrap;word-wrap:break-word;background:#0b1220;border:1px solid #334155;border-radius:8px;padding:16px;font-size:13px;line-height:1.6;margin:0}'
+            . '.btn{display:inline-block;margin-top:10px;background:#2563eb;color:#fff;text-decoration:none;padding:6px 14px;border-radius:8px;font-size:13px;cursor:pointer;border:none}'
+            . '.empty{color:#f87171}</style></head><body>'
+            . '<div class="card">'
             . '<h1>' . $esc($titulo) . '</h1>'
-            . '<div class="meta">Gerado em: ' . $esc($criadoEm ?: '—') . ' • ' . mb_strlen($prompt) . ' caracteres</div>';
-        if ($prompt === '') {
-            echo '<p class="empty">Nenhum prompt encontrado para este slide. A imagem pode não ter sido gerada ainda, '
-                . 'ou a tabela imagens_conteudo não está disponível.</p>';
-        } else {
-            echo '<pre id="p">' . $esc($prompt) . '</pre>'
-                . '<button class="btn" onclick="navigator.clipboard.writeText(document.getElementById(\'p\').innerText);this.textContent=\'Copiado!\'">Copiar prompt</button>';
-        }
-        echo '</div></body></html>';
+            . '<div class="meta">Imagem gerada em: ' . $esc($criadoEm ?: '—') . '</div>'
+            . '<div class="meta">Fonte do conteúdo: <span class="tag">' . $esc($fonteLabel) . '</span></div>'
+            . '</div>'
+            . '<div class="card">'
+            . $bloco('🖼️ Prompt COMPLETO enviado à IA de imagem (com dados dinâmicos injetados)', $prompt, 'p-img',
+                'Nenhum prompt de imagem encontrado. A imagem pode não ter sido gerada ainda.')
+            . '</div>'
+            . '<div class="card">'
+            . $bloco('📝 Legenda gerada', $legenda, 'p-leg', 'Sem legenda salva.')
+            . $bloco('🧠 Prompt COMPLETO enviado à IA de texto/legenda (notícia/biblioteca/jornada injetadas)', $promptTexto, 'p-txt',
+                'Prompt de texto não disponível (rode a migration 049 e gere um novo conteúdo).')
+            . '</div>'
+            . '</body></html>';
         exit;
     }
 
@@ -1385,19 +1605,28 @@ class MaquinaController
         try {
             try {
                 $conteudo = Database::queryOne(
-                    "SELECT c.slides, c.marca_id, c.tipo, c.tema, c.qualidade_imagem, m.prompt_dalle, m.logo_url
+                    "SELECT c.slides, c.marca_id, c.tipo, c.tema, c.objetivo, c.qualidade_imagem, c.fonte_conteudo, m.prompt_dalle, m.logo_url
                      FROM conteudos_marca c JOIN marcas m ON c.marca_id = m.id
                      WHERE c.id = :id",
                     ['id' => $conteudoId]
                 );
             } catch (\Throwable $e) {
-                // Colunas logo_url (046) / qualidade_imagem (048) podem não existir.
-                $conteudo = Database::queryOne(
-                    "SELECT c.slides, c.marca_id, c.tipo, c.tema, m.prompt_dalle
-                     FROM conteudos_marca c JOIN marcas m ON c.marca_id = m.id
-                     WHERE c.id = :id",
-                    ['id' => $conteudoId]
-                );
+                // Colunas logo_url (046) / qualidade_imagem (048) / fonte_conteudo (049) podem não existir.
+                try {
+                    $conteudo = Database::queryOne(
+                        "SELECT c.slides, c.marca_id, c.tipo, c.tema, c.objetivo, m.prompt_dalle
+                         FROM conteudos_marca c JOIN marcas m ON c.marca_id = m.id
+                         WHERE c.id = :id",
+                        ['id' => $conteudoId]
+                    );
+                } catch (\Throwable $e2) {
+                    $conteudo = Database::queryOne(
+                        "SELECT c.slides, c.marca_id, c.tipo, c.tema, m.prompt_dalle
+                         FROM conteudos_marca c JOIN marcas m ON c.marca_id = m.id
+                         WHERE c.id = :id",
+                        ['id' => $conteudoId]
+                    );
+                }
             }
             if (!$conteudo) {
                 return ['sucesso' => false, 'erro' => 'Conteúdo não encontrado.'];
@@ -1487,7 +1716,13 @@ class MaquinaController
             $descricaoTemplate = '';
             $caminhosRef = [];
             if (!empty($templates)) {
-                $escolhido = $this->escolherTemplateParaConteudo($templates, (string) ($conteudo['tipo'] ?? ''), (string) ($conteudo['tema'] ?? ''));
+                $escolhido = $this->escolherTemplateParaConteudo(
+                    $templates,
+                    (string) ($conteudo['tipo'] ?? ''),
+                    (string) ($conteudo['tema'] ?? ''),
+                    (string) ($conteudo['objetivo'] ?? ''),
+                    (string) ($conteudo['fonte_conteudo'] ?? '')
+                );
                 $principal = $templates[$escolhido];
                 $descricaoTemplate = $principal['descricao'] ?? '';
 
@@ -1522,6 +1757,12 @@ class MaquinaController
                 $complementoDesc = $descricaoTemplate !== ''
                     ? ' Estilo de referência a seguir fielmente: ' . mb_substr($descricaoTemplate, 0, 600) . '.'
                     : '';
+                // PERFIL CONSOLIDADO da marca (modelo próprio, síntese de TODOS os
+                // templates enviados) — reforça a identidade visual única da marca.
+                $perfilMarca = $this->obterEstiloTemplates($marcaId);
+                if ($perfilMarca !== '') {
+                    $complementoDesc .= ' Identidade visual GERAL da marca (mantenha coerência com este perfil): ' . mb_substr($perfilMarca, 0, 700) . '.';
+                }
                 // Anexa o logo como referência adicional (mantendo o limite de 4 total).
                 $refsComLogo = $caminhosRef;
                 if ($temLogo) {
@@ -2572,7 +2813,11 @@ class MaquinaController
             exit;
         }
 
-        // IA lê a imagem e descreve o estilo + para que tipos de conteúdo serve.
+        // Categoria/objetivo informada no upload (opcional). Se vier vazia, a IA sugere.
+        $categoria = strtolower(trim((string) ($_POST['categoria'] ?? '')));
+        if (!array_key_exists($categoria, self::CATEGORIAS_TEMPLATE)) $categoria = '';
+
+        // IA lê a imagem e descreve o estilo + para que tipos de conteúdo serve + categoria.
         $descricao = '';
         $adequadoPara = '';
         try {
@@ -2580,17 +2825,22 @@ class MaquinaController
             if (!empty($analise['sucesso'])) {
                 $descricao = $analise['descricao'] ?? '';
                 $adequadoPara = $analise['adequado_para'] ?? '';
+                // Se o usuário não escolheu categoria, usa a sugerida pela IA (se válida).
+                if ($categoria === '') {
+                    $sugerida = strtolower(trim((string) ($analise['categoria'] ?? '')));
+                    if (array_key_exists($sugerida, self::CATEGORIAS_TEMPLATE)) $categoria = $sugerida;
+                }
             }
         } catch (\Throwable $e) {
             error_log('[O CONSULTOR][Template] Falha ao descrever template: ' . $e->getMessage());
         }
 
-        // Registrar no banco (com descrição, se as colunas existirem).
+        // Registrar no banco (com descrição/categoria, se as colunas existirem).
         $templateId = 0;
         try {
             Database::execute(
-                "INSERT INTO marca_templates (marca_id, nome_arquivo, caminho, nome_original, tipo, tamanho, descricao, adequado_para, criado_em)
-                 VALUES (:marca_id, :nome, :caminho, :original, :tipo, :tamanho, :descricao, :adequado, NOW())",
+                "INSERT INTO marca_templates (marca_id, nome_arquivo, caminho, nome_original, tipo, tamanho, descricao, adequado_para, categoria, criado_em)
+                 VALUES (:marca_id, :nome, :caminho, :original, :tipo, :tamanho, :descricao, :adequado, :categoria, NOW())",
                 [
                     'marca_id' => $marcaId,
                     'nome' => $nomeArquivo,
@@ -2600,22 +2850,44 @@ class MaquinaController
                     'tamanho' => $arquivo['size'],
                     'descricao' => $descricao !== '' ? $descricao : null,
                     'adequado' => $adequadoPara !== '' ? $adequadoPara : null,
+                    'categoria' => $categoria !== '' ? $categoria : null,
                 ]
             );
             $templateId = (int) Database::lastInsertId();
         } catch (\Exception $e) {
-            // Colunas descricao/adequado_para podem não existir ainda (migration 044).
+            // Coluna categoria (050) pode não existir — tenta sem ela.
             try {
                 Database::execute(
-                    "INSERT INTO marca_templates (marca_id, nome_arquivo, caminho, nome_original, tipo, tamanho, criado_em) VALUES (:marca_id, :nome, :caminho, :original, :tipo, :tamanho, NOW())",
-                    ['marca_id' => $marcaId, 'nome' => $nomeArquivo, 'caminho' => $caminhoRelativo, 'original' => $arquivo['name'], 'tipo' => $extensao, 'tamanho' => $arquivo['size']]
+                    "INSERT INTO marca_templates (marca_id, nome_arquivo, caminho, nome_original, tipo, tamanho, descricao, adequado_para, criado_em)
+                     VALUES (:marca_id, :nome, :caminho, :original, :tipo, :tamanho, :descricao, :adequado, NOW())",
+                    [
+                        'marca_id' => $marcaId, 'nome' => $nomeArquivo, 'caminho' => $caminhoRelativo,
+                        'original' => $arquivo['name'], 'tipo' => $extensao, 'tamanho' => $arquivo['size'],
+                        'descricao' => $descricao !== '' ? $descricao : null, 'adequado' => $adequadoPara !== '' ? $adequadoPara : null,
+                    ]
                 );
                 $templateId = (int) Database::lastInsertId();
-            } catch (\Exception $e2) { /* mantém arquivo */ }
+            } catch (\Exception $e2) {
+                // Colunas descricao/adequado_para/categoria podem não existir (migration 044/050).
+                try {
+                    Database::execute(
+                        "INSERT INTO marca_templates (marca_id, nome_arquivo, caminho, nome_original, tipo, tamanho, criado_em) VALUES (:marca_id, :nome, :caminho, :original, :tipo, :tamanho, NOW())",
+                        ['marca_id' => $marcaId, 'nome' => $nomeArquivo, 'caminho' => $caminhoRelativo, 'original' => $arquivo['name'], 'tipo' => $extensao, 'tamanho' => $arquivo['size']]
+                    );
+                    $templateId = (int) Database::lastInsertId();
+                } catch (\Exception $e3) { /* mantém arquivo */ }
+            }
         }
 
-        // Invalida o cache de estilo dos templates (será recalculado na próxima geração).
-        $this->invalidarEstiloTemplates($marcaId);
+        // Reconstrói o PERFIL consolidado da marca (modelo próprio) juntando as
+        // descrições individuais de TODOS os templates enviados até agora.
+        $perfil = '';
+        try {
+            $perfil = $this->consolidarPerfilTemplates($marcaId);
+        } catch (\Throwable $e) {
+            // Se falhar a consolidação, ao menos invalida o cache para recalcular depois.
+            $this->invalidarEstiloTemplates($marcaId);
+        }
 
         Logger::acao('Template uploaded', ['marca_id' => $marcaId, 'arquivo' => $nomeArquivo, 'descrito' => $descricao !== '']);
 
@@ -2628,8 +2900,34 @@ class MaquinaController
                 'url' => APP_URL . $caminhoRelativo,
                 'id' => $templateId,
                 'descricao' => $descricao,
+                'categoria' => $categoria,
             ],
+            'perfil_marca' => $perfil, // perfil consolidado atualizado
         ]);
+        exit;
+    }
+
+    /**
+     * Recalcula o perfil visual consolidado da marca (modelo próprio) a partir
+     * das descrições de todos os templates. Endpoint chamado pelo botão
+     * "Recalcular" na aba Templates.
+     */
+    public function recalcularPerfilTemplates(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+        $marcaId = (int) ($_POST['marca_id'] ?? 0);
+        if (!$marcaId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Marca não informada.']);
+            exit;
+        }
+        try {
+            $perfil = $this->consolidarPerfilTemplates($marcaId);
+            echo json_encode(['sucesso' => true, 'perfil' => $perfil]);
+        } catch (\Throwable $e) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Falha ao recalcular o perfil.']);
+        }
         exit;
     }
 
@@ -2643,23 +2941,31 @@ class MaquinaController
 
         try {
             $templates = Database::query(
-                "SELECT id, nome_original, caminho, descricao, adequado_para, criado_em FROM marca_templates WHERE marca_id = :id ORDER BY criado_em DESC",
+                "SELECT id, nome_original, caminho, descricao, adequado_para, categoria, criado_em FROM marca_templates WHERE marca_id = :id ORDER BY criado_em DESC",
                 ['id' => $marcaId]
             );
         } catch (\Exception $e) {
-            // Colunas descricao/adequado_para podem não existir (migration 044).
+            // Coluna categoria (050) pode não existir — tenta sem ela.
             try {
                 $templates = Database::query(
-                    "SELECT id, nome_original, caminho, criado_em FROM marca_templates WHERE marca_id = :id ORDER BY criado_em DESC",
+                    "SELECT id, nome_original, caminho, descricao, adequado_para, criado_em FROM marca_templates WHERE marca_id = :id ORDER BY criado_em DESC",
                     ['id' => $marcaId]
                 );
             } catch (\Exception $e2) {
-                $templates = [];
+                // Colunas descricao/adequado_para podem não existir (migration 044).
+                try {
+                    $templates = Database::query(
+                        "SELECT id, nome_original, caminho, criado_em FROM marca_templates WHERE marca_id = :id ORDER BY criado_em DESC",
+                        ['id' => $marcaId]
+                    );
+                } catch (\Exception $e3) {
+                    $templates = [];
+                }
             }
         }
 
         header('Content-Type: application/json');
-        echo json_encode(['sucesso' => true, 'templates' => $templates]);
+        echo json_encode(['sucesso' => true, 'templates' => $templates, 'categorias' => self::CATEGORIAS_TEMPLATE]);
         exit;
     }
 
@@ -2678,15 +2984,37 @@ class MaquinaController
                 unlink(PUBLIC_PATH . $template['caminho']);
             }
             Database::execute("DELETE FROM marca_templates WHERE id = :id", ['id' => $id]);
-            // Invalida o cache de estilo (os templates mudaram).
+            // Recalcula o perfil consolidado com os templates restantes.
             if (!empty($template['marca_id'])) {
                 $this->invalidarEstiloTemplates((int) $template['marca_id']);
+                try { $this->consolidarPerfilTemplates((int) $template['marca_id']); } catch (\Throwable $e) {}
             }
         } catch (\Exception $e) {}
 
         Logger::acao('Template removido', ['id' => $id]);
         header('Content-Type: application/json');
         echo json_encode(['sucesso' => true, 'mensagem' => 'Template removido!']);
+        exit;
+    }
+
+    /** Atualiza a categoria/objetivo de um template existente. */
+    public function atualizarCategoriaTemplate(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+        $id = (int) ($_POST['template_id'] ?? 0);
+        $categoria = strtolower(trim((string) ($_POST['categoria'] ?? '')));
+        if (!$id || !array_key_exists($categoria, self::CATEGORIAS_TEMPLATE)) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Dados inválidos.']);
+            exit;
+        }
+        try {
+            Database::execute("UPDATE marca_templates SET categoria = :c WHERE id = :id", ['c' => $categoria, 'id' => $id]);
+            echo json_encode(['sucesso' => true, 'categoria' => $categoria]);
+        } catch (\Throwable $e) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Coluna categoria ausente (rode a migration 050).']);
+        }
         exit;
     }
 

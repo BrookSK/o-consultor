@@ -60,7 +60,7 @@
                         </label>
                         <button onclick="regenerarImagem(<?= $conteudo['id'] ?>, <?= $i ?>)" class="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs hover:bg-gray-50">🔄 Regenerar</button>
                     </div>
-                    <a href="<?= APP_URL ?>/maquina-de-conteudo/imagem/prompt/<?= (int) $conteudo['id'] ?>/<?= $i ?>" target="_blank" class="block mt-2 text-center text-[11px] text-blue-600 hover:underline">🔍 Ver prompt completo enviado nesta imagem</a>
+                    <a href="<?= APP_URL ?>/maquina-de-conteudo/imagem/prompt/<?= (int) $conteudo['id'] ?>/<?= $i ?>" target="_blank" class="block mt-2 text-center text-[11px] text-blue-600 hover:underline">🔍 Ver prompts (imagem, legenda e fonte usada)</a>
                 </div>
                 <!-- Texto -->
                 <div>

@@ -277,12 +277,38 @@
 
     <!-- ABA TEMPLATES -->
     <div x-show="aba === 'templates'" x-transition style="display:none;">
-        <div class="flex items-center justify-between mb-4">
-            <p class="text-sm text-gray-500">Templates de referência visual da marca.</p>
-            <label class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700 cursor-pointer">
-                + Adicionar Template
-                <input type="file" accept="image/*" class="hidden" onchange="uploadTemplate(this)">
-            </label>
+        <!-- Perfil visual consolidado (modelo próprio da marca) -->
+        <div class="bg-gradient-to-br from-primary/5 to-white rounded-lg border border-primary/20 p-5 mb-5">
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="font-semibold text-gray-800 flex items-center gap-2">🎯 Perfil visual da marca (modelo próprio)</h3>
+                <button type="button" onclick="recalcularPerfil(this)" class="px-3 py-1.5 border border-primary/40 text-primary rounded-lg text-xs font-medium hover:bg-primary/10">🔄 Recalcular</button>
+            </div>
+            <p class="text-xs text-gray-500 mb-3">Sintetizado automaticamente a partir de todas as referências enviadas. É usado como guia de estilo na geração de imagens. Quanto mais referências, mais definido fica o seu modelo.</p>
+            <div id="perfil-templates" class="text-sm text-gray-700 bg-white border border-gray-200 rounded-lg p-3 whitespace-pre-line min-h-[60px] <?= empty($dados['perfil_templates']) ? 'text-gray-400 italic' : '' ?>">
+                <?= !empty($dados['perfil_templates']) ? htmlspecialchars($dados['perfil_templates']) : 'Ainda não há perfil. Envie templates abaixo e o modelo da sua marca será montado automaticamente.' ?>
+            </div>
+        </div>
+
+        <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
+            <p class="text-sm text-gray-500">Templates de referência visual da marca. Classifique cada um por objetivo para a IA escolher o mais adequado ao gerar.</p>
+            <div class="flex items-end gap-2">
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Objetivo do template</label>
+                    <select id="sel-categoria-template" class="px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                        <option value="">Deixar a IA classificar</option>
+                        <option value="noticia">📰 Notícias</option>
+                        <option value="engajamento">💬 Engajamento</option>
+                        <option value="impacto">💥 Impacto</option>
+                        <option value="educativo">🎓 Educativo</option>
+                        <option value="conversao">🎯 Conversão</option>
+                        <option value="institucional">🏢 Institucional</option>
+                    </select>
+                </div>
+                <label class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700 cursor-pointer">
+                    + Adicionar Template
+                    <input type="file" accept="image/*" class="hidden" onchange="uploadTemplate(this)">
+                </label>
+            </div>
         </div>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="grid-templates">
             <!-- Templates carregados do banco aparecerão aqui -->
@@ -420,11 +446,38 @@ async function carregarTemplates() {
             const grid = document.getElementById('grid-templates');
             const placeholder = document.getElementById('upload-placeholder');
             data.templates.forEach(t => {
-                const card = criarCardTemplate(t.id, '<?= APP_URL ?>' + t.caminho, t.nome_original, t.descricao || '');
+                const card = criarCardTemplate(t.id, '<?= APP_URL ?>' + t.caminho, t.nome_original, t.descricao || '', t.categoria || '');
                 grid.insertBefore(card, placeholder);
             });
         }
     } catch(e) { templatesCarregados = false; }
+}
+
+// Atualiza a caixa do perfil consolidado (modelo próprio da marca).
+function atualizarPerfilNaTela(texto) {
+    const box = document.getElementById('perfil-templates');
+    if (!box) return;
+    box.classList.remove('text-gray-400', 'italic');
+    box.textContent = texto;
+}
+
+// Recalcula o perfil consolidado sob demanda (sintetiza todas as referências).
+async function recalcularPerfil(btn) {
+    if (btn) { btn.disabled = true; btn.textContent = '🔄 Recalculando...'; }
+    try {
+        const fd = new FormData();
+        fd.append('csrf_token', '<?= Csrf::token() ?>');
+        fd.append('marca_id', '<?= (int) $marca['id'] ?>');
+        const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/recalcular-perfil-templates', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.sucesso) {
+            atualizarPerfilNaTela(data.perfil || 'Sem perfil (envie templates com descrição).');
+            if (typeof Toast !== 'undefined') Toast.sucesso('Perfil da marca recalculado!');
+        } else {
+            alert(data.erro || 'Não foi possível recalcular.');
+        }
+    } catch (e) { alert('Erro de conexão.'); }
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Recalcular'; }
 }
 
 async function uploadTemplate(input) {
@@ -435,6 +488,8 @@ async function uploadTemplate(input) {
     fd.append('csrf_token', '<?= Csrf::token() ?>');
     fd.append('marca_id', '<?= $marca['id'] ?>');
     fd.append('arquivo', file);
+    const catSel = document.getElementById('sel-categoria-template');
+    if (catSel && catSel.value) fd.append('categoria', catSel.value);
 
     try {
         const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/upload-template', { method: 'POST', body: fd });
@@ -443,9 +498,13 @@ async function uploadTemplate(input) {
         if (data.sucesso) {
             const grid = document.getElementById('grid-templates');
             const placeholder = document.getElementById('upload-placeholder');
-            const card = criarCardTemplate(data.arquivo.id, data.arquivo.url, data.arquivo.nome, data.arquivo.descricao || '');
+            const card = criarCardTemplate(data.arquivo.id, data.arquivo.url, data.arquivo.nome, data.arquivo.descricao || '', data.arquivo.categoria || '');
             grid.insertBefore(card, placeholder);
-            if (typeof Toast !== 'undefined') Toast.sucesso('Template salvo!');
+            // Atualiza o perfil consolidado (modelo próprio) já com a nova referência.
+            if (typeof data.perfil_marca === 'string' && data.perfil_marca.trim() !== '') {
+                atualizarPerfilNaTela(data.perfil_marca);
+            }
+            if (typeof Toast !== 'undefined') Toast.sucesso('Template salvo! Perfil da marca atualizado.');
         } else {
             alert(data.erro || 'Erro no upload.');
         }
@@ -454,8 +513,18 @@ async function uploadTemplate(input) {
     input.value = '';
 }
 
-function criarCardTemplate(id, url, nome, descricao) {
+const CATEGORIAS_TEMPLATE = {
+    'noticia': '📰 Notícias', 'engajamento': '💬 Engajamento', 'impacto': '💥 Impacto',
+    'educativo': '🎓 Educativo', 'conversao': '🎯 Conversão', 'institucional': '🏢 Institucional'
+};
+
+function criarCardTemplate(id, url, nome, descricao, categoria) {
     const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const cat = (categoria || '').toLowerCase();
+    let opcoes = '<option value="">Sem classificação</option>';
+    for (const k in CATEGORIAS_TEMPLATE) {
+        opcoes += `<option value="${k}" ${k === cat ? 'selected' : ''}>${CATEGORIAS_TEMPLATE[k]}</option>`;
+    }
     const card = document.createElement('div');
     card.className = 'rounded-lg overflow-hidden border border-gray-200 bg-white';
     card.id = 'template-' + id;
@@ -468,11 +537,29 @@ function criarCardTemplate(id, url, nome, descricao) {
         </div>
         <div class="p-2">
             <p class="text-xs text-gray-600 truncate mb-1">${esc(nome)}</p>
+            <label class="block text-[10px] text-gray-400 mb-1">Objetivo (a IA usa para escolher o template certo)</label>
+            <select class="w-full px-2 py-1.5 border border-gray-200 rounded text-[11px] text-gray-700 bg-white mb-2" onchange="atualizarCategoriaTemplate(${id}, this.value)">${opcoes}</select>
             <label class="block text-[10px] text-gray-400 mb-1">Descrição gerada pela IA (estilo detectado)</label>
             <textarea class="w-full px-2 py-1.5 border border-gray-200 rounded text-[11px] text-gray-600 bg-gray-50 resize-none" rows="4" readonly placeholder="${descricao ? '' : 'Sem descrição (reenvie para a IA analisar).'}">${esc(descricao)}</textarea>
         </div>
     `;
     return card;
+}
+
+async function atualizarCategoriaTemplate(id, categoria) {
+    try {
+        const fd = new FormData();
+        fd.append('csrf_token', '<?= Csrf::token() ?>');
+        fd.append('template_id', id);
+        fd.append('categoria', categoria);
+        const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/atualizar-categoria-template', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.sucesso) {
+            if (typeof Toast !== 'undefined') Toast.sucesso('Objetivo do template atualizado!');
+        } else {
+            alert(data.erro || 'Não foi possível atualizar.');
+        }
+    } catch (e) { alert('Erro de conexão.'); }
 }
 
 async function removerTemplate(id) {
@@ -838,7 +925,7 @@ function adicionarControlesRegeneracao(container, conteudoId, idx) {
     box.innerHTML =
         '<textarea class="regen-txt w-full px-2 py-1.5 border border-gray-300 rounded text-xs outline-none focus:border-primary resize-none" rows="2" placeholder="O que ajustar nesta imagem? Ex.: fundo mais claro, incluir uma pessoa, tom mais sério..."></textarea>'
         + '<button type="button" class="regen-btn mt-2 w-full px-3 py-1.5 bg-primary text-white rounded text-xs font-medium hover:bg-primary-700">🔄 Regenerar esta imagem</button>'
-        + '<a href="<?= APP_URL ?>/maquina-de-conteudo/imagem/prompt/' + conteudoId + '/' + idx + '" target="_blank" class="block mt-2 text-center text-[11px] text-blue-600 hover:underline">🔍 Ver prompt completo enviado nesta imagem</a>';
+        + '<a href="<?= APP_URL ?>/maquina-de-conteudo/imagem/prompt/' + conteudoId + '/' + idx + '" target="_blank" class="block mt-2 text-center text-[11px] text-blue-600 hover:underline">🔍 Ver prompts (imagem, legenda e fonte usada)</a>';
     container.appendChild(box);
     box.querySelector('.regen-btn').addEventListener('click', () => regenerarComInstrucao(conteudoId, idx, container));
 }

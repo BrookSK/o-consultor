@@ -641,9 +641,18 @@ class ApiHelper
             return ['sucesso' => false, 'descricao' => '', 'adequado_para' => '', 'erro' => 'URL inválida.'];
         }
 
-        $instrucao = 'Você é diretor de arte. Analise esta imagem de referência (um template/post de uma marca) e responda em JSON com: '
-            . '{"descricao": "descrição VISUAL detalhada e reproduzível: estilo/estética (fotográfico, 3D, flat, ilustração, cyberpunk...), paleta de cores, iluminação, composição/enquadramento, textura, elementos gráficos e clima — para servir de instrução na geração de novas imagens no mesmo estilo. NÃO descreva o texto escrito na imagem.", '
-            . '"adequado_para": "lista curta separada por vírgula dos tipos de conteúdo/post que combinam com este estilo (ex.: carrossel educativo, post de novidade, anúncio/CTA, citação, bastidores)"}. '
+        $instrucao = 'Você é diretor de arte especialista em identidade visual. Analise MINUCIOSAMENTE esta imagem de referência (um template/post de uma marca) e responda em JSON com: '
+            . '{"descricao": "descrição VISUAL rica, detalhada e REPRODUZÍVEL, cobrindo TODOS estes aspectos em texto corrido: '
+            . '(1) ESTÉTICA/MEIO (fotográfico realista, render 3D, flat/ilustração, colagem, cyberpunk, etc.); '
+            . '(2) PALETA DE CORES com aproximação em HEX quando possível e a cor de acento dominante; '
+            . '(3) ILUMINAÇÃO (direção, dureza, brilhos, sombras, atmosfera); '
+            . '(4) COMPOSIÇÃO/ENQUADRAMENTO (uso de grid, espaço negativo, alinhamento, ponto focal, margens); '
+            . '(5) TIPOGRAFIA (família aparente serif/sans/condensada, pesos, contraste entre título e apoio, caixa, alinhamento); '
+            . '(6) ELEMENTOS GRÁFICOS recorrentes (formas, ícones, molduras, filetes, texturas, ruído, gradientes); '
+            . '(7) CLIMA/MOOD (ex.: corporativo sóbrio, energético, premium, minimalista). '
+            . 'Seja específico e objetivo, sem rodeios. NÃO transcreva o texto escrito na imagem.", '
+            . '"adequado_para": "lista curta separada por vírgula dos tipos de conteúdo/post que combinam com este estilo (ex.: carrossel educativo, post de novidade, anúncio/CTA, citação, bastidores)", '
+            . '"categoria": "classifique o OBJETIVO principal deste template em UMA destas opções exatas: noticia (para comunicar fatos/novidades), engajamento (para gerar interação/conversa), impacto (visual forte/provocativo/inspiracional), educativo (ensinar/explicar), conversao (venda/CTA/anúncio), institucional (marca/valores). Responda apenas a palavra-chave."}. '
             . 'Responda APENAS o JSON.';
 
         $content = [
@@ -655,7 +664,7 @@ class ApiHelper
         $resultado = self::executarCurl(
             'https://api.openai.com/v1/chat/completions',
             ['Authorization: Bearer ' . $apiKey, 'Content-Type: application/json'],
-            ['model' => $model, 'messages' => [['role' => 'user', 'content' => $content]], 'max_tokens' => 500],
+            ['model' => $model, 'messages' => [['role' => 'user', 'content' => $content]], 'max_tokens' => 700],
             'OpenAI-Visao-Template',
             90
         );
@@ -671,13 +680,14 @@ class ApiHelper
                 'sucesso' => true,
                 'descricao' => trim((string) ($json['descricao'] ?? '')),
                 'adequado_para' => trim((string) ($json['adequado_para'] ?? '')),
+                'categoria' => strtolower(trim((string) ($json['categoria'] ?? ''))),
                 'erro' => null,
             ];
         }
         // Se não veio JSON, usa o texto puro como descrição.
         $texto = trim($texto);
         if ($texto !== '') {
-            return ['sucesso' => true, 'descricao' => $texto, 'adequado_para' => '', 'erro' => null];
+            return ['sucesso' => true, 'descricao' => $texto, 'adequado_para' => '', 'categoria' => '', 'erro' => null];
         }
         return ['sucesso' => false, 'descricao' => '', 'adequado_para' => '', 'erro' => 'A IA não retornou descrição.'];
     }

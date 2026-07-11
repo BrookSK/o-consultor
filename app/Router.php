@@ -253,6 +253,8 @@ class Router
         $this->post('maquina-de-conteudo/upload-template', 'MaquinaController', 'uploadTemplate');
         $this->get('maquina-de-conteudo/templates', 'MaquinaController', 'listarTemplates');
         $this->post('maquina-de-conteudo/remover-template', 'MaquinaController', 'removerTemplate');
+        $this->post('maquina-de-conteudo/recalcular-perfil-templates', 'MaquinaController', 'recalcularPerfilTemplates'); // Perfil visual consolidado da marca
+        $this->post('maquina-de-conteudo/atualizar-categoria-template', 'MaquinaController', 'atualizarCategoriaTemplate'); // Categoria/objetivo do template
         
         // F-11: Publicação e Agendamento
         $this->post('maquina/agendar', 'MaquinaController', 'agendar');
