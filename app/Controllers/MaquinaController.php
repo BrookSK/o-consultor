@@ -675,7 +675,7 @@ class MaquinaController
         try {
             $conteudos = Database::query(
                 "SELECT id, tipo, tema as titulo, status, criado_em as data,
-                        JSON_LENGTH(slides) as slides, slides
+                        JSON_LENGTH(slides) as slides_count, slides as slides_json
                  FROM conteudos_marca
                  WHERE marca_id = :marca_id AND usuario_id = :user_id
                    AND (status IN ('aprovado','agendado','publicado') OR salvo_biblioteca = 1)
@@ -687,7 +687,7 @@ class MaquinaController
             // Coluna salvo_biblioteca pode não existir (migration 045). Fallback:
             try {
                 $conteudos = Database::query(
-                    "SELECT id, tipo, tema as titulo, status, criado_em as data, JSON_LENGTH(slides) as slides, slides
+                    "SELECT id, tipo, tema as titulo, status, criado_em as data, JSON_LENGTH(slides) as slides_count, slides as slides_json
                      FROM conteudos_marca
                      WHERE marca_id = :marca_id AND usuario_id = :user_id
                        AND status IN ('aprovado','agendado','publicado')
@@ -698,14 +698,16 @@ class MaquinaController
                 $conteudos = [];
             }
         }
-        // Extrai a URL da 1ª imagem de cada conteúdo (para a miniatura do card).
+        // Extrai a URL da 1ª imagem de cada conteúdo (para a miniatura do card)
+        // e normaliza a contagem de slides que a view usa ($cont['slides']).
         foreach ($conteudos as &$c) {
             $c['thumb'] = '';
-            $sl = json_decode($c['slides'] ?? '[]', true) ?: [];
+            $sl = json_decode($c['slides_json'] ?? '[]', true) ?: [];
             foreach ($sl as $s) {
                 if (!empty($s['imagem_url'])) { $c['thumb'] = $s['imagem_url']; break; }
             }
-            unset($c['slides']); // não precisa do JSON completo na view
+            $c['slides'] = (int) ($c['slides_count'] ?? 0); // contagem para a view
+            unset($c['slides_json'], $c['slides_count']);    // não precisa na view
         }
         unset($c);
         
@@ -1331,6 +1333,7 @@ class MaquinaController
             // Qualidade escolhida (impacta o custo). Padrão low se ausente.
             $qualidade = strtolower(trim((string) ($conteudo['qualidade_imagem'] ?? 'low')));
             if (!in_array($qualidade, ['low', 'medium', 'high'], true)) $qualidade = 'low';
+            error_log('[O CONSULTOR][ImagemGer] INICIO conteudo=' . $conteudoId . ' slide=' . $slideIndex . ' qualidade=' . $qualidade);
 
             // Headline a ser ESCRITA dentro da imagem (como nos templates de referência).
             $headline = trim((string) ($slides[$slideIndex]['texto'] ?? ''));
