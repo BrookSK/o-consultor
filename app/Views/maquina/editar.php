@@ -14,7 +14,8 @@
 
 <div class="flex items-center justify-between mb-6">
     <h1 class="text-xl font-bold text-gray-800">✏️ Editar: <?= htmlspecialchars($cont['tema']) ?></h1>
-    <div class="flex gap-2">
+    <div class="flex items-center gap-2">
+        <button onclick="exportarPdf(this)" id="btn-exportar-pdf" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700 flex items-center gap-2">📄 Exportar PDF</button>
         <span class="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600"><?= ucfirst($cont['tipo']) ?></span>
         <span class="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Rascunho</span>
     </div>
@@ -291,6 +292,70 @@ if (legendaTextarea) {
             charCount.textContent = this.value.length;
         }
     });
+}
+
+// ===================== EXPORTAR CARROSSEL EM PDF =====================
+// URLs das imagens dos slides (na ordem), vindas do PHP.
+const SLIDES_IMAGENS = <?= json_encode(array_values(array_map(fn($s) => (string) ($s['imagem_url'] ?? ''), $cont['slides'] ?? [])), JSON_UNESCAPED_SLASHES) ?>;
+const PDF_NOME = <?= json_encode('carrossel-' . preg_replace('/[^a-z0-9]+/i', '-', strtolower((string) ($cont['tema'] ?? 'conteudo')))) ?>;
+
+// Carrega uma imagem como dataURL (mesma origem -> sem problema de CORS).
+function carregarImagemDataUrl(url) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            canvas.getContext('2d').drawImage(img, 0, 0);
+            try {
+                resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.92), w: img.naturalWidth, h: img.naturalHeight });
+            } catch (e) { reject(e); }
+        };
+        img.onerror = () => reject(new Error('Falha ao carregar imagem'));
+        img.src = url + (url.includes('?') ? '&' : '?') + 'pdf=1';
+    });
+}
+
+async function garantirJsPDF() {
+    if (window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
+    await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+        s.onload = resolve;
+        s.onerror = () => reject(new Error('Falha ao carregar jsPDF'));
+        document.head.appendChild(s);
+    });
+    return window.jspdf.jsPDF;
+}
+
+async function exportarPdf(btn) {
+    const imagens = (SLIDES_IMAGENS || []).filter(u => u && u.trim() !== '');
+    if (imagens.length === 0) { alert('Nenhuma imagem gerada ainda para exportar.'); return; }
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Gerando PDF...'; }
+    try {
+        const jsPDF = await garantirJsPDF();
+        let pdf = null;
+        for (let i = 0; i < imagens.length; i++) {
+            let img;
+            try { img = await carregarImagemDataUrl(imagens[i]); }
+            catch (e) { continue; } // pula imagem que falhar
+            // Cada página tem o tamanho exato da imagem (mantém proporção do slide).
+            const orient = img.w >= img.h ? 'landscape' : 'portrait';
+            if (pdf === null) {
+                pdf = new jsPDF({ orientation: orient, unit: 'px', format: [img.w, img.h] });
+            } else {
+                pdf.addPage([img.w, img.h], orient);
+            }
+            pdf.addImage(img.dataUrl, 'JPEG', 0, 0, img.w, img.h);
+        }
+        if (pdf === null) { alert('Não foi possível carregar as imagens para o PDF.'); }
+        else { pdf.save(PDF_NOME + '.pdf'); }
+    } catch (e) {
+        alert('Erro ao gerar o PDF: ' + (e.message || e));
+    }
+    if (btn) { btn.disabled = false; btn.textContent = '📄 Exportar PDF'; }
 }
 
 // ===================== EDITOR DE LOGO SOBRE A IMAGEM =====================
