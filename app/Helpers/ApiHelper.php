@@ -529,7 +529,7 @@ class ApiHelper
      * @param string   $size            Tamanho lógico (1024x1024 | 1024x1536 | 1536x1024)
      * @return array ['sucesso'=>bool, 'url'=>string|null (data URI/base64), 'erro'=>string|null]
      */
-    public static function gerarImagemComReferencia(string $prompt, array $caminhosLocais, string $size = '1024x1536'): array
+    public static function gerarImagemComReferencia(string $prompt, array $caminhosLocais, string $size = '1024x1536', string $qualidade = 'medium'): array
     {
         $apiKey = self::config('openai_key');
         if (empty($apiKey)) {
@@ -552,12 +552,19 @@ class ApiHelper
         [$w, $h] = array_map('intval', array_pad(explode('x', $size), 2, 1024));
         $sizeModelo = $h > $w ? '1024x1536' : ($w > $h ? '1536x1024' : '1024x1024');
 
+        $q = in_array($qualidade, ['low', 'medium', 'high'], true) ? $qualidade : 'medium';
         $postfields = [
-            'model'  => 'gpt-image-1',
-            'prompt' => $prompt,
-            'size'   => $sizeModelo,
-            'n'      => 1,
+            'model'   => 'gpt-image-1',
+            'prompt'  => $prompt,
+            'size'    => $sizeModelo,
+            'n'       => 1,
+            'quality' => $q,
         ];
+
+        // LOG DE AUDITORIA: payload enviado (sem os binários) + custo estimado em R$.
+        self::logRequisicaoImagem('edits', 'gpt-image-1', $sizeModelo, $q, [
+            'model' => 'gpt-image-1', 'prompt' => $prompt, 'size' => $sizeModelo, 'n' => 1, 'quality' => $q,
+        ], count($refs));
         // Múltiplas imagens de referência. A API aceita o campo repetido image[].
         // Com uma única referência, usa-se 'image'; com várias, 'image[N]'.
         if (count($refs) === 1) {
@@ -679,7 +686,7 @@ class ApiHelper
         };
     }
 
-    public static function gerarImagem(string $prompt, string $size = '1024x1024'): array
+    public static function gerarImagem(string $prompt, string $size = '1024x1024', string $qualidade = 'medium'): array
     {
         $apiKey = self::config('openai_key');
 
@@ -692,7 +699,7 @@ class ApiHelper
         // Admin > Configurações como 'openai_imagem_modelo' se necessário.
         $modelo = self::config('openai_imagem_modelo', 'gpt-image-1');
 
-        $resultado = self::gerarImagemRequest($apiKey, $modelo, $prompt, $size);
+        $resultado = self::gerarImagemRequest($apiKey, $modelo, $prompt, $size, $qualidade);
 
         if (!$resultado['sucesso']) {
             $erro = $resultado['erro'] ?? '';
@@ -700,13 +707,13 @@ class ApiHelper
             if (stripos($erro, 'does not exist') !== false || stripos($erro, 'invalid_value') !== false || stripos($erro, 'model') !== false) {
                 foreach (['gpt-image-1', 'dall-e-3', 'dall-e-2'] as $fallback) {
                     if ($fallback === $modelo) continue;
-                    $tentativa = self::gerarImagemRequest($apiKey, $fallback, $prompt, $size);
+                    $tentativa = self::gerarImagemRequest($apiKey, $fallback, $prompt, $size, $qualidade);
                     if ($tentativa['sucesso']) { $resultado = $tentativa; break; }
                 }
             }
             // Se rejeitado por política de conteúdo, simplifica o prompt.
             if (!$resultado['sucesso'] && stripos($erro, 'content_policy') !== false) {
-                $resultado = self::gerarImagemRequest($apiKey, $modelo, self::simplificarPromptImagem($prompt), $size);
+                $resultado = self::gerarImagemRequest($apiKey, $modelo, self::simplificarPromptImagem($prompt), $size, $qualidade);
             }
             if (!$resultado['sucesso']) {
                 return ['sucesso' => false, 'url' => null, 'erro' => $resultado['erro'] ?? 'Imagem não gerada.'];
@@ -731,7 +738,7 @@ class ApiHelper
      * Executa a requisição de geração de imagem para um modelo específico,
      * montando o corpo conforme as particularidades de cada modelo.
      */
-    private static function gerarImagemRequest(string $apiKey, string $modelo, string $prompt, string $size): array
+    private static function gerarImagemRequest(string $apiKey, string $modelo, string $prompt, string $size, string $qualidade = 'medium'): array
     {
         // Normaliza o tamanho conforme o modelo (cada um aceita tamanhos diferentes):
         //  - orientação desejada é derivada do $size recebido (quadrado/retrato/paisagem);
@@ -756,10 +763,17 @@ class ApiHelper
         ];
         // 'quality' e 'response_format' têm valores/aceitação diferentes por modelo.
         if (stripos($modelo, 'dall-e') !== false) {
-            $body['quality'] = 'standard';
+            // dall-e-3 aceita standard|hd; mapeia high->hd, demais->standard.
+            $body['quality'] = ($qualidade === 'high') ? 'hd' : 'standard';
             $body['response_format'] = 'url'; // dall-e retorna URL temporária
+        } else {
+            // gpt-image-1 aceita low|medium|high e retorna b64_json por padrão.
+            $q = in_array($qualidade, ['low', 'medium', 'high'], true) ? $qualidade : 'medium';
+            $body['quality'] = $q;
         }
-        // gpt-image-1: retorna b64_json por padrão; não aceita response_format=url.
+
+        // LOG DE AUDITORIA: registra o payload EXATO enviado + custo estimado em R$.
+        self::logRequisicaoImagem('generations', $modelo, $sizeModelo, $qualidade, $body, 0);
 
         return self::executarCurl(
             'https://api.openai.com/v1/images/generations',
@@ -771,6 +785,79 @@ class ApiHelper
             'Imagem(' . $modelo . ')',
             120
         );
+    }
+
+    // =========================================================================
+    // AUDITORIA DE REQUISIÇÕES DE IMAGEM (payload enviado + custo estimado em R$)
+    // =========================================================================
+
+    /**
+     * Estima o custo (em USD) de uma geração de imagem do gpt-image-1 conforme
+     * tamanho e qualidade. Valores de referência da OpenAI (por imagem), sujeitos
+     * a alteração — servem para dar uma noção aproximada, não são fatura.
+     */
+    private static function custoImagemUsd(string $modelo, string $sizeModelo, string $qualidade): float
+    {
+        $modelo = strtolower($modelo);
+        // dall-e-3: preço por imagem (1024x1024 standard ~0.04; hd ~0.08; retrato/paisagem ~0.08/0.12).
+        if (strpos($modelo, 'dall-e-3') !== false) {
+            $hd = ($qualidade === 'high');
+            if ($sizeModelo === '1024x1024') return $hd ? 0.080 : 0.040;
+            return $hd ? 0.120 : 0.080; // 1024x1792 / 1792x1024
+        }
+        if (strpos($modelo, 'dall-e-2') !== false) {
+            return 0.020; // 1024x1024
+        }
+        // gpt-image-1: custo aproximado por imagem, por qualidade e tamanho.
+        // (baseado nos tokens de saída de imagem; retrato/paisagem custam mais que quadrado)
+        $tabela = [
+            'low'    => ['1024x1024' => 0.011, '1024x1536' => 0.016, '1536x1024' => 0.016],
+            'medium' => ['1024x1024' => 0.042, '1024x1536' => 0.063, '1536x1024' => 0.063],
+            'high'   => ['1024x1024' => 0.167, '1024x1536' => 0.250, '1536x1024' => 0.250],
+        ];
+        $q = isset($tabela[$qualidade]) ? $qualidade : 'medium';
+        return $tabela[$q][$sizeModelo] ?? $tabela[$q]['1024x1024'];
+    }
+
+    /**
+     * Registra no log do servidor (error_log → visível no Plesk) o payload que
+     * será enviado para a API de imagem e o custo estimado em reais.
+     *
+     * @param string $endpoint 'generations' | 'edits'
+     * @param array  $body     Corpo/campos da requisição (o prompt é logado completo)
+     * @param int    $numRefs  Nº de imagens de referência enviadas (só no 'edits')
+     */
+    private static function logRequisicaoImagem(string $endpoint, string $modelo, string $sizeModelo, string $qualidade, array $body, int $numRefs = 0): void
+    {
+        try {
+            $usd = self::custoImagemUsd($modelo, $sizeModelo, $qualidade);
+            $cotacao = (float) self::config('usd_brl', '5.50'); // câmbio configurável
+            if ($cotacao <= 0) $cotacao = 5.50;
+            $brl = $usd * $cotacao;
+
+            // Não logar binários das referências — apenas a contagem.
+            $bodyLog = $body;
+            foreach ($bodyLog as $k => $v) {
+                if (!is_scalar($v)) $bodyLog[$k] = '[binário/omitido]';
+            }
+            if ($numRefs > 0) $bodyLog['imagens_referencia'] = $numRefs . ' arquivo(s)';
+
+            $promptLen = isset($body['prompt']) ? mb_strlen((string) $body['prompt']) : 0;
+
+            $linha = '[O CONSULTOR][ImagemReq] endpoint=' . $endpoint
+                . ' modelo=' . $modelo
+                . ' size=' . $sizeModelo
+                . ' qualidade=' . $qualidade
+                . ' refs=' . $numRefs
+                . ' prompt_chars=' . $promptLen
+                . ' custo_usd=' . number_format($usd, 4, '.', '')
+                . ' custo_brl=~R$ ' . number_format($brl, 3, ',', '.')
+                . ' | PAYLOAD=' . json_encode($bodyLog, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+            error_log($linha);
+        } catch (\Throwable $e) {
+            error_log('[O CONSULTOR][ImagemReq] Falha ao logar requisição: ' . $e->getMessage());
+        }
     }
 
     // =========================================================================

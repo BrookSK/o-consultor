@@ -767,6 +767,9 @@ class MaquinaController
         $tema = htmlspecialchars(trim($_POST['tema'] ?? ''));
         $objetivo = htmlspecialchars(trim($_POST['objetivo'] ?? 'educar'));
         $estiloImagem = htmlspecialchars(trim($_POST['estilo_imagem'] ?? 'ia'));
+        // Qualidade da imagem (impacta o custo): low | medium | high. Padrão low (econômico).
+        $qualidadeImagem = strtolower(trim((string) ($_POST['qualidade_imagem'] ?? 'low')));
+        if (!in_array($qualidadeImagem, ['low', 'medium', 'high'], true)) $qualidadeImagem = 'low';
         $noticiaId = (int) ($_POST['noticia_id'] ?? 0);
         // Fonte do conteúdo: 'tema' (livre), 'noticia' ou 'biblioteca' (RAG na literatura).
         $fonte = htmlspecialchars(trim($_POST['fonte'] ?? ($noticiaId > 0 ? 'noticia' : 'tema')));
@@ -909,8 +912,8 @@ class MaquinaController
         // 5. Salvar no banco (rascunho automático) — rápido, cabe no timeout.
         try {
             Database::execute(
-                "INSERT INTO conteudos_marca (marca_id, usuario_id, tipo, tema, objetivo, noticia_id, slides, legenda, hashtags, status, imagens_locais, criado_em) 
-                 VALUES (:marca_id, :user_id, :tipo, :tema, :objetivo, :noticia_id, :slides, :legenda, :hashtags, 'rascunho', :imagens, NOW())",
+                "INSERT INTO conteudos_marca (marca_id, usuario_id, tipo, tema, objetivo, noticia_id, slides, legenda, hashtags, status, imagens_locais, qualidade_imagem, criado_em) 
+                 VALUES (:marca_id, :user_id, :tipo, :tema, :objetivo, :noticia_id, :slides, :legenda, :hashtags, 'rascunho', :imagens, :qualidade, NOW())",
                 [
                     'marca_id' => $marcaId,
                     'user_id' => Auth::id(),
@@ -921,14 +924,36 @@ class MaquinaController
                     'slides' => json_encode($conteudoGerado['slides'] ?? [], JSON_UNESCAPED_UNICODE),
                     'legenda' => $conteudoGerado['legenda'] ?? '',
                     'hashtags' => $conteudoGerado['hashtags'] ?? '',
-                    'imagens' => json_encode([])
+                    'imagens' => json_encode([]),
+                    'qualidade' => $qualidadeImagem,
                 ]
             );
             $conteudoId = Database::lastInsertId();
         } catch (\Exception $e) {
-            // Se falhar BD, usar sessão como fallback
-            Session::set('conteudo_gerado', $conteudoGerado);
-            $conteudoId = 0;
+            // Fallback sem a coluna qualidade_imagem (migration 048 não rodada).
+            try {
+                Database::execute(
+                    "INSERT INTO conteudos_marca (marca_id, usuario_id, tipo, tema, objetivo, noticia_id, slides, legenda, hashtags, status, imagens_locais, criado_em) 
+                     VALUES (:marca_id, :user_id, :tipo, :tema, :objetivo, :noticia_id, :slides, :legenda, :hashtags, 'rascunho', :imagens, NOW())",
+                    [
+                        'marca_id' => $marcaId,
+                        'user_id' => Auth::id(),
+                        'tipo' => $tipo,
+                        'tema' => $tema,
+                        'objetivo' => $objetivo,
+                        'noticia_id' => $noticiaId ?: null,
+                        'slides' => json_encode($conteudoGerado['slides'] ?? [], JSON_UNESCAPED_UNICODE),
+                        'legenda' => $conteudoGerado['legenda'] ?? '',
+                        'hashtags' => $conteudoGerado['hashtags'] ?? '',
+                        'imagens' => json_encode([])
+                    ]
+                );
+                $conteudoId = Database::lastInsertId();
+            } catch (\Exception $e2) {
+                // Se falhar BD, usar sessão como fallback
+                Session::set('conteudo_gerado', $conteudoGerado);
+                $conteudoId = 0;
+            }
         }
 
         // 6. Enfileira as imagens pendentes e dispara o worker em BACKGROUND.
@@ -1267,13 +1292,13 @@ class MaquinaController
         try {
             try {
                 $conteudo = Database::queryOne(
-                    "SELECT c.slides, c.marca_id, c.tipo, c.tema, m.prompt_dalle, m.logo_url
+                    "SELECT c.slides, c.marca_id, c.tipo, c.tema, c.qualidade_imagem, m.prompt_dalle, m.logo_url
                      FROM conteudos_marca c JOIN marcas m ON c.marca_id = m.id
                      WHERE c.id = :id",
                     ['id' => $conteudoId]
                 );
             } catch (\Throwable $e) {
-                // Coluna logo_url pode não existir (migration 046).
+                // Colunas logo_url (046) / qualidade_imagem (048) podem não existir.
                 $conteudo = Database::queryOne(
                     "SELECT c.slides, c.marca_id, c.tipo, c.tema, m.prompt_dalle
                      FROM conteudos_marca c JOIN marcas m ON c.marca_id = m.id
@@ -1303,6 +1328,9 @@ class MaquinaController
             }
 
             $tamanho = $this->tamanhoImagemPorTipo((string) ($conteudo['tipo'] ?? ''));
+            // Qualidade escolhida (impacta o custo). Padrão low se ausente.
+            $qualidade = strtolower(trim((string) ($conteudo['qualidade_imagem'] ?? 'low')));
+            if (!in_array($qualidade, ['low', 'medium', 'high'], true)) $qualidade = 'low';
 
             // Headline a ser ESCRITA dentro da imagem (como nos templates de referência).
             $headline = trim((string) ($slides[$slideIndex]['texto'] ?? ''));
@@ -1413,7 +1441,7 @@ class MaquinaController
                     . $instrucaoLogo
                     . ' NÃO copie o texto que aparece nas imagens de referência (use-as apenas como estilo); a única escrita permitida na imagem é a HEADLINE indicada acima.';
                 $promptCompleto = $promptRef;
-                $imgResult = ApiHelper::gerarImagemComReferencia($promptRef, $refsComLogo, $tamanho);
+                $imgResult = ApiHelper::gerarImagemComReferencia($promptRef, $refsComLogo, $tamanho, $qualidade);
                 if (!empty($imgResult['sucesso']) && !empty($imgResult['url'])) {
                     $metodo = 'referencia';
                 } else {
@@ -1427,12 +1455,12 @@ class MaquinaController
                 $estiloTemplates = $descricaoTemplate !== '' ? $descricaoTemplate : $this->obterEstiloTemplates($marcaId);
                 $refTemplates = $estiloTemplates !== '' ? ' — Estilo visual de referência (siga fielmente): ' . $estiloTemplates : '';
                 $promptCompleto = $conteudo['prompt_dalle'] . ' — ' . $promptImagem . $refTemplates . ' — Formato vertical para post de Instagram (retrato), composição centralizada.' . $instrucaoTexto;
-                $imgResult = ApiHelper::gerarImagem($promptCompleto, $tamanho);
+                $imgResult = ApiHelper::gerarImagem($promptCompleto, $tamanho, $qualidade);
                 $metodo = 'texto';
 
                 if (!$imgResult['sucesso'] || empty($imgResult['url'])) {
                     $promptSimples = $conteudo['prompt_dalle'] . $refTemplates . ' — estilo corporativo moderno, formato vertical de Instagram.' . $instrucaoTexto;
-                    $imgResult = ApiHelper::gerarImagem($promptSimples, $tamanho);
+                    $imgResult = ApiHelper::gerarImagem($promptSimples, $tamanho, $qualidade);
                     $promptCompleto = $promptSimples;
                 }
             }

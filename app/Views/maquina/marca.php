@@ -124,6 +124,16 @@
                             <option value="sem">Sem imagem</option>
                         </select>
                     </div>
+                    <!-- Qualidade da imagem (impacta custo). Só aparece quando "Gerar com IA". -->
+                    <div id="bloco-qualidade">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Qualidade da imagem</label>
+                        <select name="qualidade_imagem" id="sel-qualidade-img" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                            <option value="low" selected>Econômica — mais barata (~R$ 0,06/imagem)</option>
+                            <option value="medium">Equilibrada — recomendada (~R$ 0,23/imagem)</option>
+                            <option value="high">Alta — mais cara e detalhada (~R$ 0,90/imagem)</option>
+                        </select>
+                        <p class="text-xs text-gray-400 mt-1" id="txt-qualidade-hint">Valores aproximados por imagem. Um carrossel de 7 slides gera 7 imagens.</p>
+                    </div>
                     <div id="prompt-dalle-preview" class="hidden">
                         <label class="block text-sm font-medium text-gray-700 mb-1">Prompt DALL-E (editável)</label>
                         <textarea name="prompt_imagem" rows="3" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary resize-none font-mono text-xs"><?= htmlspecialchars($marca['prompt_dalle']) ?></textarea>
@@ -620,6 +630,9 @@ let conteudosData = {
 
 document.getElementById('sel-estilo-img').addEventListener('change', function() {
     document.getElementById('prompt-dalle-preview').classList.toggle('hidden', this.value !== 'ia');
+    // O seletor de qualidade só faz sentido quando a imagem é gerada por IA.
+    const blocoQ = document.getElementById('bloco-qualidade');
+    if (blocoQ) blocoQ.classList.toggle('hidden', this.value !== 'ia');
 });
 
 document.getElementById('form-gerar').addEventListener('submit', async function(e) {
