@@ -207,6 +207,7 @@ async function regenerarImagem(conteudoId, slideIndex) {
                 st = await r.json();
             } catch (e) { continue; }
             const item = (st.itens || []).find(i => i.slide_index === slideIndex);
+            if (item && item.mensagem) console.log('[IMG slide ' + slideIndex + '] status=' + item.status + '\n' + item.mensagem);
             if (item && item.status === 'concluido' && item.imagem_url) {
                 if (img) { img.src = item.imagem_url + '?t=' + Date.now(); img.style.opacity = '1'; }
                 if (typeof Toast !== 'undefined') Toast.sucesso('Imagem regenerada!');

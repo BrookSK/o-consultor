@@ -13,6 +13,14 @@ class ApiHelper
     private const LOG_FILE = ROOT_PATH . '/storage/logs/ai_errors.log';
 
     /**
+     * Buffer das últimas linhas de log de requisição de imagem geradas nesta
+     * execução. O controller lê isto após chamar a geração para persistir/
+     * devolver ao front (console.log). É limpo a cada nova geração.
+     * @var string[]
+     */
+    public static array $logsImagem = [];
+
+    /**
      * Lê configuração do banco (com fallback)
      */
     private static function config(string $chave, string $padrao = ''): string
@@ -853,6 +861,9 @@ class ApiHelper
                 . ' custo_usd=' . number_format($usd, 4, '.', '')
                 . ' custo_brl=~R$ ' . number_format($brl, 3, ',', '.')
                 . ' | PAYLOAD=' . json_encode($bodyLog, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+            // 0) Buffer em memória (o controller lê para devolver ao front/console).
+            self::$logsImagem[] = $linha;
 
             // 1) error_log (pode não aparecer no PHP-FPM após fastcgi_finish_request).
             error_log($linha);

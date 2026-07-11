@@ -5,6 +5,23 @@
 
 class AdminController
 {
+    /** Verifica (com cache) se uma tabela existe no banco atual. */
+    private function tabelaExiste(string $tabela): bool
+    {
+        static $cache = [];
+        if (isset($cache[$tabela])) return $cache[$tabela];
+        try {
+            $r = Database::queryOne(
+                "SELECT COUNT(*) AS c FROM information_schema.TABLES
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t",
+                ['t' => $tabela]
+            );
+            return $cache[$tabela] = ((int) ($r['c'] ?? 0) > 0);
+        } catch (\Throwable $e) {
+            return $cache[$tabela] = false;
+        }
+    }
+
     private function protegerAdmin(): void
     {
         // Verificar se usuário está autenticado
@@ -187,26 +204,51 @@ class AdminController
             $params['consultor_id'] = $consultorId;
         }
         
+        // Tabelas opcionais (planos_acao e sops podem não existir se as migrations
+        // 007/008 ainda não rodaram). Monta os JOINs/contagens só para as que existem
+        // para não quebrar a listagem de clientes com fatal error (1146).
+        $temPlanos = $this->tabelaExiste('planos_acao');
+        $temSops = $this->tabelaExiste('sops');
+
+        $selPlanos = $temPlanos ? 'COUNT(DISTINCT p.id)' : '0';
+        $selSops = $temSops ? 'COUNT(DISTINCT s.id)' : '0';
+        $joinPlanos = $temPlanos ? 'LEFT JOIN planos_acao p ON p.empresa_id = e.id' : '';
+        $joinSops = $temSops ? "LEFT JOIN sops s ON s.empresa_id = e.id AND s.status = 'ativo'" : '';
+
         // Buscar empresas com dados completos
         $sql = "SELECT e.*, 
                        c.nome as consultor_nome,
                        r.nome as responsavel_nome,
                        COUNT(DISTINCT u.id) as total_usuarios,
                        COUNT(DISTINCT d.id) as total_diagnosticos,
-                       COUNT(DISTINCT p.id) as total_planos,
-                       COUNT(DISTINCT s.id) as total_sops
+                       {$selPlanos} as total_planos,
+                       {$selSops} as total_sops
                 FROM empresas e 
                 LEFT JOIN usuarios c ON e.consultor_id = c.id
                 LEFT JOIN usuarios r ON e.responsavel_id = r.id
                 LEFT JOIN usuarios u ON u.empresa_id = e.id
                 LEFT JOIN diagnosticos d ON d.empresa_id = e.id
-                LEFT JOIN planos_acao p ON p.empresa_id = e.id
-                LEFT JOIN sops s ON s.empresa_id = e.id AND s.status = 'ativo'
+                {$joinPlanos}
+                {$joinSops}
                 {$whereClause}
                 GROUP BY e.id
                 ORDER BY e.criado_em DESC";
         
-        $clientes = Database::query($sql, $params);
+        try {
+            $clientes = Database::query($sql, $params);
+        } catch (\Throwable $e) {
+            // Fallback mínimo: lista as empresas sem as contagens agregadas.
+            $clientes = Database::query(
+                "SELECT e.*, c.nome as consultor_nome, r.nome as responsavel_nome,
+                        0 as total_usuarios, 0 as total_diagnosticos, 0 as total_planos, 0 as total_sops
+                 FROM empresas e
+                 LEFT JOIN usuarios c ON e.consultor_id = c.id
+                 LEFT JOIN usuarios r ON e.responsavel_id = r.id
+                 {$whereClause}
+                 ORDER BY e.criado_em DESC",
+                $params
+            );
+        }
         
         // Buscar consultores para filtro
         $consultores = Database::query(

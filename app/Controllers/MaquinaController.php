@@ -261,6 +261,8 @@ class MaquinaController
     private function logImagem(string $mensagem): void
     {
         $linha = '[O CONSULTOR]' . $mensagem;
+        // Também no buffer do ApiHelper, para o front exibir no console.log.
+        ApiHelper::$logsImagem[] = $linha;
         error_log($linha);
         try {
             $logDir = ROOT_PATH . '/storage/logs';
@@ -1088,14 +1090,20 @@ class MaquinaController
 
         $res = $this->gerarImagemDoSlide((int) $item['conteudo_id'], (int) $item['slide_index'], (string) ($item['instrucao'] ?? ''));
 
+        // Log detalhado da requisição (payload + custo) capturado no ApiHelper,
+        // persistido na fila para o front exibir no console.log (ver status-imagens).
+        $logReq = implode(' || ', ApiHelper::$logsImagem);
+
         if (!empty($res['sucesso'])) {
+            $msg = trim(($res['metodo'] ?? '') . ' | ' . $logReq);
             Database::execute("UPDATE fila_imagens_conteudo SET status='concluido', mensagem=:m, atualizado_em=NOW() WHERE id=:id",
-                ['m' => ($res['metodo'] ?? ''), 'id' => $filaId]);
+                ['m' => substr($msg, 0, 500), 'id' => $filaId]);
         } else {
             // Após 3 tentativas, marca erro definitivo.
             $novoStatus = ((int) $item['tentativas'] >= 2) ? 'erro' : 'pendente';
+            $msg = trim((string) ($res['erro'] ?? 'falha') . ' | ' . $logReq);
             Database::execute("UPDATE fila_imagens_conteudo SET status=:s, mensagem=:m, atualizado_em=NOW() WHERE id=:id",
-                ['s' => $novoStatus, 'm' => substr((string) ($res['erro'] ?? 'falha'), 0, 490), 'id' => $filaId]);
+                ['s' => $novoStatus, 'm' => substr($msg, 0, 500), 'id' => $filaId]);
         }
 
         return $res + ['conteudo_id' => (int) $item['conteudo_id'], 'slide_index' => (int) $item['slide_index']];
@@ -1349,6 +1357,7 @@ class MaquinaController
             // Qualidade escolhida (impacta o custo). Padrão low se ausente.
             $qualidade = strtolower(trim((string) ($conteudo['qualidade_imagem'] ?? 'low')));
             if (!in_array($qualidade, ['low', 'medium', 'high'], true)) $qualidade = 'low';
+            ApiHelper::$logsImagem = []; // limpa o buffer desta geração
             $this->logImagem('[ImagemGer] INICIO conteudo=' . $conteudoId . ' slide=' . $slideIndex . ' qualidade=' . $qualidade);
 
             // Headline a ser ESCRITA dentro da imagem (como nos templates de referência).

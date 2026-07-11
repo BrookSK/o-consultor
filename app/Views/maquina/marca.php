@@ -773,6 +773,19 @@ async function gerarImagensSequencial(conteudoId, indices) {
             fetch('<?= APP_URL ?>/maquina-de-conteudo/processar-imagens-bg?_=' + Date.now()).catch(() => {});
         }
 
+        // Loga no console do navegador o detalhe de cada item (payload + custo),
+        // sem repetir a mesma linha a cada poll.
+        window.__logImgVistos = window.__logImgVistos || {};
+        (data.itens || []).forEach(item => {
+            if (item.mensagem) {
+                const chave = item.slide_index + ':' + item.status + ':' + item.mensagem;
+                if (!window.__logImgVistos[chave]) {
+                    window.__logImgVistos[chave] = true;
+                    console.log('[IMG slide ' + item.slide_index + '] status=' + item.status + '\n' + item.mensagem);
+                }
+            }
+        });
+
         let prontas = 0;
         (data.itens || []).forEach(item => {
             const idx = item.slide_index;
@@ -865,6 +878,7 @@ async function regenerarComInstrucao(conteudoId, idx, container) {
                 st = await r.json();
             } catch (e) { continue; }
             const item = (st.itens || []).find(i => i.slide_index === idx);
+            if (item && item.mensagem) console.log('[IMG slide ' + idx + '] status=' + item.status + '\n' + item.mensagem);
             if (item && item.status === 'concluido' && item.imagem_url) {
                 if (img) { img.src = item.imagem_url + '?t=' + Date.now(); img.style.opacity = '1'; }
                 if (btn) { btn.disabled = false; btn.textContent = '🔄 Regenerar esta imagem'; }
