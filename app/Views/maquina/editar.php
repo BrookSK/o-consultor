@@ -60,6 +60,10 @@
                         </label>
                         <button onclick="regenerarImagem(<?= $conteudo['id'] ?>, <?= $i ?>)" class="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs hover:bg-gray-50">🔄 Regenerar</button>
                     </div>
+                    <div class="flex gap-2 mt-2">
+                        <button onclick="abrirEditorLogo(<?= $conteudo['id'] ?>, <?= $i ?>, '<?= htmlspecialchars($slide['imagem_url'], ENT_QUOTES) ?>')" class="flex-1 px-2 py-1.5 border border-primary/40 text-primary rounded text-xs hover:bg-primary/5">🎨 Posicionar logo</button>
+                        <a href="<?= htmlspecialchars($slide['imagem_url']) ?>" download class="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs hover:bg-gray-50 text-center">⬇️ Baixar</a>
+                    </div>
                     <a href="<?= APP_URL ?>/maquina-de-conteudo/imagem/prompt/<?= (int) $conteudo['id'] ?>/<?= $i ?>" target="_blank" class="block mt-2 text-center text-[11px] text-blue-600 hover:underline">🔍 Ver prompts (imagem, legenda e fonte usada)</a>
                 </div>
                 <!-- Texto -->
@@ -287,6 +291,193 @@ if (legendaTextarea) {
             charCount.textContent = this.value.length;
         }
     });
+}
+
+// ===================== EDITOR DE LOGO SOBRE A IMAGEM =====================
+const LOGO_MARCA_URL = '<?= !empty($conteudo['logo_url']) ? htmlspecialchars(APP_URL . $conteudo['logo_url'], ENT_QUOTES) : '' ?>';
+let editorLogo = {
+    conteudoId: 0, slideIndex: 0,
+    baseImg: null, logoImg: null,
+    // posição/tamanho do logo em coordenadas do canvas
+    x: 40, y: 40, w: 160, h: 160,
+    arrastando: false, redimensionando: false,
+    offsetX: 0, offsetY: 0,
+};
+
+function abrirEditorLogo(conteudoId, slideIndex, imagemUrl) {
+    editorLogo.conteudoId = conteudoId;
+    editorLogo.slideIndex = slideIndex;
+    document.getElementById('editor-logo-modal').classList.remove('hidden');
+    const base = new Image();
+    base.crossOrigin = 'anonymous';
+    base.onload = () => {
+        editorLogo.baseImg = base;
+        const canvas = document.getElementById('editor-logo-canvas');
+        // Mantém a resolução real da imagem no canvas.
+        canvas.width = base.naturalWidth;
+        canvas.height = base.naturalHeight;
+        // posição inicial do logo: canto inferior direito
+        const lw = Math.round(base.naturalWidth * 0.18);
+        editorLogo.w = lw; editorLogo.h = lw;
+        editorLogo.x = base.naturalWidth - lw - Math.round(base.naturalWidth * 0.05);
+        editorLogo.y = base.naturalHeight - lw - Math.round(base.naturalHeight * 0.05);
+        desenharEditorLogo();
+    };
+    base.onerror = () => alert('Não foi possível carregar a imagem (CORS). Use uma imagem gerada pelo sistema.');
+    base.src = imagemUrl + (imagemUrl.includes('?') ? '&' : '?') + 'cors=1';
+
+    if (LOGO_MARCA_URL) {
+        const lg = new Image();
+        lg.crossOrigin = 'anonymous';
+        lg.onload = () => { editorLogo.logoImg = lg; desenharEditorLogo(); };
+        lg.src = LOGO_MARCA_URL + (LOGO_MARCA_URL.includes('?') ? '&' : '?') + 'cors=1';
+    }
+}
+
+function fecharEditorLogo() {
+    document.getElementById('editor-logo-modal').classList.add('hidden');
+}
+
+function desenharEditorLogo() {
+    const canvas = document.getElementById('editor-logo-canvas');
+    if (!canvas || !editorLogo.baseImg) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(editorLogo.baseImg, 0, 0, canvas.width, canvas.height);
+    if (editorLogo.logoImg) {
+        ctx.drawImage(editorLogo.logoImg, editorLogo.x, editorLogo.y, editorLogo.w, editorLogo.h);
+        // Moldura + handle de redimensionamento (canto inferior direito).
+        ctx.strokeStyle = 'rgba(59,130,246,0.9)';
+        ctx.lineWidth = Math.max(2, canvas.width / 400);
+        ctx.strokeRect(editorLogo.x, editorLogo.y, editorLogo.w, editorLogo.h);
+        const hs = Math.max(12, canvas.width / 60);
+        ctx.fillStyle = 'rgba(59,130,246,0.95)';
+        ctx.fillRect(editorLogo.x + editorLogo.w - hs, editorLogo.y + editorLogo.h - hs, hs, hs);
+    }
+}
+
+// Converte coordenadas do mouse (tela) para coordenadas do canvas (resolução real).
+function coordCanvas(canvas, ev) {
+    const r = canvas.getBoundingClientRect();
+    const px = (ev.touches ? ev.touches[0].clientX : ev.clientX) - r.left;
+    const py = (ev.touches ? ev.touches[0].clientY : ev.clientY) - r.top;
+    return { x: px * (canvas.width / r.width), y: py * (canvas.height / r.height) };
+}
+
+function editorLogoMouseDown(ev) {
+    if (!editorLogo.logoImg) return;
+    ev.preventDefault();
+    const canvas = document.getElementById('editor-logo-canvas');
+    const p = coordCanvas(canvas, ev);
+    const hs = Math.max(12, canvas.width / 60);
+    // Está no handle de resize?
+    if (p.x >= editorLogo.x + editorLogo.w - hs && p.x <= editorLogo.x + editorLogo.w &&
+        p.y >= editorLogo.y + editorLogo.h - hs && p.y <= editorLogo.y + editorLogo.h) {
+        editorLogo.redimensionando = true;
+        return;
+    }
+    // Está sobre o logo? (arrastar)
+    if (p.x >= editorLogo.x && p.x <= editorLogo.x + editorLogo.w &&
+        p.y >= editorLogo.y && p.y <= editorLogo.y + editorLogo.h) {
+        editorLogo.arrastando = true;
+        editorLogo.offsetX = p.x - editorLogo.x;
+        editorLogo.offsetY = p.y - editorLogo.y;
+    }
+}
+
+function editorLogoMouseMove(ev) {
+    if (!editorLogo.arrastando && !editorLogo.redimensionando) return;
+    ev.preventDefault();
+    const canvas = document.getElementById('editor-logo-canvas');
+    const p = coordCanvas(canvas, ev);
+    if (editorLogo.redimensionando) {
+        editorLogo.w = Math.max(24, p.x - editorLogo.x);
+        editorLogo.h = editorLogo.w; // mantém proporção quadrada do bounding
+    } else if (editorLogo.arrastando) {
+        editorLogo.x = p.x - editorLogo.offsetX;
+        editorLogo.y = p.y - editorLogo.offsetY;
+    }
+    desenharEditorLogo();
+}
+
+function editorLogoMouseUp() { editorLogo.arrastando = false; editorLogo.redimensionando = false; }
+
+// Salva a imagem combinada (base + logo posicionado) no servidor.
+async function salvarImagemComLogo() {
+    const canvas = document.getElementById('editor-logo-canvas');
+    if (!canvas || !editorLogo.baseImg) return;
+    const btn = document.getElementById('btn-salvar-logo');
+    if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+    // Redesenha SEM a moldura/handle para exportar limpo.
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(editorLogo.baseImg, 0, 0, canvas.width, canvas.height);
+    if (editorLogo.logoImg) ctx.drawImage(editorLogo.logoImg, editorLogo.x, editorLogo.y, editorLogo.w, editorLogo.h);
+    let dataUrl;
+    try { dataUrl = canvas.toDataURL('image/png'); }
+    catch (e) { alert('Falha ao exportar (a imagem pode bloquear por CORS).'); if (btn){btn.disabled=false;btn.textContent='💾 Salvar imagem com logo';} return; }
+
+    try {
+        const fd = new FormData();
+        fd.append('csrf_token', '<?= Csrf::token() ?>');
+        fd.append('conteudo_id', editorLogo.conteudoId);
+        fd.append('slide_index', editorLogo.slideIndex);
+        fd.append('imagem_base64', dataUrl);
+        const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/salvar-imagem-editada', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.sucesso && data.imagem_url) {
+            // Atualiza a imagem do slide na página.
+            const card = document.querySelector(`[data-slide-index="${editorLogo.slideIndex}"] img`);
+            if (card) card.src = data.imagem_url + '?t=' + Date.now();
+            if (typeof Toast !== 'undefined') Toast.sucesso('Imagem com logo salva!');
+            fecharEditorLogo();
+        } else {
+            alert(data.erro || 'Erro ao salvar.');
+        }
+    } catch (e) { alert('Erro de conexão.'); }
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Salvar imagem com logo'; }
+}
+</script>
+
+<!-- Modal: Editor de logo sobre a imagem -->
+<div id="editor-logo-modal" class="hidden fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[92vh] overflow-auto p-5">
+        <div class="flex items-center justify-between mb-3">
+            <h3 class="font-semibold text-gray-800">🎨 Posicionar logo na imagem</h3>
+            <button onclick="fecharEditorLogo()" class="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
+        </div>
+        <?php if (empty($conteudo['logo_url'])): ?>
+        <p class="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded p-3 mb-3">Nenhum logo cadastrado no Brand Book desta marca. Envie o logo no Brand Book para posicioná-lo aqui.</p>
+        <?php endif; ?>
+        <p class="text-xs text-gray-500 mb-2">Arraste o logo para posicionar e use o quadradinho azul (canto inferior direito do logo) para redimensionar.</p>
+        <div class="w-full overflow-auto bg-gray-900 rounded-lg flex items-center justify-center" style="max-height:60vh;">
+            <canvas id="editor-logo-canvas" class="max-w-full h-auto touch-none"
+                onmousedown="editorLogoMouseDown(event)" onmousemove="editorLogoMouseMove(event)" onmouseup="editorLogoMouseUp()" onmouseleave="editorLogoMouseUp()"
+                ontouchstart="editorLogoMouseDown(event)" ontouchmove="editorLogoMouseMove(event)" ontouchend="editorLogoMouseUp()"></canvas>
+        </div>
+        <div class="flex flex-wrap gap-2 mt-4">
+            <button id="btn-salvar-logo" onclick="salvarImagemComLogo()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700">💾 Salvar imagem com logo</button>
+            <button onclick="baixarCanvasEditor()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">⬇️ Baixar imagem alterada</button>
+            <button onclick="fecharEditorLogo()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">Cancelar</button>
+        </div>
+    </div>
+</div>
+<script>
+// Download da imagem alterada (canvas) direto no navegador.
+function baixarCanvasEditor() {
+    const canvas = document.getElementById('editor-logo-canvas');
+    if (!canvas || !editorLogo.baseImg) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(editorLogo.baseImg, 0, 0, canvas.width, canvas.height);
+    if (editorLogo.logoImg) ctx.drawImage(editorLogo.logoImg, editorLogo.x, editorLogo.y, editorLogo.w, editorLogo.h);
+    try {
+        const a = document.createElement('a');
+        a.download = 'imagem-com-logo.png';
+        a.href = canvas.toDataURL('image/png');
+        a.click();
+    } catch (e) { alert('Falha ao exportar (CORS).'); }
+    desenharEditorLogo();
 }
 </script>
 

@@ -1963,7 +1963,7 @@ Responda APENAS em JSON válido, sem explicações.";
     /**
      * Gera prompt contextualizado com dados da jornada do cliente
      */
-    public static function buildPromptConteudoContextualizado(array $marca, string $tipo, string $tema, string $objetivo, ?string $noticiaBase = null, array $contextoJornada = [], ?string $literaturaBase = null, int $qtdSlides = 7): string
+    public static function buildPromptConteudoContextualizado(array $marca, string $tipo, string $tema, string $objetivo, ?string $noticiaBase = null, array $contextoJornada = [], ?string $literaturaBase = null, int $qtdSlides = 7, bool $temFechamentoFixo = false): string
     {
         $qtdSlides = max(3, min(10, $qtdSlides ?: 7));
         $contextoNoticia = '';
@@ -2039,7 +2039,24 @@ REGRAS PARA CONTEÚDO DE NOTÍCIA (OBRIGATÓRIAS):
 
         switch($tipo) {
             case 'carrossel':
-                $instrucoesTipo = "Para CARROSSEL gere EXATAMENTE {$qtdSlides} slides (nem mais, nem menos) no JSON, na estrutura: {\"slides\": [{\"numero\": 1, \"tipo\": \"capa\", \"texto\": \"título principal\", \"texto_secundario\": \"subtítulo opcional\", \"prompt_imagem\": \"descrição detalhada da imagem\"}, {\"numero\": 2, \"tipo\": \"conteudo\", \"texto\": \"conteúdo do slide\", \"prompt_imagem\": \"descrição da imagem\"}], \"legenda\": \"texto da legenda com call-to-action\", \"hashtags\": \"#tag1 #tag2 #tag3\"}. O array 'slides' deve ter {$qtdSlides} itens. ESTRUTURA NARRATIVA OBRIGATÓRIA (storytelling encadeado): o SLIDE 1 é a CAPA (tipo 'capa', gancho curto e provocativo que abre curiosidade). Os slides do MEIO (tipo 'conteudo') DESENVOLVEM o assunto em sequência lógica, onde CADA slide dá continuidade ao anterior e prepara o próximo (um raciocínio que progride, não pedaços soltos nem várias capas). O ÚLTIMO slide (tipo 'cta') é o FECHAMENTO com conclusão + chamada para ação da marca. IMPORTANTE: apenas o slide 1 é capa; os demais NÃO são capas, são desenvolvimento/fechamento com texto mais explicativo e objetivo.";
+                // Se há imagem de fechamento fixa (upload), a IA NÃO gera o último
+                // slide — gera qtdSlides-1 (capa + miolos), e o fechamento é a arte
+                // enviada. Senão, gera qtdSlides (capa + miolos + fechamento).
+                $slidesParaGerar = $temFechamentoFixo ? max(2, $qtdSlides - 1) : $qtdSlides;
+                $qtdMiolo = $temFechamentoFixo ? ($slidesParaGerar - 1) : ($slidesParaGerar - 2);
+                $qtdMiolo = max(1, $qtdMiolo);
+                $notaFechamento = $temFechamentoFixo
+                    ? "NÃO gere slide de fechamento/CTA (o último slide será uma arte fixa da marca, adicionada automaticamente). Gere APENAS a capa + os {$qtdMiolo} slides de conteúdo."
+                    : "O ÚLTIMO slide (tipo 'cta') é o FECHAMENTO com conclusão + chamada para ação da marca.";
+
+                $instrucoesTipo = "Para CARROSSEL gere EXATAMENTE {$slidesParaGerar} slides (nem mais, nem menos) no JSON, na estrutura: {\"slides\": [{\"numero\": 1, \"tipo\": \"capa\", \"texto\": \"título principal\", \"texto_secundario\": \"subtítulo opcional\", \"prompt_imagem\": \"descrição detalhada da imagem\"}, {\"numero\": 2, \"tipo\": \"conteudo\", \"texto\": \"conteúdo do slide\", \"prompt_imagem\": \"descrição da imagem\"}], \"legenda\": \"texto da legenda com call-to-action\", \"hashtags\": \"#tag1 #tag2 #tag3\"}. O array 'slides' deve ter EXATAMENTE {$slidesParaGerar} itens. "
+                    . "ESTRUTURA NARRATIVA OBRIGATÓRIA — a notícia/assunto deve ter COMEÇO, MEIO e FIM distribuídos nos {$qtdMiolo} slides de conteúdo: "
+                    . "SLIDE 1 = CAPA (gancho curto e provocativo). "
+                    . "COMEÇO (primeiros slides de conteúdo): apresente o FATO — o que aconteceu, o contexto e os dados concretos da notícia. "
+                    . "MEIO (slides de conteúdo do meio): explique o que isso SIGNIFICA na prática para a empresa do leitor, tocando na DOR e no risco de não agir. "
+                    . "FIM (últimos slides de conteúdo): mostre o CAMINHO — o que fazer a respeito, de forma prática. "
+                    . "{$notaFechamento} "
+                    . "Cada slide de conteúdo continua o anterior (raciocínio que progride), NÃO são várias capas nem frases soltas. Distribua o conteúdo de forma equilibrada para preencher TODOS os {$qtdMiolo} slides de conteúdo com substância (sem encher linguiça e sem deixar slides vazios ou repetidos).";
                 break;
             case 'post':
                 $instrucoesTipo = 'Para POST gere no MÁXIMO 3 imagens (idealmente 1). JSON: {\"slides\": [{\"numero\": 1, \"tipo\": \"unico\", \"texto\": \"conteúdo principal\", \"prompt_imagem\": \"descrição da cena\"}], \"legenda\": \"texto da legenda\", \"hashtags\": \"#tag1 #tag2\"}. NÃO ultrapasse 3 itens no array slides.';
@@ -2080,7 +2097,7 @@ REGRAS IMPORTANTES:
 5. O campo 'texto' de cada slide deve ser uma frase/parágrafo CLARO e COMPLETO em português, com sentido próprio. NÃO use emojis, símbolos, códigos ou caracteres especiais no 'texto' dos slides — apenas texto limpo.
 6. O conteúdo deve ser COERENTE e encadeado: capa com gancho, slides de desenvolvimento que se conectam, e fechamento com conclusão + CTA. Nada de frases soltas ou aleatórias.
 7. GANCHO OBRIGATÓRIO: o 'texto' de cada slide (especialmente a capa) deve ter um gancho que gere curiosidade e convide o usuário a ler/avançar — use perguntas, números, promessas de valor ou tensão. Evite títulos genéricos e descritivos.
-8. LEGENDA — LINGUAGEM SIMPLES: escreva em português claro e acessível, como se explicasse para um leigo. Frases curtas e diretas. SEMPRE que usar um TERMO TÉCNICO, jargão ou expressão de nicho (inclusive em inglês, ex.: exploit de zero-day, ransomware, phishing, compliance, backup, firewall), escreva o termo e, LOGO EM SEGUIDA, uma breve explicação leiga ENTRE PARÊNTESES. Formato obrigatório: 'termo (trata-se de ... explicação simples em poucas palavras)'. Exemplos: 'os exploits de zero-day (trata-se de falhas ainda desconhecidas pelos fabricantes, que os criminosos exploram antes da correção)'; 'ransomware (um tipo de vírus que sequestra seus arquivos e cobra resgate)'. A explicação entre parênteses deve ser curta, no dia a dia, sem outro jargão dentro dela. Prefira evitar o termo técnico quando houver uma palavra comum equivalente; se usar, explique entre parênteses na primeira vez que aparecer.
+8. LINGUAGEM (LEGENDA E SLIDES): escreva como um EMPRESÁRIO MÉDIO BRASILEIRO fala e entende — direto, prático, sem academicismo, sem jargão corporativo em inglês. Nada de linguagem rebuscada. Fale do problema do dia a dia da empresa dele e TOQUE NA DOR (o que ele perde tempo/dinheiro/clientes se não agir). Frases curtas e diretas. SEMPRE que usar um TERMO TÉCNICO, jargão ou expressão de nicho (inclusive em inglês, ex.: exploit de zero-day, ransomware, phishing, compliance, backup, firewall), escreva o termo e, LOGO EM SEGUIDA, uma breve explicação leiga ENTRE PARÊNTESES. Formato obrigatório: 'termo (trata-se de ... explicação simples em poucas palavras)'. Exemplos: 'os exploits de zero-day (trata-se de falhas ainda desconhecidas pelos fabricantes, que os criminosos exploram antes da correção)'; 'ransomware (um tipo de vírus que sequestra seus arquivos e cobra resgate)'. A explicação entre parênteses deve ser curta, no dia a dia, sem outro jargão dentro dela. Prefira evitar o termo técnico quando houver uma palavra comum equivalente; se usar, explique entre parênteses na primeira vez que aparecer.
 9. LEGENDA — TOQUE NA DOR: conecte com uma DOR real do público e deixe claro o RISCO/PREJUÍZO de NÃO agir (o que a pessoa/empresa perde se ignorar o assunto). Gere urgência de forma honesta, sem alarmismo exagerado.
 10. LEGENDA — ESTRUTURA EM PARÁGRAFOS: a legenda NÃO pode ser um texto corrido único. Organize em blocos curtos separados por quebras de linha duplas (\\n\\n), nesta ordem: (a) gancho/abertura que conecta com a dor; (b) contexto e o risco de não agir; (c) o caminho/solução de forma simples; (d) parágrafo final com um CALL-TO-ACTION profissional convidando a AGIR (ex.: 'Entre em contato', 'Fale com a gente') de forma natural, nunca forçado, apelativo ou artificial.
 11. PROIBIDO usar travessões (— ou –) e proibido usar marcadores/bullets, listas ou hífens de tópico na legenda. Escreva em frases e parágrafos corridos e naturais, sem cara de texto gerado por IA. Não use dois-pontos para criar listas.

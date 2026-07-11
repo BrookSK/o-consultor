@@ -1045,6 +1045,15 @@ class MaquinaController
         $noticiaBase = null;   // base para posts a partir de notícia
         $literaturaBase = null; // base (RAG) para conteúdo educativo da biblioteca
 
+        // A marca tem imagem de fechamento fixa (upload)? Se sim, o último slide
+        // será essa imagem — a IA NÃO precisa criar conteúdo para o fechamento,
+        // então a notícia se distribui em (qtdSlides - 1) slides de conteúdo.
+        $temFechamentoFixo = false;
+        try {
+            $rowF = Database::queryOne("SELECT imagem_fechamento_url FROM marcas WHERE id = :id", ['id' => $marcaId]);
+            $temFechamentoFixo = !empty($rowF['imagem_fechamento_url']);
+        } catch (\Throwable $e) { $temFechamentoFixo = false; }
+
         if ($fonte === 'noticia' && $noticiaId > 0) {
             try {
                 try {
@@ -1098,7 +1107,7 @@ class MaquinaController
 
         // 3. PASSO 1 — Geração de texto via IA com contexto da jornada.
         // Usa um limite de tokens folgado para o JSON do conteúdo não ser cortado.
-        $prompt = ApiHelper::buildPromptConteudoContextualizado($marca, $tipo, $tema, $objetivo, $noticiaBase, $contextoJornada, $literaturaBase, $qtdSlides);
+        $prompt = ApiHelper::buildPromptConteudoContextualizado($marca, $tipo, $tema, $objetivo, $noticiaBase, $contextoJornada, $literaturaBase, $qtdSlides, $temFechamentoFixo);
         // Log de auditoria: registra a FONTE e se a notícia/biblioteca chegou ao prompt.
         $this->logImagem('[Texto] fonte=' . $fonte . ' noticia_id=' . $noticiaId
             . ' tem_noticiaBase=' . ($noticiaBase ? 'sim' : 'NAO')
@@ -1121,16 +1130,38 @@ class MaquinaController
 
         // Limita a quantidade de slides conforme o tipo (a IA às vezes gera a mais):
         //  - post: no máximo 3 imagens; story/reels: 1; carrossel: o solicitado.
+        //  - carrossel com FECHAMENTO FIXO: a IA gera qtdSlides-1 (capa + miolos);
+        //    o slide de fechamento (imagem fixa) é adicionado depois.
         if (isset($conteudoGerado['slides']) && is_array($conteudoGerado['slides'])) {
-            $maxSlides = match ($tipo) {
+            $maxConteudo = match ($tipo) {
                 'post' => 3,
                 'story', 'reels' => 1,
-                'carrossel' => $qtdSlides,
+                'carrossel' => ($temFechamentoFixo ? max(2, $qtdSlides - 1) : $qtdSlides),
                 default => 3,
             };
-            if (count($conteudoGerado['slides']) > $maxSlides) {
-                $conteudoGerado['slides'] = array_slice($conteudoGerado['slides'], 0, $maxSlides);
+            if (count($conteudoGerado['slides']) > $maxConteudo) {
+                $conteudoGerado['slides'] = array_slice($conteudoGerado['slides'], 0, $maxConteudo);
             }
+        }
+
+        // Adiciona o slide de FECHAMENTO FIXO (imagem do Brand Book) ao final do
+        // carrossel. Ele não tem prompt_imagem: a arte será a imagem enviada, então
+        // não é gerado pela IA (o gerarImagemDoSlide detecta o papel 'fechamento').
+        if ($tipo === 'carrossel' && $temFechamentoFixo && isset($conteudoGerado['slides']) && is_array($conteudoGerado['slides'])) {
+            $urlFechamento = '';
+            try {
+                $rowF2 = Database::queryOne("SELECT imagem_fechamento_url FROM marcas WHERE id = :id", ['id' => $marcaId]);
+                if (!empty($rowF2['imagem_fechamento_url'])) $urlFechamento = APP_URL . $rowF2['imagem_fechamento_url'];
+            } catch (\Throwable $e) { /* segue sem */ }
+            $conteudoGerado['slides'][] = [
+                'numero' => count($conteudoGerado['slides']) + 1,
+                'tipo' => 'fechamento',
+                'texto' => '',
+                'prompt_imagem' => '',       // sem geração por IA — usa a imagem fixa
+                'fechamento_fixo' => true,
+                'imagem_url' => $urlFechamento, // aplica a imagem fixa direto
+                'imagem_pendente' => false,
+            ];
         }
 
         // Limpa o TEXTO dos slides: remove emojis/símbolos e caracteres quebrados
@@ -1901,15 +1932,12 @@ class MaquinaController
             // posicionado de forma estratégica/equilibrada na arte.
             $logoRel = (string) ($conteudo['logo_url'] ?? '');
             $logoAbs = $logoRel !== '' ? (PUBLIC_PATH . $logoRel) : '';
-            $temLogo = ($logoAbs !== '' && is_file($logoAbs));
-            if (!$temLogo) {
-                $instrucaoLogo = '';
-            } elseif ($papel === 'fechamento') {
-                // No último slide o logo é o PROTAGONISTA (centralizado, maior).
-                $instrucaoLogo = ' A ÚLTIMA imagem de referência fornecida é o LOGO da marca: ele é o ELEMENTO PRINCIPAL desta arte de fechamento. Posicione-o em DESTAQUE, centralizado e com bom tamanho (~25-35% da largura), com respiro generoso ao redor, respeitando as cores originais do logo. Fundo clean para valorizar o logo.';
-            } else {
-                $instrucaoLogo = ' A ÚLTIMA imagem de referência fornecida é o LOGO da marca: insira-o na arte de forma discreta, elegante e bem posicionada (canto superior ou inferior, tamanho pequeno ~8-12% da largura), com equilíbrio e sofisticação, respeitando as cores originais do logo e sem competir com a headline.';
-            }
+            // LOGO: NÃO é mais desenhado pela IA na arte (o gpt-image-1 distorce o
+            // logo). A logo é aplicada MANUALMENTE na página de edição, sobreposta à
+            // imagem. Portanto, não enviamos o logo como referência nem instruímos
+            // sua inclusão no prompt.
+            $temLogo = false;
+            $instrucaoLogo = ' NÃO inclua nenhum logotipo, marca-d\'água, nome de empresa ou texto de marca na imagem (a identidade visual/logo será aplicada depois, fora da geração). A imagem deve conter apenas a cena e a headline indicada.';
 
             if (!empty($caminhosRef)) {
                 // Descrição do template escolhido entra como COMPLEMENTO do prompt.
@@ -1998,13 +2026,24 @@ class MaquinaController
         $conteudo = null;
         if ($id > 0) {
             try {
-                $conteudo = Database::queryOne(
-                    "SELECT c.*, m.nome as marca_nome, m.prompt_dalle, m.paleta_cores 
-                     FROM conteudos_marca c 
-                     JOIN marcas m ON c.marca_id = m.id 
-                     WHERE c.id = :id AND c.usuario_id = :user_id",
-                    ['id' => $id, 'user_id' => Auth::id()]
-                );
+                try {
+                    $conteudo = Database::queryOne(
+                        "SELECT c.*, m.nome as marca_nome, m.prompt_dalle, m.paleta_cores, m.logo_url 
+                         FROM conteudos_marca c 
+                         JOIN marcas m ON c.marca_id = m.id 
+                         WHERE c.id = :id AND c.usuario_id = :user_id",
+                        ['id' => $id, 'user_id' => Auth::id()]
+                    );
+                } catch (\Throwable $eLogo) {
+                    // Coluna logo_url pode não existir (migration 046).
+                    $conteudo = Database::queryOne(
+                        "SELECT c.*, m.nome as marca_nome, m.prompt_dalle, m.paleta_cores 
+                         FROM conteudos_marca c 
+                         JOIN marcas m ON c.marca_id = m.id 
+                         WHERE c.id = :id AND c.usuario_id = :user_id",
+                        ['id' => $id, 'user_id' => Auth::id()]
+                    );
+                }
                 if ($conteudo) {
                     $conteudo['slides'] = json_decode($conteudo['slides'], true) ?? [];
                     $conteudo['imagens_locais'] = json_decode($conteudo['imagens_locais'], true) ?? [];
@@ -2061,6 +2100,46 @@ class MaquinaController
             header('Content-Type: application/json');
             echo json_encode(['sucesso' => false, 'erro' => 'Erro interno.']);
         }
+        exit;
+    }
+
+    /**
+     * Sugere um título curto e IMPACTANTE (traduzido para PT) a partir da notícia,
+     * para pré-preencher o campo Tema quando a fonte é uma notícia.
+     */
+    public function tituloImpactante(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+        $noticiaId = (int) ($_POST['noticia_id'] ?? 0);
+        if (!$noticiaId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Notícia não informada.']);
+            exit;
+        }
+        try {
+            $nt = Database::queryOne("SELECT titulo, bloco1_noticia FROM noticias WHERE id = :id", ['id' => $noticiaId]);
+        } catch (\Throwable $e) {
+            $nt = null;
+        }
+        if (!$nt) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Notícia não encontrada.']);
+            exit;
+        }
+        $tituloOrig = trim((string) ($nt['titulo'] ?? ''));
+        $prompt = "Crie um TÍTULO curto e IMPACTANTE em português do Brasil para um post, a partir da notícia abaixo. "
+            . "Traduza se estiver em outro idioma. Máximo 8 palavras, provocativo e claro (sem clickbait exagerado), linguagem de empresário comum. "
+            . "Notícia: {$tituloOrig}. " . mb_substr((string) ($nt['bloco1_noticia'] ?? ''), 0, 400)
+            . "\nResponda APENAS em JSON: {\"titulo\": \"...\"}";
+        try {
+            $res = ApiHelper::chamarAnalise($prompt, true, 200);
+            if (!empty($res['sucesso']) && is_array($res['conteudo'])) {
+                $t = trim((string) ($res['conteudo']['titulo'] ?? ''));
+                if ($t !== '') { echo json_encode(['sucesso' => true, 'titulo' => $t]); exit; }
+            }
+        } catch (\Throwable $e) { /* fallback abaixo */ }
+        // Fallback: devolve o título original (melhor que nada).
+        echo json_encode(['sucesso' => true, 'titulo' => $tituloOrig]);
         exit;
     }
 
@@ -2171,6 +2250,71 @@ class MaquinaController
 
         Logger::acao('Logo da marca enviado', ['marca_id' => $marcaId]);
         echo json_encode(['sucesso' => true, 'url' => APP_URL . $rel]);
+        exit;
+    }
+
+    /**
+     * Salva a imagem EDITADA (base + logo posicionado, exportada do canvas na
+     * página de edição) como a nova imagem do slide. Recebe um data URL base64.
+     */
+    public function salvarImagemEditada(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $conteudoId = (int) ($_POST['conteudo_id'] ?? 0);
+        $slideIndex = (int) ($_POST['slide_index'] ?? -1);
+        $base64 = (string) ($_POST['imagem_base64'] ?? '');
+        if ($conteudoId <= 0 || $slideIndex < 0 || $base64 === '') {
+            echo json_encode(['sucesso' => false, 'erro' => 'Parâmetros inválidos.']);
+            exit;
+        }
+
+        // Decodifica o data URL (data:image/png;base64,....).
+        if (!preg_match('/^data:image\/(png|jpe?g|webp);base64,(.+)$/', $base64, $m)) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Formato de imagem inválido.']);
+            exit;
+        }
+        $ext = $m[1] === 'jpeg' ? 'jpg' : $m[1];
+        $bin = base64_decode($m[2], true);
+        if ($bin === false) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Falha ao decodificar a imagem.']);
+            exit;
+        }
+
+        try {
+            // Confirma que o conteúdo é do usuário.
+            $cont = Database::queryOne("SELECT slides FROM conteudos_marca WHERE id = :id AND usuario_id = :uid", ['id' => $conteudoId, 'uid' => Auth::id()]);
+            if (!$cont) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Conteúdo não encontrado.']);
+                exit;
+            }
+
+            $dir = PUBLIC_PATH . '/uploads/conteudo/' . $conteudoId;
+            if (!is_dir($dir)) @mkdir($dir, 0755, true);
+            $nome = 'editada_' . $slideIndex . '_' . uniqid() . '.' . $ext;
+            $rel = '/uploads/conteudo/' . $conteudoId . '/' . $nome;
+            if (file_put_contents($dir . '/' . $nome, $bin) === false) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Falha ao salvar a imagem.']);
+                exit;
+            }
+            $url = APP_URL . $rel;
+
+            // Atualiza o slide com a nova imagem.
+            $slides = json_decode($cont['slides'], true) ?: [];
+            if (isset($slides[$slideIndex])) {
+                $slides[$slideIndex]['imagem_url'] = $url;
+                $slides[$slideIndex]['imagem_pendente'] = false;
+                Database::execute("UPDATE conteudos_marca SET slides = :s WHERE id = :id", ['s' => json_encode($slides, JSON_UNESCAPED_UNICODE), 'id' => $conteudoId]);
+            }
+
+            Logger::acao('Imagem editada (logo) salva', ['conteudo_id' => $conteudoId, 'slide' => $slideIndex]);
+            echo json_encode(['sucesso' => true, 'imagem_url' => $url]);
+        } catch (\Throwable $e) {
+            Logger::error('Erro ao salvar imagem editada: ' . $e->getMessage());
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno ao salvar.']);
+        }
         exit;
     }
 

@@ -93,13 +93,13 @@
 
                         <!-- Notícia -->
                         <div x-show="fonte === 'noticia'" x-transition class="mt-2">
-                            <select name="noticia_id" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                            <select name="noticia_id" id="sel-noticia" onchange="sugerirTituloNoticia(this)" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
                                 <option value="">Selecione a notícia...</option>
                                 <?php foreach ($dados['noticias'] as $n): ?>
-                                <option value="<?= $n['id'] ?>"><?= htmlspecialchars($n['titulo']) ?></option>
+                                <option value="<?= $n['id'] ?>" data-titulo="<?= htmlspecialchars($n['titulo']) ?>"><?= htmlspecialchars($n['titulo']) ?></option>
                                 <?php endforeach; ?>
                             </select>
-                            <p class="text-xs text-gray-400 mt-1">O conteúdo será baseado na análise desta notícia.</p>
+                            <p class="text-xs text-gray-400 mt-1">O conteúdo será baseado na análise desta notícia. Ao escolher, sugerimos um título impactante no campo Tema.</p>
                         </div>
 
                         <!-- Biblioteca -->
@@ -500,6 +500,27 @@ async function carregarTemplates() {
     } catch(e) { templatesCarregados = false; }
 }
 
+// Ao escolher uma notícia, sugere um título IMPACTANTE (traduzido) no campo Tema.
+async function sugerirTituloNoticia(sel) {
+    const opt = sel.options[sel.selectedIndex];
+    const campoTema = document.querySelector('#form-gerar input[name="tema"]');
+    if (!opt || !opt.value || !campoTema) return;
+    const tituloOriginal = opt.getAttribute('data-titulo') || '';
+    // Só sugere se o campo estiver vazio ou o usuário concordar em sobrescrever.
+    if (campoTema.value.trim() !== '' && !confirm('Substituir o Tema pela sugestão baseada na notícia?')) return;
+    campoTema.value = tituloOriginal; // preenche já com o título original
+    campoTema.classList.add('bg-yellow-50');
+    try {
+        const fd = new FormData();
+        fd.append('csrf_token', '<?= Csrf::token() ?>');
+        fd.append('noticia_id', opt.value);
+        const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/titulo-impactante', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.sucesso && data.titulo) campoTema.value = data.titulo;
+    } catch (e) { /* mantém o título original */ }
+    setTimeout(() => campoTema.classList.remove('bg-yellow-50'), 1200);
+}
+
 // Rola o track do carrossel horizontalmente com as setas.
 function rolarCarrossel(dir) {
     const track = document.getElementById('carrossel-track');
@@ -859,10 +880,10 @@ document.getElementById('form-gerar').addEventListener('submit', async function(
             let html = '<div class="space-y-3">';
             if (ehCarrossel) {
                 html += '<p class="text-xs text-gray-400">Carrossel com ' + slides.length + ' slides — use as setas ou role para o lado. Clique numa imagem para ampliar.</p>';
-                html += '<div class="relative">'
-                    + '<button type="button" onclick="rolarCarrossel(-1)" class="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white/90 border border-gray-300 shadow flex items-center justify-center text-gray-700 hover:bg-white">&#10094;</button>'
-                    + '<div id="carrossel-track" class="flex gap-3 overflow-x-auto pb-3 snap-x scroll-smooth px-9">' + cards + '</div>'
-                    + '<button type="button" onclick="rolarCarrossel(1)" class="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white/90 border border-gray-300 shadow flex items-center justify-center text-gray-700 hover:bg-white">&#10095;</button>'
+                html += '<div class="flex items-stretch gap-2 w-full">'
+                    + '<button type="button" onclick="rolarCarrossel(-1)" class="flex-shrink-0 w-8 self-center h-10 rounded-lg bg-gray-100 border border-gray-300 flex items-center justify-center text-gray-700 hover:bg-gray-200">&#10094;</button>'
+                    + '<div id="carrossel-track" class="flex gap-3 overflow-x-auto pb-3 snap-x scroll-smooth flex-1 min-w-0">' + cards + '</div>'
+                    + '<button type="button" onclick="rolarCarrossel(1)" class="flex-shrink-0 w-8 self-center h-10 rounded-lg bg-gray-100 border border-gray-300 flex items-center justify-center text-gray-700 hover:bg-gray-200">&#10095;</button>'
                     + '</div>';
             } else {
                 html += cards;

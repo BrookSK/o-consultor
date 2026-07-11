@@ -239,6 +239,8 @@ class Router
         $this->post('maquina-de-conteudo/salvar-branding', 'MaquinaController', 'salvarBranding'); // Editar Brand Book
         $this->post('maquina-de-conteudo/upload-logo', 'MaquinaController', 'uploadLogo'); // Logo da marca
         $this->post('maquina-de-conteudo/upload-fechamento', 'MaquinaController', 'uploadFechamento'); // Imagem de fechamento do carrossel
+        $this->post('maquina-de-conteudo/titulo-impactante', 'MaquinaController', 'tituloImpactante'); // Sugestão de título a partir da notícia
+        $this->post('maquina-de-conteudo/salvar-imagem-editada', 'MaquinaController', 'salvarImagemEditada'); // Imagem base + logo posicionado
         $this->post('maquina-de-conteudo/salvar-biblioteca', 'MaquinaController', 'salvarBiblioteca'); // "Terminar depois"
         $this->post('maquina-de-conteudo/excluir-conteudo', 'MaquinaController', 'excluirConteudo');
         $this->post('maquina-de-conteudo/excluir-conteudos', 'MaquinaController', 'excluirConteudos'); // Exclusão em massa
