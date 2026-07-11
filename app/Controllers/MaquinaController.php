@@ -1951,15 +1951,25 @@ class MaquinaController
             $instrucaoLogo = ' NÃO inclua nenhum logotipo, marca-d\'água, nome de empresa ou texto de marca na imagem (a identidade visual/logo será aplicada depois, fora da geração). A imagem deve conter apenas a cena e a headline indicada.';
 
             if (!empty($caminhosRef)) {
-                // Descrição do template escolhido entra como COMPLEMENTO do prompt.
-                $complementoDesc = $descricaoTemplate !== ''
-                    ? ' Guia de ESTILO do template (use apenas cores, iluminação, composição e tipografia; ignore o assunto/personagens descritos): ' . mb_substr($descricaoTemplate, 0, 600) . '.'
-                    : '';
-                // PERFIL CONSOLIDADO da marca (modelo próprio, síntese de TODOS os
-                // templates enviados) — reforça a identidade visual única da marca.
+                // PROMPT MESTRE da marca (prompt_dalle) define a paleta oficial.
+                $promptMestre = trim((string) ($conteudo['prompt_dalle'] ?? ''));
+                $temIdentidadeMarca = ($promptMestre !== '' || $this->obterEstiloTemplates($marcaId) !== '');
+
+                // Descrição do template: quando a marca TEM identidade/paleta própria,
+                // o template contribui APENAS com composição, enquadramento e layout —
+                // NUNCA com cores/paleta (senão um template vermelho puxa tudo para
+                // vermelho e sobrepõe o azul da marca). Só usa a paleta do template
+                // quando a marca não define paleta própria.
+                $complementoDesc = '';
+                if ($descricaoTemplate !== '') {
+                    $complementoDesc = $temIdentidadeMarca
+                        ? ' Guia de COMPOSIÇÃO do template (use APENAS o enquadramento, a disposição dos elementos, o layout e a hierarquia; IGNORE TOTALMENTE as cores/paleta descritas para o template — a PALETA vem exclusivamente da identidade da marca, definida acima): ' . mb_substr($descricaoTemplate, 0, 600) . '.'
+                        : ' Guia de ESTILO do template (use cores, iluminação, composição e tipografia; ignore o assunto/personagens descritos): ' . mb_substr($descricaoTemplate, 0, 600) . '.';
+                }
+                // PERFIL CONSOLIDADO da marca (modelo próprio) — identidade de ESTILO.
                 $perfilMarca = $this->obterEstiloTemplates($marcaId);
                 if ($perfilMarca !== '') {
-                    $complementoDesc .= ' Identidade visual GERAL da marca, apenas como referência de ESTILO (mantenha coerência de cores/iluminação/tipografia, sem copiar temas específicos): ' . mb_substr($perfilMarca, 0, 700) . '.';
+                    $complementoDesc .= ' Identidade visual GERAL da marca (SIGA para estética, PALETA DE CORES, iluminação e tipografia — esta é a fonte oficial de cores, tem prioridade sobre o template): ' . mb_substr($perfilMarca, 0, 900) . '.';
                 }
                 // Anexa o logo como referência adicional (mantendo o limite de 4 total).
                 $refsComLogo = $caminhosRef;
@@ -1969,16 +1979,14 @@ class MaquinaController
                 }
                 // PROMPT MESTRE da marca (campo prompt_dalle): define a IDENTIDADE
                 // VISUAL obrigatória (paleta, estética, iluminação). Tem PRIORIDADE
-                // MÁXIMA — sem ele, o modelo escolhe cores livremente (ex.: puxa para
-                // vermelho quando o tema é "risco/alerta"). Entra no início do prompt.
-                $promptMestre = trim((string) ($conteudo['prompt_dalle'] ?? ''));
+                // MÁXIMA — entra no INÍCIO do prompt. ($promptMestre já obtido acima.)
                 $blocoMestre = $promptMestre !== ''
                     ? 'DIRETRIZ DE IDENTIDADE VISUAL DA MARCA (OBRIGATÓRIA e com PRIORIDADE MÁXIMA sobre qualquer outra instrução — siga à risca a estética, a PALETA DE CORES e a iluminação descritas; NÃO troque as cores da marca por outras, mesmo que o assunto sugira cores como vermelho/alerta): ' . $promptMestre . ' '
                     : '';
 
                 $promptRef = $blocoMestre
                     . 'Gere uma nova imagem VERTICAL (retrato) para post de Instagram seguindo a identidade visual acima e replicando o ESTILO VISUAL (meio/estética, paleta, iluminação, enquadramento, texturas, tipografia e clima) das imagens de referência fornecidas. '
-                    . 'IMPORTANTE: use as referências e as descrições abaixo APENAS como GUIA DE ESTILO. IGNORE completamente o ASSUNTO, os personagens específicos, símbolos, bandeiras e objetos concretos que aparecem nelas (ex.: pessoas específicas, países, marcas) — eles NÃO devem aparecer na nova imagem. O que deve ser retratado é EXCLUSIVAMENTE a cena descrita em "Assunto/cena" abaixo.'
+                    . 'IMPORTANTE: use as imagens de referência APENAS como guia de COMPOSIÇÃO, enquadramento, iluminação e qualidade fotográfica. IGNORE completamente as CORES/PALETA das imagens de referência (mesmo que sejam vermelhas, amarelas ou de qualquer outra cor) — a PALETA DE CORES vem EXCLUSIVAMENTE da diretriz de identidade da marca acima. Também IGNORE o ASSUNTO, personagens, símbolos, bandeiras e objetos concretos das referências (ex.: pessoas, países, marcas) — eles NÃO devem aparecer. O que deve ser retratado é EXCLUSIVAMENTE a cena descrita em "Assunto/cena" abaixo.'
                     . $complementoDesc
                     . ' Assunto/cena a retratar (este é o ÚNICO conteúdo que deve aparecer, renderizado no estilo acima): ' . $promptImagem . '.'
                     . $instrucaoTexto
