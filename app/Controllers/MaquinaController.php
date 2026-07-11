@@ -367,6 +367,51 @@ class MaquinaController
      *
      * @return array{titulo:string, subtitulo:string, destaque:string}
      */
+    /**
+     * Cria uma CENA visual específica e única para o slide, refletindo o
+     * conteúdo REAL (texto do slide + notícia/tema). Evita o clichê repetido
+     * "profissional olhando monitores". Retorna a descrição da cena (só o QUE
+     * aparece, sem estilo/cores — isso vem dos templates).
+     *
+     * @param string $textoSlide   Texto/headline do slide
+     * @param string $tema         Tema do conteúdo
+     * @param string $noticiaResumo Contexto da notícia (se houver)
+     * @param int    $slideIndex   Índice do slide (para variar entre slides)
+     * @param string $promptOriginal Fallback: prompt_imagem que a IA já gerou
+     */
+    private function criarCenaImagem(string $textoSlide, string $tema, string $noticiaResumo, int $slideIndex, string $promptOriginal): string
+    {
+        $base = trim($textoSlide) !== '' ? $textoSlide : $tema;
+        if ($base === '' && $noticiaResumo === '') return $promptOriginal;
+
+        $ctxNoticia = $noticiaResumo !== ''
+            ? "\nNOTÍCIA (a cena DEVE refletir o fato/assunto desta notícia): " . mb_substr($noticiaResumo, 0, 1200)
+            : '';
+
+        $prompt = "Você é diretor de arte. Crie a descrição de UMA cena visual concreta para a imagem de um post, que ILUSTRE ESPECIFICAMENTE o conteúdo abaixo.\n"
+            . "Tema geral: {$tema}\n"
+            . "Texto deste slide (a cena deve representar visualmente este ponto): {$textoSlide}{$ctxNoticia}\n"
+            . "Este é o slide número " . ($slideIndex + 1) . " — a cena precisa ser DIFERENTE e específica deste ponto.\n\n"
+            . "REGRAS OBRIGATÓRIAS:\n"
+            . "- A cena deve ser uma METÁFORA VISUAL do fato/assunto (se for notícia, retrate o que aconteceu na notícia; se for um risco, mostre a situação de risco; se for solução, mostre a ação).\n"
+            . "- É TERMINANTEMENTE PROIBIDO usar o clichê genérico de 'pessoa/profissional olhando telas/monitores em um escritório' ou 'homem pensando na frente do computador'. Evite completamente esse tipo de cena.\n"
+            . "- Descreva um cenário CONCRETO e original: ambiente, ação acontecendo, objetos relevantes ao assunto, enquadramento (close, plano aberto, vista de cima, etc.).\n"
+            . "- Descreva APENAS O QUE aparece (cena/elementos/ação). NÃO defina cores, paleta, iluminação nem estilo (isso vem do template da marca).\n"
+            . "- Deixe uma área mais limpa/respiro para um texto ser colocado depois.\n"
+            . "- Uma única cena, 1 a 2 frases objetivas, em português.\n"
+            . "Responda APENAS em JSON: {\"cena\": \"...\"}";
+
+        try {
+            $res = ApiHelper::chamarAnalise($prompt, true, 400);
+            if (!empty($res['sucesso']) && is_array($res['conteudo'])) {
+                $cena = trim((string) ($res['conteudo']['cena'] ?? ''));
+                if ($cena !== '') return $cena;
+            }
+        } catch (\Throwable $e) { /* usa o prompt original */ }
+
+        return $promptOriginal !== '' ? $promptOriginal : $base;
+    }
+
     private function criarHeadlineImagem(string $textoSlide, string $subtexto, string $tema, string $tipo): array
     {
         $base = trim($textoSlide) !== '' ? $textoSlide : $tema;
@@ -1606,7 +1651,7 @@ class MaquinaController
         try {
             try {
                 $conteudo = Database::queryOne(
-                    "SELECT c.slides, c.marca_id, c.tipo, c.tema, c.objetivo, c.qualidade_imagem, c.fonte_conteudo, m.prompt_dalle, m.logo_url
+                    "SELECT c.slides, c.marca_id, c.tipo, c.tema, c.objetivo, c.qualidade_imagem, c.fonte_conteudo, c.noticia_id, m.prompt_dalle, m.logo_url
                      FROM conteudos_marca c JOIN marcas m ON c.marca_id = m.id
                      WHERE c.id = :id",
                     ['id' => $conteudoId]
@@ -1660,6 +1705,34 @@ class MaquinaController
             // Headline a ser ESCRITA dentro da imagem (como nos templates de referência).
             $headline = trim((string) ($slides[$slideIndex]['texto'] ?? ''));
             $subheadline = trim((string) ($slides[$slideIndex]['texto_secundario'] ?? ''));
+
+            // CENA: quando não é uma regeneração com instrução manual, cria uma cena
+            // ESPECÍFICA que reflete o conteúdo real do slide + a notícia (evita o
+            // clichê "profissional olhando monitores" repetido em todos os slides).
+            if ($instrucaoExtra === '') {
+                $noticiaResumo = '';
+                $noticiaId = (int) ($conteudo['noticia_id'] ?? 0);
+                if ($noticiaId > 0) {
+                    try {
+                        $nt = Database::queryOne(
+                            "SELECT titulo, bloco1_noticia, bloco2_significa FROM noticias WHERE id = :id",
+                            ['id' => $noticiaId]
+                        );
+                        if ($nt) {
+                            $noticiaResumo = trim(
+                                (string) ($nt['titulo'] ?? '') . "\n"
+                                . (string) ($nt['bloco1_noticia'] ?? '') . "\n"
+                                . (string) ($nt['bloco2_significa'] ?? '')
+                            );
+                        }
+                    } catch (\Throwable $e) { /* segue sem notícia */ }
+                }
+                $cena = $this->criarCenaImagem($headline, (string) ($conteudo['tema'] ?? ''), $noticiaResumo, $slideIndex, $promptImagem);
+                if ($cena !== '') {
+                    $this->logImagem('[ImagemGer] cena slide=' . $slideIndex . ': ' . mb_substr($cena, 0, 180));
+                    $promptImagem = $cena;
+                }
+            }
 
             // A IA de arte cria uma HEADLINE curta e provocativa a partir do texto do
             // slide + tema (pega a essência, deixa impactante e com gancho).
@@ -2928,6 +3001,31 @@ class MaquinaController
             echo json_encode(['sucesso' => true, 'perfil' => $perfil]);
         } catch (\Throwable $e) {
             echo json_encode(['sucesso' => false, 'erro' => 'Falha ao recalcular o perfil.']);
+        }
+        exit;
+    }
+
+    /**
+     * Salva o perfil visual da marca editado manualmente (guia de estilo usado
+     * na geração de imagens). Grava em marcas.templates_estilo.
+     */
+    public function salvarPerfilTemplatesEndpoint(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+        $marcaId = (int) ($_POST['marca_id'] ?? 0);
+        $perfil = trim((string) ($_POST['perfil'] ?? ''));
+        if (!$marcaId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Marca não informada.']);
+            exit;
+        }
+        try {
+            Database::execute("UPDATE marcas SET templates_estilo = :e WHERE id = :id", ['e' => $perfil, 'id' => $marcaId]);
+            Logger::acao('Perfil visual da marca salvo manualmente', ['marca_id' => $marcaId]);
+            echo json_encode(['sucesso' => true]);
+        } catch (\Throwable $e) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Coluna templates_estilo ausente (rode a migration 041).']);
         }
         exit;
     }

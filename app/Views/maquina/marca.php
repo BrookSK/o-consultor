@@ -287,12 +287,13 @@
         <div class="bg-gradient-to-br from-primary/5 to-white rounded-lg border border-primary/20 p-5 mb-5">
             <div class="flex items-center justify-between mb-2">
                 <h3 class="font-semibold text-gray-800 flex items-center gap-2">🎯 Perfil visual da marca (modelo próprio)</h3>
-                <button type="button" onclick="recalcularPerfil(this)" class="px-3 py-1.5 border border-primary/40 text-primary rounded-lg text-xs font-medium hover:bg-primary/10">🔄 Recalcular</button>
+                <div class="flex items-center gap-2">
+                    <button type="button" onclick="salvarPerfil(this)" class="px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-medium hover:bg-primary-700">💾 Salvar</button>
+                    <button type="button" onclick="recalcularPerfil(this)" class="px-3 py-1.5 border border-primary/40 text-primary rounded-lg text-xs font-medium hover:bg-primary/10">🔄 Recalcular com IA</button>
+                </div>
             </div>
-            <p class="text-xs text-gray-500 mb-3">Sintetizado automaticamente a partir de todas as referências enviadas. É usado como guia de estilo na geração de imagens. Quanto mais referências, mais definido fica o seu modelo.</p>
-            <div id="perfil-templates" class="text-sm text-gray-700 bg-white border border-gray-200 rounded-lg p-3 whitespace-pre-line min-h-[60px] <?= empty($dados['perfil_templates']) ? 'text-gray-400 italic' : '' ?>">
-                <?= !empty($dados['perfil_templates']) ? htmlspecialchars($dados['perfil_templates']) : 'Ainda não há perfil. Envie templates abaixo e o modelo da sua marca será montado automaticamente.' ?>
-            </div>
+            <p class="text-xs text-gray-500 mb-3">Este texto é usado como guia de estilo na geração das imagens. Edite à mão e clique em Salvar, ou use Recalcular para a IA sintetizar a partir de todas as referências enviadas.</p>
+            <textarea id="perfil-templates" rows="6" class="w-full text-sm text-gray-700 bg-white border border-gray-200 rounded-lg p-3 outline-none focus:border-primary resize-y" placeholder="Ainda não há perfil. Envie templates abaixo (ou escreva aqui) e clique em Salvar. É o guia de estilo usado na geração das imagens."><?= htmlspecialchars($dados['perfil_templates'] ?? '') ?></textarea>
         </div>
 
         <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
@@ -463,8 +464,28 @@ async function carregarTemplates() {
 function atualizarPerfilNaTela(texto) {
     const box = document.getElementById('perfil-templates');
     if (!box) return;
-    box.classList.remove('text-gray-400', 'italic');
-    box.textContent = texto;
+    box.value = texto;
+}
+
+// Salva o texto do perfil editado manualmente (é o guia de estilo usado na geração).
+async function salvarPerfil(btn) {
+    const box = document.getElementById('perfil-templates');
+    if (!box) return;
+    if (btn) { btn.disabled = true; btn.textContent = '💾 Salvando...'; }
+    try {
+        const fd = new FormData();
+        fd.append('csrf_token', '<?= Csrf::token() ?>');
+        fd.append('marca_id', '<?= (int) $marca['id'] ?>');
+        fd.append('perfil', box.value);
+        const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/salvar-perfil-templates', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.sucesso) {
+            if (typeof Toast !== 'undefined') Toast.sucesso('Perfil salvo! Será usado na geração das imagens.');
+        } else {
+            alert(data.erro || 'Não foi possível salvar.');
+        }
+    } catch (e) { alert('Erro de conexão.'); }
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Salvar'; }
 }
 
 // Recalcula o perfil consolidado sob demanda (sintetiza todas as referências).
@@ -483,7 +504,7 @@ async function recalcularPerfil(btn) {
             alert(data.erro || 'Não foi possível recalcular.');
         }
     } catch (e) { alert('Erro de conexão.'); }
-    if (btn) { btn.disabled = false; btn.textContent = '🔄 Recalcular'; }
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Recalcular com IA'; }
 }
 
 async function uploadTemplate(input) {
