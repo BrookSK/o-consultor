@@ -379,7 +379,7 @@ class MaquinaController
      * @param int    $slideIndex   Índice do slide (para variar entre slides)
      * @param string $promptOriginal Fallback: prompt_imagem que a IA já gerou
      */
-    private function criarCenaImagem(string $textoSlide, string $tema, string $noticiaResumo, int $slideIndex, string $promptOriginal): string
+    private function criarCenaImagem(string $textoSlide, string $tema, string $noticiaResumo, int $slideIndex, string $promptOriginal, string $papel = 'unico', string $textoAnterior = ''): string
     {
         $base = trim($textoSlide) !== '' ? $textoSlide : $tema;
         if ($base === '' && $noticiaResumo === '') return $promptOriginal;
@@ -388,16 +388,32 @@ class MaquinaController
             ? "\nNOTÍCIA (a cena DEVE refletir o fato/assunto desta notícia): " . mb_substr($noticiaResumo, 0, 1200)
             : '';
 
-        $prompt = "Você é diretor de arte. Crie a descrição de UMA cena visual concreta para a imagem de um post, que ILUSTRE ESPECIFICAMENTE o conteúdo abaixo.\n"
+        // Encadeamento de storytelling: a cena deste slide conversa com a anterior.
+        $ctxAnterior = $textoAnterior !== ''
+            ? "\nSlide ANTERIOR dizia: \"{$textoAnterior}\". Esta cena deve dar SEQUÊNCIA/continuidade a ela (evolução da narrativa), sem repetir a mesma imagem."
+            : '';
+
+        // Orientação de composição conforme o papel do slide no carrossel.
+        $orientacaoPapel = match ($papel) {
+            'capa' => "Este é o slide de CAPA do carrossel: cena mais impactante e chamativa, que gera curiosidade para abrir o carrossel. Pode ter mais presença visual.",
+            'miolo' => "Este é um slide de MIOLO (conteúdo) do carrossel: a cena deve ser mais CLEAN/limpa e discreta, com bastante espaço negativo e fundo simples, para permitir uma LEITURA confortável do texto. Menos elementos, mais respiro.",
+            'fechamento' => "Este é o ÚLTIMO slide do carrossel (fechamento): cena minimalista e limpa, com foco no encerramento e espaço central livre para o logo da marca.",
+            default => "",
+        };
+
+        $prompt = "Você é diretor de arte de um carrossel de Instagram. Crie a descrição de UMA cena visual concreta para a imagem deste slide, que ILUSTRE ESPECIFICAMENTE o conteúdo abaixo e faça parte de uma SEQUÊNCIA LÓGICA de storytelling.\n"
             . "Tema geral: {$tema}\n"
-            . "Texto deste slide (a cena deve representar visualmente este ponto): {$textoSlide}{$ctxNoticia}\n"
-            . "Este é o slide número " . ($slideIndex + 1) . " — a cena precisa ser DIFERENTE e específica deste ponto.\n\n"
+            . "Texto deste slide (a cena deve representar visualmente este ponto): {$textoSlide}{$ctxAnterior}{$ctxNoticia}\n"
+            . "Este é o slide número " . ($slideIndex + 1) . ". {$orientacaoPapel}\n\n"
             . "REGRAS OBRIGATÓRIAS:\n"
             . "- A cena deve ser uma METÁFORA VISUAL do fato/assunto (se for notícia, retrate o que aconteceu na notícia; se for um risco, mostre a situação de risco; se for solução, mostre a ação).\n"
-            . "- É TERMINANTEMENTE PROIBIDO usar o clichê genérico de 'pessoa/profissional olhando telas/monitores em um escritório' ou 'homem pensando na frente do computador'. Evite completamente esse tipo de cena.\n"
+            . "- CONTINUIDADE: a cena deve conversar com o slide anterior e preparar o próximo, mantendo coerência de mundo/personagens/ambiente, mas evoluindo a narrativa (NÃO repita a mesma imagem).\n"
+            . "- É TERMINANTEMENTE PROIBIDO usar o clichê genérico de 'pessoa/profissional olhando telas/monitores em um escritório' ou 'homem pensando na frente do computador'.\n"
             . "- Descreva um cenário CONCRETO e original: ambiente, ação acontecendo, objetos relevantes ao assunto, enquadramento (close, plano aberto, vista de cima, etc.).\n"
             . "- Descreva APENAS O QUE aparece (cena/elementos/ação). NÃO defina cores, paleta, iluminação nem estilo (isso vem do template da marca).\n"
-            . "- Deixe uma área mais limpa/respiro para um texto ser colocado depois.\n"
+            . ($papel === 'miolo' || $papel === 'fechamento'
+                ? "- IMPORTANTE: cena CLEAN, fundo simples e MUITO espaço livre para o texto (leitura limpa). Poucos elementos.\n"
+                : "- Deixe uma área limpa/respiro para um texto ser colocado depois.\n")
             . "- Uma única cena, 1 a 2 frases objetivas, em português.\n"
             . "Responda APENAS em JSON: {\"cena\": \"...\"}";
 
@@ -1685,6 +1701,22 @@ class MaquinaController
 
             $marcaId = (int) $conteudo['marca_id'];
             $promptImagem = (string) ($slides[$slideIndex]['prompt_imagem'] ?? '');
+
+            // ===== PAPEL DO SLIDE NO CARROSSEL =====
+            // Define se este slide é a CAPA, um slide de MIOLO (conteúdo) ou o
+            // ÚLTIMO (fechamento com logo). Isso muda a arte:
+            //  - capa: headline forte e impactante, fundo mais elaborado;
+            //  - miolo: fundo CLEAN para leitura limpa, storytelling encadeado;
+            //  - último: arte de fechamento com o LOGO da empresa em destaque.
+            $totalSlides = count($slides);
+            $ehCarrossel = ((string) ($conteudo['tipo'] ?? '')) === 'carrossel' && $totalSlides > 1;
+            $papel = 'unico';
+            if ($ehCarrossel) {
+                if ($slideIndex === 0) $papel = 'capa';
+                elseif ($slideIndex === $totalSlides - 1) $papel = 'fechamento';
+                else $papel = 'miolo';
+            }
+
             // Instrução de ajuste do usuário (regenerar com correção).
             if ($instrucaoExtra !== '') {
                 $promptImagem = ($promptImagem !== '' ? $promptImagem . '. ' : '') . 'Ajuste solicitado: ' . $instrucaoExtra;
@@ -1727,19 +1759,29 @@ class MaquinaController
                         }
                     } catch (\Throwable $e) { /* segue sem notícia */ }
                 }
-                $cena = $this->criarCenaImagem($headline, (string) ($conteudo['tema'] ?? ''), $noticiaResumo, $slideIndex, $promptImagem);
+                // Texto do slide anterior (para encadear o storytelling do carrossel).
+                $textoAnterior = $slideIndex > 0 ? trim((string) ($slides[$slideIndex - 1]['texto'] ?? '')) : '';
+                $cena = $this->criarCenaImagem($headline, (string) ($conteudo['tema'] ?? ''), $noticiaResumo, $slideIndex, $promptImagem, $papel, $textoAnterior);
                 if ($cena !== '') {
-                    $this->logImagem('[ImagemGer] cena slide=' . $slideIndex . ': ' . mb_substr($cena, 0, 180));
+                    $this->logImagem('[ImagemGer] cena slide=' . $slideIndex . ' papel=' . $papel . ': ' . mb_substr($cena, 0, 180));
                     $promptImagem = $cena;
                 }
             }
 
-            // A IA de arte cria uma HEADLINE curta e provocativa a partir do texto do
-            // slide + tema (pega a essência, deixa impactante e com gancho).
-            $headlineArte = $this->criarHeadlineImagem($headline, $subheadline, (string) ($conteudo['tema'] ?? ''), (string) ($conteudo['tipo'] ?? ''));
-            $tituloImg = $headlineArte['titulo'] ?: $headline;
-            $subImg = $headlineArte['subtitulo'] ?: $subheadline;
-            $palavraDestaque = $headlineArte['destaque'] ?? '';
+            // HEADLINE: só a CAPA (e posts únicos) recebem a chamada provocativa de
+            // capa. Nos slides de MIOLO usamos o próprio texto do slide como título
+            // (conteúdo informativo encadeado), evitando "vários slides de capa".
+            if ($papel === 'capa' || $papel === 'unico') {
+                $headlineArte = $this->criarHeadlineImagem($headline, $subheadline, (string) ($conteudo['tema'] ?? ''), (string) ($conteudo['tipo'] ?? ''));
+                $tituloImg = $headlineArte['titulo'] ?: $headline;
+                $subImg = $headlineArte['subtitulo'] ?: $subheadline;
+                $palavraDestaque = $headlineArte['destaque'] ?? '';
+            } else {
+                // Miolo: usa o texto real do slide (curto), sem virar capa.
+                $tituloImg = $headline;
+                $subImg = $subheadline;
+                $palavraDestaque = '';
+            }
             // Remove pontuação final exagerada (?, !) para não virar um símbolo gigante na arte.
             $tituloImg = rtrim(trim($tituloImg), '?!.');
             // Rede de segurança: menos texto = menos erro de grafia no gpt-image-1.
@@ -1749,16 +1791,24 @@ class MaquinaController
                 $p = array_values(array_filter($p, fn($x) => $x !== ''));
                 return implode(' ', array_slice($p, 0, $max));
             };
-            $tituloImg = $limitarPalavras($tituloImg, 4);
-            $subImg = $limitarPalavras($subImg, 4);
+            // Capa/único: headline curtíssima (menos erro de grafia). Miolo: pode
+            // ter um pouco mais de texto por ser conteúdo (mas ainda enxuto).
+            $maxTitulo = ($papel === 'miolo') ? 12 : 4;
+            $maxSub = ($papel === 'miolo') ? 14 : 4;
+            $tituloImg = $limitarPalavras($tituloImg, $maxTitulo);
+            $subImg = $limitarPalavras($subImg, $maxSub);
             // Revisão ortográfica do título e subtítulo antes de irem para a imagem
             // (o gerador de imagem erra letras; garantir grafia correta na arte).
             $revisado = $this->revisarOrtografia([$tituloImg, $subImg]);
-            $tituloImg = $limitarPalavras($revisado[0] ?? $tituloImg, 4);
-            $subImg = $limitarPalavras($revisado[1] ?? $subImg, 4);
+            $tituloImg = $limitarPalavras($revisado[0] ?? $tituloImg, $maxTitulo);
+            $subImg = $limitarPalavras($revisado[1] ?? $subImg, $maxSub);
 
             $instrucaoTexto = '';
-            if ($tituloImg !== '') {
+            // FECHAMENTO: o último slide é uma arte de encerramento com o LOGO da
+            // empresa em destaque no centro, fundo clean, SEM headline provocativa.
+            if ($papel === 'fechamento') {
+                $instrucaoTexto = ' ARTE DE FECHAMENTO DE CARROSSEL: composição minimalista e muito CLEAN, fundo simples e uniforme com bastante espaço negativo, transmitindo encerramento elegante. NÃO escreva headline nem títulos grandes. O elemento central é o LOGO da marca, bem posicionado e com respiro. Opcionalmente, uma frase curta e discreta de chamada final (CTA) em fonte fina, pequena, alinhada de forma equilibrada — mas o protagonista é o logo. Visual sóbrio e profissional.';
+            } elseif ($tituloImg !== '') {
                 // Tag superior curta (rótulo de contexto, 2-3 primeiras palavras do
                 // tema, sem cortar no meio de uma palavra).
                 $palavrasTema = preg_split('/\s+/', trim((string) ($conteudo['tema'] ?? 'DESTAQUE')));
@@ -1775,7 +1825,12 @@ class MaquinaController
                     . ' ESPAÇAMENTO E POSIÇÃO: bloco de texto concentrado numa única área da METADE INFERIOR do frame, porém ELEVADO cerca de 20% acima da base (deixando uma margem inferior generosa/respiro abaixo do texto), ocupando no MÁXIMO 40-50% da altura; alinhado à esquerda, nunca colado na borda de baixo, nunca espalhado ou centralizado no meio da composição.'
                     . ' PONTUAÇÃO: evite símbolos de pontuação em tamanho desproporcional; se houver, mantenha no mesmo tamanho da fonte do título, nunca maior.'
                     . ' DESIGN AVANÇADO (acabamento editorial premium, nível de revista/branding): use grid e alinhamento precisos, generoso espaço negativo, uma pequena linha/filete ou elemento gráfico sutil de acento para ancorar o bloco, contraste forte entre o título pesado e o subtítulo fino, e integração elegante entre o texto e a cena (o texto pousa sobre uma área de respiro da imagem, sem poluição). Composição sofisticada, limpa e moderna — nada de visual amador tipo "documento de Word".'
-                    . ' GRAFIA (CRÍTICO): escreva o texto EXATAMENTE como fornecido, letra por letra, em português correto e com acentuação certa. NÃO invente, traduza, abrevie nem troque letras. Como o texto é curto, capriche na precisão de cada caractere. Se não conseguir renderizar uma palavra com perfeição, prefira reduzir o tamanho a escrevê-la errada.';
+                    . ' GRAFIA (CRÍTICO): escreva o texto EXATAMENTE como fornecido, letra por letra, em português correto e com acentuação certa. NÃO invente, traduza, abrevie nem troque letras. Como o texto é curto, capriche na precisão de cada caractere. Se não conseguir renderizar uma palavra com perfeição, prefira reduzir o tamanho a escrevê-la errada.'
+                    . ($papel === 'miolo'
+                        ? ' SLIDE DE MIOLO (LEITURA LIMPA): este é um slide de conteúdo no meio do carrossel. O FUNDO deve ser CLEAN, simples e com bastante espaço livre, priorizando a LEGIBILIDADE do texto. Evite cena visual pesada ou poluída atrás do texto; menos elementos, mais respiro. A composição deve manter continuidade visual com os slides vizinhos (mesma linha estética), variando o suficiente para não ficar repetitiva.'
+                        : ($papel === 'capa'
+                            ? ' SLIDE DE CAPA: pode ter presença visual mais forte e impactante para atrair o clique, mantendo a headline como protagonista.'
+                            : ''));
             }
 
             $imgResult = null;
@@ -1822,9 +1877,14 @@ class MaquinaController
             $logoRel = (string) ($conteudo['logo_url'] ?? '');
             $logoAbs = $logoRel !== '' ? (PUBLIC_PATH . $logoRel) : '';
             $temLogo = ($logoAbs !== '' && is_file($logoAbs));
-            $instrucaoLogo = $temLogo
-                ? ' A ÚLTIMA imagem de referência fornecida é o LOGO da marca: insira-o na arte de forma discreta, elegante e bem posicionada (canto superior ou inferior, tamanho pequeno ~8-12% da largura), com equilíbrio e sofisticação, respeitando as cores originais do logo e sem competir com a headline.'
-                : '';
+            if (!$temLogo) {
+                $instrucaoLogo = '';
+            } elseif ($papel === 'fechamento') {
+                // No último slide o logo é o PROTAGONISTA (centralizado, maior).
+                $instrucaoLogo = ' A ÚLTIMA imagem de referência fornecida é o LOGO da marca: ele é o ELEMENTO PRINCIPAL desta arte de fechamento. Posicione-o em DESTAQUE, centralizado e com bom tamanho (~25-35% da largura), com respiro generoso ao redor, respeitando as cores originais do logo. Fundo clean para valorizar o logo.';
+            } else {
+                $instrucaoLogo = ' A ÚLTIMA imagem de referência fornecida é o LOGO da marca: insira-o na arte de forma discreta, elegante e bem posicionada (canto superior ou inferior, tamanho pequeno ~8-12% da largura), com equilíbrio e sofisticação, respeitando as cores originais do logo e sem competir com a headline.';
+            }
 
             if (!empty($caminhosRef)) {
                 // Descrição do template escolhido entra como COMPLEMENTO do prompt.
