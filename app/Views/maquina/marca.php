@@ -460,6 +460,18 @@ async function carregarTemplates() {
     } catch(e) { templatesCarregados = false; }
 }
 
+// Lightbox: amplia a imagem de um slide para visão consolidada.
+function ampliarImagem(url) {
+    const box = document.getElementById('lightbox-img');
+    const img = document.getElementById('lightbox-img-src');
+    if (img) img.src = url;
+    if (box) box.classList.remove('hidden');
+}
+function fecharAmpliar() {
+    const box = document.getElementById('lightbox-img');
+    if (box) box.classList.add('hidden');
+}
+
 // Atualiza a caixa do perfil consolidado (modelo próprio da marca).
 function atualizarPerfilNaTela(texto) {
     const box = document.getElementById('perfil-templates');
@@ -679,6 +691,12 @@ async function removerTemplate(id) {
     </div>
 </div>
 
+<!-- Lightbox de imagem (ampliar slide) -->
+<div id="lightbox-img" class="hidden fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4" onclick="fecharAmpliar()">
+    <img id="lightbox-img-src" src="" class="max-w-full max-h-full object-contain rounded-lg shadow-2xl">
+    <button onclick="fecharAmpliar()" class="absolute top-4 right-4 text-white text-3xl leading-none hover:opacity-70">&times;</button>
+</div>
+
 <!-- Modal Agendar -->
 <div id="modal-agendar" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-lg shadow-xl max-w-sm w-full p-6">
@@ -767,22 +785,38 @@ document.getElementById('form-gerar').addEventListener('submit', async function(
         if (data.sucesso) {
             // Renderiza o texto imediatamente; as imagens são geradas uma a uma depois.
             const slides = data.conteudo.slides || [];
-            let html = '<div class="space-y-3">';
+            const ehCarrossel = (data.conteudo.tipo === 'carrossel') && slides.length > 1;
+
+            // Monta os cards dos slides.
+            let cards = '';
             slides.forEach((s, index) => {
                 const pendente = s.imagem_pendente || (data.slides_pendentes || []).includes(index);
+                const rotulo = index === 0 ? 'Capa' : (index === slides.length - 1 ? 'Fechamento' : 'Slide ' + (index + 1));
                 const imgHtml = s.imagem_url
-                    ? `<img src="${s.imagem_url}" class="w-full max-h-[480px] object-contain bg-gray-900" loading="lazy">`
+                    ? `<img src="${s.imagem_url}" onclick="ampliarImagem('${s.imagem_url}')" class="w-full ${ehCarrossel ? 'aspect-[4/5]' : 'max-h-[480px]'} object-contain bg-gray-900 cursor-zoom-in" loading="lazy">`
                     : (pendente
                         ? `<div class="w-full aspect-[4/5] bg-gray-100 flex flex-col items-center justify-center text-xs text-gray-400 gap-2" id="slide-img-${index}">
                                 <span class="flex items-center"><span class="inline-block w-5 h-5 border-2 border-gray-300 border-t-accent rounded-full animate-spin mr-2"></span> <span class="slide-status-txt">Na fila...</span></span>
                                 <button type="button" onclick="cancelarImagemSlide(${index})" class="px-2 py-1 border border-red-300 text-red-600 rounded text-[11px] hover:bg-red-50 slide-cancel-btn">Cancelar</button>
                            </div>`
                         : `<div class="w-full aspect-[4/5] bg-gray-100 flex items-center justify-center text-3xl">🖼️</div>`);
-                html += `<div class="border rounded-lg overflow-hidden" data-slide="${index}">
+                const larguraCard = ehCarrossel ? 'flex-shrink-0 w-56 snap-start' : '';
+                cards += `<div class="border rounded-lg overflow-hidden ${larguraCard}" data-slide="${index}">
+                    <div class="px-2 py-1 bg-gray-50 border-b text-[10px] font-medium text-gray-500 uppercase tracking-wide">${rotulo}</div>
                     ${imgHtml}
-                    <div class="p-3"><p class="text-xs text-gray-600">${s.texto || 'Slide ' + (index + 1)}</p></div>
+                    <div class="p-2"><p class="text-[11px] text-gray-600 line-clamp-3">${s.texto || 'Slide ' + (index + 1)}</p></div>
                 </div>`;
             });
+
+            // Carrossel: slides lado a lado (scroll horizontal). Demais: coluna.
+            let html = '<div class="space-y-3">';
+            if (ehCarrossel) {
+                html += '<p class="text-xs text-gray-400">Carrossel com ' + slides.length + ' slides — role para o lado e clique numa imagem para ampliar.</p>';
+                html += '<div class="flex gap-3 overflow-x-auto pb-3 snap-x">' + cards + '</div>';
+            } else {
+                html += cards;
+            }
+
             if (data.conteudo.legenda) {
                 html += `<div class="p-3 bg-gray-50 rounded-lg"><p class="text-xs text-gray-500 font-medium mb-1">Legenda:</p><p class="text-xs text-gray-700 whitespace-pre-line">${data.conteudo.legenda}</p></div>`;
             }
@@ -908,11 +942,14 @@ async function gerarImagensSequencial(conteudoId, indices) {
                 prontas++;
                 const jaTem = container.querySelector('img');
                 if (!jaTem) {
-                    const alvo = container.querySelector('div');
+                    // Substitui APENAS o placeholder da imagem (não o rótulo/legenda).
+                    const alvo = container.querySelector('#slide-img-' + idx) || container.querySelector('div');
+                    const ehCar = container.classList.contains('flex-shrink-0');
                     const img = document.createElement('img');
                     img.src = item.imagem_url;
-                    img.className = 'w-full max-h-[480px] object-contain bg-gray-900';
+                    img.className = 'w-full ' + (ehCar ? 'aspect-[4/5]' : 'max-h-[480px]') + ' object-contain bg-gray-900 cursor-zoom-in';
                     img.loading = 'lazy';
+                    img.onclick = () => ampliarImagem(item.imagem_url);
                     if (alvo) alvo.replaceWith(img);
                     // Adiciona controles de regeneração com instrução dentro do card.
                     adicionarControlesRegeneracao(container, conteudoId, idx);

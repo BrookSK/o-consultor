@@ -1975,7 +1975,9 @@ Responda APENAS em JSON válido, sem explicações.";
 REGRAS PARA CONTEÚDO DE NOTÍCIA (OBRIGATÓRIAS):
 1. A LEGENDA deve COMENTAR o conteúdo da notícia acima (o que aconteceu, por que importa para o público, o que fazer a respeito), na linguagem própria da marca. Não copie frases literais. A legenda e a imagem devem ser COERENTES entre si: a legenda deve conversar com o que aparece na arte (mesmo tema/gancho), e o CALL-TO-ACTION da legenda deve estar alinhado ao clima e às cores da imagem, formando uma peça única e consistente.
 2. ORDEM FINAL DA LEGENDA: primeiro os parágrafos do texto, depois uma linha com as HASHTAGS e, por último, a linha da FONTE no formato exato: 'Fonte: <veículo> (<link>)' usando o veículo/link indicado em 'FONTE DA NOTÍCIA'. (A linha da fonte é a única exceção onde o link/parênteses são permitidos.)
-3. O 'texto' de CADA slide deve funcionar como HEADLINE COM GANCHO: frase curta e instigante que desperte curiosidade e convide a continuar (perguntas, dados surpreendentes, tensão). Nada de títulos genéricos.";
+3. O 'texto' do PRIMEIRO slide (capa) deve funcionar como HEADLINE COM GANCHO: frase curta e instigante que desperte curiosidade (pergunta, dado surpreendente, tensão). 
+4. DISTRIBUIÇÃO DO CONTEÚDO DA NOTÍCIA NOS SLIDES DO MEIO: os slides de MIOLO (do 2º ao penúltimo) NÃO são capas — eles devem CONTAR a notícia de fato, com o CONTEÚDO INFORMATIVO REAL extraído dela. Distribua ao longo dos slides: o que aconteceu, os dados/fatos concretos, o que isso significa para o público e o que fazer a respeito. Cada slide de miolo traz uma parte objetiva e explicativa (2 a 4 frases claras), aprofundando o anterior — como uma reportagem em sequência, não frases soltas de efeito. Use as informações reais da notícia fornecida, sem inventar.
+5. O ÚLTIMO slide é o fechamento com conclusão + CTA da marca.";
         }
 
         // Base de literatura (RAG na Biblioteca): trechos reais dos PDFs do cliente.
