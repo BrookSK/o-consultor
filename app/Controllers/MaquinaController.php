@@ -1133,10 +1133,11 @@ class MaquinaController
         //  - carrossel com FECHAMENTO FIXO: a IA gera qtdSlides-1 (capa + miolos);
         //    o slide de fechamento (imagem fixa) é adicionado depois.
         if (isset($conteudoGerado['slides']) && is_array($conteudoGerado['slides'])) {
+            // qtdSlides = capa + miolo (gerados pela IA). O fechamento fixo é EXTRA.
             $maxConteudo = match ($tipo) {
                 'post' => 3,
                 'story', 'reels' => 1,
-                'carrossel' => ($temFechamentoFixo ? max(2, $qtdSlides - 1) : $qtdSlides),
+                'carrossel' => $qtdSlides,
                 default => 3,
             };
             if (count($conteudoGerado['slides']) > $maxConteudo) {
@@ -2127,10 +2128,15 @@ class MaquinaController
             exit;
         }
         $tituloOrig = trim((string) ($nt['titulo'] ?? ''));
-        $prompt = "Crie um TÍTULO curto e IMPACTANTE em português do Brasil para um post, a partir da notícia abaixo. "
-            . "Traduza se estiver em outro idioma. Máximo 8 palavras, provocativo e claro (sem clickbait exagerado), linguagem de empresário comum. "
-            . "Notícia: {$tituloOrig}. " . mb_substr((string) ($nt['bloco1_noticia'] ?? ''), 0, 400)
-            . "\nResponda APENAS em JSON: {\"titulo\": \"...\"}";
+        $prompt = "Você é redator de social media. A partir da notícia abaixo, crie uma HEADLINE (chamada) para o TEMA de um post — NÃO traduza o título da notícia, CRIE uma chamada nova.\n"
+            . "Notícia (título): {$tituloOrig}\n"
+            . "Contexto: " . mb_substr((string) ($nt['bloco1_noticia'] ?? ''), 0, 500) . "\n\n"
+            . "REGRAS:\n"
+            . "- Deve ter GANCHO e IMPACTO: desperte curiosidade ou tensão (pergunta provocativa, número surpreendente, alerta, promessa). NÃO pode ser uma descrição neutra do fato.\n"
+            . "- Conecte com a DOR/interesse de um EMPRESÁRIO brasileiro comum (o que ele ganha ou perde com isso).\n"
+            . "- Português do Brasil, linguagem simples e direta, no máximo 8 palavras. Sem clickbait mentiroso, sem jargão técnico em inglês.\n"
+            . "- Exemplos de estilo (não copie): 'Sua empresa está exposta e você nem sabe', 'O erro invisível que custa caro', 'Zero-day: a brecha que ninguém vê chegar'.\n"
+            . "Responda APENAS em JSON: {\"titulo\": \"...\"}";
         try {
             $res = ApiHelper::chamarAnalise($prompt, true, 200);
             if (!empty($res['sucesso']) && is_array($res['conteudo'])) {
@@ -2265,21 +2271,29 @@ class MaquinaController
 
         $conteudoId = (int) ($_POST['conteudo_id'] ?? 0);
         $slideIndex = (int) ($_POST['slide_index'] ?? -1);
-        $base64 = (string) ($_POST['imagem_base64'] ?? '');
-        if ($conteudoId <= 0 || $slideIndex < 0 || $base64 === '') {
+        if ($conteudoId <= 0 || $slideIndex < 0) {
             echo json_encode(['sucesso' => false, 'erro' => 'Parâmetros inválidos.']);
             exit;
         }
 
-        // Decodifica o data URL (data:image/png;base64,....).
-        if (!preg_match('/^data:image\/(png|jpe?g|webp);base64,(.+)$/', $base64, $m)) {
-            echo json_encode(['sucesso' => false, 'erro' => 'Formato de imagem inválido.']);
-            exit;
+        // A imagem chega como ARQUIVO (multipart) para evitar o limite de corpo
+        // de texto do ModSecurity (413). Fallback: base64 (compatibilidade).
+        $bin = false;
+        $ext = 'png';
+        if (!empty($_FILES['imagem']) && $_FILES['imagem']['error'] === UPLOAD_ERR_OK) {
+            $tmp = $_FILES['imagem']['tmp_name'];
+            $e = strtolower(pathinfo($_FILES['imagem']['name'], PATHINFO_EXTENSION));
+            if (in_array($e, ['png', 'jpg', 'jpeg', 'webp'], true)) $ext = ($e === 'jpeg' ? 'jpg' : $e);
+            $bin = @file_get_contents($tmp);
+        } else {
+            $base64 = (string) ($_POST['imagem_base64'] ?? '');
+            if ($base64 !== '' && preg_match('/^data:image\/(png|jpe?g|webp);base64,(.+)$/', $base64, $m)) {
+                $ext = $m[1] === 'jpeg' ? 'jpg' : $m[1];
+                $bin = base64_decode($m[2], true);
+            }
         }
-        $ext = $m[1] === 'jpeg' ? 'jpg' : $m[1];
-        $bin = base64_decode($m[2], true);
-        if ($bin === false) {
-            echo json_encode(['sucesso' => false, 'erro' => 'Falha ao decodificar a imagem.']);
+        if ($bin === false || $bin === '') {
+            echo json_encode(['sucesso' => false, 'erro' => 'Imagem não recebida.']);
             exit;
         }
 

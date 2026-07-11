@@ -413,16 +413,26 @@ async function salvarImagemComLogo() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(editorLogo.baseImg, 0, 0, canvas.width, canvas.height);
     if (editorLogo.logoImg) ctx.drawImage(editorLogo.logoImg, editorLogo.x, editorLogo.y, editorLogo.w, editorLogo.h);
-    let dataUrl;
-    try { dataUrl = canvas.toDataURL('image/png'); }
-    catch (e) { alert('Falha ao exportar (a imagem pode bloquear por CORS).'); if (btn){btn.disabled=false;btn.textContent='💾 Salvar imagem com logo';} return; }
+    // Converte o canvas em BLOB e envia como ARQUIVO (multipart) — evita o
+    // limite de "no files data" do ModSecurity (413) que ocorre ao enviar o
+    // base64 como campo de texto.
+    let blob;
+    try {
+        blob = await new Promise((resolve, reject) => {
+            canvas.toBlob(b => b ? resolve(b) : reject(new Error('toBlob falhou')), 'image/png');
+        });
+    } catch (e) {
+        alert('Falha ao exportar (a imagem pode bloquear por CORS).');
+        if (btn) { btn.disabled = false; btn.textContent = '💾 Salvar imagem com logo'; }
+        return;
+    }
 
     try {
         const fd = new FormData();
         fd.append('csrf_token', '<?= Csrf::token() ?>');
         fd.append('conteudo_id', editorLogo.conteudoId);
         fd.append('slide_index', editorLogo.slideIndex);
-        fd.append('imagem_base64', dataUrl);
+        fd.append('imagem', blob, 'imagem-editada.png');
         const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/salvar-imagem-editada', { method: 'POST', body: fd });
         const data = await res.json();
         if (data.sucesso && data.imagem_url) {

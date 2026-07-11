@@ -2039,24 +2039,39 @@ REGRAS PARA CONTEÚDO DE NOTÍCIA (OBRIGATÓRIAS):
 
         switch($tipo) {
             case 'carrossel':
-                // Se há imagem de fechamento fixa (upload), a IA NÃO gera o último
-                // slide — gera qtdSlides-1 (capa + miolos), e o fechamento é a arte
-                // enviada. Senão, gera qtdSlides (capa + miolos + fechamento).
-                $slidesParaGerar = $temFechamentoFixo ? max(2, $qtdSlides - 1) : $qtdSlides;
-                $qtdMiolo = $temFechamentoFixo ? ($slidesParaGerar - 1) : ($slidesParaGerar - 2);
-                $qtdMiolo = max(1, $qtdMiolo);
-                $notaFechamento = $temFechamentoFixo
-                    ? "NÃO gere slide de fechamento/CTA (o último slide será uma arte fixa da marca, adicionada automaticamente). Gere APENAS a capa + os {$qtdMiolo} slides de conteúdo."
-                    : "O ÚLTIMO slide (tipo 'cta') é o FECHAMENTO com conclusão + chamada para ação da marca.";
+                // A quantidade escolhida (qtdSlides) é CAPA + MIOLO (slides gerados
+                // pela IA). Quando há imagem de fechamento fixa (upload), ela é um
+                // slide EXTRA, adicionado por cima — NÃO conta na quantidade.
+                // Portanto a IA gera SEMPRE qtdSlides (capa + miolos).
+                $slidesParaGerar = $qtdSlides;
+                if ($temFechamentoFixo) {
+                    $qtdMiolo = max(1, $slidesParaGerar - 1); // capa + (qtdSlides-1) miolos
+                    $notaFechamento = "NÃO gere slide de fechamento/CTA (haverá um slide de fechamento EXTRA com a arte fixa da marca, adicionado automaticamente depois). Gere a capa + os {$qtdMiolo} slides de conteúdo, totalizando {$slidesParaGerar} slides.";
+                } else {
+                    $qtdMiolo = max(1, $slidesParaGerar - 2); // capa + miolos + fechamento
+                    $notaFechamento = "O ÚLTIMO slide (tipo 'cta') é o FECHAMENTO com conclusão + chamada para ação da marca.";
+                }
 
-                $instrucoesTipo = "Para CARROSSEL gere EXATAMENTE {$slidesParaGerar} slides (nem mais, nem menos) no JSON, na estrutura: {\"slides\": [{\"numero\": 1, \"tipo\": \"capa\", \"texto\": \"título principal\", \"texto_secundario\": \"subtítulo opcional\", \"prompt_imagem\": \"descrição detalhada da imagem\"}, {\"numero\": 2, \"tipo\": \"conteudo\", \"texto\": \"conteúdo do slide\", \"prompt_imagem\": \"descrição da imagem\"}], \"legenda\": \"texto da legenda com call-to-action\", \"hashtags\": \"#tag1 #tag2 #tag3\"}. O array 'slides' deve ter EXATAMENTE {$slidesParaGerar} itens. "
-                    . "ESTRUTURA NARRATIVA OBRIGATÓRIA — a notícia/assunto deve ter COMEÇO, MEIO e FIM distribuídos nos {$qtdMiolo} slides de conteúdo: "
-                    . "SLIDE 1 = CAPA (gancho curto e provocativo). "
-                    . "COMEÇO (primeiros slides de conteúdo): apresente o FATO — o que aconteceu, o contexto e os dados concretos da notícia. "
-                    . "MEIO (slides de conteúdo do meio): explique o que isso SIGNIFICA na prática para a empresa do leitor, tocando na DOR e no risco de não agir. "
-                    . "FIM (últimos slides de conteúdo): mostre o CAMINHO — o que fazer a respeito, de forma prática. "
+                // A instrução de distribuição da narrativa MUDA conforme quantos
+                // slides de conteúdo (miolo) existem — o conteúdo NUNCA pode ficar
+                // pela metade, mesmo com 1 único miolo.
+                if ($qtdMiolo <= 1) {
+                    $distribuicao = "Há APENAS 1 slide de conteúdo (miolo). Ele SOZINHO precisa RESUMIR a notícia inteira com COMEÇO, MEIO e FIM em um texto coeso e completo: "
+                        . "(começo) o que aconteceu / o fato + dado principal; (meio) o que isso significa na prática e o risco de não agir; (fim) o que fazer a respeito. "
+                        . "NÃO deixe o assunto pela metade — o slide deve fechar a ideia por completo, ainda que de forma condensada.";
+                } else {
+                    $distribuicao = "Distribua a narrativa nos {$qtdMiolo} slides de conteúdo garantindo COMEÇO, MEIO e FIM completos ao longo deles: "
+                        . "COMEÇO (primeiro(s) slide(s) de conteúdo): o FATO — o que aconteceu, contexto e dados concretos. "
+                        . "MEIO: o que isso SIGNIFICA na prática para a empresa do leitor, tocando na DOR e no risco de não agir. "
+                        . "FIM (último(s) slide(s) de conteúdo): o CAMINHO — o que fazer a respeito, de forma prática. "
+                        . "A soma dos slides de conteúdo DEVE contar a notícia por inteiro, sem deixar nada pela metade e sem repetir.";
+                }
+
+                $instrucoesTipo = "Para CARROSSEL gere EXATAMENTE {$slidesParaGerar} slides (nem mais, nem menos) no JSON, na estrutura: {\"slides\": [{\"numero\": 1, \"tipo\": \"capa\", \"texto\": \"título principal\", \"texto_secundario\": \"subtítulo opcional\", \"prompt_imagem\": \"descrição detalhada da imagem\"}, {\"numero\": 2, \"tipo\": \"conteudo\", \"texto\": \"conteúdo do slide\", \"prompt_imagem\": \"descrição da imagem\"}], \"legenda\": \"texto da legenda com call-to-action\", \"hashtags\": \"#tag1 #tag2 #tag3\"}. O array 'slides' deve ter EXATAMENTE {$slidesParaGerar} itens (sendo 1 capa + {$qtdMiolo} de conteúdo). "
+                    . "SLIDE 1 = CAPA (gancho curto e provocativo, sem entregar tudo). "
+                    . "REGRA DE COMPLETUDE (OBRIGATÓRIA): {$distribuicao} "
                     . "{$notaFechamento} "
-                    . "Cada slide de conteúdo continua o anterior (raciocínio que progride), NÃO são várias capas nem frases soltas. Distribua o conteúdo de forma equilibrada para preencher TODOS os {$qtdMiolo} slides de conteúdo com substância (sem encher linguiça e sem deixar slides vazios ou repetidos).";
+                    . "Cada slide de conteúdo dá continuidade ao anterior (raciocínio que progride), NÃO são várias capas nem frases soltas. Preencha TODOS os {$qtdMiolo} slides de conteúdo com substância real, sem encher linguiça, sem repetir e sem deixar a ideia incompleta.";
                 break;
             case 'post':
                 $instrucoesTipo = 'Para POST gere no MÁXIMO 3 imagens (idealmente 1). JSON: {\"slides\": [{\"numero\": 1, \"tipo\": \"unico\", \"texto\": \"conteúdo principal\", \"prompt_imagem\": \"descrição da cena\"}], \"legenda\": \"texto da legenda\", \"hashtags\": \"#tag1 #tag2\"}. NÃO ultrapasse 3 itens no array slides.';
