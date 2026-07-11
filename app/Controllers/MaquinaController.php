@@ -1967,12 +1967,23 @@ class MaquinaController
                     $refsComLogo = array_slice($caminhosRef, 0, 3);
                     $refsComLogo[] = $logoAbs;
                 }
-                $promptRef = 'Gere uma nova imagem VERTICAL (retrato) para post de Instagram replicando o ESTILO VISUAL (meio/estética, paleta, iluminação, enquadramento, texturas, tipografia e clima) das imagens de referência fornecidas. '
+                // PROMPT MESTRE da marca (campo prompt_dalle): define a IDENTIDADE
+                // VISUAL obrigatória (paleta, estética, iluminação). Tem PRIORIDADE
+                // MÁXIMA — sem ele, o modelo escolhe cores livremente (ex.: puxa para
+                // vermelho quando o tema é "risco/alerta"). Entra no início do prompt.
+                $promptMestre = trim((string) ($conteudo['prompt_dalle'] ?? ''));
+                $blocoMestre = $promptMestre !== ''
+                    ? 'DIRETRIZ DE IDENTIDADE VISUAL DA MARCA (OBRIGATÓRIA e com PRIORIDADE MÁXIMA sobre qualquer outra instrução — siga à risca a estética, a PALETA DE CORES e a iluminação descritas; NÃO troque as cores da marca por outras, mesmo que o assunto sugira cores como vermelho/alerta): ' . $promptMestre . ' '
+                    : '';
+
+                $promptRef = $blocoMestre
+                    . 'Gere uma nova imagem VERTICAL (retrato) para post de Instagram seguindo a identidade visual acima e replicando o ESTILO VISUAL (meio/estética, paleta, iluminação, enquadramento, texturas, tipografia e clima) das imagens de referência fornecidas. '
                     . 'IMPORTANTE: use as referências e as descrições abaixo APENAS como GUIA DE ESTILO. IGNORE completamente o ASSUNTO, os personagens específicos, símbolos, bandeiras e objetos concretos que aparecem nelas (ex.: pessoas específicas, países, marcas) — eles NÃO devem aparecer na nova imagem. O que deve ser retratado é EXCLUSIVAMENTE a cena descrita em "Assunto/cena" abaixo.'
                     . $complementoDesc
                     . ' Assunto/cena a retratar (este é o ÚNICO conteúdo que deve aparecer, renderizado no estilo acima): ' . $promptImagem . '.'
                     . $instrucaoTexto
                     . $instrucaoLogo
+                    . ' PALETA (REFORÇO): respeite estritamente a paleta da marca definida na diretriz de identidade visual; o vermelho/laranja só pode aparecer como acento pontual (se a marca permitir), NUNCA dominando o fundo ou a composição.'
                     . ' NÃO copie o texto que aparece nas imagens de referência (use-as apenas como estilo); a única escrita permitida na imagem é a HEADLINE indicada acima.';
                 $promptCompleto = $promptRef;
                 $imgResult = ApiHelper::gerarImagemComReferencia($promptRef, $refsComLogo, $tamanho, $qualidade);
