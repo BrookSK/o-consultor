@@ -425,6 +425,15 @@ class Router
             return;
         }
 
+        // Ver o prompt COMPLETO usado para gerar a imagem de um slide.
+        // /maquina-de-conteudo/imagem/prompt/{conteudoId}/{slideIndex}
+        if (preg_match('/^maquina-de-conteudo\/imagem\/prompt\/(\d+)\/(\d+)$/', $url, $matches)) {
+            $_GET['conteudo_id'] = (int) $matches[1];
+            $_GET['slide_index'] = (int) $matches[2];
+            $this->executarAction('MaquinaController', 'verPromptImagem');
+            return;
+        }
+
         if (preg_match('/^maquina-de-conteudo\/editar\/(\d+)$/', $url, $matches)) {
             $_GET['id'] = (int) $matches[1];
             $this->executarAction('MaquinaController', 'editar');

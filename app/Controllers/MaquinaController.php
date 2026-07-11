@@ -1228,6 +1228,73 @@ class MaquinaController
         exit;
     }
 
+    /**
+     * Exibe o PROMPT COMPLETO (com todas as informações dinâmicas injetadas)
+     * usado para gerar a imagem de um slide. Acessível por:
+     *   /maquina-de-conteudo/imagem/prompt/{conteudoId}/{slideIndex}
+     * Lê o último prompt salvo em imagens_conteudo.prompt_usado.
+     */
+    public function verPromptImagem(): void
+    {
+        Auth::proteger();
+        $conteudoId = (int) ($_GET['conteudo_id'] ?? 0);
+        $slideIndex = (int) ($_GET['slide_index'] ?? 0);
+
+        $formato = strtolower((string) ($_GET['formato'] ?? 'html'));
+        $prompt = '';
+        $criadoEm = '';
+        try {
+            $row = Database::queryOne(
+                "SELECT prompt_usado, criado_em FROM imagens_conteudo
+                 WHERE conteudo_id = :c AND slide_index = :i
+                 ORDER BY id DESC LIMIT 1",
+                ['c' => $conteudoId, 'i' => $slideIndex]
+            );
+            $prompt = (string) ($row['prompt_usado'] ?? '');
+            $criadoEm = (string) ($row['criado_em'] ?? '');
+        } catch (\Throwable $e) {
+            $prompt = '';
+        }
+
+        if ($formato === 'json') {
+            header('Content-Type: application/json');
+            echo json_encode([
+                'sucesso' => $prompt !== '',
+                'conteudo_id' => $conteudoId,
+                'slide_index' => $slideIndex,
+                'criado_em' => $criadoEm,
+                'prompt' => $prompt,
+                'tamanho_chars' => mb_strlen($prompt),
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            exit;
+        }
+
+        // Página HTML simples e legível (texto puro em bloco).
+        header('Content-Type: text/html; charset=utf-8');
+        $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
+        $titulo = 'Prompt da imagem — conteúdo ' . $conteudoId . ' / slide ' . $slideIndex;
+        echo '<!doctype html><html lang="pt-br"><head><meta charset="utf-8">'
+            . '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            . '<title>' . $esc($titulo) . '</title>'
+            . '<style>body{font-family:system-ui,Segoe UI,Arial,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:24px}'
+            . '.card{max-width:900px;margin:0 auto;background:#1e293b;border:1px solid #334155;border-radius:12px;padding:24px}'
+            . 'h1{font-size:18px;margin:0 0 4px}.meta{color:#94a3b8;font-size:13px;margin-bottom:16px}'
+            . 'pre{white-space:pre-wrap;word-wrap:break-word;background:#0b1220;border:1px solid #334155;border-radius:8px;padding:16px;font-size:13px;line-height:1.6}'
+            . '.btn{display:inline-block;margin-top:16px;background:#2563eb;color:#fff;text-decoration:none;padding:8px 14px;border-radius:8px;font-size:13px;cursor:pointer;border:none}'
+            . '.empty{color:#f87171}</style></head><body><div class="card">'
+            . '<h1>' . $esc($titulo) . '</h1>'
+            . '<div class="meta">Gerado em: ' . $esc($criadoEm ?: '—') . ' • ' . mb_strlen($prompt) . ' caracteres</div>';
+        if ($prompt === '') {
+            echo '<p class="empty">Nenhum prompt encontrado para este slide. A imagem pode não ter sido gerada ainda, '
+                . 'ou a tabela imagens_conteudo não está disponível.</p>';
+        } else {
+            echo '<pre id="p">' . $esc($prompt) . '</pre>'
+                . '<button class="btn" onclick="navigator.clipboard.writeText(document.getElementById(\'p\').innerText);this.textContent=\'Copiado!\'">Copiar prompt</button>';
+        }
+        echo '</div></body></html>';
+        exit;
+    }
+
     /** Cancela a geração de imagem de UM slide (marca na fila, se ainda pendente). */
     public function cancelarImagemSlide(): void
     {

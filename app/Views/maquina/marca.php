@@ -837,7 +837,8 @@ function adicionarControlesRegeneracao(container, conteudoId, idx) {
     box.className = 'regen-box p-3 border-t border-gray-100';
     box.innerHTML =
         '<textarea class="regen-txt w-full px-2 py-1.5 border border-gray-300 rounded text-xs outline-none focus:border-primary resize-none" rows="2" placeholder="O que ajustar nesta imagem? Ex.: fundo mais claro, incluir uma pessoa, tom mais sério..."></textarea>'
-        + '<button type="button" class="regen-btn mt-2 w-full px-3 py-1.5 bg-primary text-white rounded text-xs font-medium hover:bg-primary-700">🔄 Regenerar esta imagem</button>';
+        + '<button type="button" class="regen-btn mt-2 w-full px-3 py-1.5 bg-primary text-white rounded text-xs font-medium hover:bg-primary-700">🔄 Regenerar esta imagem</button>'
+        + '<a href="<?= APP_URL ?>/maquina-de-conteudo/imagem/prompt/' + conteudoId + '/' + idx + '" target="_blank" class="block mt-2 text-center text-[11px] text-blue-600 hover:underline">🔍 Ver prompt completo enviado nesta imagem</a>';
     container.appendChild(box);
     box.querySelector('.regen-btn').addEventListener('click', () => regenerarComInstrucao(conteudoId, idx, container));
 }
