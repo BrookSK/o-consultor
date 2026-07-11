@@ -149,9 +149,9 @@
             </div>
 
             <!-- Preview Resultado -->
-            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 min-w-0 overflow-hidden">
                 <h3 class="font-semibold text-gray-800 mb-4">Preview</h3>
-                <div id="resultado-preview" class="min-h-[400px] flex items-center justify-center text-gray-400 text-sm">
+                <div id="resultado-preview" class="min-h-[400px] min-w-0 overflow-hidden flex items-center justify-center text-gray-400 text-sm">
                     <p>O conteúdo gerado aparecerá aqui.</p>
                 </div>
             </div>
@@ -182,6 +182,24 @@
                                 <input type="file" accept=".png,.svg,.jpg,.jpeg,.webp" class="hidden" onchange="uploadLogo(this)">
                             </label>
                             <p class="text-xs text-gray-400 mt-1">Preferencialmente PNG com fundo transparente. Será posicionado de forma estratégica e equilibrada nas imagens geradas.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Imagem de fechamento do carrossel -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Imagem de fechamento (último slide do carrossel)</label>
+                    <div class="flex items-center gap-4">
+                        <div class="w-24 h-28 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden">
+                            <img id="fechamento-preview" src="<?= !empty($marca['imagem_fechamento_url']) ? htmlspecialchars(APP_URL . $marca['imagem_fechamento_url']) : '' ?>" class="max-w-full max-h-full object-contain <?= empty($marca['imagem_fechamento_url']) ? 'hidden' : '' ?>">
+                            <span id="fechamento-vazio" class="text-xs text-gray-400 text-center px-1 <?= !empty($marca['imagem_fechamento_url']) ? 'hidden' : '' ?>">Sem imagem</span>
+                        </div>
+                        <div>
+                            <label class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700 cursor-pointer inline-block">
+                                📤 Enviar imagem de fechamento
+                                <input type="file" accept=".png,.jpg,.jpeg,.webp" class="hidden" onchange="uploadFechamento(this)">
+                            </label>
+                            <p class="text-xs text-gray-400 mt-1">Esta imagem fixa será usada como o ÚLTIMO slide dos carrosséis (fechamento), no lugar de uma gerada pela IA. Formato vertical (retrato) recomendado.</p>
                         </div>
                     </div>
                 </div>
@@ -367,6 +385,28 @@ async function uploadLogo(input) {
     input.value = '';
 }
 
+async function uploadFechamento(input) {
+    if (!input.files || !input.files[0]) return;
+    const fd = new FormData();
+    fd.append('csrf_token', '<?= Csrf::token() ?>');
+    fd.append('marca_id', '<?= (int) $marca['id'] ?>');
+    fd.append('imagem', input.files[0]);
+    try {
+        const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/upload-fechamento', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.sucesso && data.url) {
+            const img = document.getElementById('fechamento-preview');
+            const vazio = document.getElementById('fechamento-vazio');
+            if (img) { img.src = data.url + '?t=' + Date.now(); img.classList.remove('hidden'); }
+            if (vazio) vazio.classList.add('hidden');
+            if (typeof Toast !== 'undefined') Toast.sucesso('Imagem de fechamento enviada!');
+        } else {
+            alert(data.erro || 'Erro no upload.');
+        }
+    } catch (e) { alert('Erro de conexão.'); }
+    input.value = '';
+}
+
 // Salva o rascunho na biblioteca para terminar depois.
 async function terminarDepois(conteudoId, btn) {
     if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
@@ -458,6 +498,13 @@ async function carregarTemplates() {
             });
         }
     } catch(e) { templatesCarregados = false; }
+}
+
+// Rola o track do carrossel horizontalmente com as setas.
+function rolarCarrossel(dir) {
+    const track = document.getElementById('carrossel-track');
+    if (!track) return;
+    track.scrollBy({ left: dir * 240, behavior: 'smooth' });
 }
 
 // Lightbox: amplia a imagem de um slide para visão consolidada.
@@ -808,11 +855,15 @@ document.getElementById('form-gerar').addEventListener('submit', async function(
                 </div>`;
             });
 
-            // Carrossel: slides lado a lado (scroll horizontal). Demais: coluna.
+            // Carrossel: slides lado a lado (scroll horizontal) com setas. Demais: coluna.
             let html = '<div class="space-y-3">';
             if (ehCarrossel) {
-                html += '<p class="text-xs text-gray-400">Carrossel com ' + slides.length + ' slides — role para o lado e clique numa imagem para ampliar.</p>';
-                html += '<div class="flex gap-3 overflow-x-auto pb-3 snap-x">' + cards + '</div>';
+                html += '<p class="text-xs text-gray-400">Carrossel com ' + slides.length + ' slides — use as setas ou role para o lado. Clique numa imagem para ampliar.</p>';
+                html += '<div class="relative">'
+                    + '<button type="button" onclick="rolarCarrossel(-1)" class="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white/90 border border-gray-300 shadow flex items-center justify-center text-gray-700 hover:bg-white">&#10094;</button>'
+                    + '<div id="carrossel-track" class="flex gap-3 overflow-x-auto pb-3 snap-x scroll-smooth px-9">' + cards + '</div>'
+                    + '<button type="button" onclick="rolarCarrossel(1)" class="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white/90 border border-gray-300 shadow flex items-center justify-center text-gray-700 hover:bg-white">&#10095;</button>'
+                    + '</div>';
             } else {
                 html += cards;
             }

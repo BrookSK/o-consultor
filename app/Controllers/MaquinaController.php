@@ -1667,13 +1667,13 @@ class MaquinaController
         try {
             try {
                 $conteudo = Database::queryOne(
-                    "SELECT c.slides, c.marca_id, c.tipo, c.tema, c.objetivo, c.qualidade_imagem, c.fonte_conteudo, c.noticia_id, m.prompt_dalle, m.logo_url
+                    "SELECT c.slides, c.marca_id, c.tipo, c.tema, c.objetivo, c.qualidade_imagem, c.fonte_conteudo, c.noticia_id, m.prompt_dalle, m.logo_url, m.imagem_fechamento_url
                      FROM conteudos_marca c JOIN marcas m ON c.marca_id = m.id
                      WHERE c.id = :id",
                     ['id' => $conteudoId]
                 );
             } catch (\Throwable $e) {
-                // Colunas logo_url (046) / qualidade_imagem (048) / fonte_conteudo (049) podem não existir.
+                // Colunas logo_url (046) / qualidade_imagem (048) / fonte_conteudo (049) / imagem_fechamento_url (051) podem não existir.
                 try {
                     $conteudo = Database::queryOne(
                         "SELECT c.slides, c.marca_id, c.tipo, c.tema, c.objetivo, m.prompt_dalle
@@ -1715,6 +1715,22 @@ class MaquinaController
                 if ($slideIndex === 0) $papel = 'capa';
                 elseif ($slideIndex === $totalSlides - 1) $papel = 'fechamento';
                 else $papel = 'miolo';
+            }
+
+            // FECHAMENTO COM IMAGEM FIXA DO BRAND BOOK: se este é o último slide e a
+            // marca tem uma imagem de fechamento enviada, usa-a diretamente (não gera
+            // com IA). Sem instrução manual de regeneração.
+            $fechamentoRel = (string) ($conteudo['imagem_fechamento_url'] ?? '');
+            if ($papel === 'fechamento' && $instrucaoExtra === '' && $fechamentoRel !== '') {
+                $fechamentoAbs = PUBLIC_PATH . $fechamentoRel;
+                if (is_file($fechamentoAbs)) {
+                    $urlFechamento = APP_URL . $fechamentoRel;
+                    $slides[$slideIndex]['imagem_url'] = $urlFechamento;
+                    $slides[$slideIndex]['imagem_pendente'] = false;
+                    Database::execute("UPDATE conteudos_marca SET slides = :s WHERE id = :id", ['s' => json_encode($slides, JSON_UNESCAPED_UNICODE), 'id' => $conteudoId]);
+                    $this->logImagem('[ImagemGer] fechamento usa imagem fixa do Brand Book: ' . $fechamentoRel);
+                    return ['sucesso' => true, 'imagem_url' => $urlFechamento, 'slide_index' => $slideIndex, 'metodo' => 'fechamento_fixo', 'aviso_ref' => null];
+                }
             }
 
             // Instrução de ajuste do usuário (regenerar com correção).
@@ -2154,6 +2170,50 @@ class MaquinaController
         }
 
         Logger::acao('Logo da marca enviado', ['marca_id' => $marcaId]);
+        echo json_encode(['sucesso' => true, 'url' => APP_URL . $rel]);
+        exit;
+    }
+
+    /** Upload da imagem de fechamento do carrossel (Brand Book). */
+    public function uploadFechamento(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $marcaId = (int) ($_POST['marca_id'] ?? 0);
+        if (!$marcaId || empty($_FILES['imagem']) || $_FILES['imagem']['error'] !== UPLOAD_ERR_OK) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Arquivo inválido.']);
+            exit;
+        }
+
+        $arquivo = $_FILES['imagem'];
+        $ext = strtolower(pathinfo($arquivo['name'], PATHINFO_EXTENSION));
+        if (!in_array($ext, ['png', 'jpg', 'jpeg', 'webp'], true)) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Formato não permitido. Use PNG, JPG ou WEBP.']);
+            exit;
+        }
+
+        $dir = PUBLIC_PATH . '/uploads/fechamento/' . $marcaId;
+        if (!is_dir($dir)) @mkdir($dir, 0755, true);
+
+        $nome = 'fechamento_' . uniqid() . '.' . $ext;
+        $abs = $dir . '/' . $nome;
+        $rel = '/uploads/fechamento/' . $marcaId . '/' . $nome;
+
+        if (!move_uploaded_file($arquivo['tmp_name'], $abs)) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Falha ao salvar a imagem.']);
+            exit;
+        }
+
+        try {
+            Database::execute("UPDATE marcas SET imagem_fechamento_url = :u WHERE id = :id", ['u' => $rel, 'id' => $marcaId]);
+        } catch (\Throwable $e) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Coluna imagem_fechamento_url ausente (rode a migration 051).']);
+            exit;
+        }
+
+        Logger::acao('Imagem de fechamento enviada', ['marca_id' => $marcaId]);
         echo json_encode(['sucesso' => true, 'url' => APP_URL . $rel]);
         exit;
     }
