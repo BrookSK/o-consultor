@@ -241,6 +241,16 @@ class Router
         $this->post('maquina-de-conteudo/upload-fechamento', 'MaquinaController', 'uploadFechamento'); // Imagem de fechamento do carrossel
         $this->post('maquina-de-conteudo/titulo-impactante', 'MaquinaController', 'tituloImpactante'); // Sugestão de título a partir da notícia
         $this->post('maquina-de-conteudo/salvar-imagem-editada', 'MaquinaController', 'salvarImagemEditada'); // Imagem base + logo posicionado
+
+        // ===== Módulo Criador de Vídeos (Reels) =====
+        $this->post('maquina-de-conteudo/video/salvar', 'VideoController', 'salvarProjeto');
+        $this->post('maquina-de-conteudo/video/upload-audio', 'VideoController', 'uploadAudio');
+        $this->post('maquina-de-conteudo/video/upload-imagem', 'VideoController', 'uploadImagem');
+        $this->get('maquina-de-conteudo/video/vozes', 'VideoController', 'vozes');
+        $this->post('maquina-de-conteudo/video/gerar-narracao', 'VideoController', 'gerarNarracao');
+        $this->post('maquina-de-conteudo/video/exportar', 'VideoController', 'exportar');
+        $this->get('maquina-de-conteudo/video/status', 'VideoController', 'statusExportacao');
+        $this->get('maquina-de-conteudo/video/processar-bg', 'VideoController', 'processarFilaBackground');
         $this->post('maquina-de-conteudo/salvar-biblioteca', 'MaquinaController', 'salvarBiblioteca'); // "Terminar depois"
         $this->post('maquina-de-conteudo/excluir-conteudo', 'MaquinaController', 'excluirConteudo');
         $this->post('maquina-de-conteudo/excluir-conteudos', 'MaquinaController', 'excluirConteudos'); // Exclusão em massa
@@ -437,6 +447,13 @@ class Router
             $_GET['conteudo_id'] = (int) $matches[1];
             $_GET['slide_index'] = (int) $matches[2];
             $this->executarAction('MaquinaController', 'verPromptImagem');
+            return;
+        }
+
+        // Mini Editor de Vídeo (Reels) — abre pelo ID do post.
+        if (preg_match('/^maquina-de-conteudo\/video\/(\d+)$/', $url, $matches)) {
+            $_GET['conteudo_id'] = (int) $matches[1];
+            $this->executarAction('VideoController', 'editor');
             return;
         }
 

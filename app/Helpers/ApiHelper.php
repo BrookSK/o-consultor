@@ -3014,4 +3014,98 @@ Retorne APENAS o JSON válido, sem explicações adicionais.";
             return null;
         }
     }
+
+    // =========================================================================
+    // ELEVENLABS — Narração (Text-to-Speech). Chave lida do banco (config).
+    // =========================================================================
+
+    /**
+     * Lista as vozes disponíveis na conta ElevenLabs.
+     * @return array ['sucesso'=>bool, 'vozes'=>array<{voice_id,name}>, 'erro'=>?string]
+     */
+    public static function elevenLabsVozes(): array
+    {
+        $apiKey = self::config('elevenlabs_key');
+        if (empty($apiKey)) {
+            return ['sucesso' => false, 'vozes' => [], 'erro' => 'Chave ElevenLabs não configurada (Admin > Configurações).'];
+        }
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => 'https://api.elevenlabs.io/v1/voices',
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_HTTPHEADER => ['xi-api-key: ' . $apiKey],
+        ]);
+        $resp = curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err = curl_error($ch);
+        curl_close($ch);
+        if ($err || $code < 200 || $code >= 300) {
+            return ['sucesso' => false, 'vozes' => [], 'erro' => $err ?: ('HTTP ' . $code)];
+        }
+        $dados = json_decode((string) $resp, true);
+        $vozes = [];
+        foreach (($dados['voices'] ?? []) as $v) {
+            $vozes[] = ['voice_id' => $v['voice_id'] ?? '', 'name' => $v['name'] ?? ''];
+        }
+        return ['sucesso' => true, 'vozes' => $vozes, 'erro' => null];
+    }
+
+    /**
+     * Gera narração (TTS) via ElevenLabs e salva o MP3 em disco.
+     *
+     * @param string $texto      Texto a ser narrado
+     * @param string $voiceId    ID da voz (se vazio, usa config elevenlabs_voz)
+     * @param string $caminhoAbs Caminho absoluto de saída (.mp3)
+     * @return array ['sucesso'=>bool, 'erro'=>?string]
+     */
+    public static function elevenLabsGerarNarracao(string $texto, string $voiceId, string $caminhoAbs): array
+    {
+        $apiKey = self::config('elevenlabs_key');
+        if (empty($apiKey)) {
+            return ['sucesso' => false, 'erro' => 'Chave ElevenLabs não configurada.'];
+        }
+        $texto = trim($texto);
+        if ($texto === '') {
+            return ['sucesso' => false, 'erro' => 'Texto vazio.'];
+        }
+        $voiceId = $voiceId !== '' ? $voiceId : self::config('elevenlabs_voz', '21m00Tcm4TlvDq8ikWAM');
+        $modelo = self::config('elevenlabs_modelo', 'eleven_multilingual_v2');
+
+        $body = json_encode([
+            'text' => $texto,
+            'model_id' => $modelo,
+            'voice_settings' => ['stability' => 0.5, 'similarity_boost' => 0.75],
+        ], JSON_UNESCAPED_UNICODE);
+
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => 'https://api.elevenlabs.io/v1/text-to-speech/' . rawurlencode($voiceId),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 120,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $body,
+            CURLOPT_HTTPHEADER => [
+                'xi-api-key: ' . $apiKey,
+                'Content-Type: application/json',
+                'Accept: audio/mpeg',
+            ],
+        ]);
+        $resp = curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err = curl_error($ch);
+        curl_close($ch);
+
+        if ($err) {
+            return ['sucesso' => false, 'erro' => 'Falha de conexão: ' . $err];
+        }
+        if ($code < 200 || $code >= 300) {
+            $msg = substr((string) $resp, 0, 300);
+            return ['sucesso' => false, 'erro' => 'ElevenLabs HTTP ' . $code . ': ' . $msg];
+        }
+        if (file_put_contents($caminhoAbs, $resp) === false) {
+            return ['sucesso' => false, 'erro' => 'Falha ao salvar o áudio no disco.'];
+        }
+        return ['sucesso' => true, 'erro' => null];
+    }
 }
