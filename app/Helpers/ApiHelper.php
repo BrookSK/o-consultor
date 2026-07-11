@@ -2071,7 +2071,13 @@ REGRAS PARA CONTEÚDO DE NOTÍCIA (OBRIGATÓRIAS):
                     . "SLIDE 1 = CAPA (gancho curto e provocativo, sem entregar tudo). "
                     . "REGRA DE COMPLETUDE (OBRIGATÓRIA): {$distribuicao} "
                     . "{$notaFechamento} "
-                    . "Cada slide de conteúdo dá continuidade ao anterior (raciocínio que progride), NÃO são várias capas nem frases soltas. Preencha TODOS os {$qtdMiolo} slides de conteúdo com substância real, sem encher linguiça, sem repetir e sem deixar a ideia incompleta.";
+                    . "FLUIDEZ NARRATIVA (CRÍTICO — o carrossel deve ser UMA história contínua, não frases soltas): "
+                    . "1) Escreva TODOS os slides juntos como um roteiro único, revisando se um leva naturalmente ao outro. "
+                    . "2) Cada slide de conteúdo começa com um 'texto_secundario' que é um RÓTULO/CONECTOR curto e CONVIDATIVO que orienta a leitura (ex.: 'Entenda o caso', 'O que descobriram', 'Por que isso te afeta', 'O risco real', 'O que fazer agora'), e o 'texto' desenvolve esse ponto. "
+                    . "3) Use TRANSIÇÕES entre slides: o final de um slide deve deixar um gancho ou pergunta que o próximo responde (ex.: termina com 'Mas por que isso importa para você?' e o próximo começa respondendo). "
+                    . "4) PROIBIDO frases genéricas e vazias como 'isso afeta seu dia a dia' sem explicar COMO afeta. Seja concreto: diga exatamente o que muda, o que se perde, o que fazer. "
+                    . "5) O slide 2 NÃO pode já falar de risco/solução: ele deve APRESENTAR o caso primeiro. Risco vem depois de explicar o fato; solução vem por último. Respeite a ordem: fato -> impacto/dor -> caminho. "
+                    . "6) Mantenha o MESMO fio condutor e vocabulário do começo ao fim (a mesma 'conversa'), como se fosse uma pessoa explicando calmamente para um empresário. Nada de pular assunto.";
                 break;
             case 'post':
                 $instrucoesTipo = 'Para POST gere no MÁXIMO 3 imagens (idealmente 1). JSON: {\"slides\": [{\"numero\": 1, \"tipo\": \"unico\", \"texto\": \"conteúdo principal\", \"prompt_imagem\": \"descrição da cena\"}], \"legenda\": \"texto da legenda\", \"hashtags\": \"#tag1 #tag2\"}. NÃO ultrapasse 3 itens no array slides.';

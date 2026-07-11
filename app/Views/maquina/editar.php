@@ -460,30 +460,31 @@ async function salvarImagemComLogo() {
         <p class="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded p-3 mb-3">Nenhum logo cadastrado no Brand Book desta marca. Envie o logo no Brand Book para posicioná-lo aqui.</p>
         <?php endif; ?>
         <p class="text-xs text-gray-500 mb-2">Arraste o logo para posicionar e use o quadradinho azul (canto inferior direito do logo) para redimensionar.</p>
-        <div class="w-full overflow-auto bg-gray-900 rounded-lg flex items-center justify-center" style="max-height:60vh;">
-            <canvas id="editor-logo-canvas" class="max-w-full h-auto touch-none"
+        <div class="w-full bg-gray-900 rounded-lg flex items-center justify-center" style="height:60vh;">
+            <canvas id="editor-logo-canvas" class="touch-none" style="max-width:100%;max-height:60vh;object-fit:contain;"
                 onmousedown="editorLogoMouseDown(event)" onmousemove="editorLogoMouseMove(event)" onmouseup="editorLogoMouseUp()" onmouseleave="editorLogoMouseUp()"
                 ontouchstart="editorLogoMouseDown(event)" ontouchmove="editorLogoMouseMove(event)" ontouchend="editorLogoMouseUp()"></canvas>
         </div>
         <div class="flex flex-wrap gap-2 mt-4">
             <button id="btn-salvar-logo" onclick="salvarImagemComLogo()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700">💾 Salvar imagem com logo</button>
-            <button onclick="baixarCanvasEditor()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">⬇️ Baixar imagem alterada</button>
+            <button onclick="baixarCanvasEditor(true)" class="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">⬇️ Baixar com logo</button>
+            <button onclick="baixarCanvasEditor(false)" class="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">⬇️ Baixar sem logo</button>
             <button onclick="fecharEditorLogo()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">Cancelar</button>
         </div>
     </div>
 </div>
 <script>
-// Download da imagem alterada (canvas) direto no navegador.
-function baixarCanvasEditor() {
+// Download da imagem (canvas) direto no navegador — com ou sem o logo.
+function baixarCanvasEditor(comLogo) {
     const canvas = document.getElementById('editor-logo-canvas');
     if (!canvas || !editorLogo.baseImg) return;
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(editorLogo.baseImg, 0, 0, canvas.width, canvas.height);
-    if (editorLogo.logoImg) ctx.drawImage(editorLogo.logoImg, editorLogo.x, editorLogo.y, editorLogo.w, editorLogo.h);
+    if (comLogo && editorLogo.logoImg) ctx.drawImage(editorLogo.logoImg, editorLogo.x, editorLogo.y, editorLogo.w, editorLogo.h);
     try {
         const a = document.createElement('a');
-        a.download = 'imagem-com-logo.png';
+        a.download = comLogo ? 'imagem-com-logo.png' : 'imagem-original.png';
         a.href = canvas.toDataURL('image/png');
         a.click();
     } catch (e) { alert('Falha ao exportar (CORS).'); }

@@ -1857,12 +1857,15 @@ class MaquinaController
             if ($papel === 'fechamento') {
                 $instrucaoTexto = ' ARTE DE FECHAMENTO DE CARROSSEL: composição minimalista e muito CLEAN, fundo simples e uniforme com bastante espaço negativo, transmitindo encerramento elegante. NÃO escreva headline nem títulos grandes. O elemento central é o LOGO da marca, bem posicionado e com respiro. Opcionalmente, uma frase curta e discreta de chamada final (CTA) em fonte fina, pequena, alinhada de forma equilibrada — mas o protagonista é o logo. Visual sóbrio e profissional.';
             } elseif ($papel === 'miolo' && $tituloImg !== '') {
-                // MIOLO: slide de CONTEÚDO. O texto é informativo (conta a notícia),
-                // renderizado como um bloco de leitura limpo — NÃO como headline de capa.
+                // MIOLO: slide de CONTEÚDO. Rótulo convidativo em destaque (topo) +
+                // parágrafo informativo abaixo. Layout de leitura limpo (não capa).
+                $rotuloMiolo = $subImg !== '' ? $subImg : '';
                 $instrucaoTexto = ' SLIDE DE CONTEÚDO (miolo do carrossel), foco em LEITURA e informação, mantendo a identidade visual (cores/tipografia) das referências da marca:'
-                    . ' Escreva o TEXTO A SEGUIR de forma legível e bem diagramada, EXATAMENTE como fornecido (em português, sem alterar, traduzir ou trocar palavras), como um bloco de texto de leitura (título curto de apoio opcional + parágrafo), alinhado à esquerda: "' . $tituloImg . '".'
-                    . ($subImg !== '' ? ' Complemento (fonte menor): "' . $subImg . '".' : '')
-                    . ' FUNDO CLEAN e uniforme, com bastante espaço livre e alto contraste entre texto e fundo para leitura confortável. Poucos elementos gráficos, muito espaço negativo. Tipografia da marca, hierarquia clara (um trecho em destaque, o restante em peso normal).'
+                    . ($rotuloMiolo !== ''
+                        ? ' RÓTULO SUPERIOR em destaque (bold, cor de acento da marca, alinhado à esquerda, no topo do bloco de texto), EXATAMENTE: "' . $rotuloMiolo . '".'
+                        : '')
+                    . ' PARÁGRAFO de conteúdo abaixo do rótulo, em fonte de leitura (peso normal), EXATAMENTE como fornecido (em português, sem alterar, traduzir ou trocar palavras), alinhado à esquerda: "' . $tituloImg . '".'
+                    . ' FUNDO CLEAN e uniforme, com bastante espaço livre e alto contraste entre texto e fundo para leitura confortável. Poucos elementos gráficos, muito espaço negativo. Tipografia da marca, hierarquia clara (rótulo em destaque, parágrafo em peso normal).'
                     . ' Mantenha CONTINUIDADE visual com os outros slides do carrossel (mesma linha estética), mas com layout próprio de slide de conteúdo.'
                     . ' GRAFIA (CRÍTICO): renderize cada palavra com precisão, letra por letra, sem erros de ortografia. Se o texto for longo demais para caber com nitidez, priorize legibilidade reduzindo o tamanho, mas NÃO troque nem invente letras.';
             } elseif ($tituloImg !== '') {
