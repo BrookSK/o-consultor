@@ -431,18 +431,21 @@ class MaquinaController
     private function criarHeadlineImagem(string $textoSlide, string $subtexto, string $tema, string $tipo): array
     {
         $base = trim($textoSlide) !== '' ? $textoSlide : $tema;
-        $fallback = ['titulo' => $base, 'subtitulo' => $subtexto, 'destaque' => ''];
+        $fallback = ['titulo' => $base, 'subtitulo' => $subtexto, 'destaque' => '', 'tag' => ''];
         if ($base === '') return $fallback;
 
         $prompt = "Você é diretor de criação de posts para redes sociais. A partir do conteúdo abaixo, crie uma CHAMADA visual CURTÍSSIMA e IMPACTANTE para aparecer em destaque na imagem (estilo capa de post), captando a essência e provocando curiosidade.\n"
             . "Tema: {$tema}\nTexto do slide: {$textoSlide}\n"
             . "Regras OBRIGATÓRIAS:\n"
-            . "- TÍTULO: no MÁXIMO 4 palavras (idealmente 2 a 3). Quanto MENOS texto, melhor. Provocativo (tensão, número ou promessa curta).\n"
-            . "- SUBTÍTULO: opcional e curtíssimo, no MÁXIMO 4 palavras. Deixe VAZIO se o título já for forte sozinho.\n"
+            . "- TAG: um rótulo de contexto curto e COMPLETO (2 a 3 palavras), que faça sentido sozinho (ex.: 'ALERTA DE SEGURANCA', 'ATUALIZACAO CRITICA'). NUNCA um fragmento cortado de frase.\n"
+            . "- TÍTULO: uma frase/expressão CURTA e COMPLETA (2 a 5 palavras), que faça sentido sozinha. Provocativo (tensão, número ou promessa). JAMAIS corte no meio nem deixe reticências.\n"
+            . "- SUBTÍTULO: opcional, uma frase CURTA e COMPLETA (até 5 palavras) que faça sentido sozinha. Deixe VAZIO se o título já bastar. NUNCA deixe pela metade.\n"
+            . "- REGRA DE OURO: cada campo deve ser uma ideia INTEIRA e legível. É melhor menos palavras completas do que uma frase longa cortada. Nada de frases inacabadas, sem verbo ou penduradas.\n"
             . "- Use palavras SIMPLES e comuns em português; EVITE termos técnicos, siglas, nomes próprios difíceis e QUALQUER palavra em inglês (o texto será desenhado na imagem e palavras complexas saem com erros de grafia).\n"
+            . "- COMUNICAÇÃO IMPESSOAL E PROFISSIONAL: NÃO se dirija ao leitor. É PROIBIDO usar 'sua empresa', 'seu', 'você', 'te'. Fale de forma geral (ex.: 'Empresas expostas', 'O risco que poucos veem').\n"
             . "- Prefira palavras curtas e de escrita fácil. Sem abreviações, sem números romanos.\n"
             . "- Português correto, com acentuação.\n"
-            . "Responda APENAS em JSON: {\"titulo\": \"...\", \"subtitulo\": \"...\", \"destaque\": \"1 palavra do título para dar ênfase visual\"}";
+            . "Responda APENAS em JSON: {\"tag\": \"...\", \"titulo\": \"...\", \"subtitulo\": \"...\", \"destaque\": \"1 palavra do título para dar ênfase visual\"}";
 
         try {
             $res = ApiHelper::chamarAnalise($prompt, true);
@@ -454,6 +457,7 @@ class MaquinaController
                         'titulo' => $titulo,
                         'subtitulo' => $this->limparTextoSlide((string) ($c['subtitulo'] ?? $subtexto)),
                         'destaque' => $this->limparTextoSlide((string) ($c['destaque'] ?? '')),
+                        'tag' => $this->limparTextoSlide((string) ($c['tag'] ?? '')),
                     ];
                 }
             }
@@ -1824,32 +1828,27 @@ class MaquinaController
                 $tituloImg = $headlineArte['titulo'] ?: $headline;
                 $subImg = $headlineArte['subtitulo'] ?: $subheadline;
                 $palavraDestaque = $headlineArte['destaque'] ?? '';
+                $tagArte = trim((string) ($headlineArte['tag'] ?? ''));
             } else {
                 // Miolo: usa o texto real do slide (curto), sem virar capa.
                 $tituloImg = $headline;
                 $subImg = $subheadline;
                 $palavraDestaque = '';
+                $tagArte = '';
             }
             // Remove pontuação final exagerada (?, !) para não virar um símbolo gigante na arte.
             $tituloImg = rtrim(trim($tituloImg), '?!.');
-            // Rede de segurança: menos texto = menos erro de grafia no gpt-image-1.
-            // Limita o título a no máx. 4 palavras e o subtítulo a no máx. 4.
-            $limitarPalavras = static function (string $t, int $max): string {
-                $p = preg_split('/\s+/', trim($t)) ?: [];
-                $p = array_values(array_filter($p, fn($x) => $x !== ''));
-                return implode(' ', array_slice($p, 0, $max));
-            };
-            // Capa/único: headline curtíssima (menos erro de grafia). Miolo: pode
-            // ter um pouco mais de texto por ser conteúdo informativo (mas ainda enxuto).
-            $maxTitulo = ($papel === 'miolo') ? 22 : 4;
-            $maxSub = ($papel === 'miolo') ? 20 : 4;
-            $tituloImg = $limitarPalavras($tituloImg, $maxTitulo);
-            $subImg = $limitarPalavras($subImg, $maxSub);
+            // IMPORTANTE: NUNCA truncar mecanicamente o texto (isso corta frases no
+            // meio e deixa a arte "analfabeta"). O texto deve ser SEMPRE completo.
+            // A brevidade é responsabilidade da IA (criarHeadlineImagem já pede curto
+            // e completo). Aqui apenas normalizamos espaços.
+            $tituloImg = trim(preg_replace('/\s+/', ' ', $tituloImg));
+            $subImg = trim(preg_replace('/\s+/', ' ', $subImg));
             // Revisão ortográfica do título e subtítulo antes de irem para a imagem
             // (o gerador de imagem erra letras; garantir grafia correta na arte).
             $revisado = $this->revisarOrtografia([$tituloImg, $subImg]);
-            $tituloImg = $limitarPalavras($revisado[0] ?? $tituloImg, $maxTitulo);
-            $subImg = $limitarPalavras($revisado[1] ?? $subImg, $maxSub);
+            $tituloImg = trim(preg_replace('/\s+/', ' ', $revisado[0] ?? $tituloImg));
+            $subImg = trim(preg_replace('/\s+/', ' ', $revisado[1] ?? $subImg));
 
             $instrucaoTexto = '';
             // FECHAMENTO: o último slide é uma arte de encerramento com o LOGO da
@@ -1867,12 +1866,20 @@ class MaquinaController
                     . ' PARÁGRAFO de conteúdo abaixo do rótulo, em fonte de leitura (peso normal), EXATAMENTE como fornecido (em português, sem alterar, traduzir ou trocar palavras), alinhado à esquerda: "' . $tituloImg . '".'
                     . ' FUNDO CLEAN e uniforme, com bastante espaço livre e alto contraste entre texto e fundo para leitura confortável. Poucos elementos gráficos, muito espaço negativo. Tipografia da marca, hierarquia clara (rótulo em destaque, parágrafo em peso normal).'
                     . ' Mantenha CONTINUIDADE visual com os outros slides do carrossel (mesma linha estética), mas com layout próprio de slide de conteúdo.'
-                    . ' GRAFIA (CRÍTICO): renderize cada palavra com precisão, letra por letra, sem erros de ortografia. Se o texto for longo demais para caber com nitidez, priorize legibilidade reduzindo o tamanho, mas NÃO troque nem invente letras.';
+                    . ' GRAFIA E COMPLETUDE (CRÍTICO): renderize CADA palavra por inteiro, letra por letra, sem erros. É PROIBIDO cortar, truncar ou deixar frases/palavras pela metade. TODO o texto deve caber COMPLETO: se necessário, reduza a fonte e/ou use mais linhas até caber inteiro, mas NUNCA omita ou corte texto, nem troque letras.';
             } elseif ($tituloImg !== '') {
-                // Tag superior curta (rótulo de contexto, 2-3 primeiras palavras do
-                // tema, sem cortar no meio de uma palavra).
-                $palavrasTema = preg_split('/\s+/', trim((string) ($conteudo['tema'] ?? 'DESTAQUE')));
-                $tagSuperior = strtoupper(implode(' ', array_slice(array_filter($palavrasTema), 0, 3)));
+                // Tag superior: rótulo COMPLETO gerado pela IA (nunca um fragmento
+                // cortado do tema). Se a IA não devolveu, usa um rótulo genérico.
+                if (!empty($tagArte)) {
+                    $tagSuperior = strtoupper($tagArte);
+                } else {
+                    // Fallback: usa o tema inteiro se for curto (até 4 palavras),
+                    // senão um rótulo neutro — nunca corta no meio de uma frase.
+                    $palavrasTema = array_values(array_filter(preg_split('/\s+/', trim((string) ($conteudo['tema'] ?? ''))), fn($x) => $x !== ''));
+                    $tagSuperior = (count($palavrasTema) > 0 && count($palavrasTema) <= 4)
+                        ? strtoupper(implode(' ', $palavrasTema))
+                        : 'FIQUE POR DENTRO';
+                }
                 // IMPORTANTE: reestruturar APENAS a HIERARQUIA/ESTRUTURA do texto.
                 // Paleta, cores, tipografia da marca e estética vêm dos TEMPLATES de
                 // referência — não impor cores/paleta aqui.
@@ -1885,7 +1892,7 @@ class MaquinaController
                     . ' ESPAÇAMENTO E POSIÇÃO: bloco de texto concentrado numa única área da METADE INFERIOR do frame, porém ELEVADO cerca de 20% acima da base (deixando uma margem inferior generosa/respiro abaixo do texto), ocupando no MÁXIMO 40-50% da altura; alinhado à esquerda, nunca colado na borda de baixo, nunca espalhado ou centralizado no meio da composição.'
                     . ' PONTUAÇÃO: evite símbolos de pontuação em tamanho desproporcional; se houver, mantenha no mesmo tamanho da fonte do título, nunca maior.'
                     . ' DESIGN AVANÇADO (acabamento editorial premium, nível de revista/branding): use grid e alinhamento precisos, generoso espaço negativo, uma pequena linha/filete ou elemento gráfico sutil de acento para ancorar o bloco, contraste forte entre o título pesado e o subtítulo fino, e integração elegante entre o texto e a cena (o texto pousa sobre uma área de respiro da imagem, sem poluição). Composição sofisticada, limpa e moderna — nada de visual amador tipo "documento de Word".'
-                    . ' GRAFIA (CRÍTICO): escreva o texto EXATAMENTE como fornecido, letra por letra, em português correto e com acentuação certa. NÃO invente, traduza, abrevie nem troque letras. Como o texto é curto, capriche na precisão de cada caractere. Se não conseguir renderizar uma palavra com perfeição, prefira reduzir o tamanho a escrevê-la errada.'
+                    . ' GRAFIA E COMPLETUDE (CRÍTICO): escreva CADA texto (tag, título e subtítulo) POR INTEIRO e EXATAMENTE como fornecido, letra por letra, em português correto e com acentuação. É TERMINANTEMENTE PROIBIDO cortar, truncar, abreviar ou deixar qualquer palavra/frase pela metade (nada de reticências, palavras cortadas ou linhas interrompidas). Todo texto deve caber COMPLETO dentro da arte: se faltar espaço, REDUZA o tamanho da fonte e/ou quebre em mais linhas até caber inteiro — mas NUNCA omita ou corte texto. Não invente nem troque letras.'
                     . ($papel === 'miolo'
                         ? ' SLIDE DE MIOLO (LEITURA LIMPA): este é um slide de conteúdo no meio do carrossel. O FUNDO deve ser CLEAN, simples e com bastante espaço livre, priorizando a LEGIBILIDADE do texto. Evite cena visual pesada ou poluída atrás do texto; menos elementos, mais respiro. A composição deve manter continuidade visual com os slides vizinhos (mesma linha estética), variando o suficiente para não ficar repetitiva.'
                         : ($papel === 'capa'

@@ -41,9 +41,9 @@
 
     <!-- ABA GERAR -->
     <div x-show="aba === 'gerar'" x-transition>
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 min-w-0">
             <!-- Formulário -->
-            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 min-w-0">
                 <h3 class="font-semibold text-gray-800 mb-4">Configurar Geração</h3>
                 <form id="form-gerar" class="space-y-4">
                     <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
@@ -901,6 +901,9 @@ document.getElementById('form-gerar').addEventListener('submit', async function(
             html += '<span id="status-imagens" class="flex-1 px-3 py-2 border border-gray-300 rounded text-xs text-gray-500 text-center">💾 Rascunho salvo</span>';
             html += '<button type="button" id="btn-cancelar-imagens" onclick="cancelarTodasImagens()" class="hidden px-3 py-2 border border-red-300 text-red-600 rounded text-xs font-medium hover:bg-red-50">✕ Cancelar todas</button>';
             html += '</div></div>';
+            // Remove a centralização do estado vazio para o conteúdo ocupar 100%
+            // da largura (senão o carrossel não encolhe e as setas somem).
+            preview.className = 'min-h-[400px] min-w-0 w-full overflow-hidden';
             preview.innerHTML = html;
 
             if (typeof Toast !== 'undefined') Toast.sucesso(data.mensagem || 'Texto gerado!');
