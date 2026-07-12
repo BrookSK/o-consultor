@@ -190,6 +190,8 @@ const VIDEO_CONF = {
     videoUrl: <?= json_encode($dados['video_url'] ?? '') ?>,
 };
 </script>
-<script src="<?= APP_URL ?>/assets/js/video-editor.js?v=1"></script>
+<script>
+<?php echo file_get_contents(PUBLIC_PATH . '/assets/js/video-editor.js'); ?>
+</script>
 <?php $conteudo = ob_get_clean(); ?>
 <?php require VIEW_PATH . '/layouts/layout.php'; ?>
