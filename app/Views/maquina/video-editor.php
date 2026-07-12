@@ -192,8 +192,8 @@
 </div>
 
 <script>
-// Escapa "/" (JSON padrão) para nunca gerar "</script>" dentro do JSON e
-// quebrar o bloco. Sem JSON_UNESCAPED_SLASHES de propósito.
+// Config do editor. Usa JSON_HEX_TAG para escapar sinais de menor/maior e
+// evitar que qualquer conteudo feche a tag de script no meio do bloco.
 window.VIDEO_CONF = {
     conteudoId: <?= (int) $cont['id'] ?>,
     projetoId: <?= (int) $dados['projeto_id'] ?>,
