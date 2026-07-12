@@ -456,8 +456,15 @@ class VideoController
             $h = (int) ($estado['formato']['h'] ?? 1920);
             $fps = (int) ($estado['formato']['fps'] ?? 30);
 
+            // Velocidade da transição (duração do crossfade, em segundos).
+            $velTrans = (float) ($estado['transicao_velocidade'] ?? 0.5);
+            if ($velTrans < 0.1) $velTrans = 0.1;
+            if ($velTrans > 2) $velTrans = 2;
+
             // 1) Gera um segmento de vídeo por imagem (com duração + movimento).
             $segmentos = [];
+            $segDur = [];   // duração de cada segmento
+            $segTrans = []; // transição de ENTRADA de cada segmento (do 2º em diante)
             $totalImgs = count($estado['imagens']);
             foreach ($estado['imagens'] as $i => $clip) {
                 $imgAbs = $this->urlParaAbs((string) ($clip['url'] ?? ''));
@@ -471,25 +478,65 @@ class VideoController
                     . ' -vf ' . escapeshellarg($vf)
                     . ' -c:v libx264 -pix_fmt yuv420p -an ' . escapeshellarg($seg) . ' 2>&1';
                 exec($cmd, $out, $rc);
-                if ($rc === 0 && is_file($seg)) $segmentos[] = $seg;
+                if ($rc === 0 && is_file($seg)) {
+                    $segmentos[] = $seg;
+                    $segDur[] = $dur;
+                    $segTrans[] = $this->transicaoFFmpeg((string) ($clip['transicao'] ?? 'fade'));
+                }
                 $this->progresso($filaId, 5 + (int) (35 * (($i + 1) / max(1, $totalImgs))), 'Renderizando imagem ' . ($i + 1) . '/' . $totalImgs);
             }
             if (empty($segmentos)) {
                 throw new \RuntimeException('Nenhum segmento de vídeo gerado.');
             }
 
-            // 2) Concatena os segmentos.
+            // 2) Junta os segmentos. Se houver mais de um e transições válidas, usa
+            //    xfade (transições modernas). Senão, concat simples.
             $this->progresso($filaId, 45, 'Juntando cenas');
-            $listaTxt = $tmp . '/lista.txt';
-            $conteudoLista = '';
-            foreach ($segmentos as $s) { $conteudoLista .= "file '" . str_replace("'", "'\\''", $s) . "'\n"; }
-            file_put_contents($listaTxt, $conteudoLista);
             $videoSemAudio = $tmp . '/video_mudo.mp4';
-            $cmdConcat = escapeshellarg($ffmpeg) . ' -y -f concat -safe 0 -i ' . escapeshellarg($listaTxt)
-                . ' -c:v libx264 -pix_fmt yuv420p -r ' . $fps . ' ' . escapeshellarg($videoSemAudio) . ' 2>&1';
-            exec($cmdConcat, $o2, $rc2);
-            if ($rc2 !== 0 || !is_file($videoSemAudio)) {
-                throw new \RuntimeException('Falha ao concatenar as cenas.');
+            $usouXfade = false;
+
+            if (count($segmentos) > 1) {
+                // Monta a cadeia de xfade encadeada entre os segmentos.
+                $inputs = '';
+                foreach ($segmentos as $s) { $inputs .= ' -i ' . escapeshellarg($s); }
+                $filtros = [];
+                $prev = '[0:v]';
+                $offset = 0.0;
+                $ok = true;
+                for ($k = 1; $k < count($segmentos); $k++) {
+                    $trans = $segTrans[$k] ?: 'fade';
+                    if ($trans === 'none') { $ok = false; break; } // "sem transição" -> usa concat
+                    // offset = soma das durações anteriores - (k)*velTrans (sobreposição).
+                    $offset += $segDur[$k - 1] - $velTrans;
+                    if ($offset < 0) $offset = 0;
+                    $out = ($k === count($segmentos) - 1) ? '[vout]' : ('[v' . $k . ']');
+                    $filtros[] = $prev . '[' . $k . ':v]xfade=transition=' . $trans . ':duration=' . $velTrans . ':offset=' . round($offset, 3) . $out;
+                    $prev = $out;
+                }
+                if ($ok) {
+                    $fc = implode(';', $filtros);
+                    $cmdX = escapeshellarg($ffmpeg) . ' -y' . $inputs
+                        . ' -filter_complex ' . escapeshellarg($fc)
+                        . ' -map ' . escapeshellarg('[vout]')
+                        . ' -c:v libx264 -pix_fmt yuv420p -r ' . $fps . ' ' . escapeshellarg($videoSemAudio) . ' 2>&1';
+                    exec($cmdX, $ox, $rcx);
+                    $usouXfade = ($rcx === 0 && is_file($videoSemAudio));
+                    if (!$usouXfade) { Logger::error('[VIDEO] xfade falhou, usando concat. ' . implode(' | ', array_slice((array) $ox, -3))); }
+                }
+            }
+
+            if (!$usouXfade) {
+                // Fallback: concatenação simples (sem transição de crossfade).
+                $listaTxt = $tmp . '/lista.txt';
+                $conteudoLista = '';
+                foreach ($segmentos as $s) { $conteudoLista .= "file '" . str_replace("'", "'\\''", $s) . "'\n"; }
+                file_put_contents($listaTxt, $conteudoLista);
+                $cmdConcat = escapeshellarg($ffmpeg) . ' -y -f concat -safe 0 -i ' . escapeshellarg($listaTxt)
+                    . ' -c:v libx264 -pix_fmt yuv420p -r ' . $fps . ' ' . escapeshellarg($videoSemAudio) . ' 2>&1';
+                exec($cmdConcat, $o2, $rc2);
+                if ($rc2 !== 0 || !is_file($videoSemAudio)) {
+                    throw new \RuntimeException('Falha ao juntar as cenas.');
+                }
             }
 
             // 3) Áudio (narração + música com mixagem opcional).
@@ -566,6 +613,47 @@ class VideoController
                 ['s' => $novoStatus, 'm' => substr($e->getMessage(), 0, 490), 'id' => $filaId]);
             Logger::error('Falha ao renderizar vídeo: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Mapeia a transição escolhida no editor para o nome aceito pelo filtro
+     * xfade do FFmpeg. 'nenhuma' -> 'none' (usa concat, sem crossfade).
+     */
+    private function transicaoFFmpeg(string $t): string
+    {
+        $mapa = [
+            'fade' => 'fade',
+            'fadeblack' => 'fadeblack',
+            'fadewhite' => 'fadewhite',
+            'dissolve' => 'dissolve',
+            'slideleft' => 'slideleft',
+            'slideright' => 'slideright',
+            'slideup' => 'slideup',
+            'slidedown' => 'slidedown',
+            'wipeleft' => 'wipeleft',
+            'wiperight' => 'wiperight',
+            'smoothleft' => 'smoothleft',
+            'smoothright' => 'smoothright',
+            'smoothup' => 'smoothup',
+            'smoothdown' => 'smoothdown',
+            'circleopen' => 'circleopen',
+            'circleclose' => 'circleclose',
+            'circlecrop' => 'circlecrop',
+            'zoomin' => 'zoomin',
+            'pixelize' => 'pixelize',
+            'radial' => 'radial',
+            'diagtl' => 'diagtl',
+            'hlslice' => 'hlslice',
+            'vuslice' => 'vuslice',
+            // Compatibilidade com valores antigos.
+            'slide_esquerda' => 'slideleft',
+            'slide_direita' => 'slideright',
+            'zoom' => 'zoomin',
+            'blur' => 'fade',
+            'nenhuma' => 'none',
+        ];
+        $t = strtolower(trim($t));
+        return $mapa[$t] ?? 'fade';
     }
 
     /** Filtro FFmpeg de movimento (Ken Burns simples) por tipo. */
