@@ -270,7 +270,7 @@ function veRenderBiblioteca(){
         card.querySelector('[data-act="dup"]').addEventListener('click',function(e){e.stopPropagation();VE.estado.imagens.splice(i+1,0,Object.assign({},c));veRenderTudo();});
         card.querySelector('[data-act="dur"]').addEventListener('change',function(e){c.duracao=Math.max(0.5,parseFloat(e.target.value)||3);veRenderTimeline();veRenderPreview();});
         card.querySelector('[data-act="mov"]').addEventListener('change',function(e){c.movimento=e.target.value;});
-        card.querySelector('[data-act="tr"]').addEventListener('change',function(e){c.transicao=e.target.value;});
+        card.querySelector('[data-act="tr"]').addEventListener('change',function(e){c.transicao=e.target.value;vePreverTransicao(i);});
         card.addEventListener('dragstart',function(e){e.dataTransfer.setData('idx',i);});
         card.addEventListener('dragover',function(e){e.preventDefault();});
         card.addEventListener('drop',function(e){e.preventDefault();var from=parseInt(e.dataTransfer.getData('idx'),10);if(isNaN(from)||from===i)return;var mv=VE.estado.imagens.splice(from,1)[0];VE.estado.imagens.splice(i,0,mv);VE.clipe=i;veRenderTudo();});
@@ -286,8 +286,8 @@ function veRenderProps(){
     box.querySelector('#prop-dur').addEventListener('change',function(e){c.duracao=Math.max(0.5,parseFloat(e.target.value)||3);veRenderBiblioteca();veRenderTimeline();});
     box.querySelector('#prop-dur-todas').addEventListener('click',function(){var d=c.duracao;VE.estado.imagens.forEach(function(x){x.duracao=d;});veRenderTudo();});
     box.querySelector('#prop-mov').addEventListener('change',function(e){c.movimento=e.target.value;veRenderBiblioteca();});
-    box.querySelector('#prop-tr').addEventListener('change',function(e){c.transicao=e.target.value;veRenderBiblioteca();});
-    box.querySelector('#prop-tr-todas').addEventListener('click',function(){var t=c.transicao;VE.estado.imagens.forEach(function(x){x.transicao=t;});veRenderBiblioteca();});
+    box.querySelector('#prop-tr').addEventListener('change',function(e){c.transicao=e.target.value;veRenderBiblioteca();vePreverTransicao(VE.clipe);});
+    box.querySelector('#prop-tr-todas').addEventListener('click',function(){var t=c.transicao;VE.estado.imagens.forEach(function(x){x.transicao=t;});veRenderBiblioteca();vePreverTransicao(VE.clipe>0?VE.clipe:1);});
 }
 function veRenderTimeline(){
     var tr=document.getElementById('track-imagens');
@@ -362,13 +362,30 @@ function veRenderPreview(){
 }
 function veLoop(ts){if(!VE.tocando)return;if(!VE.ultimoTs)VE.ultimoTs=ts;VE.tempo+=(ts-VE.ultimoTs)/1000;VE.ultimoTs=ts;if(VE.tempo>=veDuracaoTotal()){VE.tempo=0;VE.tocando=false;veBtnPlay();}veRenderPreview();if(VE.tocando)requestAnimationFrame(veLoop);}
 function veBtnPlay(){var b=document.getElementById('btn-play');if(b)b.textContent=VE.tocando?'II':'>';}
+// Toca uma PREVIA da transicao de ENTRADA da cena idx (para o usuario ver o efeito).
+function vePreverTransicao(idx){
+    if(idx<=0){ // 1a cena nao tem transicao de entrada; mostra do inicio
+        VE.tempo=0;
+    } else {
+        var acc=0;for(var k=0;k<idx;k++){acc+=parseFloat(VE.estado.imagens[k].duracao)||3;}
+        var vel=VE.estado.transicao_velocidade||0.5;
+        VE.tempo=Math.max(0,acc-Math.min(0.4,vel*0.5)); // comeca um pouco antes da virada
+    }
+    var vel2=VE.estado.transicao_velocidade||0.5;
+    var alvoFim=VE.tempo+vel2+0.6;
+    VE.tocando=true;VE.ultimoTs=0;veBtnPlay();
+    requestAnimationFrame(veLoop);
+    // Para automaticamente logo apos a transicao.
+    if(VE._prevTimer)clearTimeout(VE._prevTimer);
+    VE._prevTimer=setTimeout(function(){VE.tocando=false;veBtnPlay();},(vel2+0.6)*1000);
+}
 function togglePlay(){VE.tocando=!VE.tocando;VE.ultimoTs=0;veBtnPlay();if(VE.tocando)requestAnimationFrame(veLoop);}
 function reiniciarPreview(){VE.tempo=0;veRenderPreview();}
 function avancarPreview(){VE.tempo=Math.min(veDuracaoTotal(),VE.tempo+1);veRenderPreview();}
 function voltarPreview(){VE.tempo=Math.max(0,VE.tempo-1);veRenderPreview();}
 function buscarTempo(v){VE.tempo=(v/1000)*(veDuracaoTotal()||1);veRenderPreview();}
 function toggleMovAuto(el){VE.estado.movimento_auto=el.checked;veRenderBiblioteca();}
-function setTransicaoVel(v){VE.estado.transicao_velocidade=parseFloat(v)||0.5;}
+function setTransicaoVel(v){VE.estado.transicao_velocidade=parseFloat(v)||0.5;vePreverTransicao(VE.clipe>0?VE.clipe:1);}
 function sincronizarComNarracao(){var a=document.getElementById('narracao-audio');if(!VE.estado.narracao.url||!a||!a.duration||!isFinite(a.duration)){alert('Carregue uma narracao primeiro (e aguarde carregar).');return;}var n=VE.estado.imagens.length;if(n===0)return;var d=Math.max(0.5,a.duration/n);VE.estado.imagens.forEach(function(c){c.duracao=Math.round(d*10)/10;});veRenderTudo();}
 function adicionarImagem(input){if(!input.files||!input.files[0])return;var fd=new FormData();fd.append('csrf_token',VE.conf.csrf);fd.append('conteudo_id',VE.conf.conteudoId);fd.append('imagem',input.files[0]);fetch(VE.conf.base+'/maquina-de-conteudo/video/upload-imagem',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(d){if(d.sucesso&&d.url){VE.estado.imagens.push({url:d.url,duracao:3,transicao:'fade',movimento:'zoom_in'});veRenderTudo();}else alert(d.erro||'Falha no upload.');}).catch(function(){alert('Erro de conexao.');});input.value='';}
 function uploadAudio(input,tipo){
