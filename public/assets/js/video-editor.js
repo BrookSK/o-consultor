@@ -449,6 +449,7 @@
 
     // ---------- Init ----------
     function renderTudo() { renderBiblioteca(); renderPropsClipe(); renderTimeline(); renderTextos(); renderPreviewFrame(); }
+    try { console.log('[VIDEO] editor iniciado. imagens=', (estado.imagens || []).length); } catch (e) {}
     aplicarNarracao(); aplicarMusica();
     renderTudo();
     // Autosave a cada 20s.

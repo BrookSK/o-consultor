@@ -28,7 +28,19 @@
                 <h4 class="text-sm font-semibold text-gray-700">🖼️ Imagens do post</h4>
             </div>
             <p class="text-[11px] text-gray-400 mb-2">As imagens são as que já foram geradas para este post.</p>
-            <div id="lista-imagens" class="space-y-2 max-h-[520px] overflow-y-auto"></div>
+            <div id="lista-imagens" class="space-y-2 max-h-[520px] overflow-y-auto">
+                <?php // Fallback server-side: mostra as imagens mesmo se o JS não rodar. ?>
+                <?php if (empty($dados['imagens_post'])): ?>
+                <p class="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded p-2">Este post ainda não tem imagens geradas. Gere as imagens na tela de edição do post antes de criar o vídeo.</p>
+                <?php else: ?>
+                <?php foreach ($dados['imagens_post'] as $ii => $iu): ?>
+                <div class="border rounded-lg p-2 bg-white flex gap-2 items-center">
+                    <img src="<?= htmlspecialchars($iu) ?>" class="w-14 h-14 object-cover rounded">
+                    <span class="text-[11px] text-gray-500">Cena <?= $ii + 1 ?></span>
+                </div>
+                <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
         </div>
     </div>
 
@@ -191,7 +203,15 @@ const VIDEO_CONF = {
 };
 </script>
 <script>
-<?php echo file_get_contents(PUBLIC_PATH . '/assets/js/video-editor.js'); ?>
+<?php
+    $jsVideo = @file_get_contents(PUBLIC_PATH . '/assets/js/video-editor.js');
+    if ($jsVideo === false || trim($jsVideo) === '') {
+        echo "console.error('[VIDEO] arquivo video-editor.js não encontrado em disco');";
+        echo "alert('Editor de vídeo indisponível: arquivo de script ausente no servidor. Publique public/assets/js/video-editor.js');";
+    } else {
+        echo $jsVideo;
+    }
+?>
 </script>
 <?php $conteudo = ob_get_clean(); ?>
 <?php require VIEW_PATH . '/layouts/layout.php'; ?>
