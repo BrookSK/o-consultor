@@ -192,15 +192,18 @@
 </div>
 
 <script>
-const VIDEO_CONF = {
+// Escapa "/" (JSON padrão) para nunca gerar "</script>" dentro do JSON e
+// quebrar o bloco. Sem JSON_UNESCAPED_SLASHES de propósito.
+window.VIDEO_CONF = {
     conteudoId: <?= (int) $cont['id'] ?>,
     projetoId: <?= (int) $dados['projeto_id'] ?>,
-    csrf: '<?= Csrf::token() ?>',
-    base: '<?= APP_URL ?>',
-    estado: <?= json_encode($dados['estado'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
-    imagensPost: <?= json_encode(array_values($dados['imagens_post'] ?? []), JSON_UNESCAPED_SLASHES) ?>,
-    videoUrl: <?= json_encode($dados['video_url'] ?? '') ?>,
+    csrf: <?= json_encode(Csrf::token()) ?>,
+    base: <?= json_encode(rtrim(APP_URL, '/')) ?>,
+    estado: <?= json_encode($dados['estado'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
+    imagensPost: <?= json_encode(array_values($dados['imagens_post'] ?? []), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>,
+    videoUrl: <?= json_encode($dados['video_url'] ?? '') ?>
 };
+console.log('[VIDEO] CONF', window.VIDEO_CONF && window.VIDEO_CONF.conteudoId, 'imgs=', (window.VIDEO_CONF.imagensPost||[]).length);
 </script>
 <script>
 /* Editor de video embutido (sem dependencia de arquivo externo). */
