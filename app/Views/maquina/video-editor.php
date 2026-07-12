@@ -202,16 +202,25 @@ const VIDEO_CONF = {
     videoUrl: <?= json_encode($dados['video_url'] ?? '') ?>,
 };
 </script>
-<script>
 <?php
-    $jsVideo = @file_get_contents(PUBLIC_PATH . '/assets/js/video-editor.js');
-    if ($jsVideo === false || trim($jsVideo) === '') {
-        echo "console.error('[VIDEO] arquivo video-editor.js não encontrado em disco');";
-        echo "alert('Editor de vídeo indisponível: arquivo de script ausente no servidor. Publique public/assets/js/video-editor.js');";
-    } else {
-        echo $jsVideo;
+    // Tenta várias localizações do JS do editor (o layout do deploy pode variar).
+    $possiveisJs = [
+        PUBLIC_PATH . '/assets/js/video-editor.js',
+        (defined('ROOT_PATH') ? ROOT_PATH . '/public/assets/js/video-editor.js' : ''),
+        __DIR__ . '/../../../public/assets/js/video-editor.js',
+    ];
+    $jsVideo = false;
+    foreach ($possiveisJs as $cam) {
+        if ($cam !== '' && is_file($cam)) { $jsVideo = @file_get_contents($cam); if ($jsVideo !== false && trim($jsVideo) !== '') break; }
     }
 ?>
+<?php if ($jsVideo !== false && trim($jsVideo) !== ''): ?>
+<script>
+<?= $jsVideo ?>
 </script>
+<?php else: ?>
+<!-- Fallback: carrega o JS por URL caso o arquivo não seja legível pelo PHP. -->
+<script src="<?= APP_URL ?>/assets/js/video-editor.js?v=2" onerror="console.error('[VIDEO] falha ao carregar video-editor.js por URL')"></script>
+<?php endif; ?>
 <?php $conteudo = ob_get_clean(); ?>
 <?php require VIEW_PATH . '/layouts/layout.php'; ?>
