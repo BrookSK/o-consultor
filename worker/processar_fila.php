@@ -43,12 +43,25 @@ require_once APP_PATH . '/Helpers/Logger.php';
 require_once APP_PATH . '/Models/Database.php';
 require_once APP_PATH . '/Models/Configuracao.php';
 
-// Lock simples para evitar execuções concorrentes
-$lockFile = ROOT_PATH . '/worker/fila.lock';
-$lockHandle = @fopen($lockFile, 'c');
-if ($lockHandle === false || !flock($lockHandle, LOCK_EX | LOCK_NB)) {
-    // Outra instância já está rodando
-    echo "Outra instância do worker já está em execução.\n";
+// POOL DE CONCORRÊNCIA: permitimos até N workers simultâneos (um por SOP do lote),
+// cada um com seu próprio slot de lock. O claim atômico da fila (processarProximoDaFila)
+// garante que dois workers nunca peguem o MESMO pedido. Assim SOPs de serviços
+// diferentes são gerados em paralelo, respeitando a dependência das fases DENTRO
+// de cada serviço (fase N só roda após N-1 daquele serviço).
+$MAX_WORKERS = 4;
+$lockHandle = null;
+for ($slot = 0; $slot < $MAX_WORKERS; $slot++) {
+    $lockFile = ROOT_PATH . '/worker/fila_' . $slot . '.lock';
+    $h = @fopen($lockFile, 'c');
+    if ($h !== false && flock($h, LOCK_EX | LOCK_NB)) {
+        $lockHandle = $h;
+        break;
+    }
+    if ($h !== false) { fclose($h); }
+}
+if ($lockHandle === null) {
+    // Todos os slots ocupados: já há workers suficientes rodando.
+    echo "Pool de workers cheio (" . $MAX_WORKERS . "). Nada a fazer.\n";
     exit(0);
 }
 

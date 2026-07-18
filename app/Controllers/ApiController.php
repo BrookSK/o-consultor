@@ -81,7 +81,72 @@ class ApiController
         }
         exit;
     }
-    
+
+    /**
+     * Lista notificações in-app do usuário/empresa (ex.: SOPs de um setor prontos).
+     * Retorna as não lidas primeiro. Tolerante à ausência da tabela.
+     */
+    public function listarNotificacoes(): void
+    {
+        header('Content-Type: application/json');
+        if (!Auth::check()) {
+            http_response_code(401);
+            echo json_encode(['sucesso' => false, 'erro' => 'Sessão expirada.']);
+            exit;
+        }
+
+        try {
+            $empresaId = Auth::empresa();
+            $usuarioId = Auth::id();
+            $notificacoes = Database::query(
+                "SELECT id, tipo, titulo, mensagem, link, lida, criado_em
+                 FROM notificacoes
+                 WHERE (usuario_id = :uid OR (empresa_id IS NOT NULL AND empresa_id = :eid))
+                 ORDER BY lida ASC, criado_em DESC
+                 LIMIT 30",
+                ['uid' => $usuarioId, 'eid' => $empresaId]
+            );
+            $naoLidas = 0;
+            foreach ($notificacoes as $n) { if ((int) $n['lida'] === 0) $naoLidas++; }
+            echo json_encode(['sucesso' => true, 'notificacoes' => $notificacoes, 'nao_lidas' => $naoLidas]);
+        } catch (Exception $e) {
+            // Tabela pode não existir ainda — não quebrar o app.
+            echo json_encode(['sucesso' => true, 'notificacoes' => [], 'nao_lidas' => 0]);
+        }
+        exit;
+    }
+
+    /**
+     * Marca uma notificação como lida.
+     */
+    public function marcarNotificacaoLida(): void
+    {
+        header('Content-Type: application/json');
+        if (!Auth::check()) {
+            http_response_code(401);
+            echo json_encode(['sucesso' => false, 'erro' => 'Sessão expirada.']);
+            exit;
+        }
+
+        $id = (int) ($_POST['id'] ?? 0);
+        if (!$id) {
+            echo json_encode(['sucesso' => false, 'erro' => 'ID não informado.']);
+            exit;
+        }
+
+        try {
+            Database::execute(
+                "UPDATE notificacoes SET lida = 1
+                 WHERE id = :id AND (usuario_id = :uid OR empresa_id = :eid)",
+                ['id' => $id, 'uid' => Auth::id(), 'eid' => Auth::empresa()]
+            );
+            echo json_encode(['sucesso' => true]);
+        } catch (Exception $e) {
+            echo json_encode(['sucesso' => false, 'erro' => $e->getMessage()]);
+        }
+        exit;
+    }
+
     /**
      * Processa transcrição usando OpenAI Whisper ou fallback
      */

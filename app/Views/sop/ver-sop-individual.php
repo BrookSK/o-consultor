@@ -199,11 +199,18 @@ if (!function_exists('sopTemConteudo')) {
                             class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
                         Cancelar
                     </button>
+                    <button onclick="ajustarSopPorVoz()"
+                            id="btn-ajustar-voz"
+                            title="Ajusta apenas a parte que você mencionar, sem regerar o SOP inteiro"
+                            class="px-5 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
+                            disabled>
+                        ✏️ Ajustar trecho por voz
+                    </button>
                     <button onclick="processarTranscricao()" 
                             id="btn-processar"
                             class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
                             disabled>
-                        🤖 Gerar SOP com IA
+                        🤖 Regerar SOP completo
                     </button>
                 </div>
             </div>
@@ -796,6 +803,8 @@ function iniciarGravacaoVoz() {
     audioChunks = [];
     document.getElementById('transcricao-texto').value = '';
     document.getElementById('btn-processar').disabled = true;
+    var _btnAj = document.getElementById('btn-ajustar-voz');
+    if (_btnAj) _btnAj.disabled = true;
 }
 
 // Iniciar/parar gravação
@@ -897,6 +906,8 @@ async function processarAudioGravado() {
             // Mostrar transcrição na textarea
             document.getElementById('transcricao-texto').value = result.transcricao;
             document.getElementById('btn-processar').disabled = false;
+            const btnAjuste = document.getElementById('btn-ajustar-voz');
+            if (btnAjuste) btnAjuste.disabled = false;
             
             // UI para sucesso
             document.getElementById('texto-status').textContent = 'Transcrição concluída! Revise e clique em "Gerar SOP"';
@@ -976,7 +987,46 @@ async function processarTranscricao() {
         alert(`Erro ao gerar SOP:\n\n${error.message}`);
     } finally {
         document.getElementById('btn-processar').disabled = false;
-        document.getElementById('btn-processar').innerHTML = '🤖 Gerar SOP com IA';
+        document.getElementById('btn-processar').innerHTML = '🤖 Regerar SOP completo';
+    }
+}
+
+// PATCH INCREMENTAL: ajusta APENAS a seção mencionada, sem regerar o SOP inteiro.
+async function ajustarSopPorVoz() {
+    const transcricao = document.getElementById('transcricao-texto').value.trim();
+    if (!transcricao) { alert('Grave ou digite o ajuste primeiro.'); return; }
+
+    const btn = document.getElementById('btn-ajustar-voz');
+    btn.disabled = true;
+    const rotulo = btn.innerHTML;
+    btn.innerHTML = '⏳ Ajustando trecho...';
+    try {
+        const params = new URLSearchParams();
+        params.append('sop_id', sopId);
+        params.append('transcricao', transcricao);
+        params.append('csrf_token', document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '');
+
+        const response = await fetch('<?= APP_URL ?>/sop/patch-sop-voz', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+            },
+            body: params
+        });
+        const result = await response.json();
+        if (result.sucesso) {
+            alert('✅ ' + (result.mensagem || 'Trecho ajustado.'));
+            fecharModalTranscricao();
+            setTimeout(() => window.location.reload(), 800);
+        } else {
+            throw new Error(result.erro || 'Erro ao ajustar.');
+        }
+    } catch (error) {
+        alert('Erro ao ajustar trecho:\n\n' + error.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = rotulo;
     }
 }
 
@@ -998,6 +1048,8 @@ function fecharModalTranscricao() {
 function limparTranscricao() {
     document.getElementById('transcricao-texto').value = '';
     document.getElementById('btn-processar').disabled = true;
+    var _btnAjLimpar = document.getElementById('btn-ajustar-voz');
+    if (_btnAjLimpar) _btnAjLimpar.disabled = true;
     
     // Reset do visual
     document.getElementById('texto-status').textContent = 'Pressione o botão para iniciar a gravação';

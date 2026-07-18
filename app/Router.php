@@ -101,6 +101,11 @@ class Router
         $this->get('sop/selecionar-servicos', 'SopController', 'selecionarServicos');             // Tela de seleção (draft) de serviços
         $this->post('sop/salvar-selecao-servicos', 'SopController', 'salvarSelecaoServicos');     // Salva seleção de serviços
         $this->post('sop/gerar-servicos-setor-voz', 'SopController', 'gerarServicosSetorPorVoz'); // IA: cria serviços de um setor por voz/texto
+        // Geração conversacional de SOPs por voz (entrevista guiada por setor)
+        $this->post('sop/classificar-conversa-setor', 'SopController', 'classificarConversaSetor'); // IA: classifica serviços do setor (identificado/sugerido/excluido) a partir da conversa
+        $this->post('sop/gerar-selecionados-lote', 'SopController', 'gerarSelecionadosEmLote');      // Dispara geração em lote/paralela dos serviços marcados
+        $this->get('sop/status-lote', 'SopController', 'statusLoteGeracao');                          // Polling do progresso do lote
+        $this->post('sop/patch-sop-voz', 'SopController', 'aplicarPatchSopPorVoz');                   // Patch incremental de uma seção do SOP por voz
         $this->post('sop/ativar-servicos', 'SopController', 'ativarServicos');                    // Ativa serviços (aba setores inativos)
         $this->post('sop/inativar-servicos', 'SopController', 'inativarServicos');                // Inativa serviços/setor (aba SOPs)
         $this->get('sop/mapear-servicos', 'SopController', 'mapearServicos');                     // Etapa 2A: View mapeamento
@@ -369,6 +374,8 @@ class Router
         // API Interna
         $this->post('api/transcricao', 'ApiController', 'transcricao');
         $this->get('api/csrf-token', 'ApiController', 'csrfToken');
+        $this->get('api/notificacoes', 'ApiController', 'listarNotificacoes');       // Notificações in-app (ex.: SOPs de um setor prontos)
+        $this->post('api/notificacoes/ler', 'ApiController', 'marcarNotificacaoLida'); // Marca notificação como lida
     }
 
     /**

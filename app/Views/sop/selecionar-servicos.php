@@ -51,6 +51,8 @@
 #sel-view .item input{width:16px;height:16px;accent-color:var(--sv-ok);cursor:pointer;flex-shrink:0;}
 #sel-view .item .txt{font-size:13px;line-height:1.3;}
 #sel-view .item .code{font-size:10.5px;color:var(--sv-ink-mute);font-family:ui-monospace,Menlo,monospace;}
+#sel-view .gap-tag{display:inline-block;font-size:10.5px;font-weight:600;color:#B54708;background:#FEF0C7;border-radius:5px;padding:1px 6px;margin-left:6px;vertical-align:middle;}
+#sel-view .item[data-estado="identificado"]{border-color:var(--sv-ok);}
 
 #sel-view .footer-bar{position:sticky;bottom:16px;z-index:20;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;background:var(--sv-surface);border:1px solid var(--sv-line);border-left:4px solid var(--sv-ok);border-radius:12px;padding:14px 20px;box-shadow:0 6px 20px rgba(23,27,51,0.12);margin-top:18px;}
 #sel-view .footer-bar .resumo{font-size:14px;color:var(--sv-ink-soft);}
@@ -72,7 +74,7 @@
         <div>
             <div class="draft-badge">✎ Rascunho</div>
             <h1>Selecione os serviços dos SOPs</h1>
-            <p class="sub">Marque apenas os serviços que realmente fazem parte da sua empresa. Só os selecionados vão compor a lista de SOPs — os demais ficam de fora e não são gerados.</p>
+            <p class="sub">Use o microfone de cada setor para conversar com a IA: ela pré-marca os serviços que existem ou são gaps, e esconde os que você disser que não usa. Depois é só revisar e confirmar — os selecionados vão compor a lista de SOPs.</p>
         </div>
     </div>
 
@@ -126,11 +128,17 @@
                 <p class="lane-title"><?= htmlspecialchars($subcategoria) ?></p>
                 <div class="items">
                     <?php foreach ($itens as $sv): ?>
-                    <?php $on = ((int) ($sv['selecionado'] ?? 1)) === 1; ?>
-                    <label class="item <?= $on ? 'on' : '' ?>">
+                    <?php
+                        $on = ((int) ($sv['selecionado'] ?? 1)) === 1;
+                        $estado = $sv['status_conversa'] ?? 'sugerido';
+                        $isGap = ((int) ($sv['gap_identificado'] ?? 0)) === 1;
+                        $motivo = trim((string) ($sv['motivo_conversa'] ?? ''));
+                    ?>
+                    <label class="item <?= $on ? 'on' : '' ?>" data-servico-id="<?= $sv['id'] ?>" data-estado="<?= htmlspecialchars($estado) ?>">
                         <input type="checkbox" class="sv-check" value="<?= $sv['id'] ?>" <?= $on ? 'checked' : '' ?> onchange="onCheck(this)">
                         <span class="txt">
                             <?= htmlspecialchars($sv['nome_servico']) ?>
+                            <?php if ($isGap): ?><span class="gap-tag" title="<?= htmlspecialchars($motivo) ?>">gap<?= $motivo !== '' ? ': ' . htmlspecialchars($motivo) : '' ?></span><?php endif; ?>
                             <span class="code"><?= htmlspecialchars($sv['codigo_servico'] ?? '') ?></span>
                         </span>
                     </label>
@@ -142,32 +150,41 @@
     </div>
     <?php endforeach; ?>
 
-    <div class="footer-bar">
+    <div class="footer-bar" id="footer-bar">
         <div class="resumo"><strong id="ft-count">0</strong> serviços selecionados vão compor seus SOPs</div>
-        <button class="btn-primary" id="btn-confirmar" onclick="salvarSelecao()">✓ Confirmar seleção</button>
+        <button class="btn-primary" id="btn-confirmar" onclick="salvarSelecao()">✓ Confirmar e gerar SOPs</button>
     </div>
 </div>
 
-<!-- Modal: descrever processo do setor por voz/texto -->
+<!-- Modal: entrevista conversacional por voz (classifica os serviços do setor) -->
 <div id="modalVozSetor" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
     <div class="bg-white rounded-lg p-6 max-w-lg w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto">
         <div class="flex items-center justify-between mb-1">
-            <h3 class="text-lg font-semibold">🎤 Descrever processo — <span id="voz_setor_nome"></span></h3>
+            <h3 class="text-lg font-semibold">🎤 Entrevista — <span id="voz_setor_nome"></span></h3>
             <button onclick="fecharVozSetor()" class="text-gray-400 hover:text-gray-600">✕</button>
         </div>
-        <p class="text-sm text-gray-500 mb-4">Conte como esse setor funciona hoje: o que é feito, as atividades, o dia a dia. A IA vai transformar sua descrição em serviços e adicioná-los à lista.</p>
+        <p class="text-sm text-gray-500 mb-3">Conte como esse setor funciona hoje: o que vocês fazem, o que não fazem, o dia a dia. A IA vai marcar automaticamente os serviços que existem, sugerir gaps e esconder o que você disser que não usa.</p>
         <input type="hidden" id="voz_setor_id">
+        <input type="hidden" id="voz_turno" value="1">
+
+        <!-- Pergunta guiada da IA (aparece a partir do 2º turno) -->
+        <div id="voz_pergunta_box" class="hidden mb-3 p-3 rounded-lg bg-blue-50 border border-blue-100 text-sm text-blue-900"></div>
+
         <div class="relative">
-            <textarea id="voz_descricao" rows="6"
+            <textarea id="voz_descricao" rows="5"
                       class="w-full px-3 py-2 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:border-primary"
-                      placeholder="Ex.: No comercial a gente recebe o lead, faz o primeiro contato, envia proposta, faz follow-up..."></textarea>
+                      placeholder="Ex.: No comercial a gente recebe o lead, faz o primeiro contato, envia proposta e follow-up. A gente não trabalha com revenda nem parceiros."></textarea>
             <button type="button" id="voz_btn_mic" onclick="alternarGravacaoVoz()" title="Gravar por voz"
                     class="absolute right-2 bottom-2 w-9 h-9 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary-700">🎤</button>
         </div>
         <p id="voz_status" class="text-xs text-gray-400 mt-1 hidden"></p>
+
+        <!-- Resumo do último turno -->
+        <div id="voz_resumo" class="hidden mt-3 text-xs text-gray-600 bg-gray-50 rounded-lg p-3"></div>
+
         <div class="flex gap-3 mt-6">
-            <button onclick="fecharVozSetor()" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg">Cancelar</button>
-            <button id="voz_btn_gerar" onclick="gerarServicosDoSetor()" class="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-700">✨ Gerar serviços</button>
+            <button onclick="fecharVozSetor()" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg">Concluir</button>
+            <button id="voz_btn_gerar" onclick="enviarTurnoConversa()" class="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-700">✨ Analisar resposta</button>
         </div>
     </div>
 </div>
@@ -241,15 +258,56 @@ async function salvarSelecao() {
     btn.disabled = true; btn.textContent = 'Salvando...';
 
     try {
+        // 1. Salvar a seleção (mesma semântica de sempre)
         const body = new URLSearchParams({ diagnostico_id: DIAG_ID, servico_ids: ids.join(','), csrf_token: CSRF_TOKEN });
         const r = await fetch('<?= APP_URL ?>/sop/salvar-selecao-servicos', { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body });
         const d = await r.json();
-        if (d.sucesso) { window.location.href = d.redirect; }
-        else { alert('Erro: ' + (d.erro || 'desconhecido')); btn.disabled = false; btn.textContent = '✓ Confirmar seleção'; }
+        if (!d.sucesso) { alert('Erro: ' + (d.erro || 'desconhecido')); btn.disabled = false; btn.textContent = '✓ Confirmar seleção'; return; }
+
+        // 2. Disparar a geração de TODOS os selecionados de uma vez (lote paralelo)
+        btn.textContent = 'Iniciando geração...';
+        const body2 = new URLSearchParams({ diagnostico_id: DIAG_ID, csrf_token: CSRF_TOKEN });
+        const r2 = await fetch('<?= APP_URL ?>/sop/gerar-selecionados-lote', { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: body2 });
+        const d2 = await r2.json();
+        if (d2.sucesso && d2.lote_id) {
+            acompanharLote(d2.lote_id, d2.total, d2.redirect);
+        } else {
+            // Se não conseguiu gerar em lote, ao menos leva para a listagem.
+            window.location.href = d.redirect;
+        }
     } catch (e) {
         alert('Erro de comunicação com o servidor.');
         btn.disabled = false; btn.textContent = '✓ Confirmar seleção';
     }
+}
+
+// Mostra o progresso do lote; o usuário pode sair — a geração segue em background.
+function acompanharLote(loteId, total, redirect) {
+    const bar = document.getElementById('footer-bar');
+    if (bar) {
+        bar.innerHTML = '<div class="resumo" style="flex:1">'
+            + '<strong id="lote-pct">0%</strong> — gerando <strong>' + total + '</strong> SOP(s) em paralelo. '
+            + 'Você pode sair desta tela; avisaremos quando terminar.'
+            + '<div style="height:8px;background:#E4E5EE;border-radius:6px;margin-top:8px;overflow:hidden">'
+            + '<div id="lote-progress" style="height:100%;width:0;background:var(--sv-ok);transition:width .4s"></div></div>'
+            + '</div>'
+            + '<button class="btn-primary" onclick="window.location.href=\'' + redirect + '\'">Ver SOPs agora →</button>';
+    }
+    const poll = setInterval(async () => {
+        try {
+            const r = await fetch('<?= APP_URL ?>/sop/status-lote?lote_id=' + encodeURIComponent(loteId));
+            const d = await r.json();
+            if (!d.sucesso) return;
+            const pctEl = document.getElementById('lote-pct');
+            const barEl = document.getElementById('lote-progress');
+            if (pctEl) pctEl.textContent = (d.percentual || 0) + '%';
+            if (barEl) barEl.style.width = (d.percentual || 0) + '%';
+            if (d.finalizado) {
+                clearInterval(poll);
+                window.location.href = redirect;
+            }
+        } catch (e) { /* segue tentando */ }
+    }, 4000);
 }
 
 // ---- Ignorar setor: desmarca tudo e marca visualmente como ignorado ----
@@ -275,8 +333,11 @@ let vozChunks = [];
 
 function abrirVozSetor(setorId, nomeSetor) {
     document.getElementById('voz_setor_id').value = setorId;
+    document.getElementById('voz_turno').value = '1';
     document.getElementById('voz_setor_nome').textContent = nomeSetor;
     document.getElementById('voz_descricao').value = '';
+    document.getElementById('voz_pergunta_box').classList.add('hidden');
+    document.getElementById('voz_resumo').classList.add('hidden');
     const st = document.getElementById('voz_status');
     st.classList.add('hidden'); st.textContent = '';
     document.getElementById('modalVozSetor').classList.remove('hidden');
@@ -358,59 +419,86 @@ async function transcreverVoz() {
     } catch (e) { st.textContent = 'Erro ao transcrever o áudio.'; }
 }
 
-async function gerarServicosDoSetor() {
+// Envia um turno da conversa: classifica os serviços do setor e atualiza a tela.
+async function enviarTurnoConversa() {
     const setorId = document.getElementById('voz_setor_id').value;
-    const descricao = document.getElementById('voz_descricao').value.trim();
-    if (!descricao) { alert('Descreva o processo (fale ou digite).'); return; }
+    const transcricao = document.getElementById('voz_descricao').value.trim();
+    const turno = parseInt(document.getElementById('voz_turno').value || '1', 10);
+    if (!transcricao) { alert('Fale ou digite sua resposta.'); return; }
 
     const btn = document.getElementById('voz_btn_gerar');
-    btn.disabled = true; btn.textContent = 'Gerando...';
+    btn.disabled = true; btn.textContent = 'Analisando...';
     try {
-        const body = new URLSearchParams({ setor_id: setorId, descricao: descricao, csrf_token: CSRF_TOKEN });
-        const r = await fetch('<?= APP_URL ?>/sop/gerar-servicos-setor-voz', { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body });
+        const body = new URLSearchParams({ setor_id: setorId, transcricao: transcricao, turno: turno, csrf_token: CSRF_TOKEN });
+        const r = await fetch('<?= APP_URL ?>/sop/classificar-conversa-setor', { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body });
         const d = await r.json();
-        if (d.sucesso) {
-            adicionarServicosNaTela(setorId, d.criados);
-            fecharVozSetor();
+        if (!d.sucesso) { alert('Erro: ' + (d.erro || 'desconhecido')); return; }
+
+        aplicarClassificacaoNaTela(setorId, d.servicos || []);
+
+        // Resumo do turno
+        const resumo = d.resumo || {};
+        const rEl = document.getElementById('voz_resumo');
+        rEl.innerHTML = '✓ <strong>' + (resumo.identificados || 0) + '</strong> identificados · '
+            + '<strong>' + (resumo.gaps || 0) + '</strong> gaps · '
+            + '<strong>' + (resumo.excluidos || 0) + '</strong> removidos deste setor.';
+        rEl.classList.remove('hidden');
+
+        // Próxima pergunta guiada (se houver)
+        const perguntas = d.perguntas_seguimento || [];
+        const pBox = document.getElementById('voz_pergunta_box');
+        if (perguntas.length) {
+            pBox.textContent = '💬 ' + perguntas[0];
+            pBox.classList.remove('hidden');
+            document.getElementById('voz_descricao').value = '';
+            document.getElementById('voz_turno').value = String(turno + 1);
+            btn.textContent = '✨ Responder';
         } else {
-            alert('Erro: ' + (d.erro || 'desconhecido'));
+            pBox.classList.add('hidden');
+            setTimeout(fecharVozSetor, 1200);
         }
     } catch (e) {
         alert('Erro de comunicação com o servidor.');
     } finally {
-        btn.disabled = false; btn.textContent = '✨ Gerar serviços';
+        btn.disabled = false;
+        if (btn.textContent === 'Analisando...') btn.textContent = '✨ Analisar resposta';
     }
 }
 
-// Insere os serviços recém-criados na lista do setor, já marcados.
-function adicionarServicosNaTela(setorId, criados) {
-    if (!criados || !criados.length) return;
+// Aplica na tela o resultado da classificação: marca identificados, remove excluídos, anota gaps.
+function aplicarClassificacaoNaTela(setorId, servicos) {
+    if (!servicos || !servicos.length) return;
     const head = document.querySelector('.sector-head[data-setor-id="' + setorId + '"]');
     if (!head) { location.reload(); return; }
     const setor = head.closest('[data-setor]');
-    const body = setor.querySelector('.sector-body');
 
-    // Agrupar por subcategoria: reaproveita lane existente ou cria nova
-    criados.forEach(sv => {
-        const sub = sv.subcategoria || 'Personalizado';
-        let lane = Array.from(body.querySelectorAll('.lane')).find(l => l.querySelector('.lane-title')?.textContent.trim() === sub);
-        if (!lane) {
-            lane = document.createElement('div');
-            lane.className = 'lane';
-            lane.innerHTML = '<p class="lane-title">' + escaparHtml(sub) + '</p><div class="items"></div>';
-            body.appendChild(lane);
+    servicos.forEach(sv => {
+        const item = setor.querySelector('.item[data-servico-id="' + sv.id + '"]');
+        if (!item) return;
+        if (sv.estado === 'excluido') { item.remove(); return; }
+        item.dataset.estado = sv.estado;
+        const cb = item.querySelector('.sv-check');
+        if (cb) { cb.checked = !!sv.selecionado; item.classList.toggle('on', !!sv.selecionado); }
+        // Anotação de gap
+        const txt = item.querySelector('.txt');
+        if (sv.gap && txt && !txt.querySelector('.gap-tag')) {
+            const tag = document.createElement('span');
+            tag.className = 'gap-tag';
+            tag.textContent = sv.motivo ? ('gap: ' + sv.motivo) : 'gap';
+            const code = txt.querySelector('.code');
+            txt.insertBefore(tag, code || null);
         }
-        const items = lane.querySelector('.items');
-        const label = document.createElement('label');
-        label.className = 'item on';
-        label.innerHTML = '<input type="checkbox" class="sv-check" value="' + sv.id + '" checked onchange="onCheck(this)">'
-            + '<span class="txt">' + escaparHtml(sv.nome_servico) + ' <span class="code">novo</span></span>';
-        items.appendChild(label);
     });
 
-    // Abrir o setor para o usuário ver os novos serviços
+    // Remover lanes que ficaram vazias após excluir serviços
+    setor.querySelectorAll('.lane').forEach(l => {
+        if (!l.querySelector('.item')) l.remove();
+    });
+
+    // Abrir o setor para o usuário revisar
     head.classList.remove('collapsed');
-    body.hidden = false;
+    const body = setor.querySelector('.sector-body');
+    if (body) body.hidden = false;
     setor.classList.remove('ignored');
     const ign = setor.querySelector('.sector-ignore input');
     if (ign) ign.checked = false;

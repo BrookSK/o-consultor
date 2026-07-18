@@ -2999,6 +2999,7 @@ class SopController
         $empresa = Empresa::buscarPorId($diagnostico['empresa_id']);
 
         $this->garantirColunaSelecionado();
+        $this->garantirEstruturaConversacional();
 
         $estrutura = Database::queryOne(
             "SELECT * FROM estruturas_organizacionais WHERE diagnostico_id = ? AND empresa_id = ? AND status = 'ativo' ORDER BY criado_em DESC LIMIT 1",
@@ -3020,9 +3021,14 @@ class SopController
         $setoresOrganizados = [];
         $totalServicos = 0;
         foreach ($setores as $setor) {
+            // Serviços "excluído" (negados na conversa) NÃO aparecem na tela — ficam
+            // recuperáveis apenas via busca manual no catálogo ("Adicionar serviço").
             $servicos = Database::query(
-                "SELECT id, nome_servico, subcategoria, codigo_servico, categoria, criticidade, selecionado
-                 FROM servicos_setor WHERE setor_id = ? ORDER BY subcategoria ASC, nome_servico ASC",
+                "SELECT id, nome_servico, subcategoria, codigo_servico, categoria, criticidade,
+                        selecionado, status_conversa, gap_identificado, motivo_conversa
+                 FROM servicos_setor
+                 WHERE setor_id = ? AND status_conversa <> 'excluido'
+                 ORDER BY subcategoria ASC, nome_servico ASC",
                 [$setor['id']]
             );
             $totalServicos += count($servicos);
@@ -3266,6 +3272,71 @@ class SopController
     }
 
     /**
+     * Garante (idempotente) o schema da geração conversacional de SOPs:
+     * colunas de estado de conversa em servicos_setor, tabela conversas_setor,
+     * coluna conversa_id em sops, colunas de lote/setor na fila e tabela de
+     * notificações. Espelha a migration 053, para funcionar mesmo sem rodá-la.
+     */
+    private function garantirEstruturaConversacional(): void
+    {
+        $tentar = static function (string $sql): void {
+            try { Database::execute($sql); } catch (Exception $e) { /* já existe */ }
+        };
+
+        // 1. Estado de conversa por serviço
+        $tentar("ALTER TABLE servicos_setor ADD COLUMN status_conversa ENUM('identificado','sugerido','excluido') NOT NULL DEFAULT 'sugerido'");
+        $tentar("ALTER TABLE servicos_setor ADD COLUMN gap_identificado TINYINT(1) NOT NULL DEFAULT 0");
+        $tentar("ALTER TABLE servicos_setor ADD COLUMN motivo_conversa VARCHAR(500) DEFAULT NULL");
+        $tentar("ALTER TABLE servicos_setor ADD COLUMN trecho_conversa LONGTEXT DEFAULT NULL");
+        $tentar("ALTER TABLE servicos_setor ADD COLUMN conversa_id INT(11) DEFAULT NULL");
+
+        // 2. Histórico de transcrições por setor
+        $tentar(
+            "CREATE TABLE IF NOT EXISTS `conversas_setor` (
+              `id` INT(11) NOT NULL AUTO_INCREMENT,
+              `estrutura_id` INT(11) DEFAULT NULL,
+              `setor_id` INT(11) NOT NULL,
+              `empresa_id` INT(11) NOT NULL,
+              `diagnostico_id` INT(11) DEFAULT NULL,
+              `turno` INT(11) NOT NULL DEFAULT 1,
+              `transcricao` LONGTEXT DEFAULT NULL,
+              `classificacao_json` LONGTEXT DEFAULT NULL,
+              `perguntas_seguimento_json` LONGTEXT DEFAULT NULL,
+              `criado_em` DATETIME NOT NULL,
+              PRIMARY KEY (`id`),
+              KEY `idx_setor_id` (`setor_id`),
+              KEY `idx_empresa_id` (`empresa_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
+
+        // 3. Referência da conversa no SOP
+        $tentar("ALTER TABLE sops ADD COLUMN conversa_id INT(11) DEFAULT NULL");
+
+        // 4. Fila: lote e setor
+        $tentar("ALTER TABLE fila_geracao_sop ADD COLUMN lote_id VARCHAR(40) DEFAULT NULL");
+        $tentar("ALTER TABLE fila_geracao_sop ADD COLUMN setor_id INT(11) DEFAULT NULL");
+
+        // 5. Notificações in-app
+        $tentar(
+            "CREATE TABLE IF NOT EXISTS `notificacoes` (
+              `id` INT(11) NOT NULL AUTO_INCREMENT,
+              `empresa_id` INT(11) DEFAULT NULL,
+              `usuario_id` INT(11) DEFAULT NULL,
+              `tipo` VARCHAR(50) NOT NULL DEFAULT 'sop',
+              `titulo` VARCHAR(255) NOT NULL,
+              `mensagem` VARCHAR(500) DEFAULT NULL,
+              `link` VARCHAR(255) DEFAULT NULL,
+              `lida` TINYINT(1) NOT NULL DEFAULT 0,
+              `criado_em` DATETIME NOT NULL,
+              PRIMARY KEY (`id`),
+              KEY `idx_empresa_id` (`empresa_id`),
+              KEY `idx_usuario_id` (`usuario_id`),
+              KEY `idx_lida` (`lida`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
+    }
+
+    /**
      * GERAR SERVIÇOS POR VOZ/TEXTO num SETOR (tela de seleção/draft).
      * Recebe a descrição de como o processo é feito hoje e usa a IA para
      * transformar isso em uma lista de serviços daquele setor. Os serviços
@@ -3418,6 +3489,266 @@ class SopController
             Logger::warning('Falha ao gerar lista de serviços com IA', ['erro' => $e->getMessage()]);
         }
         return [];
+    }
+
+    // =====================================================================
+    // GERAÇÃO CONVERSACIONAL DE SOPs — ENTREVISTA POR VOZ (setor a setor)
+    // =====================================================================
+
+    /**
+     * Classifica os serviços do catálogo de UM setor a partir da conversa
+     * (áudio já transcrito) do usuário. Cada serviço é classificado em:
+     *   identificado -> pré-marcado na tela de seleção (existe hoje OU é gap relevante)
+     *   sugerido     -> aparece desmarcado (não mencionado)
+     *   excluido     -> não aparece (usuário negou explicitamente)
+     *
+     * Persiste o estado em servicos_setor, guarda a transcrição em conversas_setor
+     * e devolve as perguntas de acompanhamento (guiadas pelo catálogo) + o resumo
+     * da classificação para a tela atualizar sem recarregar.
+     */
+    public function classificarConversaSetor(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $setorId = (int) ($_POST['setor_id'] ?? 0);
+        $transcricao = trim($_POST['transcricao'] ?? '');
+        $turno = max(1, (int) ($_POST['turno'] ?? 1));
+
+        if (!$setorId || $transcricao === '') {
+            echo json_encode(['sucesso' => false, 'erro' => 'Setor e transcrição são obrigatórios.']);
+            exit;
+        }
+
+        $setor = Database::queryOne(
+            "SELECT se.*, eo.id AS estrutura_id, eo.nicho, eo.diagnostico_id
+             FROM setores_empresa se
+             LEFT JOIN estruturas_organizacionais eo ON se.estrutura_id = eo.id
+             WHERE se.id = :id",
+            ['id' => $setorId]
+        );
+        if (!$setor) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Setor não encontrado.']);
+            exit;
+        }
+
+        $empresaUsuario = Auth::empresa();
+        if ($empresaUsuario !== null && (int) $setor['empresa_id'] !== (int) $empresaUsuario) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Sem permissão.']);
+            exit;
+        }
+
+        try {
+            $this->garantirColunaSelecionado();
+            $this->garantirEstruturaConversacional();
+
+            // Serviços atuais do setor (o "catálogo" concreto já materializado).
+            $servicos = Database::query(
+                "SELECT id, nome_servico, subcategoria FROM servicos_setor WHERE setor_id = ? ORDER BY subcategoria, nome_servico",
+                [$setorId]
+            );
+            if (empty($servicos)) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Nenhum serviço no setor para classificar.']);
+                exit;
+            }
+
+            // Histórico das conversas anteriores deste setor (para a IA não repetir perguntas).
+            $historico = Database::query(
+                "SELECT transcricao FROM conversas_setor WHERE setor_id = ? ORDER BY id ASC",
+                [$setorId]
+            );
+            $historicoTexto = trim(implode("\n", array_column($historico, 'transcricao')));
+
+            // 1. Chamar a IA para classificar
+            $resultado = $this->classificarServicosComIA(
+                $transcricao,
+                $historicoTexto,
+                $setor['nome_setor'],
+                $setor['nicho'] ?? 'geral',
+                $servicos
+            );
+
+            // 2. Persistir a conversa (auditoria + evitar repetir perguntas)
+            Database::execute(
+                "INSERT INTO conversas_setor (estrutura_id, setor_id, empresa_id, diagnostico_id, turno, transcricao, classificacao_json, perguntas_seguimento_json, criado_em)
+                 VALUES (:estrutura_id, :setor_id, :empresa_id, :diagnostico_id, :turno, :transcricao, :classificacao, :perguntas, NOW())",
+                [
+                    'estrutura_id' => $setor['estrutura_id'] ?? null,
+                    'setor_id' => $setorId,
+                    'empresa_id' => $setor['empresa_id'],
+                    'diagnostico_id' => $setor['diagnostico_id'] ?? null,
+                    'turno' => $turno,
+                    'transcricao' => $transcricao,
+                    'classificacao' => json_encode($resultado['classificacao'] ?? [], JSON_UNESCAPED_UNICODE),
+                    'perguntas' => json_encode($resultado['perguntas_seguimento'] ?? [], JSON_UNESCAPED_UNICODE),
+                ]
+            );
+            $conversaId = (int) Database::lastInsertId();
+
+            // 3. Aplicar a classificação aos serviços do setor
+            $resumo = $this->aplicarClassificacaoServicos($setorId, $resultado['classificacao'] ?? [], $conversaId, $transcricao);
+
+            Logger::info('CONVERSA DE SETOR CLASSIFICADA', [
+                'setor_id' => $setorId,
+                'setor' => $setor['nome_setor'],
+                'turno' => $turno,
+                'identificados' => $resumo['identificados'],
+                'excluidos' => $resumo['excluidos'],
+                'gaps' => $resumo['gaps'],
+            ]);
+
+            echo json_encode([
+                'sucesso' => true,
+                'setor_id' => $setorId,
+                'conversa_id' => $conversaId,
+                'resumo' => $resumo,
+                'servicos' => $resumo['servicos'],           // estado atualizado por serviço
+                'perguntas_seguimento' => $resultado['perguntas_seguimento'] ?? [],
+                'concluir_sugerido' => empty($resultado['perguntas_seguimento']),
+            ]);
+            exit;
+
+        } catch (Exception $e) {
+            Logger::error('Erro ao classificar conversa do setor', [
+                'erro' => $e->getMessage(),
+                'setor_id' => $setorId,
+                'trace' => $e->getTraceAsString(),
+            ]);
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
+            exit;
+        }
+    }
+
+    /**
+     * Chama a LLM para classificar os serviços do setor a partir da conversa.
+     * Retorna ['classificacao'=>[['id','estado','gap','motivo','trecho'],...],
+     *          'perguntas_seguimento'=>['...']].
+     */
+    private function classificarServicosComIA(string $transcricao, string $historico, string $nomeSetor, string $nicho, array $servicos): array
+    {
+        // Lista enumerada dos serviços (id => nome) que a IA deve classificar.
+        $linhas = [];
+        foreach ($servicos as $sv) {
+            $sub = trim((string) ($sv['subcategoria'] ?? ''));
+            $linhas[] = '- id ' . (int) $sv['id'] . ': ' . $sv['nome_servico'] . ($sub !== '' ? " [{$sub}]" : '');
+        }
+        $listaServicos = implode("\n", $linhas);
+
+        $blocoHistorico = $historico !== ''
+            ? "\n# CONVERSAS ANTERIORES DESTE SETOR (não repita perguntas já respondidas aqui):\n\"\"\"\n" . mb_substr($historico, 0, 4000) . "\n\"\"\"\n"
+            : '';
+
+        $prompt = "Você é um consultor que entrevista o gestor de um setor para montar os procedimentos (SOPs) da empresa. "
+            . "Sua tarefa é CLASSIFICAR cada serviço do catálogo do setor a partir do que o gestor falou (áudio transcrito), "
+            . "e propor perguntas curtas de acompanhamento sobre os serviços mais prováveis que ainda não ficaram claros.\n\n"
+            . "# SETOR: {$nomeSetor}\n"
+            . "# NICHO DA EMPRESA: {$nicho}\n"
+            . $blocoHistorico
+            . "\n# FALA DO GESTOR (transcrição do turno atual):\n\"\"\"\n" . mb_substr($transcricao, 0, 6000) . "\n\"\"\"\n\n"
+            . "# SERVIÇOS DO CATÁLOGO A CLASSIFICAR (use os ids exatos):\n" . $listaServicos . "\n\n"
+            . "# COMO CLASSIFICAR cada serviço (campo \"estado\"):\n"
+            . "- \"identificado\": o gestor confirmou que esse processo EXISTE hoje, OU confirmou que NÃO existe mas claramente é um gap relevante para o nicho (algo que a empresa deveria fazer). Nestes casos, preencha \"trecho\" com a fala específica que fundamenta a decisão.\n"
+            . "- \"excluido\": o gestor NEGOU explicitamente que usa/precisa desse serviço. Só use quando houver negação clara.\n"
+            . "- \"sugerido\": não foi mencionado, nem confirmado nem negado. Este é o DEFAULT quando há dúvida.\n\n"
+            . "Para \"identificado\" que seja um gap (não faz hoje, mas deveria), marque \"gap\": true e escreva em \"motivo\" uma anotação MUITO curta (máx. 8 palavras, ex.: \"não avisam o cliente hoje\"). Para os demais, \"gap\": false e \"motivo\": \"\".\n\n"
+            . "# PERGUNTAS DE ACOMPANHAMENTO:\n"
+            . "Gere de 0 a 3 perguntas FECHADAS e objetivas, priorizando os serviços mais prováveis de existir ou de serem gap que ainda ficaram como \"sugerido\". Se a conversa já cobriu o setor, devolva lista vazia. Nunca repita perguntas já respondidas no histórico.\n\n"
+            . "# RESPONDA APENAS EM JSON:\n"
+            . "{\n"
+            . "  \"classificacao\": [ {\"id\": 123, \"estado\": \"identificado|sugerido|excluido\", \"gap\": false, \"motivo\": \"\", \"trecho\": \"\"} ],\n"
+            . "  \"perguntas_seguimento\": [\"pergunta fechada 1?\", \"pergunta fechada 2?\"]\n"
+            . "}";
+
+        try {
+            $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o-mini', true, 2500, 55);
+            if (!empty($resp['sucesso']) && is_array($resp['conteudo'])) {
+                return [
+                    'classificacao' => is_array($resp['conteudo']['classificacao'] ?? null) ? $resp['conteudo']['classificacao'] : [],
+                    'perguntas_seguimento' => is_array($resp['conteudo']['perguntas_seguimento'] ?? null) ? $resp['conteudo']['perguntas_seguimento'] : [],
+                ];
+            }
+        } catch (Exception $e) {
+            Logger::warning('Falha ao classificar serviços com IA', ['erro' => $e->getMessage()]);
+        }
+        return ['classificacao' => [], 'perguntas_seguimento' => []];
+    }
+
+    /**
+     * Aplica a classificação da IA aos serviços do setor:
+     * atualiza status_conversa, selecionado, gap, motivo e o trecho de conversa.
+     * Só altera os serviços citados; os demais permanecem como estavam.
+     * Retorna um resumo + o estado por serviço para a tela atualizar.
+     */
+    private function aplicarClassificacaoServicos(int $setorId, array $classificacao, int $conversaId, string $transcricao): array
+    {
+        // ids válidos deste setor (evita atualizar serviço de outro setor)
+        $validos = Database::query("SELECT id FROM servicos_setor WHERE setor_id = ?", [$setorId]);
+        $idsValidos = array_map(fn($r) => (int) $r['id'], $validos);
+
+        $identificados = 0; $excluidos = 0; $sugeridos = 0; $gaps = 0;
+        $servicosAtualizados = [];
+
+        foreach ($classificacao as $item) {
+            $id = (int) ($item['id'] ?? 0);
+            if (!$id || !in_array($id, $idsValidos, true)) continue;
+
+            $estado = strtolower(trim((string) ($item['estado'] ?? 'sugerido')));
+            if (!in_array($estado, ['identificado', 'sugerido', 'excluido'], true)) $estado = 'sugerido';
+
+            $gap = !empty($item['gap']) && $estado === 'identificado' ? 1 : 0;
+            $motivo = mb_substr(trim((string) ($item['motivo'] ?? '')), 0, 490);
+            $trecho = trim((string) ($item['trecho'] ?? ''));
+            // Se a IA não isolou um trecho, guarda a transcrição do turno como contexto.
+            if ($trecho === '' && $estado === 'identificado') {
+                $trecho = mb_substr($transcricao, 0, 4000);
+            }
+
+            // selecionado acompanha o estado: identificado = pré-marcado; excluído/sugerido = desmarcado.
+            $selecionado = $estado === 'identificado' ? 1 : 0;
+
+            Database::execute(
+                "UPDATE servicos_setor
+                 SET status_conversa = :estado,
+                     selecionado = :selecionado,
+                     gap_identificado = :gap,
+                     motivo_conversa = :motivo,
+                     trecho_conversa = :trecho,
+                     conversa_id = :conversa_id,
+                     atualizado_em = NOW()
+                 WHERE id = :id AND setor_id = :setor_id",
+                [
+                    'estado' => $estado,
+                    'selecionado' => $selecionado,
+                    'gap' => $gap,
+                    'motivo' => $motivo !== '' ? $motivo : null,
+                    'trecho' => $trecho !== '' ? $trecho : null,
+                    'conversa_id' => $conversaId,
+                    'id' => $id,
+                    'setor_id' => $setorId,
+                ]
+            );
+
+            if ($estado === 'identificado') { $identificados++; if ($gap) $gaps++; }
+            elseif ($estado === 'excluido') { $excluidos++; }
+            else { $sugeridos++; }
+
+            $servicosAtualizados[] = [
+                'id' => $id,
+                'estado' => $estado,
+                'gap' => (bool) $gap,
+                'motivo' => $motivo,
+                'selecionado' => (bool) $selecionado,
+            ];
+        }
+
+        return [
+            'identificados' => $identificados,
+            'sugeridos' => $sugeridos,
+            'excluidos' => $excluidos,
+            'gaps' => $gaps,
+            'servicos' => $servicosAtualizados,
+        ];
     }
 
     // ===== NOVA ARQUITETURA DETALHADA - ETAPA 2A =====
@@ -5635,6 +5966,179 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         }
         return $original;
     }
+
+    /**
+     * PATCH INCREMENTAL POR VOZ — refina UMA seção do SOP a partir de um áudio
+     * transcrito, SEM reexecutar as 8 fases. A IA:
+     *   1. Identifica qual seção do JSON (procedimentos, scripts_comunicacao,
+     *      gestao_situacoes_fora_controle, etc.) o pedido afeta.
+     *   2. Regenera SOMENTE aquela seção.
+     * O restante do conteúdo permanece intacto; a versão é incrementada (1.0 -> 1.1)
+     * e o estado anterior é salvo em sop_historico_versoes.
+     */
+    public function aplicarPatchSopPorVoz(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $sopId = (int) ($_POST['sop_id'] ?? 0);
+        $transcricao = trim($_POST['transcricao'] ?? '');
+        $secaoForcada = trim($_POST['secao'] ?? ''); // opcional: o front pode indicar a seção
+
+        if (!$sopId || $transcricao === '') {
+            echo json_encode(['sucesso' => false, 'erro' => 'SOP e transcrição são obrigatórios.']);
+            exit;
+        }
+
+        $sop = Sop::buscarPorId($sopId);
+        if (!$sop) {
+            echo json_encode(['sucesso' => false, 'erro' => 'SOP não encontrado.']);
+            exit;
+        }
+        $empresaUsuario = Auth::empresa();
+        if ($empresaUsuario !== null && (int) $sop['empresa_id'] !== (int) $empresaUsuario) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Sem permissão.']);
+            exit;
+        }
+
+        // O conteúdo do SOP pode estar em 'conteudo' (nova arquitetura/fila) ou
+        // 'conteudo_completo' (arquitetura antiga). Detectar qual usar.
+        $usaCampoConteudo = !empty($sop['conteudo']) && json_decode($sop['conteudo'], true) !== null;
+        $conteudoAtual = json_decode($usaCampoConteudo ? $sop['conteudo'] : ($sop['conteudo_completo'] ?? ''), true);
+        if (!is_array($conteudoAtual)) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Conteúdo do SOP inválido para edição.']);
+            exit;
+        }
+
+        try {
+            // Contexto da conversa original que gerou este SOP (se houver).
+            $trechoOrigem = '';
+            if (!empty($sop['conversa_id'])) {
+                $conv = Database::queryOne("SELECT transcricao FROM conversas_setor WHERE id = ?", [(int) $sop['conversa_id']]);
+                if ($conv) { $trechoOrigem = (string) $conv['transcricao']; }
+            }
+
+            // 1. Identificar a seção alvo (ou usar a forçada pelo front)
+            $secoesEditaveis = array_values(array_filter(array_keys($conteudoAtual), function ($k) {
+                return in_array($k, [
+                    'procedimentos', 'scripts_comunicacao', 'gestao_situacoes_fora_controle',
+                    'checklists', 'indicadores_performance', 'matriz_riscos_servico',
+                    'objetivo', 'escopo', 'responsaveis', 'competencias_requeridas',
+                    'pre_requisitos', 'recursos_necessarios', 'treinamento_gestao_crises'
+                ], true);
+            }));
+
+            $patch = $this->gerarPatchSecaoComIA($conteudoAtual, $transcricao, $secaoForcada, $secoesEditaveis, $trechoOrigem);
+
+            if (empty($patch['secao']) || !array_key_exists($patch['secao'], $conteudoAtual)) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Não consegui identificar qual parte do SOP ajustar. Seja mais específico.']);
+                exit;
+            }
+            if (!array_key_exists('conteudo', $patch)) {
+                echo json_encode(['sucesso' => false, 'erro' => 'A IA não retornou o novo conteúdo da seção.']);
+                exit;
+            }
+
+            $secaoAlvo = $patch['secao'];
+
+            // 2. Aplicar SOMENTE a seção alvo, preservando o resto.
+            $conteudoNovo = $conteudoAtual;
+            $conteudoNovo[$secaoAlvo] = $patch['conteudo'];
+
+            // 3. Versionar e salvar histórico
+            $versaoAtual = $sop['versao'] ?: '1.0';
+            $versaoNova = Sop::incrementarVersao($versaoAtual);
+            $motivo = 'Ajuste por voz na seção "' . $secaoAlvo . '": ' . mb_substr($transcricao, 0, 200);
+            Sop::salvarHistorico($sopId, $versaoAtual, $versaoNova, $conteudoAtual, $motivo, Auth::id());
+
+            // 4. Persistir no campo correto (sem tocar nas demais seções)
+            if ($usaCampoConteudo) {
+                Database::execute(
+                    "UPDATE sops SET conteudo = :c, versao = :v, motivo_alteracao = :m, atualizado_em = NOW() WHERE id = :id",
+                    ['c' => json_encode($conteudoNovo, JSON_UNESCAPED_UNICODE), 'v' => $versaoNova, 'm' => $motivo, 'id' => $sopId]
+                );
+            } else {
+                Sop::atualizar($sopId, [
+                    'conteudo_completo' => $conteudoNovo,
+                    'versao' => $versaoNova,
+                    'motivo_alteracao' => $motivo,
+                ]);
+            }
+
+            Logger::acao('SOP ajustado por voz (patch incremental)', [
+                'sop_id' => $sopId, 'secao' => $secaoAlvo, 'versao_nova' => $versaoNova
+            ]);
+
+            echo json_encode([
+                'sucesso' => true,
+                'secao' => $secaoAlvo,
+                'versao' => $versaoNova,
+                'mensagem' => 'Seção "' . $secaoAlvo . '" atualizada (v' . $versaoNova . ').'
+            ]);
+            exit;
+
+        } catch (Exception $e) {
+            Logger::error('Erro no patch de SOP por voz', ['erro' => $e->getMessage(), 'sop_id' => $sopId]);
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
+            exit;
+        }
+    }
+
+    /**
+     * Usa a IA para (a) identificar a seção afetada pelo pedido de voz e
+     * (b) gerar o NOVO conteúdo APENAS daquela seção, no mesmo formato do JSON atual.
+     * Retorna ['secao'=>string, 'conteudo'=>mixed].
+     */
+    private function gerarPatchSecaoComIA(array $conteudoAtual, string $transcricao, string $secaoForcada, array $secoesEditaveis, string $trechoOrigem): array
+    {
+        // Mostrar à IA o valor ATUAL de cada seção editável (resumido) para ela
+        // reproduzir o mesmo formato ao regenerar.
+        $amostra = [];
+        foreach ($secoesEditaveis as $sec) {
+            $amostra[$sec] = $conteudoAtual[$sec];
+        }
+        $amostraJson = json_encode($amostra, JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR);
+        if (mb_strlen($amostraJson) > 12000) {
+            $amostraJson = mb_substr($amostraJson, 0, 12000) . '...';
+        }
+
+        $blocoOrigem = $trechoOrigem !== ''
+            ? "\n# CONTEXTO ORIGINAL (conversa que gerou este SOP — respeite os fatos reais da empresa):\n\"\"\"\n" . mb_substr($trechoOrigem, 0, 3000) . "\n\"\"\"\n"
+            : '';
+
+        $blocoSecaoForcada = $secaoForcada !== '' && in_array($secaoForcada, $secoesEditaveis, true)
+            ? "\nO usuário indicou que a seção a ajustar é: \"{$secaoForcada}\". Use essa seção salvo se o pedido claramente se referir a outra.\n"
+            : '';
+
+        $listaSecoes = implode(', ', $secoesEditaveis);
+
+        $prompt = "Você edita um SOP (procedimento operacional) já existente. NÃO reescreva o SOP inteiro. "
+            . "Sua tarefa: (1) identificar QUAL ÚNICA seção do JSON o pedido do usuário afeta e (2) devolver o NOVO conteúdo APENAS dessa seção, no MESMO formato/estrutura que ela já tem hoje.\n\n"
+            . "# SEÇÕES EDITÁVEIS DISPONÍVEIS: {$listaSecoes}\n"
+            . $blocoSecaoForcada
+            . $blocoOrigem
+            . "\n# ESTADO ATUAL DAS SEÇÕES (use como referência de formato — replique a mesma estrutura):\n"
+            . $amostraJson . "\n\n"
+            . "# PEDIDO DO USUÁRIO (áudio transcrito):\n\"\"\"\n" . mb_substr($transcricao, 0, 4000) . "\n\"\"\"\n\n"
+            . "# REGRAS:\n"
+            . "- Escolha SOMENTE UMA seção (a mais afetada pelo pedido).\n"
+            . "- O campo \"conteudo\" deve ter EXATAMENTE o mesmo tipo/estrutura do valor atual daquela seção (se hoje é lista de objetos, devolva lista de objetos; se é texto, devolva texto).\n"
+            . "- Aplique o pedido do usuário de forma incremental: mantenha o que ele não pediu para mudar, ajuste/adicione o que ele pediu.\n"
+            . "- Português do Brasil, tom técnico e objetivo.\n\n"
+            . "# RESPONDA APENAS EM JSON:\n"
+            . "{\n  \"secao\": \"nome_exato_da_secao\",\n  \"conteudo\": <novo conteúdo da seção no mesmo formato>\n}";
+
+        $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o', true, 8000, 90);
+        if (!empty($resp['sucesso']) && is_array($resp['conteudo'])) {
+            return [
+                'secao' => (string) ($resp['conteudo']['secao'] ?? ''),
+                'conteudo' => $resp['conteudo']['conteudo'] ?? null,
+            ];
+        }
+        return ['secao' => '', 'conteudo' => null];
+    }
+
     public function kpis(): void
     {
         Auth::proteger();
@@ -10290,10 +10794,242 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
     }
 
     /**
+     * GERAÇÃO EM LOTE E PARALELA — dispara a geração de TODOS os serviços
+     * selecionados de uma vez (após a confirmação da tela de seleção).
+     * Enfileira cada serviço num mesmo lote e sobe um POOL de workers CLI para
+     * processá-los em paralelo (um serviço por worker). O processamento continua
+     * em background mesmo se o usuário sair da tela.
+     */
+    public function gerarSelecionadosEmLote(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $diagnosticoId = (int) ($_POST['diagnostico_id'] ?? 0);
+        if (!$diagnosticoId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Diagnóstico não informado.']);
+            exit;
+        }
+
+        $diagnostico = Diagnostico::buscarPorId($diagnosticoId);
+        if (!$diagnostico) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Diagnóstico não encontrado.']);
+            exit;
+        }
+
+        $empresaId = (int) $diagnostico['empresa_id'];
+        $empresaUsuario = Auth::empresa();
+        if ($empresaUsuario !== null && $empresaId !== (int) $empresaUsuario) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Sem permissão.']);
+            exit;
+        }
+
+        try {
+            $this->garantirColunaSelecionado();
+            $this->garantirTabelaFila();
+            $this->garantirEstruturaConversacional();
+
+            $estrutura = Database::queryOne(
+                "SELECT id FROM estruturas_organizacionais WHERE diagnostico_id = ? AND empresa_id = ? AND status = 'ativo' ORDER BY criado_em DESC LIMIT 1",
+                [$diagnosticoId, $empresaId]
+            );
+            if (!$estrutura) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Estrutura não encontrada.']);
+                exit;
+            }
+
+            // Serviços selecionados que ainda NÃO têm SOP gerado (evita reprocessar).
+            $servicos = Database::query(
+                "SELECT ss.*, se.nome_setor, se.tipo_setor, eo.nicho, eo.diagnostico_id
+                 FROM servicos_setor ss
+                 JOIN setores_empresa se ON ss.setor_id = se.id
+                 JOIN estruturas_organizacionais eo ON se.estrutura_id = eo.id
+                 WHERE eo.id = ? AND ss.selecionado = 1
+                   AND (ss.status <> 'sop_gerado' OR ss.status IS NULL)",
+                [(int) $estrutura['id']]
+            );
+
+            if (empty($servicos)) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Nenhum serviço selecionado pendente de geração.']);
+                exit;
+            }
+
+            $loteId = 'lote_' . $diagnosticoId . '_' . date('YmdHis') . '_' . substr(md5(uniqid('', true)), 0, 6);
+
+            $enfileirados = 0;
+            foreach ($servicos as $servico) {
+                try {
+                    $this->enfileirarGeracaoSop((int) $servico['id'], $servico, $loteId);
+                    $enfileirados++;
+                } catch (Exception $e) {
+                    Logger::warning('Falha ao enfileirar serviço no lote', ['servico_id' => $servico['id'], 'erro' => $e->getMessage()]);
+                }
+            }
+
+            // Subir um POOL de workers para processar em paralelo (um por serviço,
+            // até um teto para não estourar recursos). Fallback: cron + polling.
+            $this->dispararPoolWorkers(min($enfileirados, 4));
+
+            Logger::info('GERAÇÃO EM LOTE DISPARADA', [
+                'diagnostico_id' => $diagnosticoId,
+                'lote_id' => $loteId,
+                'enfileirados' => $enfileirados
+            ]);
+
+            echo json_encode([
+                'sucesso' => true,
+                'lote_id' => $loteId,
+                'total' => $enfileirados,
+                'mensagem' => $enfileirados . ' SOP(s) em geração. Você pode sair desta tela — avisaremos quando terminar.',
+                'redirect' => APP_URL . '/sop/listar-por-diagnostico?diagnostico_id=' . $diagnosticoId
+            ]);
+            exit;
+
+        } catch (Exception $e) {
+            Logger::error('Erro ao gerar SOPs em lote', ['erro' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
+            exit;
+        }
+    }
+
+    /**
+     * Polling do progresso de um lote de geração. Também detecta setores cujos
+     * SOPs acabaram de concluir e cria a notificação in-app correspondente.
+     */
+    public function statusLoteGeracao(): void
+    {
+        Auth::proteger();
+        header('Content-Type: application/json');
+
+        $loteId = trim($_GET['lote_id'] ?? '');
+        if ($loteId === '') {
+            echo json_encode(['sucesso' => false, 'erro' => 'Lote não informado.']);
+            exit;
+        }
+
+        try {
+            $itens = Database::query(
+                "SELECT f.status, f.fase_atual, f.total_fases, f.setor_id, se.nome_setor
+                 FROM fila_geracao_sop f
+                 LEFT JOIN setores_empresa se ON f.setor_id = se.id
+                 WHERE f.lote_id = ?",
+                [$loteId]
+            );
+
+            $total = count($itens);
+            $concluidos = 0; $erros = 0; $emAndamento = 0;
+            $fasesFeitas = 0; $fasesTotais = 0;
+            foreach ($itens as $it) {
+                $fasesTotais += (int) ($it['total_fases'] ?: 8);
+                $fasesFeitas += min((int) $it['fase_atual'], (int) ($it['total_fases'] ?: 8));
+                if ($it['status'] === 'concluido') $concluidos++;
+                elseif ($it['status'] === 'erro') $erros++;
+                else $emAndamento++;
+            }
+
+            $percentual = $fasesTotais > 0 ? (int) round(($fasesFeitas / $fasesTotais) * 100) : 0;
+            $finalizado = ($concluidos + $erros) >= $total && $total > 0;
+
+            // Best-effort: manter a fila girando mesmo sem cron.
+            if (!$finalizado) {
+                $this->tentarDispararProcessamentoFila();
+            } else {
+                $this->notificarSetoresConcluidos($loteId);
+            }
+
+            echo json_encode([
+                'sucesso' => true,
+                'total' => $total,
+                'concluidos' => $concluidos,
+                'erros' => $erros,
+                'em_andamento' => $emAndamento,
+                'percentual' => $percentual,
+                'finalizado' => $finalizado
+            ]);
+            exit;
+
+        } catch (Exception $e) {
+            echo json_encode(['sucesso' => false, 'erro' => $e->getMessage()]);
+            exit;
+        }
+    }
+
+    /**
+     * Cria notificações in-app para cada setor do lote cujos SOPs terminaram,
+     * evitando duplicar (verifica pelo link já existente).
+     */
+    private function notificarSetoresConcluidos(string $loteId): void
+    {
+        try {
+            $this->garantirEstruturaConversacional();
+            $setores = Database::query(
+                "SELECT f.setor_id, f.empresa_id, se.nome_setor,
+                        SUM(CASE WHEN f.status IN ('concluido','erro') THEN 1 ELSE 0 END) AS finalizados,
+                        COUNT(*) AS total,
+                        MIN(se.estrutura_id) AS estrutura_id
+                 FROM fila_geracao_sop f
+                 LEFT JOIN setores_empresa se ON f.setor_id = se.id
+                 WHERE f.lote_id = ? AND f.setor_id IS NOT NULL
+                 GROUP BY f.setor_id, f.empresa_id, se.nome_setor",
+                [$loteId]
+            );
+
+            foreach ($setores as $s) {
+                if ((int) $s['finalizados'] < (int) $s['total']) continue; // setor ainda em andamento
+
+                // Descobrir o diagnóstico para o link
+                $diag = Database::queryOne(
+                    "SELECT diagnostico_id FROM estruturas_organizacionais WHERE id = ?",
+                    [(int) $s['estrutura_id']]
+                );
+                $link = $diag && !empty($diag['diagnostico_id'])
+                    ? APP_URL . '/sop/listar-por-diagnostico?diagnostico_id=' . (int) $diag['diagnostico_id']
+                    : APP_URL . '/manual-operacional';
+
+                $chave = $loteId . '#setor' . (int) $s['setor_id'];
+                $jaExiste = Database::queryOne(
+                    "SELECT id FROM notificacoes WHERE tipo = 'sop' AND mensagem LIKE ? LIMIT 1",
+                    ['%' . $chave . '%']
+                );
+                if ($jaExiste) continue;
+
+                Database::execute(
+                    "INSERT INTO notificacoes (empresa_id, usuario_id, tipo, titulo, mensagem, link, lida, criado_em)
+                     VALUES (:empresa_id, :usuario_id, 'sop', :titulo, :mensagem, :link, 0, NOW())",
+                    [
+                        'empresa_id' => (int) $s['empresa_id'],
+                        'usuario_id' => Auth::id(),
+                        'titulo' => 'SOPs prontos: ' . ($s['nome_setor'] ?? 'setor'),
+                        'mensagem' => 'Os SOPs do setor ' . ($s['nome_setor'] ?? '') . ' foram gerados. [' . $chave . ']',
+                        'link' => $link
+                    ]
+                );
+            }
+        } catch (Exception $e) {
+            Logger::warning('Falha ao notificar setores concluídos', ['erro' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Sobe um POOL de workers CLI desanexados para processar a fila em paralelo.
+     * Cada worker consome pedidos distintos via claim atômico (processarProximoDaFila).
+     * Best-effort: se exec() não estiver disponível, o cron + polling assumem.
+     */
+    private function dispararPoolWorkers(int $quantidade): void
+    {
+        $quantidade = max(1, min($quantidade, 4));
+        for ($i = 0; $i < $quantidade; $i++) {
+            $this->dispararWorkerCli();
+            usleep(120000); // 0.12s de defasagem para reduzir corrida no mesmo pedido
+        }
+    }
+
+    /**
      * Cria/reaproveita o SOP e enfileira sua geração (8 fases). Retorna o sop_id.
      * Reutilizado por processarServicoCompleto e por personalizarServico.
      */
-    private function enfileirarGeracaoSop(int $servicoId, ?array $servico = null): int
+    private function enfileirarGeracaoSop(int $servicoId, ?array $servico = null, ?string $loteId = null): int
     {
         if ($servico === null) {
             $servico = Database::queryOne(
@@ -10311,6 +11047,7 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
 
         // Garantir que a tabela da fila existe (evita depender de migration manual)
         $this->garantirTabelaFila();
+        $this->garantirEstruturaConversacional();
 
         $conteudoInicial = [
             'sop_titulo' => $servico['codigo_servico'] . ' - ' . $servico['nome_servico'],
@@ -10329,11 +11066,12 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             $sopId = (int) $servico['sop_id'];
         } else {
             Database::execute(
-                "INSERT INTO sops (empresa_id, diagnostico_id, titulo, sop_codigo, departamento, conteudo, versao, status, gerado_por_ia, criado_em, atualizado_em)
-                 VALUES (:empresa_id, :diagnostico_id, :titulo, :sop_codigo, :departamento, :conteudo, '1.0', 'rascunho', 1, NOW(), NOW())",
+                "INSERT INTO sops (empresa_id, diagnostico_id, conversa_id, titulo, sop_codigo, departamento, conteudo, versao, status, gerado_por_ia, criado_em, atualizado_em)
+                 VALUES (:empresa_id, :diagnostico_id, :conversa_id, :titulo, :sop_codigo, :departamento, :conteudo, '1.0', 'rascunho', 1, NOW(), NOW())",
                 [
                     'empresa_id' => $servico['empresa_id'],
                     'diagnostico_id' => $servico['diagnostico_id'] ?? null,
+                    'conversa_id' => $servico['conversa_id'] ?? null,
                     'titulo' => $servico['nome_servico'],
                     'sop_codigo' => $servico['codigo_servico'],
                     'departamento' => $servico['nome_setor'] ?? '',
@@ -10351,12 +11089,14 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         // Remover pedidos antigos deste serviço e enfileirar um novo
         Database::execute("DELETE FROM fila_geracao_sop WHERE servico_id = :id", ['id' => $servicoId]);
         Database::execute(
-            "INSERT INTO fila_geracao_sop (sop_id, servico_id, empresa_id, status, fase_atual, total_fases, mensagem, criado_em, atualizado_em)
-             VALUES (:sop_id, :servico_id, :empresa_id, 'pendente', 0, 8, 'Aguardando processamento...', NOW(), NOW())",
+            "INSERT INTO fila_geracao_sop (sop_id, servico_id, empresa_id, lote_id, setor_id, status, fase_atual, total_fases, mensagem, criado_em, atualizado_em)
+             VALUES (:sop_id, :servico_id, :empresa_id, :lote_id, :setor_id, 'pendente', 0, 8, 'Aguardando processamento...', NOW(), NOW())",
             [
                 'sop_id' => $sopId,
                 'servico_id' => $servicoId,
-                'empresa_id' => $servico['empresa_id']
+                'empresa_id' => $servico['empresa_id'],
+                'lote_id' => $loteId,
+                'setor_id' => $servico['setor_id'] ?? null
             ]
         );
 
@@ -11438,25 +12178,49 @@ Gere de 6 a 9 categorias, cada uma com 1 a 3 mensagens. As 4 categorias obrigat�
         // Isso evita que duas requisições processem a MESMA fase simultaneamente:
         // um pedido recém marcado como 'processando' não é pego por outra chamada
         // até passar o tempo de "travado".
-        $pedido = Database::queryOne(
-            "SELECT * FROM fila_geracao_sop 
-             WHERE status = 'pendente'
-                OR (status = 'processando' AND atualizado_em < (NOW() - INTERVAL 240 SECOND))
-             ORDER BY criado_em ASC LIMIT 1"
-        );
-
-        if (!$pedido) {
-            // Verificar se há algo em processamento (para o polling saber que não está vazio)
-            $emProcesso = Database::queryOne(
-                "SELECT id FROM fila_geracao_sop WHERE status = 'processando' LIMIT 1"
+        // CLAIM ATÔMICO: vários workers podem rodar em paralelo (um por serviço).
+        // Cada worker tenta "travar" uma linha distinta. O UPDATE condicional por
+        // status garante que só UM worker pega cada pedido — se rowCount=0, outro
+        // já pegou e tentamos o próximo.
+        $filaId = 0;
+        for ($tentativa = 0; $tentativa < 5; $tentativa++) {
+            $candidato = Database::queryOne(
+                "SELECT id FROM fila_geracao_sop
+                 WHERE status = 'pendente'
+                    OR (status = 'processando' AND atualizado_em < (NOW() - INTERVAL 240 SECOND))
+                 ORDER BY criado_em ASC LIMIT 1"
             );
-            if ($emProcesso) {
-                return ['sucesso' => true, 'processando' => true, 'mensagem' => 'Fase em processamento...'];
+
+            if (!$candidato) {
+                $emProcesso = Database::queryOne(
+                    "SELECT id FROM fila_geracao_sop WHERE status = 'processando' LIMIT 1"
+                );
+                if ($emProcesso) {
+                    return ['sucesso' => true, 'processando' => true, 'mensagem' => 'Fase em processamento...'];
+                }
+                return ['sucesso' => true, 'vazio' => true, 'mensagem' => 'Fila vazia.'];
             }
-            return ['sucesso' => true, 'vazio' => true, 'mensagem' => 'Fila vazia.'];
+
+            $afetadas = Database::executeAffected(
+                "UPDATE fila_geracao_sop
+                 SET status = 'processando', iniciado_em = COALESCE(iniciado_em, NOW()), atualizado_em = NOW()
+                 WHERE id = :id AND (status = 'pendente' OR (status = 'processando' AND atualizado_em < (NOW() - INTERVAL 240 SECOND)))",
+                ['id' => (int) $candidato['id']]
+            );
+
+            if ($afetadas === 1) {
+                $filaId = (int) $candidato['id'];
+                break;
+            }
+            // Outro worker levou este pedido; tentar o próximo.
+            usleep(150000);
         }
 
-        $filaId = (int) $pedido['id'];
+        if (!$filaId) {
+            return ['sucesso' => true, 'processando' => true, 'mensagem' => 'Concorrência: pedidos já travados por outros workers.'];
+        }
+
+        $pedido = Database::queryOne("SELECT * FROM fila_geracao_sop WHERE id = :id", ['id' => $filaId]);
         $sopId = (int) $pedido['sop_id'];
         $servicoId = (int) $pedido['servico_id'];
         $faseAtual = (int) $pedido['fase_atual'];
@@ -11479,12 +12243,6 @@ Gere de 6 a 9 categorias, cada uma com 1 a 3 mensagens. As 4 categorias obrigat�
             );
             return ['sucesso' => false, 'erro' => 'Serviço não encontrado.'];
         }
-
-        // Marcar como processando
-        Database::execute(
-            "UPDATE fila_geracao_sop SET status = 'processando', iniciado_em = COALESCE(iniciado_em, NOW()), atualizado_em = NOW() WHERE id = :id",
-            ['id' => $filaId]
-        );
 
         try {
             $resultado = $this->executarFaseSop($sopId, $servicoId, $servico, $proximaFase);
@@ -12024,7 +12782,14 @@ Gere de 6 a 9 categorias, cada uma com 1 a 3 mensagens. As 4 categorias obrigat�
         $documento = trim($servico['contexto_personalizacao'] ?? '');
         $nomeDoc = trim($servico['documento_personalizacao_nome'] ?? '');
 
-        if ($descricao === '' && $documento === '') {
+        // Contexto vindo da ENTREVISTA POR VOZ: só se aplica a serviços "identificados"
+        // na conversa (têm trecho_conversa). Serviços "sugeridos" incluídos manualmente
+        // NÃO têm trecho e seguem gerados com boas práticas padrão do nicho.
+        $trechoConversa = trim($servico['trecho_conversa'] ?? '');
+        $ehGap = ((int) ($servico['gap_identificado'] ?? 0)) === 1;
+        $motivoGap = trim($servico['motivo_conversa'] ?? '');
+
+        if ($descricao === '' && $documento === '' && $trechoConversa === '') {
             return '';
         }
 
@@ -12043,6 +12808,14 @@ Gere de 6 a 9 categorias, cada uma com 1 a 3 mensagens. As 4 categorias obrigat�
         if ($documento !== '') {
             $rotuloDoc = $nomeDoc !== '' ? " (arquivo: {$nomeDoc})" : '';
             $blocos[] = "\n## Conteúdo do documento anexado{$rotuloDoc} — use como fonte real de como o serviço é executado nesta empresa:\n\"\"\"\n" . $documento . "\n\"\"\"";
+        }
+        if ($trechoConversa !== '') {
+            if ($ehGap) {
+                $obs = $motivoGap !== '' ? " O gestor indicou que hoje NÃO fazem isso (\"{$motivoGap}\"): trate como um processo a ser IMPLANTADO, deixando claro o que passa a ser feito e por quê." : " Trate como um processo a ser IMPLANTADO (gap identificado na conversa).";
+                $blocos[] = "\n## O que o gestor falou sobre este serviço na entrevista (GAP identificado):" . $obs . "\n\"\"\"\n" . $trechoConversa . "\n\"\"\"";
+            } else {
+                $blocos[] = "\n## O que o gestor falou sobre COMO este serviço funciona hoje (entrevista por voz) — reflita fielmente nomes de responsáveis, ferramentas, etapas e exceções mencionados:\n\"\"\"\n" . $trechoConversa . "\n\"\"\"";
+            }
         }
 
         $blocos[] = "\nREGRA DE CONSOLIDAÇÃO: gere um SOP que seja o PADRÃO do serviço + estas especificidades. Não descarte boas práticas do padrão, mas adapte-as à realidade descrita. Se o documento trouxer passos/critérios próprios, eles têm prioridade.";

@@ -57,6 +57,17 @@ class Database
     }
 
     /**
+     * Executa uma query (UPDATE/DELETE) e retorna o número de linhas afetadas.
+     * Usado para "claim" atômico de itens de fila em execução concorrente.
+     */
+    public static function executeAffected(string $sql, array $params = []): int
+    {
+        $stmt = self::getConexao()->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->rowCount();
+    }
+
+    /**
      * Retorna o último ID inserido
      */
     public static function lastInsertId(): string
