@@ -278,12 +278,34 @@ function acompanharLote(loteId, total, redirect) {
     if (bar) {
         bar.innerHTML = '<div class="resumo" style="flex:1">'
             + '<strong id="lote-pct">0%</strong> — gerando <strong>' + total + '</strong> SOP(s) em paralelo. '
-            + 'Você pode sair desta tela; avisaremos quando terminar.'
+            + 'Pode deixar esta aba aberta; ela acelera a geração.'
             + '<div style="height:8px;background:#E4E5EE;border-radius:6px;margin-top:8px;overflow:hidden">'
             + '<div id="lote-progress" style="height:100%;width:0;background:var(--sv-ok);transition:width .4s"></div></div>'
             + '</div>'
             + '<button class="btn-primary" onclick="window.location.href=\'' + redirect + '\'">Ver SOPs agora →</button>';
     }
+
+    let terminado = false;
+
+    // "Bombas" de processamento: cada uma processa UMA fase por chamada e repete.
+    // O claim atômico no servidor garante que não peguem o mesmo pedido.
+    // Isso faz a fila girar mesmo sem cron/exec no servidor (paralelismo real
+    // entre serviços, pois várias bombas rodam ao mesmo tempo).
+    const N_BOMBAS = Math.min(Math.max(total, 1), 4);
+    async function bomba() {
+        while (!terminado) {
+            try {
+                const r = await fetch('<?= APP_URL ?>/sop/processar-fila', { method: 'GET' });
+                const d = await r.json();
+                if (d && d.vazio) { await new Promise(s => setTimeout(s, 2500)); }
+            } catch (e) {
+                await new Promise(s => setTimeout(s, 2000));
+            }
+        }
+    }
+    for (let i = 0; i < N_BOMBAS; i++) { bomba(); }
+
+    // Polling de progresso (separado das bombas).
     const poll = setInterval(async () => {
         try {
             const r = await fetch('<?= APP_URL ?>/sop/status-lote?lote_id=' + encodeURIComponent(loteId));
@@ -294,6 +316,7 @@ function acompanharLote(loteId, total, redirect) {
             if (pctEl) pctEl.textContent = (d.percentual || 0) + '%';
             if (barEl) barEl.style.width = (d.percentual || 0) + '%';
             if (d.finalizado) {
+                terminado = true;
                 clearInterval(poll);
                 window.location.href = redirect;
             }

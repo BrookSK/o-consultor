@@ -12118,10 +12118,17 @@ Gere de 6 a 9 categorias, cada uma com 1 a 3 mensagens. As 4 categorias obrigat�
     {
         Auth::proteger();
 
+        // Liberar o lock de sessão do PHP IMEDIATAMENTE. Sem isso, várias chamadas
+        // simultâneas desta rota (as "bombas" do navegador) seriam serializadas pelo
+        // bloqueio do arquivo de sessão, matando o paralelismo. Após fechar a sessão,
+        // as bombas processam pedidos DIFERENTES da fila de fato ao mesmo tempo.
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_write_close();
+        }
+
         // Processa UMA fase de forma SÍNCRONA e retorna. SEM ignore_user_abort:
         // se a fase completa em menos de ~55s, o worker web é liberado rapidamente
         // e o site NÃO trava. As fases foram dimensionadas para caber nesse tempo.
-        // O navegador chama esta rota em sequência (await) até concluir.
         @set_time_limit(70);
 
         header('Content-Type: application/json');
