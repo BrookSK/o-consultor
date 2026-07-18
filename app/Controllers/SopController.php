@@ -3207,6 +3207,68 @@ class SopController
     }
 
     /**
+     * Ativa um SETOR INTEIRO sem exigir seleção de serviços.
+     * Traz o setor de volta ao fluxo: reabre para conversa (limpa a marca de
+     * conversa dos serviços do setor para o card voltar ao estado "converse com a IA").
+     * NÃO marca serviços — a entrevista por voz é quem vai revelar/selecionar.
+     */
+    public function ativarSetorInteiro(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $setorId = (int) ($_POST['setor_id'] ?? 0);
+        if (!$setorId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Setor não informado.']);
+            exit;
+        }
+
+        $setor = Database::queryOne(
+            "SELECT se.*, eo.diagnostico_id FROM setores_empresa se
+             LEFT JOIN estruturas_organizacionais eo ON se.estrutura_id = eo.id
+             WHERE se.id = ?",
+            [$setorId]
+        );
+        if (!$setor) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Setor não encontrado.']);
+            exit;
+        }
+
+        $empresaUsuario = Auth::empresa();
+        if ($empresaUsuario !== null && (int) $setor['empresa_id'] !== (int) $empresaUsuario) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Sem permissão.']);
+            exit;
+        }
+
+        try {
+            $this->garantirColunaSelecionado();
+            $this->garantirEstruturaConversacional();
+
+            // Reabrir o setor: marca o setor como ativo/mapeado e deixa os serviços
+            // prontos para a conversa (não seleciona nada; o mic é que vai revelar).
+            Database::execute(
+                "UPDATE setores_empresa SET status = 'mapeado', atualizado_em = NOW() WHERE id = ?",
+                [$setorId]
+            );
+
+            $diagnosticoId = (int) ($setor['diagnostico_id'] ?? 0);
+            echo json_encode([
+                'sucesso' => true,
+                'setor_id' => $setorId,
+                'mensagem' => 'Setor ativado. Converse com a IA para gerar os SOPs.',
+                // Redireciona para a tela conversacional de seleção deste diagnóstico.
+                'redirect' => $diagnosticoId ? (APP_URL . '/sop/selecionar-servicos?diagnostico_id=' . $diagnosticoId) : null
+            ]);
+            exit;
+        } catch (Exception $e) {
+            Logger::error('Erro ao ativar setor inteiro', ['erro' => $e->getMessage(), 'setor_id' => $setorId]);
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
+            exit;
+        }
+    }
+
+    /**
      * Inativa serviços (selecionado=0) — usado na aba de SOPs para tirar serviços
      * (ou um setor inteiro) da lista sem excluí-los. Eles vão para "Setores inativos".
      */
@@ -3287,6 +3349,25 @@ class SopController
      * coluna conversa_id em sops, colunas de lote/setor na fila e tabela de
      * notificações. Espelha a migration 053, para funcionar mesmo sem rodá-la.
      */
+    /**
+     * Verifica se uma coluna existe numa tabela (via information_schema).
+     * Usado para montar INSERTs adaptativos e não quebrar quando a migration
+     * ainda não rodou no ambiente.
+     */
+    private function colunaExiste(string $tabela, string $coluna): bool
+    {
+        try {
+            $r = Database::queryOne(
+                "SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",
+                [$tabela, $coluna]
+            );
+            return (int) ($r['n'] ?? 0) > 0;
+        } catch (Exception $e) {
+            return false;
+        }
+    }
+
     private function garantirEstruturaConversacional(): void
     {
         $tentar = static function (string $sql): void {
@@ -10877,13 +10958,25 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             $loteId = 'lote_' . $diagnosticoId . '_' . date('YmdHis') . '_' . substr(md5(uniqid('', true)), 0, 6);
 
             $enfileirados = 0;
+            $ultimoErro = '';
             foreach ($servicos as $servico) {
                 try {
                     $this->enfileirarGeracaoSop((int) $servico['id'], $servico, $loteId);
                     $enfileirados++;
                 } catch (Exception $e) {
+                    $ultimoErro = $e->getMessage();
                     Logger::warning('Falha ao enfileirar serviço no lote', ['servico_id' => $servico['id'], 'erro' => $e->getMessage()]);
                 }
+            }
+
+            // Se NADA foi enfileirado, não deixar o front girar em 0% — retornar erro claro.
+            if ($enfileirados === 0) {
+                Logger::error('LOTE: nenhum serviço enfileirado', ['diagnostico_id' => $diagnosticoId, 'ultimo_erro' => $ultimoErro]);
+                echo json_encode([
+                    'sucesso' => false,
+                    'erro' => 'Não foi possível iniciar a geração dos SOPs.' . ($ultimoErro ? ' Detalhe: ' . $ultimoErro : '')
+                ]);
+                exit;
             }
 
             // Subir um POOL de workers para processar em paralelo (um por serviço,
@@ -10928,13 +11021,23 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
         }
 
         try {
-            $itens = Database::query(
-                "SELECT f.status, f.fase_atual, f.total_fases, f.setor_id, se.nome_setor
-                 FROM fila_geracao_sop f
-                 LEFT JOIN setores_empresa se ON f.setor_id = se.id
-                 WHERE f.lote_id = ?",
-                [$loteId]
-            );
+            if ($this->colunaExiste('fila_geracao_sop', 'lote_id')) {
+                $itens = Database::query(
+                    "SELECT f.status, f.fase_atual, f.total_fases, f.setor_id
+                     FROM fila_geracao_sop f
+                     WHERE f.lote_id = ?",
+                    [$loteId]
+                );
+            } else {
+                // Sem a coluna de lote: acompanhar todos os pedidos ativos da empresa.
+                $empresaId = Auth::empresa();
+                $itens = Database::query(
+                    "SELECT status, fase_atual, total_fases, NULL AS setor_id
+                     FROM fila_geracao_sop
+                     WHERE (:eid IS NULL OR empresa_id = :eid)",
+                    ['eid' => $empresaId]
+                );
+            }
 
             $total = count($itens);
             $concluidos = 0; $erros = 0; $emAndamento = 0;
@@ -10982,6 +11085,9 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
     {
         try {
             $this->garantirEstruturaConversacional();
+            if (!$this->colunaExiste('fila_geracao_sop', 'lote_id') || !$this->colunaExiste('fila_geracao_sop', 'setor_id')) {
+                return; // sem rastreio por lote/setor, pula a notificação (não crítico)
+            }
             $setores = Database::query(
                 "SELECT f.setor_id, f.empresa_id, se.nome_setor,
                         SUM(CASE WHEN f.status IN ('concluido','erro') THEN 1 ELSE 0 END) AS finalizados,
@@ -11084,19 +11190,36 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             );
             $sopId = (int) $servico['sop_id'];
         } else {
-            Database::execute(
-                "INSERT INTO sops (empresa_id, diagnostico_id, conversa_id, titulo, sop_codigo, departamento, conteudo, versao, status, gerado_por_ia, criado_em, atualizado_em)
-                 VALUES (:empresa_id, :diagnostico_id, :conversa_id, :titulo, :sop_codigo, :departamento, :conteudo, '1.0', 'rascunho', 1, NOW(), NOW())",
-                [
-                    'empresa_id' => $servico['empresa_id'],
-                    'diagnostico_id' => $servico['diagnostico_id'] ?? null,
-                    'conversa_id' => $servico['conversa_id'] ?? null,
-                    'titulo' => $servico['nome_servico'],
-                    'sop_codigo' => $servico['codigo_servico'],
-                    'departamento' => $servico['nome_setor'] ?? '',
-                    'conteudo' => json_encode($conteudoInicial, JSON_UNESCAPED_UNICODE)
-                ]
-            );
+            // INSERT ADAPTATIVO: inclui conversa_id só se a coluna existir.
+            $temConversaCol = $this->colunaExiste('sops', 'conversa_id');
+            if ($temConversaCol) {
+                Database::execute(
+                    "INSERT INTO sops (empresa_id, diagnostico_id, conversa_id, titulo, sop_codigo, departamento, conteudo, versao, status, gerado_por_ia, criado_em, atualizado_em)
+                     VALUES (:empresa_id, :diagnostico_id, :conversa_id, :titulo, :sop_codigo, :departamento, :conteudo, '1.0', 'rascunho', 1, NOW(), NOW())",
+                    [
+                        'empresa_id' => $servico['empresa_id'],
+                        'diagnostico_id' => $servico['diagnostico_id'] ?? null,
+                        'conversa_id' => $servico['conversa_id'] ?? null,
+                        'titulo' => $servico['nome_servico'],
+                        'sop_codigo' => $servico['codigo_servico'],
+                        'departamento' => $servico['nome_setor'] ?? '',
+                        'conteudo' => json_encode($conteudoInicial, JSON_UNESCAPED_UNICODE)
+                    ]
+                );
+            } else {
+                Database::execute(
+                    "INSERT INTO sops (empresa_id, diagnostico_id, titulo, sop_codigo, departamento, conteudo, versao, status, gerado_por_ia, criado_em, atualizado_em)
+                     VALUES (:empresa_id, :diagnostico_id, :titulo, :sop_codigo, :departamento, :conteudo, '1.0', 'rascunho', 1, NOW(), NOW())",
+                    [
+                        'empresa_id' => $servico['empresa_id'],
+                        'diagnostico_id' => $servico['diagnostico_id'] ?? null,
+                        'titulo' => $servico['nome_servico'],
+                        'sop_codigo' => $servico['codigo_servico'],
+                        'departamento' => $servico['nome_setor'] ?? '',
+                        'conteudo' => json_encode($conteudoInicial, JSON_UNESCAPED_UNICODE)
+                    ]
+                );
+            }
             $sopId = (int) Database::lastInsertId();
         }
 
@@ -11105,18 +11228,31 @@ Responda APENAS com o JSON válido do SOP completo, sem explicações adicionais
             ['sop_id' => $sopId, 'id' => $servicoId]
         );
 
-        // Remover pedidos antigos deste serviço e enfileirar um novo
+        // Remover pedidos antigos deste serviço e enfileirar um novo.
+        // INSERT ADAPTATIVO: inclui lote_id/setor_id só se as colunas existirem
+        // (evita erro fatal e SOP "fantasma" quando a migration 053 ainda não rodou).
         Database::execute("DELETE FROM fila_geracao_sop WHERE servico_id = :id", ['id' => $servicoId]);
+
+        $cols = ['sop_id', 'servico_id', 'empresa_id', 'status', 'fase_atual', 'total_fases', 'mensagem', 'criado_em', 'atualizado_em'];
+        $vals = [':sop_id', ':servico_id', ':empresa_id', "'pendente'", '0', '8', "'Aguardando processamento...'", 'NOW()', 'NOW()'];
+        $params = [
+            'sop_id' => $sopId,
+            'servico_id' => $servicoId,
+            'empresa_id' => $servico['empresa_id'],
+        ];
+        if ($this->colunaExiste('fila_geracao_sop', 'lote_id')) {
+            array_splice($cols, 3, 0, 'lote_id');
+            array_splice($vals, 3, 0, ':lote_id');
+            $params['lote_id'] = $loteId;
+        }
+        if ($this->colunaExiste('fila_geracao_sop', 'setor_id')) {
+            array_splice($cols, 4, 0, 'setor_id');
+            array_splice($vals, 4, 0, ':setor_id');
+            $params['setor_id'] = $servico['setor_id'] ?? null;
+        }
         Database::execute(
-            "INSERT INTO fila_geracao_sop (sop_id, servico_id, empresa_id, lote_id, setor_id, status, fase_atual, total_fases, mensagem, criado_em, atualizado_em)
-             VALUES (:sop_id, :servico_id, :empresa_id, :lote_id, :setor_id, 'pendente', 0, 8, 'Aguardando processamento...', NOW(), NOW())",
-            [
-                'sop_id' => $sopId,
-                'servico_id' => $servicoId,
-                'empresa_id' => $servico['empresa_id'],
-                'lote_id' => $loteId,
-                'setor_id' => $servico['setor_id'] ?? null
-            ]
+            "INSERT INTO fila_geracao_sop (" . implode(', ', $cols) . ") VALUES (" . implode(', ', $vals) . ")",
+            $params
         );
 
         Logger::info('SOP ENFILEIRADO', ['sop_id' => $sopId, 'servico_id' => $servicoId]);

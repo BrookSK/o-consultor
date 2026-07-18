@@ -353,6 +353,10 @@
                 </div>
                 <div style="display:flex;align-items:center;gap:12px;">
                     <span class="badge-status pendente">💤 Inativo</span>
+                    <button class="add-servico" title="Conversar com a IA sobre este setor"
+                            onclick="event.stopPropagation(); abrirVozSetorInativo(<?= (int) $setor['setor_id'] ?>, '<?= htmlspecialchars($setor['nome_setor'], ENT_QUOTES) ?>')">🎤 Conversar</button>
+                    <button class="btn-ativar" title="Ativar o setor inteiro (sem precisar marcar serviços)"
+                            onclick="event.stopPropagation(); ativarSetorInteiro(<?= (int) $setor['setor_id'] ?>)">✓ Ativar setor</button>
                     <button class="add-servico" onclick="event.stopPropagation(); marcarTodosInativo(this, <?= $setor['setor_id'] ?>)">Selecionar todos</button>
                 </div>
             </div>
@@ -532,6 +536,29 @@ async function ativarSetor(setorId) {
         alert('Erro de comunicação com o servidor.');
         btn.disabled = false; btn.textContent = '✓ Ativar selecionados';
     }
+}
+
+// Ativa o setor INTEIRO sem exigir seleção de serviços e leva à tela conversacional.
+async function ativarSetorInteiro(setorId) {
+    try {
+        const body = new URLSearchParams({ setor_id: setorId, csrf_token: CSRF_TOKEN });
+        const r = await fetch('<?= APP_URL ?>/sop/ativar-setor', { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body });
+        const d = await r.json();
+        if (d.sucesso) {
+            if (d.redirect) { window.location.href = d.redirect; }
+            else { location.reload(); }
+        } else {
+            alert('Erro: ' + (d.erro || 'desconhecido'));
+        }
+    } catch (e) {
+        alert('Erro de comunicação com o servidor.');
+    }
+}
+
+// Mic no setor inativo: leva à tela conversacional (entrevista por voz completa).
+async function abrirVozSetorInativo(setorId, nomeSetor) {
+    // Ativa o setor e vai para a tela de conversa, onde o mic multi-turno vive.
+    await ativarSetorInteiro(setorId);
 }
 
 // ---- Seleção múltipla (persiste ao recolher, pois os checkboxes ficam no DOM) ----
