@@ -538,14 +538,17 @@ async function ativarSetor(setorId) {
     }
 }
 
-// Ativa o setor INTEIRO sem exigir seleção de serviços e leva à tela conversacional.
-async function ativarSetorInteiro(setorId) {
+// Ativa o setor INTEIRO sem exigir seleção de serviços.
+// Por padrão, apenas ativa e permanece na mesma página (recarrega para o setor
+// sair da lista de inativos). Quando irParaConversa=true, segue para a tela
+// conversacional (usado pelo botão "Conversar").
+async function ativarSetorInteiro(setorId, irParaConversa = false) {
     try {
         const body = new URLSearchParams({ setor_id: setorId, csrf_token: CSRF_TOKEN });
         const r = await fetch('<?= APP_URL ?>/sop/ativar-setor', { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body });
         const d = await r.json();
         if (d.sucesso) {
-            if (d.redirect) { window.location.href = d.redirect; }
+            if (irParaConversa && d.redirect) { window.location.href = d.redirect; }
             else { location.reload(); }
         } else {
             alert('Erro: ' + (d.erro || 'desconhecido'));
@@ -558,7 +561,7 @@ async function ativarSetorInteiro(setorId) {
 // Mic no setor inativo: leva à tela conversacional (entrevista por voz completa).
 async function abrirVozSetorInativo(setorId, nomeSetor) {
     // Ativa o setor e vai para a tela de conversa, onde o mic multi-turno vive.
-    await ativarSetorInteiro(setorId);
+    await ativarSetorInteiro(setorId, true);
 }
 
 // ---- Seleção múltipla (persiste ao recolher, pois os checkboxes ficam no DOM) ----
