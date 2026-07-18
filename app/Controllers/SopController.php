@@ -6152,7 +6152,10 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             }
 
             // 2. A IA escolhe QUAIS nós mudar e reescreve APENAS o texto deles.
-            $edicoes = $this->escolherEdicoesPontuaisComIA($nos, $transcricao, $trechoOrigem);
+            $resultadoIA = $this->escolherEdicoesPontuaisComIA($nos, $transcricao, $trechoOrigem);
+            $edicoes = $resultadoIA['edicoes'] ?? [];
+            $termoAntigo = $resultadoIA['termo_antigo'] ?? '';
+            $termoNovo = $resultadoIA['termo_novo'] ?? '';
             if (empty($edicoes)) {
                 echo json_encode(['sucesso' => false, 'erro' => 'Não identifiquei o que ajustar. Cite o trecho de forma mais específica (ex.: "no passo de envio, troque e-mail por fechar na call").']);
                 exit;
@@ -6162,15 +6165,38 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             $conteudoNovo = $conteudoAtual;
             $aplicadas = 0;
             $rotulosAlterados = [];
+            $ignoradosPorCorte = 0;
             foreach ($edicoes as $ed) {
                 $idx = (int) ($ed['no'] ?? -1);
                 if (!isset($nos[$idx])) continue;
-                $novoTexto = (string) ($ed['novo_texto'] ?? '');
+                $novoTexto = rtrim((string) ($ed['novo_texto'] ?? ''));
                 if ($novoTexto === '') continue;
+
+                // SALVAGUARDA ANTI-CORTE: se o texto novo é bem menor que o original
+                // E termina no meio de uma frase (sem pontuação final), provavelmente
+                // foi truncado pela IA — não aplica para não estragar o SOP.
+                $orig = trim((string) $nos[$idx]['texto']);
+                $terminaBem = (bool) preg_match('/[.!?:;)\]"”]$/u', $novoTexto);
+                $muitoMenor = mb_strlen($orig) > 120 && mb_strlen($novoTexto) < (mb_strlen($orig) * 0.5);
+                if (!$terminaBem && $muitoMenor) {
+                    $ignoradosPorCorte++;
+                    Logger::warning('Patch por voz: edição ignorada por parecer truncada', [
+                        'sop_id' => $sopId,
+                        'len_orig' => mb_strlen($orig),
+                        'len_novo' => mb_strlen($novoTexto),
+                    ]);
+                    continue;
+                }
+
                 if ($this->aplicarValorPorPath($conteudoNovo, $nos[$idx]['ref'], $novoTexto)) {
                     $aplicadas++;
                     $rotulosAlterados[] = $nos[$idx]['rotulo'];
                 }
+            }
+
+            if ($aplicadas === 0 && $ignoradosPorCorte > 0) {
+                echo json_encode(['sucesso' => false, 'erro' => 'O ajuste retornou incompleto (texto cortado). Tente novamente, se possível citando o trecho de forma mais curta.']);
+                exit;
             }
 
             if ($aplicadas === 0) {
@@ -6204,17 +6230,145 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                 'sop_id' => $sopId, 'trechos_alterados' => $aplicadas, 'versao_nova' => $versaoNova
             ]);
 
+            // COERÊNCIA GLOBAL: se foi uma substituição de termo (ex.: planilha -> CRM),
+            // procurar o termo antigo nos DEMAIS trechos do SOP (fora dos já alterados) e
+            // devolver as ocorrências para o front perguntar se deve substituir lá também.
+            $ocorrencias = [];
+            if ($termoAntigo !== '' && mb_strlen($termoAntigo) >= 3) {
+                $refsAlteradas = [];
+                foreach ($edicoes as $ed) {
+                    $idx = (int) ($ed['no'] ?? -1);
+                    if (isset($nos[$idx])) { $refsAlteradas[] = implode('.', array_map('strval', $nos[$idx]['ref'])); }
+                }
+                // Reenumerar sobre o conteúdo JÁ atualizado para achar o termo remanescente.
+                foreach ($this->coletarNosEditaveis($conteudoNovo) as $n) {
+                    $refStr = implode('.', array_map('strval', $n['ref']));
+                    if (in_array($refStr, $refsAlteradas, true)) continue; // pular os que já mudamos
+                    if (mb_stripos($n['texto'], $termoAntigo) !== false) {
+                        $ocorrencias[] = [
+                            'path' => $n['ref'],
+                            'rotulo' => $n['rotulo'],
+                            'trecho' => mb_substr(trim(preg_replace('/\s+/', ' ', $n['texto'])), 0, 160),
+                        ];
+                    }
+                }
+            }
+
             echo json_encode([
                 'sucesso' => true,
                 'secao' => $secaoAlvo,
                 'trechos_alterados' => $aplicadas,
                 'versao' => $versaoNova,
-                'mensagem' => $aplicadas . ' trecho(s) ajustado(s) (v' . $versaoNova . '): ' . $secaoAlvo
+                'mensagem' => $aplicadas . ' trecho(s) ajustado(s) (v' . $versaoNova . '): ' . $secaoAlvo,
+                // Para o front oferecer substituição em cadeia (coerência global):
+                'termo_antigo' => $termoAntigo,
+                'termo_novo' => $termoNovo,
+                'ocorrencias_restantes' => $ocorrencias
             ]);
             exit;
 
         } catch (Exception $e) {
             Logger::error('Erro no patch de SOP por voz', ['erro' => $e->getMessage(), 'sop_id' => $sopId]);
+            echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
+            exit;
+        }
+    }
+
+    /**
+     * Substitui um termo (ex.: "planilha" -> "CRM") APENAS nos trechos indicados
+     * por seus caminhos (paths). Usado na coerência global: depois de um ajuste,
+     * o usuário confirma substituir o termo nos demais pontos onde ele aparece.
+     * Preserva o restante do texto e a capitalização inicial de cada ocorrência.
+     */
+    public function substituirTermoSop(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $sopId = (int) ($_POST['sop_id'] ?? 0);
+        $termoAntigo = trim($_POST['termo_antigo'] ?? '');
+        $termoNovo = trim($_POST['termo_novo'] ?? '');
+        $pathsRaw = $_POST['paths'] ?? '';
+        $paths = is_string($pathsRaw) ? json_decode($pathsRaw, true) : $pathsRaw;
+
+        if (!$sopId || $termoAntigo === '' || $termoNovo === '' || !is_array($paths) || empty($paths)) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Parâmetros insuficientes para substituição.']);
+            exit;
+        }
+
+        $sop = Sop::buscarPorId($sopId);
+        if (!$sop) { echo json_encode(['sucesso' => false, 'erro' => 'SOP não encontrado.']); exit; }
+        $empresaUsuario = Auth::empresa();
+        if ($empresaUsuario !== null && (int) $sop['empresa_id'] !== (int) $empresaUsuario) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Sem permissão.']); exit;
+        }
+
+        $usaCampoConteudo = !empty($sop['conteudo']) && json_decode($sop['conteudo'], true) !== null;
+        $conteudoAtual = json_decode($usaCampoConteudo ? $sop['conteudo'] : ($sop['conteudo_completo'] ?? ''), true);
+        if (!is_array($conteudoAtual)) { echo json_encode(['sucesso' => false, 'erro' => 'Conteúdo inválido.']); exit; }
+
+        try {
+            $conteudoNovo = $conteudoAtual;
+            $alterados = 0;
+
+            // Substituição case-insensitive preservando a caixa inicial da ocorrência.
+            $substituir = static function (string $texto) use ($termoAntigo, $termoNovo): string {
+                $pattern = '/' . preg_quote($termoAntigo, '/') . '/iu';
+                return preg_replace_callback($pattern, static function ($m) use ($termoNovo) {
+                    $orig = $m[0];
+                    // Se a ocorrência começa com maiúscula, capitaliza o novo termo.
+                    if (mb_strtoupper(mb_substr($orig, 0, 1)) === mb_substr($orig, 0, 1)) {
+                        return mb_strtoupper(mb_substr($termoNovo, 0, 1)) . mb_substr($termoNovo, 1);
+                    }
+                    return $termoNovo;
+                }, $texto);
+            };
+
+            foreach ($paths as $path) {
+                if (!is_array($path)) continue;
+                // Ler valor atual pelo caminho
+                $ref = $conteudoNovo;
+                $ok = true;
+                foreach ($path as $chave) {
+                    if (is_array($ref) && array_key_exists($chave, $ref)) { $ref = $ref[$chave]; }
+                    else { $ok = false; break; }
+                }
+                if (!$ok || !is_string($ref)) continue;
+                $novo = $substituir($ref);
+                if ($novo !== $ref && $this->aplicarValorPorPath($conteudoNovo, $path, $novo)) {
+                    $alterados++;
+                }
+            }
+
+            if ($alterados === 0) {
+                echo json_encode(['sucesso' => true, 'alterados' => 0, 'mensagem' => 'Nenhuma ocorrência adicional para substituir.']);
+                exit;
+            }
+
+            $versaoAtual = $sop['versao'] ?: '1.0';
+            $versaoNova = Sop::incrementarVersao($versaoAtual);
+            $motivo = 'Substituição em cadeia: "' . $termoAntigo . '" → "' . $termoNovo . '" (' . $alterados . ' trecho[s]).';
+            Sop::salvarHistorico($sopId, $versaoAtual, $versaoNova, $conteudoAtual, $motivo, Auth::id());
+
+            if ($usaCampoConteudo) {
+                Database::execute(
+                    "UPDATE sops SET conteudo = :c, versao = :v, motivo_alteracao = :m, atualizado_em = NOW() WHERE id = :id",
+                    ['c' => json_encode($conteudoNovo, JSON_UNESCAPED_UNICODE), 'v' => $versaoNova, 'm' => $motivo, 'id' => $sopId]
+                );
+            } else {
+                Sop::atualizar($sopId, ['conteudo_completo' => $conteudoNovo, 'versao' => $versaoNova, 'motivo_alteracao' => $motivo]);
+            }
+
+            echo json_encode([
+                'sucesso' => true,
+                'alterados' => $alterados,
+                'versao' => $versaoNova,
+                'mensagem' => 'Termo substituído em ' . $alterados . ' trecho(s) (v' . $versaoNova . ').'
+            ]);
+            exit;
+        } catch (Exception $e) {
+            Logger::error('Erro na substituição de termo do SOP', ['erro' => $e->getMessage(), 'sop_id' => $sopId]);
             echo json_encode(['sucesso' => false, 'erro' => 'Erro interno: ' . $e->getMessage()]);
             exit;
         }
@@ -6288,16 +6442,46 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             }
         }
 
-        // Cenários críticos (ação/situação por item).
+        // Cenários críticos / adversidades (cobre os nomes de campo reais da view).
         $cenarios = $conteudo['gestao_situacoes_fora_controle']['cenarios_criticos_obrigatorios'] ?? [];
+        $camposCenario = [
+            'tipo_crise' => 'tipo',
+            'situacao_especifica' => 'situação',
+            'situacao' => 'situação',
+            'sinais_identificacao' => 'como identificar',
+            'sinais_alerta' => 'sinais de alerta',
+            'acao_imediata_contencao' => 'ação imediata',
+            'acao_imediata' => 'ação imediata',
+            'acao_recomendada' => 'ação',
+            'acao' => 'ação',
+            'tecnicas_desescalacao' => 'desescalada',
+            'quando_escalar' => 'quando escalar',
+            'quem_notificar' => 'quem notificar',
+            'script_comunicacao_crise' => 'script na crise',
+        ];
         foreach ((array) $cenarios as $ci => $cen) {
             if (!is_array($cen)) continue;
-            foreach (['situacao_especifica' => 'situação', 'acao_recomendada' => 'ação', 'acao' => 'ação'] as $campo => $suf) {
+            $rotBase = 'Adversidade ' . ($ci + 1);
+            foreach ($camposCenario as $campo => $suf) {
                 if (!empty($cen[$campo]) && is_string($cen[$campo])) {
                     $nos[] = [
                         'ref' => ['gestao_situacoes_fora_controle', 'cenarios_criticos_obrigatorios', $ci, $campo],
-                        'rotulo' => 'Situação crítica ' . ($ci + 1) . ' — ' . $suf,
+                        'rotulo' => $rotBase . ' — ' . $suf,
                         'texto' => $cen[$campo],
+                    ];
+                }
+            }
+        }
+
+        // Scripts de situações difíceis (mapa nome => texto).
+        $scriptsDificeis = $conteudo['gestao_situacoes_fora_controle']['scripts_situacoes_dificeis'] ?? [];
+        if (is_array($scriptsDificeis)) {
+            foreach ($scriptsDificeis as $sit => $script) {
+                if (is_string($script) && trim($script) !== '') {
+                    $nos[] = [
+                        'ref' => ['gestao_situacoes_fora_controle', 'scripts_situacoes_dificeis', $sit],
+                        'rotulo' => 'Adversidade · script: ' . (is_string($sit) ? str_replace('_', ' ', $sit) : 'situação'),
+                        'texto' => $script,
                     ];
                 }
             }
@@ -6313,15 +6497,25 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
      */
     private function escolherEdicoesPontuaisComIA(array $nos, string $transcricao, string $trechoOrigem): array
     {
-        // Lista enumerada compacta para a IA localizar o ponto certo.
+        // Lista enumerada para a IA localizar o ponto certo.
+        // IMPORTANTE: enviar o texto ATUAL COMPLETO de cada nó. Se truncarmos aqui,
+        // a IA reescreve com base num texto cortado e devolve um texto cortado.
+        // Quando há POUCOS nós (edição escopada num passo), cabe o texto inteiro.
+        // Com muitos nós (edição geral), reduzimos o texto por nó só para caber,
+        // mas mantemos um limite alto para não cortar o conteúdo real.
+        $qtd = count($nos);
+        $limitePorNo = $qtd <= 6 ? 6000 : ($qtd <= 20 ? 2000 : 900);
         $linhas = [];
         foreach ($nos as $i => $n) {
-            $texto = mb_substr(trim(preg_replace('/\s+/', ' ', $n['texto'])), 0, 300);
+            $texto = trim(preg_replace('/[ \t]+/', ' ', $n['texto']));
+            if (mb_strlen($texto) > $limitePorNo) {
+                $texto = mb_substr($texto, 0, $limitePorNo);
+            }
             $linhas[] = "[{$i}] {$n['rotulo']}\n     ATUAL: {$texto}";
         }
         $catalogo = implode("\n", $linhas);
-        if (mb_strlen($catalogo) > 16000) {
-            $catalogo = mb_substr($catalogo, 0, 16000) . "\n...";
+        if (mb_strlen($catalogo) > 28000) {
+            $catalogo = mb_substr($catalogo, 0, 28000) . "\n...";
         }
 
         $blocoOrigem = $trechoOrigem !== ''
@@ -6336,20 +6530,27 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
             . "\n# PEDIDO DO USUÁRIO (fala transcrita):\n\"\"\"\n" . mb_substr($transcricao, 0, 4000) . "\n\"\"\"\n\n"
             . "# COMO RESPONDER:\n"
             . "- Escolha o MENOR conjunto de trechos que atende ao pedido (geralmente 1, no máximo 3-4 se o mesmo ponto aparecer repetido).\n"
-            . "- Para cada trecho, reescreva o texto INTEIRO daquele trecho já com o ajuste aplicado, mantendo o estilo e o que não foi pedido para mudar.\n"
-            . "- Exemplo: se o pedido é 'em vez de enviar por e-mail, tente fechar na call e só envie e-mail em último caso', reescreva o passo/script que fala de enviar e-mail para refletir essa ordem — sem alterar os outros passos.\n"
+            . "- Para cada trecho, devolva o texto INTEIRO daquele trecho já com o ajuste aplicado. COPIE o texto ATUAL na íntegra e altere APENAS a parte pedida — NÃO resuma, NÃO encurte e NÃO corte o final. O 'novo_texto' deve ser um texto COMPLETO e bem-formado, nunca terminado no meio de uma frase.\n"
+            . "- Preserve todas as frases e detalhes que o pedido não mencionou. Se o texto atual tem 4 frases e o pedido muda 1, devolva as 4 frases (3 iguais + 1 ajustada).\n"
+            . "- Exemplo: se o pedido é 'em vez de enviar por e-mail, tente fechar na call e só envie e-mail em último caso', reescreva o passo/script que fala de enviar e-mail para refletir essa ordem — sem alterar os outros passos e sem cortar o restante do texto.\n"
             . "- NÃO invente trechos novos nem mude índices. Use exatamente os índices listados.\n"
             . "- Se o pedido não corresponder a nenhum trecho, devolva lista vazia.\n"
             . "- Português do Brasil.\n\n"
+            . "- Se o pedido for uma SUBSTITUIÇÃO de termo (ex.: 'trocar planilha por CRM'), preencha 'termo_antigo' e 'termo_novo' com as palavras-chave trocadas (curtas, no singular). Senão, deixe vazios.\n"
             . "# RESPONDA APENAS EM JSON:\n"
-            . "{\n  \"edicoes\": [ {\"no\": 3, \"novo_texto\": \"texto completo do trecho já ajustado\"} ]\n}";
+            . "{\n  \"edicoes\": [ {\"no\": 3, \"novo_texto\": \"texto completo do trecho já ajustado, sem cortes\"} ],\n  \"termo_antigo\": \"planilha\",\n  \"termo_novo\": \"CRM\"\n}";
 
-        $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o', true, 4000, 90);
+        // max_tokens alto para caber o texto completo reescrito sem cortar no meio.
+        $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o', true, 8000, 120);
         if (!empty($resp['sucesso']) && is_array($resp['conteudo'])) {
             $edicoes = $resp['conteudo']['edicoes'] ?? [];
-            return is_array($edicoes) ? $edicoes : [];
+            return [
+                'edicoes' => is_array($edicoes) ? $edicoes : [],
+                'termo_antigo' => trim((string) ($resp['conteudo']['termo_antigo'] ?? '')),
+                'termo_novo' => trim((string) ($resp['conteudo']['termo_novo'] ?? '')),
+            ];
         }
-        return [];
+        return ['edicoes' => [], 'termo_antigo' => '', 'termo_novo' => ''];
     }
 
     /**

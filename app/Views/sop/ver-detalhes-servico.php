@@ -582,7 +582,14 @@ if (!function_exists('sopTemConteudo')) {
         $scriptsDificeis = $data['gestao_situacoes_fora_controle']['scripts_situacoes_dificeis'] ?? [];
     ?>
     <?php if (!empty($cenarios) || !empty($scriptsDificeis)): ?>
-    <div class="section-title crit"><span class="badge">⚠</span><h2>Adversidades técnicas e problemas de execução</h2></div>
+    <div class="section-title crit">
+        <span class="badge">⚠</span><h2>Adversidades técnicas e problemas de execução</h2>
+        <?php if ($temSop): ?>
+        <button class="btn-ajuste-passo no-print" style="margin-left:auto;"
+                title="Ajustar as adversidades por voz"
+                onclick='abrirAjusteVoz(["gestao_situacoes_fora_controle"], "Adversidades e situações críticas")'>🎙 Ajustar</button>
+        <?php endif; ?>
+    </div>
     <p class="section-sub">Problemas técnicos comuns durante o serviço, fornecedores/terceiros que falham e como resolver ou contornar cada situação.</p>
 
     <div class="crit-wrap">
@@ -1126,13 +1133,42 @@ async function aplicarAjusteVoz() {
         const body = new URLSearchParams(params);
         const r = await fetch('<?= APP_URL ?>/sop/patch-sop-voz', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
         const d = await r.json();
-        if (d.sucesso) {
-            fecharAjusteVoz();
-            alert('✅ ' + (d.mensagem || ('Seção "' + d.secao + '" atualizada (v' + d.versao + ').')));
-            window.location.reload();
+        if (!d.sucesso) { alert('Erro: ' + (d.erro || 'desconhecido')); return; }
+
+        // COERÊNCIA GLOBAL: se foi uma troca de termo e ele aparece em outros trechos,
+        // perguntar se deve substituir lá também (mantém o SOP consistente).
+        const ocorr = d.ocorrencias_restantes || [];
+        if (d.termo_antigo && d.termo_novo && ocorr.length > 0) {
+            const lista = ocorr.slice(0, 8).map((o, i) => (i + 1) + '. ' + o.rotulo + '\n   "' + o.trecho + '"').join('\n');
+            const extra = ocorr.length > 8 ? ('\n...e mais ' + (ocorr.length - 8) + ' trecho(s).') : '';
+            const confirmar = confirm(
+                '✅ Ajuste aplicado.\n\n' +
+                'O termo "' + d.termo_antigo + '" ainda aparece em ' + ocorr.length + ' outro(s) trecho(s) do SOP:\n\n' +
+                lista + extra + '\n\n' +
+                'Deseja substituir "' + d.termo_antigo + '" por "' + d.termo_novo + '" também nesses trechos, para manter o SOP coerente?'
+            );
+            if (confirmar) {
+                const paths = ocorr.map(o => o.path);
+                const body2 = new URLSearchParams({
+                    sop_id: SOP_ID,
+                    termo_antigo: d.termo_antigo,
+                    termo_novo: d.termo_novo,
+                    paths: JSON.stringify(paths),
+                    csrf_token: CSRF_TOKEN_PAGINA
+                });
+                try {
+                    const r2 = await fetch('<?= APP_URL ?>/sop/substituir-termo-sop', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body2 });
+                    const d2 = await r2.json();
+                    if (d2.sucesso) { alert('✅ ' + (d2.mensagem || 'Substituição concluída.')); }
+                    else { alert('Não foi possível substituir nos demais trechos: ' + (d2.erro || 'erro')); }
+                } catch (e2) { alert('Erro ao substituir nos demais trechos.'); }
+            }
         } else {
-            alert('Erro: ' + (d.erro || 'desconhecido'));
+            alert('✅ ' + (d.mensagem || ('Trecho atualizado (v' + d.versao + ').')));
         }
+
+        fecharAjusteVoz();
+        window.location.reload();
     } catch (e) {
         alert('Erro de comunicação com o servidor.');
     } finally {

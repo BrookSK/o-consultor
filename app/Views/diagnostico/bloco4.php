@@ -235,6 +235,9 @@
                 <textarea name="observacoes_bloco4" x-model="form.observacoes_bloco4" rows="4"
                           class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
                           placeholder="Descreva principais desafios de RH, riscos identificados, dependências críticas específicas, etc."><?= $dados['rascunho']['observacoes_bloco4'] ?? '' ?></textarea>
+                <div class="mt-2">
+                    <div class="microfone-container" data-textarea="observacoes_bloco4"></div>
+                </div>
             </div>
 
             <?php 
@@ -247,6 +250,7 @@
     </div>
 </div>
 
+<script src="<?= APP_URL ?>/public/assets/js/microfone-transcricao.js"></script>
 <script src="<?= APP_URL ?>/public/assets/js/diagnostico-comum.js"></script>
 <script>
 // Definir APP_URL para o JavaScript comum
@@ -306,6 +310,11 @@ function diagnosticoBloco4() {
         }
     };
 }
+
+// Inicializar microfones
+document.addEventListener('DOMContentLoaded', function() {
+    initializeMicrophones();
+});
 </script>
 
 </body>

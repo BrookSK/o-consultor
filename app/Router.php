@@ -106,6 +106,7 @@ class Router
         $this->post('sop/gerar-selecionados-lote', 'SopController', 'gerarSelecionadosEmLote');      // Dispara geração em lote/paralela dos serviços marcados
         $this->get('sop/status-lote', 'SopController', 'statusLoteGeracao');                          // Polling do progresso do lote
         $this->post('sop/patch-sop-voz', 'SopController', 'aplicarPatchSopPorVoz');                   // Patch incremental de uma seção do SOP por voz
+        $this->post('sop/substituir-termo-sop', 'SopController', 'substituirTermoSop');               // Substitui um termo em trechos indicados (coerência global)
         $this->post('sop/ativar-servicos', 'SopController', 'ativarServicos');                    // Ativa serviços (aba setores inativos)
         $this->post('sop/ativar-setor', 'SopController', 'ativarSetorInteiro');                   // Ativa um setor inteiro sem precisar marcar serviços
         $this->post('sop/inativar-servicos', 'SopController', 'inativarServicos');                // Inativa serviços/setor (aba SOPs)
