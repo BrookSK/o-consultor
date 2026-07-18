@@ -287,41 +287,46 @@ function acompanharLote(loteId, total, redirect) {
 
     let terminado = false;
 
-    // "Bombas" de processamento: cada uma processa UMA fase por chamada e repete.
-    // O claim atômico no servidor garante que não peguem o mesmo pedido.
-    // Isso faz a fila girar mesmo sem cron/exec no servidor (paralelismo real
-    // entre serviços, pois várias bombas rodam ao mesmo tempo).
-    const N_BOMBAS = Math.min(Math.max(total, 1), 4);
-    async function bomba() {
-        while (!terminado) {
+    // Processa a fila UMA FASE POR VEZ, em sequência — mesma lógica comprovada do
+    // fluxo por serviço. Garante que cada SOP seja gerado COMPLETO (todas as 8 fases)
+    // antes de considerar o lote pronto. Sem paralelismo instável.
+    async function bombear() {
+        const esperar = (ms) => new Promise(s => setTimeout(s, ms));
+        // Limite de segurança: 8 fases * (total SOPs) + folga.
+        const maxChamadas = (total * 8) + 20;
+        for (let i = 0; i < maxChamadas && !terminado; i++) {
+            let proc = null;
             try {
-                const r = await fetch('<?= APP_URL ?>/sop/processar-fila', { method: 'GET' });
-                const d = await r.json();
-                if (d && d.vazio) { await new Promise(s => setTimeout(s, 2500)); }
+                const r = await fetch('<?= APP_URL ?>/sop/processar-fila?_=' + Date.now());
+                proc = await r.json();
             } catch (e) {
-                await new Promise(s => setTimeout(s, 2000));
+                await esperar(2500);
+                continue;
             }
+            if (proc && proc.vazio) { break; }          // fila vazia = tudo processado
+            const fin = await atualizarBarra();          // atualiza barra e checa fim
+            if (fin) break;                               // todos concluídos/erro
+            await esperar(300);
         }
+        terminado = true;
+        await atualizarBarra();
+        window.location.href = redirect;
     }
-    for (let i = 0; i < N_BOMBAS; i++) { bomba(); }
 
-    // Polling de progresso (separado das bombas).
-    const poll = setInterval(async () => {
+    async function atualizarBarra() {
         try {
             const r = await fetch('<?= APP_URL ?>/sop/status-lote?lote_id=' + encodeURIComponent(loteId));
             const d = await r.json();
-            if (!d.sucesso) return;
+            if (!d.sucesso) return false;
             const pctEl = document.getElementById('lote-pct');
             const barEl = document.getElementById('lote-progress');
             if (pctEl) pctEl.textContent = (d.percentual || 0) + '%';
             if (barEl) barEl.style.width = (d.percentual || 0) + '%';
-            if (d.finalizado) {
-                terminado = true;
-                clearInterval(poll);
-                window.location.href = redirect;
-            }
-        } catch (e) { /* segue tentando */ }
-    }, 4000);
+            return !!d.finalizado;
+        } catch (e) { return false; }
+    }
+
+    bombear();
 }
 
 // ---- Entrevista conversacional por voz/texto ----

@@ -12336,53 +12336,25 @@ Gere de 6 a 9 categorias, cada uma com 1 a 3 mensagens. As 4 categorias obrigat�
      */
     public function processarProximoDaFila(): array
     {
-        // Buscar o próximo pedido: pendentes OU processando-travados (>120s sem update).
-        // Isso evita que duas requisições processem a MESMA fase simultaneamente:
-        // um pedido recém marcado como 'processando' não é pego por outra chamada
-        // até passar o tempo de "travado".
-        // CLAIM ATÔMICO: vários workers podem rodar em paralelo (um por serviço).
-        // Cada worker tenta "travar" uma linha distinta. O UPDATE condicional por
-        // status garante que só UM worker pega cada pedido — se rowCount=0, outro
-        // já pegou e tentamos o próximo.
-        $filaId = 0;
-        for ($tentativa = 0; $tentativa < 5; $tentativa++) {
-            $candidato = Database::queryOne(
-                "SELECT id FROM fila_geracao_sop
-                 WHERE status = 'pendente'
-                    OR (status = 'processando' AND atualizado_em < (NOW() - INTERVAL 240 SECOND))
-                 ORDER BY criado_em ASC LIMIT 1"
+        // Buscar o próximo pedido: pendentes OU processando-travados (>240s sem update).
+        $pedido = Database::queryOne(
+            "SELECT * FROM fila_geracao_sop
+             WHERE status = 'pendente'
+                OR (status = 'processando' AND atualizado_em < (NOW() - INTERVAL 240 SECOND))
+             ORDER BY criado_em ASC LIMIT 1"
+        );
+
+        if (!$pedido) {
+            $emProcesso = Database::queryOne(
+                "SELECT id FROM fila_geracao_sop WHERE status = 'processando' LIMIT 1"
             );
-
-            if (!$candidato) {
-                $emProcesso = Database::queryOne(
-                    "SELECT id FROM fila_geracao_sop WHERE status = 'processando' LIMIT 1"
-                );
-                if ($emProcesso) {
-                    return ['sucesso' => true, 'processando' => true, 'mensagem' => 'Fase em processamento...'];
-                }
-                return ['sucesso' => true, 'vazio' => true, 'mensagem' => 'Fila vazia.'];
+            if ($emProcesso) {
+                return ['sucesso' => true, 'processando' => true, 'mensagem' => 'Fase em processamento...'];
             }
-
-            $afetadas = Database::executeAffected(
-                "UPDATE fila_geracao_sop
-                 SET status = 'processando', iniciado_em = COALESCE(iniciado_em, NOW()), atualizado_em = NOW()
-                 WHERE id = :id AND (status = 'pendente' OR (status = 'processando' AND atualizado_em < (NOW() - INTERVAL 240 SECOND)))",
-                ['id' => (int) $candidato['id']]
-            );
-
-            if ($afetadas === 1) {
-                $filaId = (int) $candidato['id'];
-                break;
-            }
-            // Outro worker levou este pedido; tentar o próximo.
-            usleep(150000);
+            return ['sucesso' => true, 'vazio' => true, 'mensagem' => 'Fila vazia.'];
         }
 
-        if (!$filaId) {
-            return ['sucesso' => true, 'processando' => true, 'mensagem' => 'Concorrência: pedidos já travados por outros workers.'];
-        }
-
-        $pedido = Database::queryOne("SELECT * FROM fila_geracao_sop WHERE id = :id", ['id' => $filaId]);
+        $filaId = (int) $pedido['id'];
         $sopId = (int) $pedido['sop_id'];
         $servicoId = (int) $pedido['servico_id'];
         $faseAtual = (int) $pedido['fase_atual'];
@@ -12405,6 +12377,12 @@ Gere de 6 a 9 categorias, cada uma com 1 a 3 mensagens. As 4 categorias obrigat�
             );
             return ['sucesso' => false, 'erro' => 'Serviço não encontrado.'];
         }
+
+        // Marcar como processando (evita que outra chamada pegue a mesma fase).
+        Database::execute(
+            "UPDATE fila_geracao_sop SET status = 'processando', iniciado_em = COALESCE(iniciado_em, NOW()), atualizado_em = NOW() WHERE id = :id",
+            ['id' => $filaId]
+        );
 
         try {
             $resultado = $this->executarFaseSop($sopId, $servicoId, $servico, $proximaFase);
