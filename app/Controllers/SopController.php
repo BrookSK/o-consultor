@@ -12461,7 +12461,13 @@ Gere de 6 a 9 categorias, cada uma com 1 a 3 mensagens. As 4 categorias obrigat�
             // Personalização: descrição do usuário + texto do documento anexado
             'descricao_resumida' => $servico['descricao_resumida'] ?? '',
             'contexto_personalizacao' => $servico['contexto_personalizacao'] ?? '',
-            'documento_personalizacao_nome' => $servico['documento_personalizacao_nome'] ?? ''
+            'documento_personalizacao_nome' => $servico['documento_personalizacao_nome'] ?? '',
+            // Contexto da ENTREVISTA POR VOZ (o que o gestor falou sobre este serviço).
+            // Sem estes campos, montarContextoPersonalizacao() não recebe a fala e o
+            // SOP sai genérico. São a fonte real de personalização do fluxo conversacional.
+            'trecho_conversa' => $servico['trecho_conversa'] ?? '',
+            'gap_identificado' => $servico['gap_identificado'] ?? 0,
+            'motivo_conversa' => $servico['motivo_conversa'] ?? ''
         ];
 
         // Carregar conteúdo atual do SOP
