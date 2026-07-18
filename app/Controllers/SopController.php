@@ -3029,13 +3029,15 @@ class SopController
         $setoresOrganizados = [];
         $totalServicos = 0;
         foreach ($setores as $setor) {
-            // Serviços "excluído" (negados na conversa) NÃO aparecem na tela — ficam
-            // recuperáveis apenas via busca manual no catálogo ("Adicionar serviço").
+            // FLUXO CONVERSACIONAL: a tela NÃO lista o catálogo inteiro de cara.
+            // Só aparecem os serviços já REVELADOS pela conversa com a IA
+            // (conversa_id preenchido) e que não foram negados (status <> excluido).
+            // Antes da conversa, o setor mostra apenas o chat.
             $servicos = Database::query(
                 "SELECT id, nome_servico, subcategoria, codigo_servico, categoria, criticidade,
                         selecionado, status_conversa, gap_identificado, motivo_conversa
                  FROM servicos_setor
-                 WHERE setor_id = ? AND status_conversa <> 'excluido'
+                 WHERE setor_id = ? AND conversa_id IS NOT NULL AND status_conversa <> 'excluido'
                  ORDER BY subcategoria ASC, nome_servico ASC",
                 [$setor['id']]
             );
@@ -3648,20 +3650,20 @@ class SopController
             : '';
 
         $prompt = "Você é um consultor que entrevista o gestor de um setor para montar os procedimentos (SOPs) da empresa. "
-            . "Sua tarefa é CLASSIFICAR cada serviço do catálogo do setor a partir do que o gestor falou (áudio transcrito), "
-            . "e propor perguntas curtas de acompanhamento sobre os serviços mais prováveis que ainda não ficaram claros.\n\n"
+            . "A partir do que o gestor falou (áudio transcrito), você deve SELECIONAR do catálogo apenas os serviços que FAZEM SENTIDO para a operação dele — NÃO classifique o catálogo inteiro.\n\n"
             . "# SETOR: {$nomeSetor}\n"
             . "# NICHO DA EMPRESA: {$nicho}\n"
             . $blocoHistorico
             . "\n# FALA DO GESTOR (transcrição do turno atual):\n\"\"\"\n" . mb_substr($transcricao, 0, 6000) . "\n\"\"\"\n\n"
-            . "# SERVIÇOS DO CATÁLOGO A CLASSIFICAR (use os ids exatos):\n" . $listaServicos . "\n\n"
-            . "# COMO CLASSIFICAR cada serviço (campo \"estado\"):\n"
-            . "- \"identificado\": o gestor confirmou que esse processo EXISTE hoje, OU confirmou que NÃO existe mas claramente é um gap relevante para o nicho (algo que a empresa deveria fazer). Nestes casos, preencha \"trecho\" com a fala específica que fundamenta a decisão.\n"
-            . "- \"excluido\": o gestor NEGOU explicitamente que usa/precisa desse serviço. Só use quando houver negação clara.\n"
-            . "- \"sugerido\": não foi mencionado, nem confirmado nem negado. Este é o DEFAULT quando há dúvida.\n\n"
-            . "Para \"identificado\" que seja um gap (não faz hoje, mas deveria), marque \"gap\": true e escreva em \"motivo\" uma anotação MUITO curta (máx. 8 palavras, ex.: \"não avisam o cliente hoje\"). Para os demais, \"gap\": false e \"motivo\": \"\".\n\n"
+            . "# CATÁLOGO DE SERVIÇOS DISPONÍVEIS DO SETOR (use os ids exatos):\n" . $listaServicos . "\n\n"
+            . "# O QUE RETORNAR (retorne SOMENTE serviços destas 3 situações — ignore todo o resto do catálogo):\n"
+            . "- \"identificado\": o gestor confirmou/deixou claro que esse processo EXISTE na operação dele hoje. Preencha \"trecho\" com a fala específica que fundamenta (usada depois para personalizar o SOP).\n"
+            . "- \"sugerido\": o gestor NÃO mencionou, mas é um serviço que faz muito sentido para esse tipo de operação/nicho e vale sugerir como recomendação. Selecione poucos e realmente pertinentes (no máximo 8), NÃO despeje o catálogo inteiro.\n"
+            . "- \"excluido\": o gestor NEGOU explicitamente que usa/precisa. Só use quando houver negação clara.\n\n"
+            . "IMPORTANTE: um serviço que não se encaixa em nenhuma das 3 situações acima NÃO deve aparecer na resposta. Serviços irrelevantes para a operação descrita ficam de fora (não retorne).\n\n"
+            . "Para \"identificado\" ou \"sugerido\" que seja um GAP (algo que a empresa não faz hoje mas deveria), marque \"gap\": true e escreva em \"motivo\" uma anotação MUITO curta (máx. 8 palavras, ex.: \"não avisam o cliente hoje\"). Caso contrário \"gap\": false e \"motivo\": \"\".\n\n"
             . "# PERGUNTAS DE ACOMPANHAMENTO:\n"
-            . "Gere de 0 a 3 perguntas FECHADAS e objetivas, priorizando os serviços mais prováveis de existir ou de serem gap que ainda ficaram como \"sugerido\". Se a conversa já cobriu o setor, devolva lista vazia. Nunca repita perguntas já respondidas no histórico.\n\n"
+            . "Gere de 0 a 3 perguntas FECHADAS e objetivas para esclarecer partes da operação ainda não cobertas. Se a conversa já cobriu bem o setor, devolva lista vazia. Nunca repita perguntas já respondidas no histórico.\n\n"
             . "# RESPONDA APENAS EM JSON:\n"
             . "{\n"
             . "  \"classificacao\": [ {\"id\": 123, \"estado\": \"identificado|sugerido|excluido\", \"gap\": false, \"motivo\": \"\", \"trecho\": \"\"} ],\n"
@@ -3741,12 +3743,21 @@ class SopController
             elseif ($estado === 'excluido') { $excluidos++; }
             else { $sugeridos++; }
 
+            // Dados completos para a view revelar o serviço (a tela não lista o catálogo antes da conversa).
+            $info = Database::queryOne(
+                "SELECT nome_servico, subcategoria, codigo_servico FROM servicos_setor WHERE id = ?",
+                [$id]
+            );
+
             $servicosAtualizados[] = [
                 'id' => $id,
                 'estado' => $estado,
                 'gap' => (bool) $gap,
                 'motivo' => $motivo,
                 'selecionado' => (bool) $selecionado,
+                'nome_servico' => $info['nome_servico'] ?? '',
+                'subcategoria' => $info['subcategoria'] ?: 'Geral',
+                'codigo_servico' => $info['codigo_servico'] ?? '',
             ];
         }
 

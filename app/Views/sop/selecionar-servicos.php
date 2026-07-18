@@ -52,7 +52,12 @@
 #sel-view .item .txt{font-size:13px;line-height:1.3;}
 #sel-view .item .code{font-size:10.5px;color:var(--sv-ink-mute);font-family:ui-monospace,Menlo,monospace;}
 #sel-view .gap-tag{display:inline-block;font-size:10.5px;font-weight:600;color:#B54708;background:#FEF0C7;border-radius:5px;padding:1px 6px;margin-left:6px;vertical-align:middle;}
+#sel-view .sugerido-tag{display:inline-block;font-size:10.5px;font-weight:600;color:#1E3A5F;background:#E8EDF3;border-radius:5px;padding:1px 6px;margin-left:6px;vertical-align:middle;}
 #sel-view .item[data-estado="identificado"]{border-color:var(--sv-ok);}
+#sel-view .chat-invite{text-align:center;padding:22px 18px;}
+#sel-view .chat-invite-title{font-size:15px;font-weight:600;margin:0 0 6px;color:var(--sv-ink);}
+#sel-view .chat-invite-sub{font-size:13px;color:var(--sv-ink-soft);max-width:520px;margin:0 auto 14px;line-height:1.5;}
+#sel-view .chat-invite-btn{display:inline-flex;align-items:center;gap:8px;}
 
 #sel-view .footer-bar{position:sticky;bottom:16px;z-index:20;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;background:var(--sv-surface);border:1px solid var(--sv-line);border-left:4px solid var(--sv-ok);border-radius:12px;padding:14px 20px;box-shadow:0 6px 20px rgba(23,27,51,0.12);margin-top:18px;}
 #sel-view .footer-bar .resumo{font-size:14px;color:var(--sv-ink-soft);}
@@ -73,16 +78,14 @@
     <div class="top">
         <div>
             <div class="draft-badge">✎ Rascunho</div>
-            <h1>Selecione os serviços dos SOPs</h1>
-            <p class="sub">Use o microfone de cada setor para conversar com a IA: ela pré-marca os serviços que existem ou são gaps, e esconde os que você disser que não usa. Depois é só revisar e confirmar — os selecionados vão compor a lista de SOPs.</p>
+            <h1>Monte seus SOPs conversando</h1>
+            <p class="sub">Cada setor começa com uma conversa. Descreva como o setor funciona e a IA mostra apenas os serviços que fazem sentido na sua operação, sugere o que pode faltar e usa o que você contar para criar SOPs personalizados. Ao final, revise e confirme.</p>
         </div>
     </div>
 
     <div class="toolbar">
-        <div class="info"><strong id="tb-count">0</strong> de <?= $dados['total_servicos'] ?> serviços selecionados</div>
+        <div class="info"><strong id="tb-count">0</strong> serviços selecionados a partir das conversas</div>
         <div class="acts">
-            <button class="btn-mini" onclick="selecionarTodos(true)">Selecionar todos</button>
-            <button class="btn-mini" onclick="selecionarTodos(false)">Limpar tudo</button>
             <button class="btn-mini" onclick="expandirTodos(true)">Expandir setores</button>
             <button class="btn-mini" onclick="expandirTodos(false)">Recolher setores</button>
         </div>
@@ -91,7 +94,8 @@
     <?php foreach ($dados['setores'] as $bloco): ?>
     <?php
         $setor = $bloco['setor'];
-        $servicos = $bloco['servicos'];
+        $servicos = $bloco['servicos'];   // só vêm os já revelados pela conversa
+        $temConversa = count($servicos) > 0;
         $icone = '📁';
         switch ($setor['tipo_setor'] ?? 'apoio') {
             case 'core': $icone = '⚙'; break;
@@ -103,26 +107,33 @@
         foreach ($servicos as $sv) { $porSub[$sv['subcategoria'] ?: 'Geral'][] = $sv; }
         ksort($porSub);
     ?>
-    <div class="sector" data-setor>
-        <div class="sector-head collapsed" onclick="toggleSetor(this)"
+    <div class="sector" data-setor data-conversado="<?= $temConversa ? '1' : '0' ?>">
+        <div class="sector-head <?= $temConversa ? '' : 'collapsed' ?>" onclick="toggleSetor(this)"
              data-setor-id="<?= (int) $setor['id'] ?>" data-setor-nome="<?= htmlspecialchars($setor['nome_setor'], ENT_QUOTES) ?>">
             <span class="chev">▶</span>
             <div class="sector-dot"><?= $icone ?></div>
             <div class="sector-name">
                 <h2><?= htmlspecialchars($setor['nome_setor']) ?></h2>
-                <div class="sector-meta"><span class="core-tag"><?= ucfirst($setor['tipo_setor'] ?? 'geral') ?></span><span data-setor-total><?= count($servicos) ?></span> serviços</div>
+                <div class="sector-meta">
+                    <span class="core-tag"><?= ucfirst($setor['tipo_setor'] ?? 'geral') ?></span>
+                    <span data-setor-status><?= $temConversa ? '<span data-setor-total>' . count($servicos) . '</span> serviços a partir da conversa' : 'Converse com a IA para começar' ?></span>
+                </div>
             </div>
-            <span class="sel-count" data-setor-count>0/<?= count($servicos) ?></span>
-            <button type="button" class="sector-mic" title="Descrever o processo por voz e gerar serviços"
+            <span class="sel-count" data-setor-count <?= $temConversa ? '' : 'style="display:none"' ?>>0/<?= count($servicos) ?></span>
+            <button type="button" class="sector-mic" title="Conversar com a IA sobre este setor"
                     onclick="event.stopPropagation(); abrirVozSetor(<?= (int) $setor['id'] ?>, '<?= htmlspecialchars($setor['nome_setor'], ENT_QUOTES) ?>')">🎤</button>
-            <label class="sector-toggle-all" onclick="event.stopPropagation()">
-                <input type="checkbox" onchange="toggleSetorTodos(this)"> marcar setor
-            </label>
-            <label class="sector-ignore" onclick="event.stopPropagation()" title="Ignorar este setor (não entra nos SOPs)">
-                <input type="checkbox" onchange="ignorarSetor(this)"> ignorar
-            </label>
         </div>
-        <div class="sector-body" hidden>
+        <div class="sector-body" <?= $temConversa ? '' : 'hidden' ?>>
+            <!-- Estado inicial: convite à conversa (sem listar catálogo) -->
+            <div class="chat-invite" data-chat-invite <?= $temConversa ? 'style="display:none"' : '' ?>>
+                <p class="chat-invite-title">🎙 Conte como funciona o setor <strong><?= htmlspecialchars($setor['nome_setor']) ?></strong></p>
+                <p class="chat-invite-sub">A IA vai interpretar sua descrição, mostrar só os serviços que fazem sentido para a sua operação e sugerir o que pode faltar. Esses serviços viram SOPs personalizados com o que você contar.</p>
+                <button type="button" class="btn-primary chat-invite-btn"
+                        onclick="abrirVozSetor(<?= (int) $setor['id'] ?>, '<?= htmlspecialchars($setor['nome_setor'], ENT_QUOTES) ?>')">🎤 Conversar sobre este setor</button>
+            </div>
+
+            <!-- Serviços revelados pela conversa -->
+            <div data-servicos-wrap <?= $temConversa ? '' : 'style="display:none"' ?>>
             <?php foreach ($porSub as $subcategoria => $itens): ?>
             <div class="lane">
                 <p class="lane-title"><?= htmlspecialchars($subcategoria) ?></p>
@@ -130,9 +141,6 @@
                     <?php foreach ($itens as $sv): ?>
                     <?php
                         $estado = $sv['status_conversa'] ?? 'sugerido';
-                        // No fluxo conversacional a marcação é governada pela conversa:
-                        // só nasce marcado quem a IA classificou como "identificado".
-                        // (desacoplado do 'selecionado' antigo, que vinha 1 por default).
                         $on = $estado === 'identificado';
                         $isGap = ((int) ($sv['gap_identificado'] ?? 0)) === 1;
                         $motivo = trim((string) ($sv['motivo_conversa'] ?? ''));
@@ -141,6 +149,7 @@
                         <input type="checkbox" class="sv-check" value="<?= $sv['id'] ?>" <?= $on ? 'checked' : '' ?> onchange="onCheck(this)">
                         <span class="txt">
                             <?= htmlspecialchars($sv['nome_servico']) ?>
+                            <?php if ($estado === 'sugerido'): ?><span class="sugerido-tag">sugestão</span><?php endif; ?>
                             <?php if ($isGap): ?><span class="gap-tag" title="<?= htmlspecialchars($motivo) ?>">gap<?= $motivo !== '' ? ': ' . htmlspecialchars($motivo) : '' ?></span><?php endif; ?>
                             <span class="code"><?= htmlspecialchars($sv['codigo_servico'] ?? '') ?></span>
                         </span>
@@ -149,6 +158,7 @@
                 </div>
             </div>
             <?php endforeach; ?>
+            </div>
         </div>
     </div>
     <?php endforeach; ?>
@@ -213,24 +223,6 @@ function onCheck(cb) {
     atualizarContadores();
 }
 
-function toggleSetorTodos(master) {
-    const setor = master.closest('[data-setor]');
-    setor.querySelectorAll('.sv-check').forEach(cb => {
-        cb.checked = master.checked;
-        cb.closest('.item')?.classList.toggle('on', master.checked);
-    });
-    atualizarContadores();
-}
-
-function selecionarTodos(marcar) {
-    document.querySelectorAll('#sel-view .sv-check').forEach(cb => {
-        cb.checked = marcar;
-        cb.closest('.item')?.classList.toggle('on', marcar);
-    });
-    document.querySelectorAll('#sel-view .sector-toggle-all input').forEach(m => m.checked = marcar);
-    atualizarContadores();
-}
-
 function atualizarContadores() {
     let total = 0;
     document.querySelectorAll('#sel-view [data-setor]').forEach(setor => {
@@ -238,13 +230,9 @@ function atualizarContadores() {
         const marcados = setor.querySelectorAll('.sv-check:checked').length;
         total += marcados;
         const badge = setor.querySelector('[data-setor-count]');
-        if (badge) badge.textContent = marcados + '/' + checks.length;
-        const totalEl = setor.querySelector('[data-setor-total]');
-        if (totalEl) totalEl.textContent = checks.length;
-        const master = setor.querySelector('.sector-toggle-all input');
-        if (master) {
-            master.checked = marcados > 0 && marcados === checks.length;
-            master.indeterminate = marcados > 0 && marcados < checks.length;
+        if (badge) {
+            badge.textContent = marcados + '/' + checks.length;
+            badge.style.display = checks.length > 0 ? '' : 'none';
         }
     });
     document.getElementById('tb-count').textContent = total;
@@ -265,7 +253,7 @@ async function salvarSelecao() {
         const body = new URLSearchParams({ diagnostico_id: DIAG_ID, servico_ids: ids.join(','), csrf_token: CSRF_TOKEN });
         const r = await fetch('<?= APP_URL ?>/sop/salvar-selecao-servicos', { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body });
         const d = await r.json();
-        if (!d.sucesso) { alert('Erro: ' + (d.erro || 'desconhecido')); btn.disabled = false; btn.textContent = '✓ Confirmar seleção'; return; }
+        if (!d.sucesso) { alert('Erro: ' + (d.erro || 'desconhecido')); btn.disabled = false; btn.textContent = '✓ Confirmar e gerar SOPs'; return; }
 
         // 2. Disparar a geração de TODOS os selecionados de uma vez (lote paralelo)
         btn.textContent = 'Iniciando geração...';
@@ -280,7 +268,7 @@ async function salvarSelecao() {
         }
     } catch (e) {
         alert('Erro de comunicação com o servidor.');
-        btn.disabled = false; btn.textContent = '✓ Confirmar seleção';
+        btn.disabled = false; btn.textContent = '✓ Confirmar e gerar SOPs';
     }
 }
 
@@ -313,24 +301,7 @@ function acompanharLote(loteId, total, redirect) {
     }, 4000);
 }
 
-// ---- Ignorar setor: desmarca tudo e marca visualmente como ignorado ----
-function ignorarSetor(cb) {
-    const setor = cb.closest('[data-setor]');
-    setor.classList.toggle('ignored', cb.checked);
-    if (cb.checked) {
-        setor.querySelectorAll('.sv-check').forEach(c => { c.checked = false; c.closest('.item')?.classList.remove('on'); });
-        const master = setor.querySelector('.sector-toggle-all input');
-        if (master) { master.checked = false; master.indeterminate = false; }
-        // recolher o corpo
-        const head = setor.querySelector('.sector-head');
-        head.classList.add('collapsed');
-        const body = head.nextElementSibling;
-        if (body) body.hidden = true;
-    }
-    atualizarContadores();
-}
-
-// ---- Gerar serviços do setor por voz/texto ----
+// ---- Entrevista conversacional por voz/texto ----
 let vozRecorder = null;
 let vozChunks = [];
 
@@ -468,20 +439,55 @@ async function enviarTurnoConversa() {
     }
 }
 
-// Aplica na tela o resultado da classificação: marca identificados, remove excluídos, anota gaps.
+// Revela na tela SOMENTE os serviços que a conversa trouxe (identificado/sugerido).
+// A tela começa sem catálogo; cada serviço é criado dinamicamente aqui.
 function aplicarClassificacaoNaTela(setorId, servicos) {
     if (!servicos || !servicos.length) return;
     const head = document.querySelector('.sector-head[data-setor-id="' + setorId + '"]');
     if (!head) { location.reload(); return; }
     const setor = head.closest('[data-setor]');
+    const body = setor.querySelector('.sector-body');
+    const wrap = setor.querySelector('[data-servicos-wrap]');
+    const invite = setor.querySelector('[data-chat-invite]');
 
     servicos.forEach(sv => {
-        const item = setor.querySelector('.item[data-servico-id="' + sv.id + '"]');
-        if (!item) return;
-        if (sv.estado === 'excluido') { item.remove(); return; }
+        // Excluídos não entram na tela.
+        if (sv.estado === 'excluido') {
+            const existente = setor.querySelector('.item[data-servico-id="' + sv.id + '"]');
+            if (existente) {
+                const laneDel = existente.closest('.lane');
+                existente.remove();
+                if (laneDel && !laneDel.querySelector('.item')) laneDel.remove();
+            }
+            return;
+        }
+
+        let item = setor.querySelector('.item[data-servico-id="' + sv.id + '"]');
+        if (!item) {
+            // Criar o serviço revelado dentro da lane da sua subcategoria.
+            const sub = sv.subcategoria || 'Geral';
+            let lane = Array.from(wrap.querySelectorAll('.lane')).find(l => l.querySelector('.lane-title')?.textContent.trim() === sub);
+            if (!lane) {
+                lane = document.createElement('div');
+                lane.className = 'lane';
+                lane.innerHTML = '<p class="lane-title">' + escaparHtml(sub) + '</p><div class="items"></div>';
+                wrap.appendChild(lane);
+            }
+            item = document.createElement('label');
+            item.className = 'item';
+            item.dataset.servicoId = sv.id;
+            const marcado = !!sv.selecionado;
+            item.innerHTML = '<input type="checkbox" class="sv-check" value="' + sv.id + '"' + (marcado ? ' checked' : '') + ' onchange="onCheck(this)">'
+                + '<span class="txt">' + escaparHtml(sv.nome_servico || '')
+                + (sv.estado === 'sugerido' ? ' <span class="sugerido-tag">sugestão</span>' : '')
+                + ' <span class="code">' + escaparHtml(sv.codigo_servico || '') + '</span></span>';
+            lane.querySelector('.items').appendChild(item);
+        }
+
         item.dataset.estado = sv.estado;
         const cb = item.querySelector('.sv-check');
         if (cb) { cb.checked = !!sv.selecionado; item.classList.toggle('on', !!sv.selecionado); }
+
         // Anotação de gap
         const txt = item.querySelector('.txt');
         if (sv.gap && txt && !txt.querySelector('.gap-tag')) {
@@ -493,18 +499,19 @@ function aplicarClassificacaoNaTela(setorId, servicos) {
         }
     });
 
-    // Remover lanes que ficaram vazias após excluir serviços
-    setor.querySelectorAll('.lane').forEach(l => {
-        if (!l.querySelector('.item')) l.remove();
-    });
+    // Esconder o convite ao chat e mostrar os serviços revelados.
+    if (invite) invite.style.display = 'none';
+    if (wrap) wrap.style.display = '';
+    setor.dataset.conversado = '1';
 
-    // Abrir o setor para o usuário revisar
+    // Atualizar rótulo do setor
+    const statusEl = setor.querySelector('[data-setor-status]');
+    const totalRevelados = setor.querySelectorAll('.item').length;
+    if (statusEl) statusEl.innerHTML = '<span data-setor-total>' + totalRevelados + '</span> serviços a partir da conversa';
+
+    // Abrir o setor para revisão
     head.classList.remove('collapsed');
-    const body = setor.querySelector('.sector-body');
     if (body) body.hidden = false;
-    setor.classList.remove('ignored');
-    const ign = setor.querySelector('.sector-ignore input');
-    if (ign) ign.checked = false;
 
     atualizarContadores();
 }
