@@ -1715,6 +1715,10 @@ class SopController
     private function salvarEstruturaOrganizacional(int $diagnosticoId, array $empresa, array $estruturaCompleta): int
     {
         try {
+            // Garantir colunas de seleção/conversa antes de inserir serviços.
+            $this->garantirColunaSelecionado();
+            $this->garantirEstruturaConversacional();
+
             // NOVA ABORDAGEM: montar a estrutura a partir do CATÁLOGO FIXO
             // (10 setores base SEMPRE + setores específicos do nicho do cadastro),
             // em vez de usar o mapeamento por IA. Formato: Setor → Subcategoria → Serviços.
@@ -1807,12 +1811,16 @@ class SopController
                 // Iterar subcategorias → serviços
                 foreach (($configSetor['subcategorias'] ?? []) as $subcategoria => $servicos) {
                     foreach ($servicos as $nomeServico) {
+                        // No fluxo conversacional os serviços do catálogo entram
+                        // DESMARCADOS (selecionado=0, status_conversa='sugerido').
+                        // Só viram 'identificado'/selecionado quando a IA os confirma
+                        // na entrevista por voz, ou quando o usuário marca manualmente.
                         Database::execute(
                             "INSERT INTO servicos_setor (
                                 setor_id, empresa_id, nome_servico, subcategoria, codigo_servico,
                                 categoria, criticidade, frequencia, complexidade, origem,
-                                status, criado_em
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'automatico', 'mapeado', NOW())",
+                                status, selecionado, status_conversa, criado_em
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'automatico', 'mapeado', 0, 'sugerido', NOW())",
                             [
                                 $setorId,
                                 $empresa['id'],

@@ -35,6 +35,14 @@ ALTER TABLE `servicos_setor`
 
 CREATE INDEX IF NOT EXISTS idx_servico_status_conversa ON servicos_setor (status_conversa);
 
+-- Normalizar estruturas JÁ existentes (criadas antes deste fluxo): no fluxo
+-- conversacional os serviços começam DESMARCADOS até a entrevista classificá-los.
+-- Só faz sentido para serviços automáticos do catálogo que nunca passaram por
+-- conversa (status_conversa = 'sugerido' e origem automática/mapeada).
+UPDATE `servicos_setor`
+   SET `selecionado` = 0
+ WHERE `status_conversa` = 'sugerido';
+
 -- =====================================================================
 -- 2. Histórico de transcrições por setor (auditoria + evitar repetir perguntas)
 -- =====================================================================

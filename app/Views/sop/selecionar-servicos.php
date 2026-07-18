@@ -129,8 +129,11 @@
                 <div class="items">
                     <?php foreach ($itens as $sv): ?>
                     <?php
-                        $on = ((int) ($sv['selecionado'] ?? 1)) === 1;
                         $estado = $sv['status_conversa'] ?? 'sugerido';
+                        // No fluxo conversacional a marcação é governada pela conversa:
+                        // só nasce marcado quem a IA classificou como "identificado".
+                        // (desacoplado do 'selecionado' antigo, que vinha 1 por default).
+                        $on = $estado === 'identificado';
                         $isGap = ((int) ($sv['gap_identificado'] ?? 0)) === 1;
                         $motivo = trim((string) ($sv['motivo_conversa'] ?? ''));
                     ?>
