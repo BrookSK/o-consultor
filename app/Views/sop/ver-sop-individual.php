@@ -217,6 +217,32 @@ if (!function_exists('sopTemConteudo')) {
         </div>
     </div>
     
+    <!-- Indicador de origem da personalização -->
+    <?php
+        $origem = $data['origem_personalizacao'] ?? 'padrao';
+        $ehGap = !empty($data['gap_identificado']);
+    ?>
+    <?php if ($origem === 'conversa'): ?>
+    <div class="flex items-center gap-2 mb-4 px-4 py-3 rounded-lg bg-green-50 border border-green-200 text-sm text-green-800">
+        <span>🎙</span>
+        <span>
+            <strong>Gerado com base na sua conversa.</strong>
+            Este SOP reflete o que você descreveu sobre como o serviço funciona na sua operação.
+            <?php if ($ehGap): ?><span class="ml-1 inline-block px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-xs font-semibold">gap identificado</span><?php endif; ?>
+        </span>
+    </div>
+    <?php elseif ($origem === 'documento'): ?>
+    <div class="flex items-center gap-2 mb-4 px-4 py-3 rounded-lg bg-indigo-50 border border-indigo-200 text-sm text-indigo-800">
+        <span>📎</span>
+        <span><strong>Personalizado com material da empresa.</strong> Baseado no documento/descrição que você forneceu.</span>
+    </div>
+    <?php else: ?>
+    <div class="flex items-center gap-2 mb-4 px-4 py-3 rounded-lg bg-gray-50 border border-gray-200 text-sm text-gray-600">
+        <span>📘</span>
+        <span><strong>Boas práticas padrão do nicho.</strong> Nenhuma informação específica foi vinculada a este serviço. Use “Personalizar” ou grave uma descrição para adaptá-lo à sua realidade.</span>
+    </div>
+    <?php endif; ?>
+
     <!-- Informações Gerais -->
     <div class="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
         <h2 class="text-lg font-semibold text-blue-900 mb-4">📋 Informações Gerais</h2>

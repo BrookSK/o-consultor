@@ -6085,6 +6085,13 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
         $sopId = (int) ($_POST['sop_id'] ?? 0);
         $transcricao = trim($_POST['transcricao'] ?? '');
         $secaoForcada = trim($_POST['secao'] ?? ''); // opcional: o front pode indicar a seção
+        // Escopo travado: caminho (path) de um nó específico escolhido na tela.
+        // Quando presente, a edição fica RESTRITA a esse nó (e seus sub-campos de texto).
+        $pathForcado = [];
+        if (!empty($_POST['path'])) {
+            $decoded = json_decode((string) $_POST['path'], true);
+            if (is_array($decoded)) { $pathForcado = $decoded; }
+        }
 
         if (!$sopId || $transcricao === '') {
             echo json_encode(['sucesso' => false, 'erro' => 'SOP e transcrição são obrigatórios.']);
@@ -6119,40 +6126,67 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                 if ($conv) { $trechoOrigem = (string) $conv['transcricao']; }
             }
 
-            // 1. Identificar a seção alvo (ou usar a forçada pelo front)
-            $secoesEditaveis = array_values(array_filter(array_keys($conteudoAtual), function ($k) {
-                return in_array($k, [
-                    'procedimentos', 'scripts_comunicacao', 'gestao_situacoes_fora_controle',
-                    'checklists', 'indicadores_performance', 'matriz_riscos_servico',
-                    'objetivo', 'escopo', 'responsaveis', 'competencias_requeridas',
-                    'pre_requisitos', 'recursos_necessarios', 'treinamento_gestao_crises'
-                ], true);
-            }));
-
-            $patch = $this->gerarPatchSecaoComIA($conteudoAtual, $transcricao, $secaoForcada, $secoesEditaveis, $trechoOrigem);
-
-            if (empty($patch['secao']) || !array_key_exists($patch['secao'], $conteudoAtual)) {
-                echo json_encode(['sucesso' => false, 'erro' => 'Não consegui identificar qual parte do SOP ajustar. Seja mais específico.']);
-                exit;
-            }
-            if (!array_key_exists('conteudo', $patch)) {
-                echo json_encode(['sucesso' => false, 'erro' => 'A IA não retornou o novo conteúdo da seção.']);
+            // 1. ENUMERAR os NÓS DE TEXTO editáveis (cada passo, script, campo é um nó
+            //    endereçável por caminho). Assim a edição é CIRÚRGICA: mexe só no nó citado.
+            $nos = $this->coletarNosEditaveis($conteudoAtual);
+            if (empty($nos)) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Este SOP não tem conteúdo editável ainda.']);
                 exit;
             }
 
-            $secaoAlvo = $patch['secao'];
+            // Se veio um escopo travado (usuário clicou "Ajustar" num passo específico),
+            // restringe os nós candidatos aos que estão DENTRO daquele caminho. Assim a
+            // IA só pode mexer naquele passo/trecho — nada mais.
+            if (!empty($pathForcado)) {
+                $prefixo = array_map('strval', $pathForcado);
+                $nosFiltrados = [];
+                foreach ($nos as $n) {
+                    $ref = array_map('strval', $n['ref']);
+                    if (array_slice($ref, 0, count($prefixo)) === $prefixo) {
+                        $nosFiltrados[] = $n;
+                    }
+                }
+                if (!empty($nosFiltrados)) {
+                    $nos = $nosFiltrados;
+                }
+            }
 
-            // 2. Aplicar SOMENTE a seção alvo, preservando o resto.
+            // 2. A IA escolhe QUAIS nós mudar e reescreve APENAS o texto deles.
+            $edicoes = $this->escolherEdicoesPontuaisComIA($nos, $transcricao, $trechoOrigem);
+            if (empty($edicoes)) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Não identifiquei o que ajustar. Cite o trecho de forma mais específica (ex.: "no passo de envio, troque e-mail por fechar na call").']);
+                exit;
+            }
+
+            // 3. APLICAR cada edição por caminho exato (sem tocar em nenhum outro nó).
             $conteudoNovo = $conteudoAtual;
-            $conteudoNovo[$secaoAlvo] = $patch['conteudo'];
+            $aplicadas = 0;
+            $rotulosAlterados = [];
+            foreach ($edicoes as $ed) {
+                $idx = (int) ($ed['no'] ?? -1);
+                if (!isset($nos[$idx])) continue;
+                $novoTexto = (string) ($ed['novo_texto'] ?? '');
+                if ($novoTexto === '') continue;
+                if ($this->aplicarValorPorPath($conteudoNovo, $nos[$idx]['ref'], $novoTexto)) {
+                    $aplicadas++;
+                    $rotulosAlterados[] = $nos[$idx]['rotulo'];
+                }
+            }
 
-            // 3. Versionar e salvar histórico
+            if ($aplicadas === 0) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Não consegui aplicar o ajuste no ponto indicado. Tente reformular citando o trecho.']);
+                exit;
+            }
+
+            $secaoAlvo = implode('; ', array_slice($rotulosAlterados, 0, 3));
+
+            // 4. Versionar e salvar histórico
             $versaoAtual = $sop['versao'] ?: '1.0';
             $versaoNova = Sop::incrementarVersao($versaoAtual);
-            $motivo = 'Ajuste por voz na seção "' . $secaoAlvo . '": ' . mb_substr($transcricao, 0, 200);
+            $motivo = 'Ajuste pontual por voz (' . $aplicadas . ' trecho[s]): ' . mb_substr($transcricao, 0, 200);
             Sop::salvarHistorico($sopId, $versaoAtual, $versaoNova, $conteudoAtual, $motivo, Auth::id());
 
-            // 4. Persistir no campo correto (sem tocar nas demais seções)
+            // 5. Persistir no campo correto (sem tocar nas demais partes)
             if ($usaCampoConteudo) {
                 Database::execute(
                     "UPDATE sops SET conteudo = :c, versao = :v, motivo_alteracao = :m, atualizado_em = NOW() WHERE id = :id",
@@ -6166,15 +6200,16 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
                 ]);
             }
 
-            Logger::acao('SOP ajustado por voz (patch incremental)', [
-                'sop_id' => $sopId, 'secao' => $secaoAlvo, 'versao_nova' => $versaoNova
+            Logger::acao('SOP ajustado por voz (patch pontual)', [
+                'sop_id' => $sopId, 'trechos_alterados' => $aplicadas, 'versao_nova' => $versaoNova
             ]);
 
             echo json_encode([
                 'sucesso' => true,
                 'secao' => $secaoAlvo,
+                'trechos_alterados' => $aplicadas,
                 'versao' => $versaoNova,
-                'mensagem' => 'Seção "' . $secaoAlvo . '" atualizada (v' . $versaoNova . ').'
+                'mensagem' => $aplicadas . ' trecho(s) ajustado(s) (v' . $versaoNova . '): ' . $secaoAlvo
             ]);
             exit;
 
@@ -6186,57 +6221,153 @@ Responda APENAS com JSON válido contendo as seções atualizadas.";
     }
 
     /**
-     * Usa a IA para (a) identificar a seção afetada pelo pedido de voz e
-     * (b) gerar o NOVO conteúdo APENAS daquela seção, no mesmo formato do JSON atual.
-     * Retorna ['secao'=>string, 'conteudo'=>mixed].
+     * Percorre o JSON do SOP e coleta os NÓS DE TEXTO editáveis (folhas string
+     * relevantes), cada um com: 'ref' (caminho de chaves/índices), 'rotulo'
+     * (descrição legível de onde fica) e 'texto' (valor atual). É isso que permite
+     * a edição CIRÚRGICA — mexer só no passo/script/campo citado, não na seção toda.
      */
-    private function gerarPatchSecaoComIA(array $conteudoAtual, string $transcricao, string $secaoForcada, array $secoesEditaveis, string $trechoOrigem): array
+    private function coletarNosEditaveis(array $conteudo): array
     {
-        // Mostrar à IA o valor ATUAL de cada seção editável (resumido) para ela
-        // reproduzir o mesmo formato ao regenerar.
-        $amostra = [];
-        foreach ($secoesEditaveis as $sec) {
-            $amostra[$sec] = $conteudoAtual[$sec];
+        $nos = [];
+
+        // Campos simples de texto no topo do SOP.
+        $camposSimples = [
+            'objetivo' => 'Objetivo',
+            'escopo' => 'Escopo',
+            'resumo_executivo' => 'Resumo executivo',
+        ];
+        foreach ($camposSimples as $campo => $rotulo) {
+            if (!empty($conteudo[$campo]) && is_string($conteudo[$campo])) {
+                $nos[] = ['ref' => [$campo], 'rotulo' => $rotulo, 'texto' => $conteudo[$campo]];
+            }
         }
-        $amostraJson = json_encode($amostra, JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR);
-        if (mb_strlen($amostraJson) > 12000) {
-            $amostraJson = mb_substr($amostraJson, 0, 12000) . '...';
+
+        // Tópicos do resumo executivo (lista de strings).
+        foreach (($conteudo['resumo_executivo_topicos'] ?? []) as $i => $t) {
+            if (is_string($t) && trim($t) !== '') {
+                $nos[] = ['ref' => ['resumo_executivo_topicos', $i], 'rotulo' => 'Resumo executivo · tópico ' . ($i + 1), 'texto' => $t];
+            }
+        }
+
+        // Procedimentos → fases → passos → campos de texto de cada passo.
+        foreach (($conteudo['procedimentos'] ?? []) as $fi => $fase) {
+            $nomeFase = is_array($fase) ? ($fase['fase'] ?? ('Fase ' . ($fi + 1))) : ('Fase ' . ($fi + 1));
+            $passos = $fase['passos_operacionais_detalhados'] ?? $fase['passos'] ?? [];
+            $chavePassos = isset($fase['passos_operacionais_detalhados']) ? 'passos_operacionais_detalhados' : 'passos';
+            foreach ((array) $passos as $pi => $passo) {
+                if (!is_array($passo)) continue;
+                $numPasso = $passo['passo'] ?? ($pi + 1);
+                $tituloAcao = trim((string) ($passo['acao_operacional'] ?? $passo['acao'] ?? ''));
+                $rotuloBase = $nomeFase . ' · passo ' . $numPasso . ($tituloAcao !== '' ? ' (' . mb_substr($tituloAcao, 0, 40) . ')' : '');
+                // Campos de texto editáveis dentro do passo.
+                foreach ([
+                    'acao_operacional' => 'ação',
+                    'acao' => 'ação',
+                    'detalhamento_operacional_completo' => 'detalhamento',
+                    'detalhamento' => 'detalhamento',
+                    'scripts_operacionais_completos' => 'script',
+                    'observacoes_operacionais' => 'observações',
+                ] as $campo => $sufixo) {
+                    if (!empty($passo[$campo]) && is_string($passo[$campo])) {
+                        $nos[] = [
+                            'ref' => ['procedimentos', $fi, $chavePassos, $pi, $campo],
+                            'rotulo' => $rotuloBase . ' — ' . $sufixo,
+                            'texto' => $passo[$campo],
+                        ];
+                    }
+                }
+            }
+        }
+
+        // Scripts de comunicação (formato flexível: por tipo => texto, ou categorias→mensagens).
+        if (!empty($conteudo['scripts_comunicacao']) && is_array($conteudo['scripts_comunicacao'])) {
+            foreach ($conteudo['scripts_comunicacao'] as $tipo => $script) {
+                if (is_string($script) && trim($script) !== '') {
+                    $nos[] = ['ref' => ['scripts_comunicacao', $tipo], 'rotulo' => 'Script: ' . (is_string($tipo) ? $tipo : 'mensagem'), 'texto' => $script];
+                }
+            }
+        }
+
+        // Cenários críticos (ação/situação por item).
+        $cenarios = $conteudo['gestao_situacoes_fora_controle']['cenarios_criticos_obrigatorios'] ?? [];
+        foreach ((array) $cenarios as $ci => $cen) {
+            if (!is_array($cen)) continue;
+            foreach (['situacao_especifica' => 'situação', 'acao_recomendada' => 'ação', 'acao' => 'ação'] as $campo => $suf) {
+                if (!empty($cen[$campo]) && is_string($cen[$campo])) {
+                    $nos[] = [
+                        'ref' => ['gestao_situacoes_fora_controle', 'cenarios_criticos_obrigatorios', $ci, $campo],
+                        'rotulo' => 'Situação crítica ' . ($ci + 1) . ' — ' . $suf,
+                        'texto' => $cen[$campo],
+                    ];
+                }
+            }
+        }
+
+        return $nos;
+    }
+
+    /**
+     * A IA recebe a LISTA ENUMERADA de nós (com rótulo + texto atual) e o pedido do
+     * usuário. Ela devolve APENAS os nós que precisam mudar, com o novo texto de cada.
+     * Nada além dos nós escolhidos é tocado. Retorna [['no'=>int,'novo_texto'=>string], ...].
+     */
+    private function escolherEdicoesPontuaisComIA(array $nos, string $transcricao, string $trechoOrigem): array
+    {
+        // Lista enumerada compacta para a IA localizar o ponto certo.
+        $linhas = [];
+        foreach ($nos as $i => $n) {
+            $texto = mb_substr(trim(preg_replace('/\s+/', ' ', $n['texto'])), 0, 300);
+            $linhas[] = "[{$i}] {$n['rotulo']}\n     ATUAL: {$texto}";
+        }
+        $catalogo = implode("\n", $linhas);
+        if (mb_strlen($catalogo) > 16000) {
+            $catalogo = mb_substr($catalogo, 0, 16000) . "\n...";
         }
 
         $blocoOrigem = $trechoOrigem !== ''
-            ? "\n# CONTEXTO ORIGINAL (conversa que gerou este SOP — respeite os fatos reais da empresa):\n\"\"\"\n" . mb_substr($trechoOrigem, 0, 3000) . "\n\"\"\"\n"
+            ? "\n# CONTEXTO ORIGINAL (o que o gestor falou ao criar o SOP — respeite os fatos reais):\n\"\"\"\n" . mb_substr($trechoOrigem, 0, 2000) . "\n\"\"\"\n"
             : '';
 
-        $blocoSecaoForcada = $secaoForcada !== '' && in_array($secaoForcada, $secoesEditaveis, true)
-            ? "\nO usuário indicou que a seção a ajustar é: \"{$secaoForcada}\". Use essa seção salvo se o pedido claramente se referir a outra.\n"
-            : '';
-
-        $listaSecoes = implode(', ', $secoesEditaveis);
-
-        $prompt = "Você edita um SOP (procedimento operacional) já existente. NÃO reescreva o SOP inteiro. "
-            . "Sua tarefa: (1) identificar QUAL ÚNICA seção do JSON o pedido do usuário afeta e (2) devolver o NOVO conteúdo APENAS dessa seção, no MESMO formato/estrutura que ela já tem hoje.\n\n"
-            . "# SEÇÕES EDITÁVEIS DISPONÍVEIS: {$listaSecoes}\n"
-            . $blocoSecaoForcada
+        $prompt = "Você faz uma EDIÇÃO CIRÚRGICA em um SOP já pronto. NÃO reescreva o SOP nem uma seção inteira. "
+            . "Mexa APENAS no(s) trecho(s) que o pedido do usuário realmente afeta.\n\n"
+            . "# TRECHOS EDITÁVEIS DO SOP (cada um tem um índice [n] e o texto ATUAL):\n"
+            . $catalogo . "\n"
             . $blocoOrigem
-            . "\n# ESTADO ATUAL DAS SEÇÕES (use como referência de formato — replique a mesma estrutura):\n"
-            . $amostraJson . "\n\n"
-            . "# PEDIDO DO USUÁRIO (áudio transcrito):\n\"\"\"\n" . mb_substr($transcricao, 0, 4000) . "\n\"\"\"\n\n"
-            . "# REGRAS:\n"
-            . "- Escolha SOMENTE UMA seção (a mais afetada pelo pedido).\n"
-            . "- O campo \"conteudo\" deve ter EXATAMENTE o mesmo tipo/estrutura do valor atual daquela seção (se hoje é lista de objetos, devolva lista de objetos; se é texto, devolva texto).\n"
-            . "- Aplique o pedido do usuário de forma incremental: mantenha o que ele não pediu para mudar, ajuste/adicione o que ele pediu.\n"
-            . "- Português do Brasil, tom técnico e objetivo.\n\n"
+            . "\n# PEDIDO DO USUÁRIO (fala transcrita):\n\"\"\"\n" . mb_substr($transcricao, 0, 4000) . "\n\"\"\"\n\n"
+            . "# COMO RESPONDER:\n"
+            . "- Escolha o MENOR conjunto de trechos que atende ao pedido (geralmente 1, no máximo 3-4 se o mesmo ponto aparecer repetido).\n"
+            . "- Para cada trecho, reescreva o texto INTEIRO daquele trecho já com o ajuste aplicado, mantendo o estilo e o que não foi pedido para mudar.\n"
+            . "- Exemplo: se o pedido é 'em vez de enviar por e-mail, tente fechar na call e só envie e-mail em último caso', reescreva o passo/script que fala de enviar e-mail para refletir essa ordem — sem alterar os outros passos.\n"
+            . "- NÃO invente trechos novos nem mude índices. Use exatamente os índices listados.\n"
+            . "- Se o pedido não corresponder a nenhum trecho, devolva lista vazia.\n"
+            . "- Português do Brasil.\n\n"
             . "# RESPONDA APENAS EM JSON:\n"
-            . "{\n  \"secao\": \"nome_exato_da_secao\",\n  \"conteudo\": <novo conteúdo da seção no mesmo formato>\n}";
+            . "{\n  \"edicoes\": [ {\"no\": 3, \"novo_texto\": \"texto completo do trecho já ajustado\"} ]\n}";
 
-        $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o', true, 8000, 90);
+        $resp = ApiHelper::chamarOpenAI($prompt, 'gpt-4o', true, 4000, 90);
         if (!empty($resp['sucesso']) && is_array($resp['conteudo'])) {
-            return [
-                'secao' => (string) ($resp['conteudo']['secao'] ?? ''),
-                'conteudo' => $resp['conteudo']['conteudo'] ?? null,
-            ];
+            $edicoes = $resp['conteudo']['edicoes'] ?? [];
+            return is_array($edicoes) ? $edicoes : [];
         }
-        return ['secao' => '', 'conteudo' => null];
+        return [];
+    }
+
+    /**
+     * Aplica um valor a um caminho profundo do array (por referência), sem tocar
+     * em nada fora do caminho. Retorna true se aplicou.
+     */
+    private function aplicarValorPorPath(array &$arr, array $path, $valor): bool
+    {
+        $ref =& $arr;
+        foreach ($path as $chave) {
+            if (is_array($ref) && array_key_exists($chave, $ref)) {
+                $ref =& $ref[$chave];
+            } else {
+                return false; // caminho inválido: não altera nada
+            }
+        }
+        $ref = $valor;
+        return true;
     }
 
     public function kpis(): void
@@ -12483,9 +12614,22 @@ Gere de 6 a 9 categorias, cada uma com 1 a 3 mensagens. As 4 categorias obrigat�
                 return ['sucesso' => false, 'erro' => 'Fase 1 (Resumo): ' . ($resp['erro'] ?? 'Erro na IA')];
             }
             $r = $resp['conteudo'];
+
+            // Marca a ORIGEM da personalização deste SOP (exibida na tela):
+            //  - 'conversa': houve fala do gestor sobre este serviço (identificado na entrevista)
+            //  - 'documento': personalizado com documento anexado
+            //  - 'padrao': boas práticas padrão do nicho (nada específico informado)
+            $temConversa = trim((string) ($sopData['trecho_conversa'] ?? '')) !== '';
+            $temDoc = trim((string) ($sopData['contexto_personalizacao'] ?? '')) !== ''
+                   || trim((string) ($sopData['descricao_resumida'] ?? '')) !== '';
+            $origemPersonalizacao = $temConversa ? 'conversa' : ($temDoc ? 'documento' : 'padrao');
+            $ehGap = ((int) ($sopData['gap_identificado'] ?? 0)) === 1;
+
             $conteudo = array_merge($conteudo, [
                 'sop_titulo' => $sopData['codigo_servico'] . ' - ' . $sopData['nome_servico'],
                 'status_geracao' => 'processando',
+                'origem_personalizacao' => $origemPersonalizacao,
+                'gap_identificado' => $ehGap,
                 'fase_atual' => 1,
                 'total_fases' => 8,
                 'objetivo' => $r['objetivo'] ?? 'Objetivo não especificado',

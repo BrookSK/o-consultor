@@ -184,7 +184,9 @@ if (!function_exists('sopTemConteudo')) {
 #sop-detail-view .step{border:1px solid var(--sd-line);border-radius:12px;overflow:hidden;}
 #sop-detail-view .step-head{display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--sd-page);border-bottom:1px solid var(--sd-line);}
 #sop-detail-view .step-num{width:22px;height:22px;border-radius:50%;background:var(--sd-accent);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-#sop-detail-view .step-title{font-weight:600;font-size:13.5px;}
+#sop-detail-view .step-title{font-weight:600;font-size:13.5px;flex:1;}
+#sop-detail-view .btn-ajuste-passo{margin-left:auto;font-size:11.5px;font-weight:600;color:var(--sd-accent);background:#fff;border:1px solid var(--sd-line);border-radius:7px;padding:4px 9px;cursor:pointer;white-space:nowrap;}
+#sop-detail-view .btn-ajuste-passo:hover{border-color:var(--sd-accent);background:#FFF6F0;}
 #sop-detail-view .step-body{padding:16px;display:flex;flex-direction:column;gap:14px;}
 #sop-detail-view .sub{display:flex;flex-direction:column;gap:6px;}
 #sop-detail-view .sub-label{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--sd-ink-mute);}
@@ -352,6 +354,7 @@ if (!function_exists('sopTemConteudo')) {
         <div class="actions-row">
             <button class="btn" onclick="abrirPersonalizar()">🎛 Personalizar</button>
             <?php if ($temSop): ?>
+            <button class="btn" onclick="abrirAjusteVoz()" title="Ajusta apenas o trecho que você citar, sem refazer o SOP">🎙 Ajuste rápido por voz</button>
             <button class="btn" onclick="processarServico(<?= $servico['id'] ?>)">↻ Regenerar SOP</button>
             <button class="btn" onclick="gerarScriptsComunicacao()">💬 Gerar scripts de comunicação</button>
             <button class="btn" onclick="imprimirSop()">🖨 Imprimir</button>
@@ -375,6 +378,23 @@ if (!function_exists('sopTemConteudo')) {
 
 <?php if ($temSop): ?>
     <?php $data = $sopData; ?>
+
+    <!-- Indicador de origem da personalização -->
+    <?php $origem = $data['origem_personalizacao'] ?? 'padrao'; $ehGap = !empty($data['gap_identificado']); ?>
+    <?php if ($origem === 'conversa'): ?>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;padding:10px 14px;border-radius:10px;background:#E4F6E8;border:1px solid #B7E4C0;color:#237032;font-size:13px;">
+        🎙 <span><strong>Gerado com base na sua conversa.</strong> Reflete o que você descreveu sobre a operação.
+        <?php if ($ehGap): ?><span style="margin-left:6px;padding:1px 7px;border-radius:5px;background:#FEF0C7;color:#B54708;font-weight:600;font-size:11px;">gap identificado</span><?php endif; ?></span>
+    </div>
+    <?php elseif ($origem === 'documento'): ?>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;padding:10px 14px;border-radius:10px;background:#EEF0FB;border:1px solid #C7CEF2;color:#3A3F8F;font-size:13px;">
+        📎 <span><strong>Personalizado com material da empresa.</strong> Baseado no documento/descrição fornecidos.</span>
+    </div>
+    <?php else: ?>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;padding:10px 14px;border-radius:10px;background:#F3F4F8;border:1px solid #E4E5EE;color:#565B78;font-size:13px;">
+        📘 <span><strong>Boas práticas padrão do nicho.</strong> Nenhuma informação específica vinculada. Use “Personalizar” para adaptá-lo à sua realidade.</span>
+    </div>
+    <?php endif; ?>
 
     <!-- Resumo executivo assertivo (topo) -->
     <?php if (!empty($data['resumo_executivo_topicos'])): ?>
@@ -476,11 +496,18 @@ if (!function_exists('sopTemConteudo')) {
                 <div class="phase-desc"><?= sopRenderTexto($descFase) ?></div>
                 <?php endif; ?>
 
+                <?php $chavePassosFase = isset($fase['passos_operacionais_detalhados']) ? 'passos_operacionais_detalhados' : 'passos'; ?>
                 <?php foreach ($passosDaFase as $pIndex => $passo): ?>
+                <?php $tituloPasso = sopTexto($passo['acao_operacional'] ?? $passo['acao'] ?? 'Etapa ' . ($pIndex + 1)); ?>
                 <div class="step">
                     <div class="step-head">
                         <span class="step-num"><?= $passo['passo'] ?? ($pIndex + 1) ?></span>
-                        <span class="step-title"><?= htmlspecialchars(sopTexto($passo['acao_operacional'] ?? $passo['acao'] ?? 'Etapa ' . ($pIndex + 1))) ?></span>
+                        <span class="step-title"><?= htmlspecialchars($tituloPasso) ?></span>
+                        <?php if ($temSop): ?>
+                        <button class="btn-ajuste-passo no-print"
+                                title="Ajustar apenas este passo por voz"
+                                onclick='abrirAjusteVoz(["procedimentos", <?= (int) $faseIndex ?>, <?= json_encode($chavePassosFase) ?>, <?= (int) $pIndex ?>], <?= json_encode("Passo " . ($passo["passo"] ?? ($pIndex + 1)) . ": " . mb_substr($tituloPasso, 0, 60), JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>🎙 Ajustar</button>
+                        <?php endif; ?>
                     </div>
                     <div class="step-body">
                         <?php $detalhamento = $passo['detalhamento_operacional_completo'] ?? $passo['detalhamento'] ?? ''; ?>
@@ -766,6 +793,31 @@ if (!function_exists('sopTemConteudo')) {
     </div>
 </div>
 
+<!-- Modal Ajuste rápido por voz (patch incremental — NÃO refaz o SOP inteiro) -->
+<div id="modalAjusteVoz" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-lg p-6 max-w-lg w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between mb-1">
+            <h3 class="text-lg font-semibold" id="ajuste_titulo">🎙 Ajuste rápido por voz</h3>
+            <button onclick="fecharAjusteVoz()" class="text-gray-400 hover:text-gray-600">✕</button>
+        </div>
+        <p class="text-sm text-gray-500 mb-4" id="ajuste_dica">Diga só o que quer mudar (ex.: "no passo de aprovação, quem aprova é o gerente financeiro"). A IA ajusta <strong>apenas o trecho citado</strong> e mantém o resto do SOP — sem refazer tudo.</p>
+
+        <div class="relative">
+            <textarea id="ajuste_texto" rows="5"
+                      class="w-full px-3 py-2 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:border-primary"
+                      placeholder="Ex.: Nos scripts de comunicação, use um tom mais formal. / No procedimento de execução, inclua a conferência no sistema X antes de finalizar."></textarea>
+            <button type="button" id="ajuste_btn_mic" onclick="alternarGravacaoAjuste()" title="Gravar por voz"
+                    class="absolute right-2 bottom-2 w-9 h-9 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary-700">🎤</button>
+        </div>
+        <p id="ajuste_status" class="text-xs text-gray-400 mt-1 hidden"></p>
+
+        <div class="flex gap-3 mt-6">
+            <button type="button" onclick="fecharAjusteVoz()" class="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">Cancelar</button>
+            <button type="button" id="ajuste_btn_aplicar" onclick="aplicarAjusteVoz()" class="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-700">✏️ Aplicar ajuste</button>
+        </div>
+    </div>
+</div>
+
 <!-- Modal de Loading -->
 <div id="modalLoading" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
     <div class="bg-white rounded-lg p-8 text-center max-w-md w-full mx-4 shadow-xl">
@@ -904,6 +956,8 @@ function atualizarProgresso(fase, mensagem) {
 }
 
 const SERVICO_ID = <?= (int) $servico['id'] ?>;
+const SOP_ID = <?= (int) ($servico['sop_id'] ?? 0) ?>;
+const CSRF_TOKEN_PAGINA = '<?= Csrf::token() ?>';
 
 // ===== Abas SOP / Scripts =====
 function trocarAba(aba) {
@@ -982,6 +1036,108 @@ function fallbackCopiar(texto, cb) {
     try { document.execCommand('copy'); } catch (e) {}
     document.body.removeChild(ta);
     if (cb) cb();
+}
+
+// ===== Ajuste rápido por voz (patch incremental) =====
+let ajusteRecorder = null;
+let ajusteChunks = [];
+
+// Escopo opcional do ajuste: quando o usuário clica "Ajustar" num passo específico,
+// guardamos o caminho (path) daquele nó para a IA agir SÓ ali.
+let ajusteEscopoPath = null;
+
+function abrirAjusteVoz(path, rotulo) {
+    ajusteEscopoPath = Array.isArray(path) ? path : null;
+    document.getElementById('ajuste_texto').value = '';
+    const st = document.getElementById('ajuste_status');
+    st.classList.add('hidden'); st.textContent = '';
+
+    // Título/dica do modal refletem o escopo escolhido.
+    const titulo = document.getElementById('ajuste_titulo');
+    const dica = document.getElementById('ajuste_dica');
+    if (ajusteEscopoPath) {
+        if (titulo) titulo.textContent = '🎙 Ajustar: ' + (rotulo || 'trecho selecionado');
+        if (dica) dica.textContent = 'Você selecionou um trecho específico. Diga só o que mudar nele — o resto do SOP não será tocado.';
+    } else {
+        if (titulo) titulo.textContent = '🎙 Ajuste rápido por voz';
+        if (dica) dica.textContent = 'Cite o trecho que quer mudar (ex.: "no passo de envio, troque e-mail por fechar na call"). A IA ajusta apenas o ponto citado.';
+    }
+    document.getElementById('modalAjusteVoz').classList.remove('hidden');
+}
+function fecharAjusteVoz() {
+    if (ajusteRecorder && ajusteRecorder.state === 'recording') { try { ajusteRecorder.stop(); } catch (e) {} }
+    document.getElementById('modalAjusteVoz').classList.add('hidden');
+}
+
+async function alternarGravacaoAjuste() {
+    const btn = document.getElementById('ajuste_btn_mic');
+    const st = document.getElementById('ajuste_status');
+    if (ajusteRecorder && ajusteRecorder.state === 'recording') { ajusteRecorder.stop(); return; }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { alert('Seu navegador não suporta gravação.'); return; }
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        ajusteChunks = [];
+        ajusteRecorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4' });
+        ajusteRecorder.ondataavailable = e => { if (e.data.size > 0) ajusteChunks.push(e.data); };
+        ajusteRecorder.onstop = async () => {
+            stream.getTracks().forEach(t => t.stop());
+            btn.textContent = '🎤'; btn.classList.remove('animate-pulse');
+            st.classList.remove('hidden'); st.textContent = 'Transcrevendo áudio...';
+            await transcreverAjuste();
+        };
+        ajusteRecorder.start();
+        btn.textContent = '⏹'; btn.classList.add('animate-pulse');
+        st.classList.remove('hidden'); st.textContent = '🔴 Gravando... clique para parar.';
+    } catch (e) { alert('Não foi possível acessar o microfone.'); }
+}
+
+async function transcreverAjuste() {
+    const st = document.getElementById('ajuste_status');
+    try {
+        const blob = new Blob(ajusteChunks, { type: 'audio/webm' });
+        const fd = new FormData();
+        fd.append('audio', blob, 'ajuste.webm');
+        fd.append('csrf_token', CSRF_TOKEN_PAGINA);
+        const r = await fetch('<?= APP_URL ?>/api/transcricao', { method: 'POST', headers: { 'X-CSRF-Token': CSRF_TOKEN_PAGINA }, body: fd });
+        const d = await r.json();
+        if (d.sucesso && d.transcricao) {
+            const ta = document.getElementById('ajuste_texto');
+            ta.value = (ta.value ? ta.value.trim() + '\n' : '') + d.transcricao.trim();
+            st.textContent = 'Transcrição adicionada.';
+            setTimeout(() => st.classList.add('hidden'), 2000);
+        } else {
+            st.textContent = 'Não foi possível transcrever: ' + (d.erro || 'erro');
+        }
+    } catch (e) { st.textContent = 'Erro ao transcrever o áudio.'; }
+}
+
+async function aplicarAjusteVoz() {
+    const texto = document.getElementById('ajuste_texto').value.trim();
+    if (!texto) { alert('Diga ou digite o ajuste desejado.'); return; }
+    if (!SOP_ID) { alert('SOP ainda não gerado — gere o SOP antes de ajustar.'); return; }
+
+    const btn = document.getElementById('ajuste_btn_aplicar');
+    btn.disabled = true; btn.textContent = 'Aplicando...';
+    try {
+        const params = { sop_id: SOP_ID, transcricao: texto, csrf_token: CSRF_TOKEN_PAGINA };
+        // Se o usuário escolheu um trecho específico, envia o caminho para a IA
+        // agir SÓ ali (edição travada no nó selecionado).
+        if (ajusteEscopoPath) { params.path = JSON.stringify(ajusteEscopoPath); }
+        const body = new URLSearchParams(params);
+        const r = await fetch('<?= APP_URL ?>/sop/patch-sop-voz', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+        const d = await r.json();
+        if (d.sucesso) {
+            fecharAjusteVoz();
+            alert('✅ ' + (d.mensagem || ('Seção "' + d.secao + '" atualizada (v' + d.versao + ').')));
+            window.location.reload();
+        } else {
+            alert('Erro: ' + (d.erro || 'desconhecido'));
+        }
+    } catch (e) {
+        alert('Erro de comunicação com o servidor.');
+    } finally {
+        btn.disabled = false; btn.textContent = '✏️ Aplicar ajuste';
+    }
 }
 
 // Personalizar comunicação (modal)
