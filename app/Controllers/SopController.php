@@ -3654,7 +3654,7 @@ class SopController
             . "# SETOR: {$nomeSetor}\n"
             . "# NICHO DA EMPRESA: {$nicho}\n"
             . $blocoHistorico
-            . "\n# FALA DO GESTOR (transcrição do turno atual):\n\"\"\"\n" . mb_substr($transcricao, 0, 6000) . "\n\"\"\"\n\n"
+            . "\n# FALA DO GESTOR (transcrição do turno atual):\n\"\"\"\n" . mb_substr($transcricao, 0, 14000) . "\n\"\"\"\n\n"
             . "# CATÁLOGO DE SERVIÇOS DISPONÍVEIS DO SETOR (use os ids exatos):\n" . $listaServicos . "\n\n"
             . "# O QUE RETORNAR (retorne SOMENTE serviços destas 3 situações — ignore todo o resto do catálogo):\n"
             . "- \"identificado\": o gestor confirmou/deixou claro que esse processo EXISTE na operação dele hoje. Preencha \"trecho\" com a fala específica que fundamenta (usada depois para personalizar o SOP).\n"
@@ -3711,7 +3711,7 @@ class SopController
             $trecho = trim((string) ($item['trecho'] ?? ''));
             // Se a IA não isolou um trecho, guarda a transcrição do turno como contexto.
             if ($trecho === '' && $estado === 'identificado') {
-                $trecho = mb_substr($transcricao, 0, 4000);
+                $trecho = mb_substr($transcricao, 0, 14000);
             }
 
             // selecionado acompanha o estado: identificado = pré-marcado; excluído/sugerido = desmarcado.

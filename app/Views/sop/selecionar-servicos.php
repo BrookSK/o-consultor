@@ -321,7 +321,7 @@ function fecharVozSetor() {
     document.getElementById('modalVozSetor').classList.add('hidden');
 }
 
-const REC_LIMITE_SEG = 300; // 5 minutos
+const REC_LIMITE_SEG = 600; // 10 minutos
 function iniciarCronometro(statusEl, onFim) {
     let restante = REC_LIMITE_SEG;
     const fmt = (s) => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
