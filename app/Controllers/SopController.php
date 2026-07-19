@@ -3245,10 +3245,11 @@ class SopController
             $this->garantirColunaSelecionado();
             $this->garantirEstruturaConversacional();
 
-            // Reabrir o setor: marca o setor como ativo/mapeado e deixa os serviços
-            // prontos para a conversa (não seleciona nada; o mic é que vai revelar).
+            // Reabrir o setor: marca como ativo/mapeado e liga a flag de ativação
+            // manual, para que ele apareça na aba "ativos" MESMO sem serviços
+            // selecionados. Não seleciona nada; a conversa inline é que vai revelar.
             Database::execute(
-                "UPDATE setores_empresa SET status = 'mapeado', atualizado_em = NOW() WHERE id = ?",
+                "UPDATE setores_empresa SET status = 'mapeado', ativado_manual = 1, atualizado_em = NOW() WHERE id = ?",
                 [$setorId]
             );
 
@@ -3256,9 +3257,10 @@ class SopController
             echo json_encode([
                 'sucesso' => true,
                 'setor_id' => $setorId,
-                'mensagem' => 'Setor ativado. Converse com a IA para gerar os SOPs.',
-                // Redireciona para a tela conversacional de seleção deste diagnóstico.
-                'redirect' => $diagnosticoId ? (APP_URL . '/sop/selecionar-servicos?diagnostico_id=' . $diagnosticoId) : null
+                'mensagem' => 'Setor ativado. Converse com a IA neste setor para gerar os SOPs.',
+                // Mantido por compatibilidade; o front do botão "Ativar setor" NÃO
+                // segue este redirect (permanece na página e o setor migra p/ ativos).
+                'redirect' => $diagnosticoId ? (APP_URL . '/sop/listar-por-diagnostico?diagnostico_id=' . $diagnosticoId) : null
             ]);
             exit;
         } catch (Exception $e) {
@@ -3302,6 +3304,8 @@ class SopController
                 $setor = Database::queryOne("SELECT id, empresa_id FROM setores_empresa WHERE id = ?", [$setorId]);
                 if ($setor && ($empresaUsuario === null || (int) $setor['empresa_id'] === (int) $empresaUsuario)) {
                     Database::execute("UPDATE servicos_setor SET selecionado = 0, atualizado_em = NOW() WHERE setor_id = ?", [$setorId]);
+                    // Desliga a ativação manual: o setor volta para a aba de inativos.
+                    Database::execute("UPDATE setores_empresa SET ativado_manual = 0, atualizado_em = NOW() WHERE id = ?", [$setorId]);
                     $setoresAfetados[$setorId] = true;
                     $inativados = (int) (Database::queryOne("SELECT COUNT(*) t FROM servicos_setor WHERE setor_id = ?", [$setorId])['t'] ?? 0);
                 }
@@ -3341,6 +3345,9 @@ class SopController
         try {
             Database::execute("ALTER TABLE servicos_setor ADD COLUMN selecionado TINYINT(1) NOT NULL DEFAULT 1");
         } catch (Exception $e) { /* já existe */ }
+        try {
+            Database::execute("ALTER TABLE setores_empresa ADD COLUMN ativado_manual TINYINT(1) NOT NULL DEFAULT 0");
+        } catch (Exception $e) { /* já existe */ }
     }
 
     /**
@@ -3373,6 +3380,11 @@ class SopController
         $tentar = static function (string $sql): void {
             try { Database::execute($sql); } catch (Exception $e) { /* já existe */ }
         };
+
+        // 0. Setor ativado manualmente (sem serviços selecionados ainda).
+        // Permite que um setor apareça na aba "ativos" mesmo antes de a conversa
+        // revelar/selecionar serviços — o usuário ativa e conversa ali mesmo.
+        $tentar("ALTER TABLE setores_empresa ADD COLUMN ativado_manual TINYINT(1) NOT NULL DEFAULT 0");
 
         // 1. Estado de conversa por serviço
         $tentar("ALTER TABLE servicos_setor ADD COLUMN status_conversa ENUM('identificado','sugerido','excluido') NOT NULL DEFAULT 'sugerido'");
@@ -5192,16 +5204,22 @@ class SopController
                 }
             }
 
+            $ativadoManual = ((int) ($setor['ativado_manual'] ?? 0)) === 1;
+
             $setorInfo = [
                 'setor_id' => $setor['id'],
                 'nome_setor' => $setor['nome_setor'],
                 'tipo_setor' => $setor['tipo_setor'],
                 'setor_descricao' => $setor['descricao'],
                 'total_servicos' => count($servicosSelecionados),
-                'total_sops' => $sopsNoSetor
+                'total_sops' => $sopsNoSetor,
+                'ativado_manual' => $ativadoManual,
+                'diagnostico_id' => $diagnosticoId,
             ];
 
-            if (count($servicosSelecionados) > 0) {
+            // Ativo quando tem serviço selecionado OU foi ativado manualmente
+            // (o usuário vai conversar ali mesmo para revelar/gerar os serviços).
+            if (count($servicosSelecionados) > 0 || $ativadoManual) {
                 $setoresOrganizados[] = ['setor' => $setorInfo, 'servicos' => $servicosSelecionados];
             } else {
                 // Setor inativo: leva TODOS os serviços (para selecionar/ativar depois)

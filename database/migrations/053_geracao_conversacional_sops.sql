@@ -14,6 +14,17 @@
 -- NÃO altera o fluxo de Diagnóstico (Parte A) nem o catálogo determinístico.
 
 -- =====================================================================
+-- 0. Ativação manual de setor (em setores_empresa)
+--    Permite que um setor apareça na aba "ativos" da listagem de SOPs mesmo
+--    sem nenhum serviço selecionado ainda — o usuário ativa o setor e conversa
+--    ali mesmo (mic inline) para revelar/criar os serviços, sem ser levado de
+--    volta à tela de seleção de todos os setores.
+-- =====================================================================
+ALTER TABLE `setores_empresa`
+  ADD COLUMN IF NOT EXISTS `ativado_manual` TINYINT(1) NOT NULL DEFAULT 0
+    COMMENT 'Setor ativado manualmente (aparece em "ativos" mesmo sem serviços selecionados; conversa inline revela os serviços)';
+
+-- =====================================================================
 -- 1. Estado de conversa por serviço (em servicos_setor)
 -- =====================================================================
 ALTER TABLE `servicos_setor`

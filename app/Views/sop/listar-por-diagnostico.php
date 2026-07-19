@@ -218,6 +218,8 @@
                 <?php else: ?>
                     <span class="badge-status pendente">○ Pendente</span>
                 <?php endif; ?>
+                <button class="add-servico" title="Conversar com a IA sobre este setor (revela e cria serviços por voz)"
+                        onclick="event.stopPropagation(); abrirVozSetor(<?= (int) $setor['setor_id'] ?>, '<?= htmlspecialchars($setor['nome_setor'], ENT_QUOTES) ?>')">🎤 Conversar</button>
                 <button class="add-servico" onclick="event.stopPropagation(); abrirModalAddServico(<?= $setor['setor_id'] ?>, '<?= htmlspecialchars($setor['nome_setor'], ENT_QUOTES) ?>')">➕ Adicionar serviço</button>
                 <button class="inativar-setor" onclick="event.stopPropagation(); inativarSetor(<?= $setor['setor_id'] ?>, '<?= htmlspecialchars($setor['nome_setor'], ENT_QUOTES) ?>')" title="Inativar setor (sai da lista de SOPs)">💤 Inativar setor</button>
             </div>
@@ -272,7 +274,7 @@
                 <?php endforeach; ?>
             <?php else: ?>
                 <div class="lane">
-                    <p class="lane-empty">Nenhum serviço neste setor. Use "Adicionar serviço" para criar.</p>
+                    <p class="lane-empty">Nenhum serviço neste setor ainda. Clique em <b>🎤 Conversar</b> e conte como o setor funciona — a IA revela e cria os serviços, ou use <b>Adicionar serviço</b>.</p>
                 </div>
             <?php endif; ?>
         </div>
@@ -475,8 +477,40 @@
     </div>
 </div>
 
+<!-- Modal: entrevista conversacional por voz (classifica/cria serviços DESTE setor) -->
+<div id="modalVozSetor" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-lg p-6 max-w-lg w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between mb-1">
+            <h3 class="text-lg font-semibold">🎤 Entrevista — <span id="voz_setor_nome"></span></h3>
+            <button onclick="fecharVozSetor()" class="text-gray-400 hover:text-gray-600">✕</button>
+        </div>
+        <p class="text-sm text-gray-500 mb-3">Conte como esse setor funciona hoje: o que vocês fazem, o que não fazem, o dia a dia. A IA marca os serviços que existem, sugere gaps e esconde o que você disser que não usa. Fica tudo neste setor.</p>
+        <input type="hidden" id="voz_setor_id">
+        <input type="hidden" id="voz_turno" value="1">
+
+        <div id="voz_pergunta_box" class="hidden mb-3 p-3 rounded-lg bg-blue-50 border border-blue-100 text-sm text-blue-900"></div>
+
+        <div class="relative">
+            <textarea id="voz_descricao" rows="5"
+                      class="w-full px-3 py-2 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:border-primary"
+                      placeholder="Ex.: No atendimento a gente recebe o cliente, tira dúvidas, registra chamados e faz o pós-venda. A gente não trabalha com chat no site."></textarea>
+            <button type="button" id="voz_btn_mic" onclick="alternarGravacaoVoz()" title="Gravar por voz"
+                    class="absolute right-2 bottom-2 w-9 h-9 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary-700">🎤</button>
+        </div>
+        <p id="voz_status" class="text-xs text-gray-400 mt-1 hidden"></p>
+
+        <div id="voz_resumo" class="hidden mt-3 text-xs text-gray-600 bg-gray-50 rounded-lg p-3"></div>
+
+        <div class="flex gap-3 mt-6">
+            <button onclick="fecharVozSetor()" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg">Concluir</button>
+            <button id="voz_btn_gerar" onclick="enviarTurnoConversa()" class="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-700">✨ Analisar resposta</button>
+        </div>
+    </div>
+</div>
+
 <script>
 const CSRF_TOKEN = '<?= Csrf::token() ?>';
+const DIAG_ID = <?= (int) ($dados['diagnostico']['id'] ?? 0) ?>;
 
 // Expandir/recolher setor (carrega minimizado por padrão)
 function toggleSetor(head) {
@@ -984,6 +1018,144 @@ function atualizarEstatisticasGlobais() {
     if (elServ) elServ.textContent = totalServicos;
     if (elSops) elSops.textContent = totalSops;
     if (elProg) elProg.textContent = progresso + '%';
+}
+
+// ============================================================================
+// Entrevista conversacional por voz — ESCOPADA A UM SETOR ESPECÍFICO.
+// Reaproveita o endpoint /sop/classificar-conversa-setor. Ao final da conversa,
+// recarrega a página para o setor exibir os serviços revelados/selecionados,
+// SEM sair para a tela de "reescolher" todos os setores.
+// ============================================================================
+let vozRecorder = null;
+let vozChunks = [];
+let vozHouveMudanca = false;
+
+function abrirVozSetor(setorId, nomeSetor) {
+    document.getElementById('voz_setor_id').value = setorId;
+    document.getElementById('voz_turno').value = '1';
+    document.getElementById('voz_setor_nome').textContent = nomeSetor;
+    document.getElementById('voz_descricao').value = '';
+    document.getElementById('voz_pergunta_box').classList.add('hidden');
+    document.getElementById('voz_resumo').classList.add('hidden');
+    const st = document.getElementById('voz_status');
+    st.classList.add('hidden'); st.textContent = '';
+    vozHouveMudanca = false;
+    document.getElementById('modalVozSetor').classList.remove('hidden');
+}
+
+function fecharVozSetor() {
+    if (vozRecorder && vozRecorder.state === 'recording') { try { vozRecorder.stop(); } catch (e) {} }
+    document.getElementById('modalVozSetor').classList.add('hidden');
+    // Se a conversa alterou serviços do setor, recarrega para refletir na aba ativos.
+    if (vozHouveMudanca) { location.reload(); }
+}
+
+const VOZ_REC_LIMITE_SEG = 600; // 10 minutos
+function iniciarCronometroVoz(statusEl, onFim) {
+    let restante = VOZ_REC_LIMITE_SEG;
+    const fmt = (s) => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    statusEl.classList.remove('hidden');
+    statusEl.textContent = '🔴 Gravando... ' + fmt(restante) + ' restante · clique para parar.';
+    const timer = setInterval(() => {
+        restante--;
+        if (restante <= 0) {
+            clearInterval(timer);
+            statusEl.textContent = 'Tempo máximo atingido. Finalizando...';
+            if (typeof onFim === 'function') onFim();
+            return;
+        }
+        statusEl.textContent = '🔴 Gravando... ' + fmt(restante) + ' restante · clique para parar.';
+    }, 1000);
+    return timer;
+}
+
+async function alternarGravacaoVoz() {
+    const btn = document.getElementById('voz_btn_mic');
+    const st = document.getElementById('voz_status');
+    if (vozRecorder && vozRecorder.state === 'recording') { vozRecorder.stop(); return; }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { alert('Seu navegador não suporta gravação.'); return; }
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        vozChunks = [];
+        let cron = null;
+        vozRecorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4' });
+        vozRecorder.ondataavailable = e => { if (e.data.size > 0) vozChunks.push(e.data); };
+        vozRecorder.onstop = async () => {
+            if (cron) clearInterval(cron);
+            stream.getTracks().forEach(t => t.stop());
+            btn.classList.remove('rec'); btn.textContent = '🎤';
+            st.classList.remove('hidden'); st.textContent = 'Transcrevendo áudio...';
+            await transcreverVoz();
+        };
+        vozRecorder.start();
+        btn.classList.add('rec'); btn.textContent = '⏹';
+        cron = iniciarCronometroVoz(st, () => { if (vozRecorder && vozRecorder.state === 'recording') vozRecorder.stop(); });
+    } catch (e) { alert('Não foi possível acessar o microfone.'); }
+}
+
+async function transcreverVoz() {
+    const st = document.getElementById('voz_status');
+    try {
+        const token = await tokenFrescoAdd();
+        const blob = new Blob(vozChunks, { type: 'audio/webm' });
+        const fd = new FormData();
+        fd.append('audio', blob, 'gravacao.webm');
+        fd.append('csrf_token', token);
+        const r = await fetch('<?= APP_URL ?>/api/transcricao', { method: 'POST', headers: { 'X-CSRF-Token': token }, body: fd });
+        const d = await r.json();
+        if (d.sucesso && d.transcricao) {
+            const ta = document.getElementById('voz_descricao');
+            ta.value = (ta.value ? ta.value.trim() + '\n' : '') + d.transcricao.trim();
+            st.textContent = 'Transcrição adicionada.';
+            setTimeout(() => st.classList.add('hidden'), 2500);
+        } else {
+            st.textContent = 'Não foi possível transcrever: ' + (d.erro || 'erro');
+        }
+    } catch (e) { st.textContent = 'Erro ao transcrever o áudio.'; }
+}
+
+// Envia um turno da conversa: classifica/cria os serviços DESTE setor.
+async function enviarTurnoConversa() {
+    const setorId = document.getElementById('voz_setor_id').value;
+    const transcricao = document.getElementById('voz_descricao').value.trim();
+    const turno = parseInt(document.getElementById('voz_turno').value || '1', 10);
+    if (!transcricao) { alert('Fale ou digite sua resposta.'); return; }
+
+    const btn = document.getElementById('voz_btn_gerar');
+    btn.disabled = true; btn.textContent = 'Analisando...';
+    try {
+        const body = new URLSearchParams({ setor_id: setorId, transcricao: transcricao, turno: turno, csrf_token: CSRF_TOKEN });
+        const r = await fetch('<?= APP_URL ?>/sop/classificar-conversa-setor', { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body });
+        const d = await r.json();
+        if (!d.sucesso) { alert('Erro: ' + (d.erro || 'desconhecido')); return; }
+
+        vozHouveMudanca = true;
+
+        const resumo = d.resumo || {};
+        const rEl = document.getElementById('voz_resumo');
+        rEl.innerHTML = '✓ <strong>' + (resumo.identificados || 0) + '</strong> identificados · '
+            + '<strong>' + (resumo.gaps || 0) + '</strong> gaps · '
+            + '<strong>' + (resumo.excluidos || 0) + '</strong> removidos deste setor.';
+        rEl.classList.remove('hidden');
+
+        const perguntas = d.perguntas_seguimento || [];
+        const pBox = document.getElementById('voz_pergunta_box');
+        if (perguntas.length) {
+            pBox.textContent = '💬 ' + perguntas[0];
+            pBox.classList.remove('hidden');
+            document.getElementById('voz_descricao').value = '';
+            document.getElementById('voz_turno').value = String(turno + 1);
+            btn.textContent = '✨ Responder';
+        } else {
+            pBox.classList.add('hidden');
+            setTimeout(fecharVozSetor, 1200);
+        }
+    } catch (e) {
+        alert('Erro de comunicação com o servidor.');
+    } finally {
+        btn.disabled = false;
+        if (btn.textContent === 'Analisando...') btn.textContent = '✨ Analisar resposta';
+    }
 }
 </script>
 
