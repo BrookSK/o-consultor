@@ -17,6 +17,8 @@ class PerfilController
             ['id' => $usuario['id']]
         );
 
+        $empresa_id = (int) ($usuarioCompleto['empresa_id'] ?? $usuario['empresa_id'] ?? 0);
+
         // Buscar logs de SSO Academy
         $acessosAcademy = AuditLog::buscarSsoAcademy($usuario['id'], 10);
         

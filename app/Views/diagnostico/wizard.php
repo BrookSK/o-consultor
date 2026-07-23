@@ -1,19 +1,7 @@
 <?php $tituloPagina = 'Diagnóstico Empresarial — Wizard Completo'; ?>
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= $tituloPagina ?> — O Consultor</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>tailwind.config={theme:{extend:{colors:{primary:{DEFAULT:'#1E3A5F',700:'#162D4A'},accent:'#E07B00'}}}}</script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <style>body{font-family:'Inter',sans-serif;}</style>
-</head>
-<body class="bg-gray-50 min-h-screen" x-data="diagnosticoWizard()">
+<?php ob_start(); ?>
 
-<div class="max-w-5xl mx-auto p-6">
+<div class="max-w-5xl mx-auto" x-data="diagnosticoWizard()">
     <!-- Navegação dos Blocos -->
     <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
         <div class="flex justify-between items-center">
@@ -929,5 +917,5 @@ function diagnosticoWizard() {
 }
 </script>
 
-</body>
-</html>
+<?php $conteudo = ob_get_clean(); ?>
+<?php require VIEW_PATH . '/layouts/layout.php'; ?>
