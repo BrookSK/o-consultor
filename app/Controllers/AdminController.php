@@ -536,7 +536,7 @@ class AdminController
         // KPIs ativos
         $kpis = Database::query(
             "SELECT k.*, s.titulo as sop_titulo
-             FROM kpis k
+             FROM sop_kpis k
              LEFT JOIN sops s ON k.sop_id = s.id
              WHERE k.empresa_id = :empresa_id AND k.ativo = 1
              ORDER BY k.nome ASC",
