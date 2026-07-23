@@ -72,7 +72,7 @@ class JornadaCliente
 
         // Verificar plano de ação
         $plano = Database::queryOne(
-            "SELECT id FROM planos_acao WHERE empresa_id = :empresa_id AND status IN ('ativo', 'concluido') LIMIT 1",
+            "SELECT id FROM planos WHERE empresa_id = :empresa_id AND status IN ('ativo', 'concluido') LIMIT 1",
             ['empresa_id' => $empresaId]
         );
         $status['plano_acao'] = !empty($plano);
@@ -186,7 +186,7 @@ class JornadaCliente
         // Dados do plano de ação
         try {
             $plano = Database::queryOne(
-                "SELECT objetivos, areas_foco FROM planos_acao WHERE empresa_id = :empresa_id AND status IN ('ativo', 'concluido') ORDER BY criado_em DESC LIMIT 1",
+                "SELECT objetivo as objetivos, NULL as areas_foco FROM planos WHERE empresa_id = :empresa_id AND status IN ('ativo', 'concluido') ORDER BY criado_em DESC LIMIT 1",
                 ['empresa_id' => $empresaId]
             );
             if ($plano) {

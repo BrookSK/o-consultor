@@ -1455,8 +1455,7 @@ Retorne JSON com array de prioridades neste formato:
             $tarefa = Database::queryOne(
                 "SELECT t.id, t.titulo, p.empresa_id 
                  FROM plano_tarefas t 
-                 JOIN plano_prioridades pp ON t.prioridade_id = pp.id 
-                 JOIN planos_acao p ON pp.plano_id = p.id 
+                 JOIN planos p ON t.plano_id = p.id 
                  WHERE t.id = :tarefa_id AND p.empresa_id = (
                      SELECT empresa_id FROM usuarios WHERE id = :user_id
                  )",

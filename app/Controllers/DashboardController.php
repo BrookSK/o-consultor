@@ -62,7 +62,7 @@ class DashboardController
             // Buscar estatísticas reais do banco
             $totalClientes = Database::queryOne("SELECT COUNT(*) as count FROM empresas WHERE status = 'ativo'")['count'] ?? 0;
             $diagnosticosNoMes = Database::queryOne("SELECT COUNT(*) as count FROM diagnosticos WHERE status = 'concluido' AND MONTH(criado_em) = MONTH(NOW())")['count'] ?? 0;
-            $planosAtivos = Database::queryOne("SELECT COUNT(*) as count FROM planos_acao WHERE status IN ('ativo', 'em_andamento')")['count'] ?? 0;
+            $planosAtivos = Database::queryOne("SELECT COUNT(*) as count FROM planos WHERE status IN ('ativo', 'em_andamento')")['count'] ?? 0;
             $totalSOPs = Database::queryOne("SELECT COUNT(*) as count FROM sops WHERE status = 'ativo'")['count'] ?? 0;
             
             // MRR total das empresas ativas
@@ -238,10 +238,9 @@ class DashboardController
                 "SELECT p.titulo, e.nome as empresa_nome,
                         COUNT(t.id) as acoes_total,
                         COUNT(CASE WHEN t.status = 'concluido' THEN 1 END) as acoes_feitas
-                 FROM planos_acao p 
+                 FROM planos p 
                  JOIN empresas e ON p.empresa_id = e.id
-                 LEFT JOIN plano_prioridades pp ON p.id = pp.plano_id
-                 LEFT JOIN plano_tarefas t ON pp.id = t.prioridade_id
+                 LEFT JOIN plano_tarefas t ON t.plano_id = p.id
                  WHERE p.status IN ('ativo', 'em_andamento')
                  GROUP BY p.id 
                  ORDER BY p.criado_em DESC 
@@ -379,7 +378,7 @@ class DashboardController
             
             // Planos pendentes
             $planosPendentes = Database::queryOne(
-                "SELECT COUNT(*) as count FROM planos_acao p 
+                "SELECT COUNT(*) as count FROM planos p 
                  JOIN empresas e ON p.empresa_id = e.id 
                  WHERE e.consultor_id = :consultor_id AND p.status IN ('em_elaboracao', 'pendente')",
                 ['consultor_id' => $consultorId]
@@ -464,8 +463,8 @@ class DashboardController
                  LEFT JOIN diagnosticos d ON e.id = d.empresa_id AND d.criado_em = (
                      SELECT MAX(d2.criado_em) FROM diagnosticos d2 WHERE d2.empresa_id = e.id
                  )
-                 LEFT JOIN planos_acao p ON e.id = p.empresa_id AND p.criado_em = (
-                     SELECT MAX(p2.criado_em) FROM planos_acao p2 WHERE p2.empresa_id = e.id
+                 LEFT JOIN planos p ON e.id = p.empresa_id AND p.criado_em = (
+                     SELECT MAX(p2.criado_em) FROM planos p2 WHERE p2.empresa_id = e.id
                  )
                  LEFT JOIN sops s ON e.id = s.empresa_id AND s.criado_em = (
                      SELECT MAX(s2.criado_em) FROM sops s2 WHERE s2.empresa_id = e.id
@@ -572,7 +571,7 @@ class DashboardController
             );
             
             $planoAtivo = Database::queryOne(
-                "SELECT id FROM planos_acao WHERE empresa_id = :empresa_id AND status IN ('ativo', 'em_andamento') LIMIT 1",
+                "SELECT id FROM planos WHERE empresa_id = :empresa_id AND status IN ('ativo', 'em_andamento') LIMIT 1",
                 ['empresa_id' => $empresaId]
             );
             
@@ -654,7 +653,7 @@ class DashboardController
             $tarefasPlano = Database::query(
                 "SELECT t.titulo, t.responsavel, t.prazo_estimado, t.status 
                  FROM plano_tarefas t
-                 JOIN planos_acao p ON t.plano_id = p.id
+                 JOIN planos p ON t.plano_id = p.id
                  WHERE p.empresa_id = :empresa_id AND p.status IN ('ativo', 'em_andamento')
                  ORDER BY t.prazo_estimado ASC 
                  LIMIT 6",
@@ -684,8 +683,7 @@ class DashboardController
             $tarefasPlano = Database::query(
                 "SELECT t.titulo, t.responsavel, t.prazo_estimado, t.status
                  FROM plano_tarefas t 
-                 JOIN plano_prioridades pp ON t.prioridade_id = pp.id
-                 JOIN planos_acao p ON pp.plano_id = p.id
+                 JOIN planos p ON t.plano_id = p.id
                  WHERE p.empresa_id = :empresa_id AND p.status IN ('ativo', 'em_andamento')
                  ORDER BY 
                      CASE t.status 

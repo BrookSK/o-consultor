@@ -79,7 +79,7 @@ class PerfilController
     {
         try {
             $plano = Database::queryOne(
-                "SELECT id FROM planos_acao WHERE empresa_id = :empresa_id AND status IN ('ativo', 'em_andamento') LIMIT 1",
+                "SELECT id FROM planos WHERE empresa_id = :empresa_id AND status IN ('ativo', 'em_andamento') LIMIT 1",
                 ['empresa_id' => $empresaId]
             );
             return !empty($plano);

@@ -207,12 +207,12 @@ class AdminController
         // Tabelas opcionais (planos_acao e sops podem não existir se as migrations
         // 007/008 ainda não rodaram). Monta os JOINs/contagens só para as que existem
         // para não quebrar a listagem de clientes com fatal error (1146).
-        $temPlanos = $this->tabelaExiste('planos_acao');
+        $temPlanos = $this->tabelaExiste('planos');
         $temSops = $this->tabelaExiste('sops');
 
         $selPlanos = $temPlanos ? 'COUNT(DISTINCT p.id)' : '0';
         $selSops = $temSops ? 'COUNT(DISTINCT s.id)' : '0';
-        $joinPlanos = $temPlanos ? 'LEFT JOIN planos_acao p ON p.empresa_id = e.id' : '';
+        $joinPlanos = $temPlanos ? 'LEFT JOIN planos p ON p.empresa_id = e.id' : '';
         $joinSops = $temSops ? "LEFT JOIN sops s ON s.empresa_id = e.id AND s.status = 'ativo'" : '';
 
         // Buscar empresas com dados completos
@@ -516,10 +516,9 @@ class AdminController
             "SELECT p.*, u.nome as usuario_nome,
                     COUNT(DISTINCT t.id) as total_tarefas,
                     COUNT(DISTINCT CASE WHEN t.status = 'concluido' THEN t.id END) as tarefas_concluidas
-             FROM planos_acao p 
+             FROM planos p 
              LEFT JOIN usuarios u ON p.usuario_id = u.id
-             LEFT JOIN plano_prioridades pp ON pp.plano_id = p.id
-             LEFT JOIN plano_tarefas t ON t.prioridade_id = pp.id
+             LEFT JOIN plano_tarefas t ON t.plano_id = p.id
              WHERE p.empresa_id = :empresa_id 
              GROUP BY p.id
              ORDER BY p.criado_em DESC",
