@@ -80,6 +80,12 @@ $tituloPagina = 'Perfil de ' . $empresa['nome'];
         </div>
         
         <div class="flex gap-2 ml-6">
+            <?php if (!empty($dados['usuarios_cliente'])): ?>
+            <button onclick="abrirModalAcesso()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition flex items-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                Acessar como Cliente
+            </button>
+            <?php endif; ?>
             <button onclick="abrirModalConsultor()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition">
                 Trocar Consultor
             </button>
@@ -427,7 +433,51 @@ $tituloPagina = 'Perfil de ' . $empresa['nome'];
     </div>
 </div>
 
+<!-- Modal Acessar como Cliente -->
+<div id="modal-acesso" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg shadow-xl max-w-md w-full">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-800">Acessar como Cliente</h3>
+            <p class="text-sm text-gray-500 mt-1">Você entrará na plataforma com a visão deste usuário. Poderá voltar à sua conta a qualquer momento.</p>
+        </div>
+        <form id="form-acesso" method="POST" action="<?= APP_URL ?>/admin/clientes/acessar-como" class="p-6 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
+            <input type="hidden" name="empresa_id" value="<?= $empresa['id'] ?>">
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Usuário do cliente</label>
+                <select name="usuario_id" required class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                    <?php foreach ($dados['usuarios_cliente'] as $uc): ?>
+                    <option value="<?= (int) $uc['id'] ?>">
+                        <?= htmlspecialchars($uc['nome']) ?> — <?= htmlspecialchars($uc['email']) ?>
+                    </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p class="text-sm text-blue-800">
+                    <strong>Nota:</strong> todas as ações realizadas durante o acesso serão feitas em nome do cliente. Um aviso ficará visível enquanto você estiver nesse modo.
+                </p>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-4">
+                <button type="button" onclick="fecharModalAcesso()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Cancelar</button>
+                <button type="submit" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90">Acessar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
+function abrirModalAcesso() {
+    document.getElementById('modal-acesso').classList.remove('hidden');
+}
+
+function fecharModalAcesso() {
+    document.getElementById('modal-acesso').classList.add('hidden');
+}
+
 function abrirModalConsultor() {
     document.getElementById('modal-consultor').classList.remove('hidden');
 }
@@ -513,6 +563,7 @@ document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         fecharModalConsultor();
         fecharModalStatus();
+        fecharModalAcesso();
     }
 });
 </script>

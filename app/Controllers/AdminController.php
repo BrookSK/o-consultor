@@ -560,6 +560,15 @@ class AdminController
              WHERE perfil IN ('CONSULTOR_INTERNO', 'ADMIN_HOLDING') 
              ORDER BY nome ASC"
         );
+
+        // Usuários (perfil CLIENTE) da empresa, para o recurso "Acessar como cliente"
+        $usuariosCliente = Database::query(
+            "SELECT id, nome, email, ultimo_login 
+             FROM usuarios 
+             WHERE empresa_id = :empresa_id AND perfil = 'CLIENTE'
+             ORDER BY nome ASC",
+            ['empresa_id' => $empresaId]
+        );
         
         $dados = [
             'empresa' => $empresa,
@@ -568,10 +577,84 @@ class AdminController
             'sops' => $sops,
             'kpis' => $kpis,
             'historico' => $historico,
-            'consultores' => $consultores
+            'consultores' => $consultores,
+            'usuarios_cliente' => $usuariosCliente
         ];
         
         require VIEW_PATH . '/admin/cliente-perfil.php';
+    }
+
+    /**
+     * Acessar como cliente (impersonação) - F-13
+     * Permite ao ADMIN_HOLDING assumir a sessão de um usuário do cliente
+     * para visualizar e gerenciar exatamente o que ele vê.
+     */
+    public function acessarComoCliente(): void
+    {
+        $this->protegerAdmin();
+        Csrf::verificar();
+
+        $usuarioId = (int) ($_POST['usuario_id'] ?? 0);
+        $empresaId = (int) ($_POST['empresa_id'] ?? 0);
+
+        if ($usuarioId === 0) {
+            Flash::set('erro', 'Usuário do cliente não informado.');
+            header('Location: ' . APP_URL . '/admin/clientes/perfil/' . $empresaId);
+            exit;
+        }
+
+        $usuario = User::buscarPorId($usuarioId);
+
+        if (!$usuario) {
+            Flash::set('erro', 'Usuário não encontrado.');
+            header('Location: ' . APP_URL . '/admin/clientes/perfil/' . $empresaId);
+            exit;
+        }
+
+        // Segurança: só é permitido impersonar usuários com perfil CLIENTE
+        if (($usuario['perfil'] ?? '') !== Auth::CLIENTE) {
+            Flash::set('erro', 'Só é possível acessar como usuários do tipo Cliente.');
+            header('Location: ' . APP_URL . '/admin/clientes/perfil/' . $empresaId);
+            exit;
+        }
+
+        $admin = Auth::usuario();
+        Auth::impersonar($usuario);
+
+        Logger::seguranca('Admin iniciou acesso como cliente', [
+            'admin_id' => $admin['id'] ?? null,
+            'admin_email' => $admin['email'] ?? null,
+            'alvo_id' => $usuario['id'],
+            'alvo_email' => $usuario['email'],
+            'empresa_id' => $usuario['empresa_id'] ?? null,
+        ]);
+
+        Flash::set('sucesso', 'Você está acessando como ' . $usuario['nome'] . '.');
+        header('Location: ' . APP_URL . '/dashboard');
+        exit;
+    }
+
+    /**
+     * Encerra a impersonação e retorna à conta do administrador - F-13
+     */
+    public function encerrarAcessoCliente(): void
+    {
+        if (!Auth::impersonando()) {
+            header('Location: ' . APP_URL . '/dashboard');
+            exit;
+        }
+
+        $atual = Auth::usuario();
+        Auth::pararImpersonacao();
+
+        Logger::seguranca('Admin encerrou acesso como cliente', [
+            'admin_email' => Auth::usuario()['email'] ?? null,
+            'alvo_email' => $atual['email'] ?? null,
+        ]);
+
+        Flash::set('sucesso', 'Você voltou para sua conta de administrador.');
+        header('Location: ' . APP_URL . '/admin/clientes');
+        exit;
     }
 
     /**

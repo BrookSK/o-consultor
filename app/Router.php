@@ -326,6 +326,8 @@ class Router
         $this->get('admin/clientes/perfil', 'AdminController', 'perfilCliente');
         $this->post('admin/clientes/trocar-consultor', 'AdminController', 'trocarConsultor');
         $this->post('admin/clientes/alterar-status', 'AdminController', 'alterarStatusCliente');
+        $this->post('admin/clientes/acessar-como', 'AdminController', 'acessarComoCliente');
+        $this->get('admin/encerrar-acesso-cliente', 'AdminController', 'encerrarAcessoCliente');
         
         // Configurações Admin
         $this->get('admin/configuracoes', 'AdminController', 'configuracoes');

@@ -256,6 +256,22 @@ $paginaAtual = $_GET['url'] ?? 'dashboard';
 
     <!-- Main Content -->
     <main id="main-content" role="main" aria-label="Conteúdo principal" class="pt-16 transition-all duration-300" :class="sidebarOpen ? 'lg:ml-64' : 'lg:ml-0'">
+        <?php if (Auth::impersonando()): ?>
+        <!-- Banner de Impersonação -->
+        <div class="bg-amber-500 text-white px-6 py-2.5 flex items-center justify-between gap-4 text-sm">
+            <div class="flex items-center gap-2 min-w-0">
+                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                <span class="truncate">
+                    Você está acessando como <strong><?= htmlspecialchars($usuario['nome'] ?? '') ?></strong>
+                    (visão do cliente). Iniciado por <?= htmlspecialchars(Auth::impersonadorNome() ?? 'Administrador') ?>.
+                </span>
+            </div>
+            <a href="<?= APP_URL ?>/admin/encerrar-acesso-cliente" class="flex-shrink-0 bg-white text-amber-700 px-3 py-1.5 rounded-md font-medium hover:bg-amber-50 transition">
+                Voltar para minha conta
+            </a>
+        </div>
+        <?php endif; ?>
+
         <div class="p-6">
             <!-- Flash Messages -->
             <?= Flash::renderizar() ?>

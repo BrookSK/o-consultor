@@ -75,6 +75,69 @@ class Auth
     }
 
     /**
+     * Indica se o usuário atual está impersonando (acessando como) outro usuário
+     */
+    public static function impersonando(): bool
+    {
+        return Session::has('impersonador_id');
+    }
+
+    /**
+     * Nome do administrador que iniciou a impersonação
+     */
+    public static function impersonadorNome(): ?string
+    {
+        return Session::get('impersonador_nome');
+    }
+
+    /**
+     * Inicia a impersonação: guarda os dados do usuário atual (admin) e
+     * assume a identidade do usuário informado, sem destruir a sessão.
+     */
+    public static function impersonar(array $usuario): void
+    {
+        // Só grava o backup na primeira vez (evita empilhar impersonações)
+        if (!self::impersonando()) {
+            Session::set('impersonador_id', Session::get('usuario_id'));
+            Session::set('impersonador_nome', Session::get('usuario_nome'));
+            Session::set('impersonador_email', Session::get('usuario_email'));
+            Session::set('impersonador_perfil', Session::get('usuario_perfil'));
+            Session::set('impersonador_empresa_id', Session::get('usuario_empresa_id'));
+        }
+
+        Session::set('usuario_id', $usuario['id']);
+        Session::set('usuario_nome', $usuario['nome']);
+        Session::set('usuario_email', $usuario['email']);
+        Session::set('usuario_perfil', $usuario['perfil']);
+        Session::set('usuario_empresa_id', $usuario['empresa_id'] ?? null);
+
+        // Limpa qualquer seleção de empresa feita como admin
+        Session::remove('admin_empresa_selecionada');
+    }
+
+    /**
+     * Encerra a impersonação e restaura a identidade original do administrador
+     */
+    public static function pararImpersonacao(): void
+    {
+        if (!self::impersonando()) {
+            return;
+        }
+
+        Session::set('usuario_id', Session::get('impersonador_id'));
+        Session::set('usuario_nome', Session::get('impersonador_nome'));
+        Session::set('usuario_email', Session::get('impersonador_email'));
+        Session::set('usuario_perfil', Session::get('impersonador_perfil'));
+        Session::set('usuario_empresa_id', Session::get('impersonador_empresa_id'));
+
+        Session::remove('impersonador_id');
+        Session::remove('impersonador_nome');
+        Session::remove('impersonador_email');
+        Session::remove('impersonador_perfil');
+        Session::remove('impersonador_empresa_id');
+    }
+
+    /**
      * Protege uma rota — redireciona para login se não autenticado
      */
     public static function proteger(): void
