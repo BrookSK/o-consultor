@@ -89,7 +89,7 @@ if (!function_exists('renderCardNoticia')) {
             <button @click="aba = 'academy'" :class="aba === 'academy' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap transition">🎓 Academy</button>
             <button @click="aba = 'biblioteca'" :class="aba === 'biblioteca' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap transition">📚 Biblioteca</button>
             <button @click="aba = 'brandbook'" :class="aba === 'brandbook' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap transition">📖 Brand Book</button>
-            <button @click="aba = 'concorrencia'; carregarConcorrentes()" :class="aba === 'concorrencia' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap transition">🔎 Scrap da Concorrência</button>
+            <button @click="aba = 'concorrencia'; carregarConcorrentes()" :class="aba === 'concorrencia' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap transition">🔎 Análise</button>
             <button @click="aba = 'configuracoes'" :class="aba === 'configuracoes' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap transition">⚙️ Configurações de Conteúdo</button>
         </nav>
     </div>
