@@ -88,6 +88,7 @@ if (!function_exists('renderCardNoticia')) {
             <button @click="aba = 'calendario'; carregarCalendario()" :class="aba === 'calendario' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap transition">📅 Calendário de Conteúdo</button>
             <button @click="aba = 'academy'" :class="aba === 'academy' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap transition">🎓 Academy</button>
             <button @click="aba = 'biblioteca'" :class="aba === 'biblioteca' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap transition">📚 Biblioteca</button>
+            <button @click="aba = 'brandbook'" :class="aba === 'brandbook' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap transition">📖 Brand Book</button>
             <button @click="aba = 'concorrencia'; carregarConcorrentes()" :class="aba === 'concorrencia' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap transition">🔎 Scrap da Concorrência</button>
             <button @click="aba = 'configuracoes'" :class="aba === 'configuracoes' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap transition">⚙️ Configurações de Conteúdo</button>
         </nav>
@@ -311,6 +312,106 @@ if (!function_exists('renderCardNoticia')) {
         <div id="biblioteca-vazia" class="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500 text-sm">
             Nenhum documento na biblioteca ainda. Envie PDFs acima para começar.
         </div>
+    </div>
+
+    <!-- ABA: BRAND BOOK -->
+    <div x-show="aba === 'brandbook'" x-transition style="display:none;">
+        <?php $marca = $dados['marca_brand_book'] ?? null; ?>
+        <?php if (!$marca): ?>
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center text-gray-500 text-sm">
+            Nenhuma marca cadastrada para esta empresa. Crie uma marca na Máquina de Conteúdo para configurar o Brand Book.
+        </div>
+        <?php else: ?>
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 max-w-3xl">
+            <h3 class="font-semibold text-gray-800 mb-1">📖 Brand Book da Marca</h3>
+            <p class="text-sm text-gray-500 mb-5">Configurações de identidade usadas na geração de conteúdo. Edite e salve.</p>
+
+            <form id="form-branding" class="space-y-4">
+                <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
+                <input type="hidden" name="marca_id" value="<?= (int) $marca['id'] ?>">
+
+                <!-- Logo -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Logo da marca</label>
+                    <div class="flex items-center gap-4">
+                        <div class="w-24 h-24 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden">
+                            <img id="logo-preview" src="<?= !empty($marca['logo_url']) ? htmlspecialchars(APP_URL . $marca['logo_url']) : '' ?>" class="max-w-full max-h-full object-contain <?= empty($marca['logo_url']) ? 'hidden' : '' ?>">
+                            <span id="logo-vazio" class="text-xs text-gray-400 <?= !empty($marca['logo_url']) ? 'hidden' : '' ?>">Sem logo</span>
+                        </div>
+                        <div>
+                            <label class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700 cursor-pointer inline-block">
+                                📤 Enviar logo (PNG/SVG)
+                                <input type="file" accept=".png,.svg,.jpg,.jpeg,.webp" class="hidden" onchange="uploadLogo(this)">
+                            </label>
+                            <p class="text-xs text-gray-400 mt-1">Preferencialmente PNG com fundo transparente. Será posicionado de forma estratégica e equilibrada nas imagens geradas.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Imagem de fechamento do carrossel -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Imagem de fechamento (último slide do carrossel)</label>
+                    <div class="flex items-center gap-4">
+                        <div class="w-24 h-28 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden">
+                            <img id="fechamento-preview" src="<?= !empty($marca['imagem_fechamento_url']) ? htmlspecialchars(APP_URL . $marca['imagem_fechamento_url']) : '' ?>" class="max-w-full max-h-full object-contain <?= empty($marca['imagem_fechamento_url']) ? 'hidden' : '' ?>">
+                            <span id="fechamento-vazio" class="text-xs text-gray-400 text-center px-1 <?= !empty($marca['imagem_fechamento_url']) ? 'hidden' : '' ?>">Sem imagem</span>
+                        </div>
+                        <div>
+                            <label class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700 cursor-pointer inline-block">
+                                📤 Enviar imagem de fechamento
+                                <input type="file" accept=".png,.jpg,.jpeg,.webp" class="hidden" onchange="uploadFechamento(this)">
+                            </label>
+                            <p class="text-xs text-gray-400 mt-1">Esta imagem fixa será usada como o ÚLTIMO slide dos carrosséis (fechamento), no lugar de uma gerada pela IA. Formato vertical (retrato) recomendado.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Nome</label><input type="text" name="nome" value="<?= htmlspecialchars($marca['nome'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Nicho/Setor</label><input type="text" name="nicho" value="<?= htmlspecialchars($marca['nicho'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div class="md:col-span-2"><label class="block text-sm font-medium text-gray-700 mb-1">Público-alvo</label><input type="text" name="publico_alvo" value="<?= htmlspecialchars($marca['publico_alvo'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Tom de voz</label><input type="text" name="tom" value="<?= htmlspecialchars($marca['tom'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Arquétipo</label><input type="text" name="arquetipo" value="<?= htmlspecialchars($marca['arquetipo'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Palavras que USA</label><input type="text" name="palavras_usa" value="<?= htmlspecialchars($marca['palavras_usa'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Palavras que NUNCA usa</label><input type="text" name="palavras_nunca" value="<?= htmlspecialchars($marca['palavras_nunca'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Diferenciais competitivos</label>
+                    <textarea name="diferenciais_competitivos" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary resize-none"><?= htmlspecialchars($marca['diferenciais_competitivos'] ?? '') ?></textarea>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Produtos/Serviços</label>
+                    <textarea name="produtos_servicos" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary resize-none"><?= htmlspecialchars($marca['produtos_servicos'] ?? '') ?></textarea>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Concorrentes</label><input type="text" name="concorrentes" value="<?= htmlspecialchars($marca['concorrentes'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Objetivos de conteúdo</label><input type="text" name="objetivos_conteudo" value="<?= htmlspecialchars(is_array(json_decode($marca['objetivos_conteudo'] ?? '[]', true)) ? implode(', ', json_decode($marca['objetivos_conteudo'] ?? '[]', true)) : ($marca['objetivos_conteudo'] ?? '')) ?>" placeholder="Educar, Engajar, Converter..." class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Formatos preferenciais</label><input type="text" name="formatos_preferenciais" value="<?= htmlspecialchars(is_array(json_decode($marca['formatos_preferenciais'] ?? '[]', true)) ? implode(', ', json_decode($marca['formatos_preferenciais'] ?? '[]', true)) : ($marca['formatos_preferenciais'] ?? '')) ?>" placeholder="Carrossel, Post, Story..." class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Paleta de cores (hex, separados por vírgula)</label><input type="text" name="paleta_cores" value="<?= htmlspecialchars(is_array($marca['paleta_cores'] ?? null) ? implode(', ', $marca['paleta_cores']) : (is_array(json_decode($marca['paleta_cores'] ?? '[]', true)) ? implode(', ', json_decode($marca['paleta_cores'] ?? '[]', true)) : ($marca['paleta_cores'] ?? ''))) ?>" placeholder="#1E3A5F, #E07B00, #FFFFFF" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Fonte principal</label><input type="text" name="fonte_principal" value="<?= htmlspecialchars($marca['fonte_principal'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Fonte secundária</label><input type="text" name="fonte_secundaria" value="<?= htmlspecialchars($marca['fonte_secundaria'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Estilo visual</label><input type="text" name="estilo_visual" value="<?= htmlspecialchars($marca['estilo_visual'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Direção fotográfica</label><input type="text" name="direcao_foto" value="<?= htmlspecialchars($marca['direcao_foto'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Prompt Master (base de toda geração de texto)</label>
+                    <textarea name="prompt_master" rows="5" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary resize-none font-mono text-xs"><?= htmlspecialchars($marca['prompt_master'] ?? '') ?></textarea>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Prompt de estilo visual (base das imagens)</label>
+                    <textarea name="prompt_dalle" rows="4" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary resize-none font-mono text-xs"><?= htmlspecialchars($marca['prompt_dalle'] ?? '') ?></textarea>
+                </div>
+
+                <div class="pt-2">
+                    <button type="submit" id="btn-salvar-branding" class="px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary-700">💾 Salvar Brand Book</button>
+                </div>
+            </form>
+        </div>
+        <?php endif; ?>
     </div>
 
     <!-- ABA: SCRAP DA CONCORRÊNCIA -->
@@ -620,6 +721,70 @@ if (!function_exists('renderCardNoticia')) {
 function esc(s) {
     return (s == null ? '' : String(s)).replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
 }
+
+// ===== Brand Book (movido da Máquina de Conteúdo; mesmos endpoints) =====
+<?php $marcaBB = $dados['marca_brand_book'] ?? null; if ($marcaBB): ?>
+const BRAND_MARCA_ID = <?= (int) $marcaBB['id'] ?>;
+document.getElementById('form-branding')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn-salvar-branding');
+    if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+    try {
+        const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/salvar-branding', { method: 'POST', body: new FormData(this) });
+        const data = await res.json();
+        if (data.sucesso) {
+            if (typeof Toast !== 'undefined') Toast.sucesso('Brand Book salvo!'); else alert('Brand Book salvo!');
+        } else {
+            alert(data.erro || 'Erro ao salvar.');
+        }
+    } catch (err) { alert('Erro de conexão.'); }
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Salvar Brand Book'; }
+});
+
+async function uploadLogo(input) {
+    if (!input.files || !input.files[0]) return;
+    const fd = new FormData();
+    fd.append('csrf_token', '<?= Csrf::token() ?>');
+    fd.append('marca_id', BRAND_MARCA_ID);
+    fd.append('logo', input.files[0]);
+    try {
+        const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/upload-logo', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.sucesso && data.url) {
+            const img = document.getElementById('logo-preview');
+            const vazio = document.getElementById('logo-vazio');
+            if (img) { img.src = data.url + '?t=' + Date.now(); img.classList.remove('hidden'); }
+            if (vazio) vazio.classList.add('hidden');
+            if (typeof Toast !== 'undefined') Toast.sucesso('Logo enviado!');
+        } else {
+            alert(data.erro || 'Erro no upload do logo.');
+        }
+    } catch (e) { alert('Erro de conexão.'); }
+    input.value = '';
+}
+
+async function uploadFechamento(input) {
+    if (!input.files || !input.files[0]) return;
+    const fd = new FormData();
+    fd.append('csrf_token', '<?= Csrf::token() ?>');
+    fd.append('marca_id', BRAND_MARCA_ID);
+    fd.append('imagem', input.files[0]);
+    try {
+        const res = await fetch('<?= APP_URL ?>/maquina-de-conteudo/upload-fechamento', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.sucesso && data.url) {
+            const img = document.getElementById('fechamento-preview');
+            const vazio = document.getElementById('fechamento-vazio');
+            if (img) { img.src = data.url + '?t=' + Date.now(); img.classList.remove('hidden'); }
+            if (vazio) vazio.classList.add('hidden');
+            if (typeof Toast !== 'undefined') Toast.sucesso('Imagem de fechamento enviada!');
+        } else {
+            alert(data.erro || 'Erro no upload.');
+        }
+    } catch (e) { alert('Erro de conexão.'); }
+    input.value = '';
+}
+<?php endif; ?>
 
 // ===== Calendário de Conteúdo =====
 function abrirModalItemCalendario() {

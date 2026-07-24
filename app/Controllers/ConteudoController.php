@@ -31,6 +31,18 @@ class ConteudoController
         $resultadoNoticias = $this->buscarNoticiasReais($empresaId, $pagina);
         $perfilBusca = $this->buscarPerfilBusca($empresaId);
         
+        // Marca ativa da empresa (Brand Book) — a aba de Brand Book foi movida da
+        // Máquina de Conteúdo para a Central (ajuste de layout; mesmos endpoints).
+        $marcaBrandBook = null;
+        try {
+            $marcaBrandBook = Database::queryOne(
+                "SELECT * FROM marcas WHERE empresa_id = :e AND ativo = 1 ORDER BY id LIMIT 1",
+                ['e' => $empresaId]
+            );
+        } catch (\Throwable $e) {
+            $marcaBrandBook = null;
+        }
+
         $dados = [
             'noticias' => $resultadoNoticias['itens'],
             'paginacao' => $resultadoNoticias['paginacao'],
@@ -38,6 +50,7 @@ class ConteudoController
             'biblioteca' => $this->listarDocumentosBiblioteca($empresaId),
             'config_conteudo' => ConfiguracaoConteudo::obter($empresaId),
             'visao_geral' => VisaoGeralConteudo::montar($empresaId),
+            'marca_brand_book' => $marcaBrandBook,
             'academy_url' => Configuracao::get('academy_url', 'https://myacademy.com.br'),
             'usuario' => Auth::usuario(),
         ];
