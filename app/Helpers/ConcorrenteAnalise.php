@@ -260,6 +260,58 @@ PROMPT;
         return trim(implode("\n", $linhas));
     }
 
+    /**
+     * Monta a base a partir de UMA publicação específica do concorrente
+     * (fluxo análogo ao de "gerar a partir de uma notícia"). Usa apenas o
+     * conteúdo/estrutura como inspiração — nunca para cópia (spec §9).
+     *
+     * @return string base pronta para o prompt, ou '' se o post não existir.
+     */
+    public static function montarBaseDeUmPost(int $empresaId, int $postId): string
+    {
+        try {
+            $p = Database::queryOne(
+                "SELECT p.titulo, p.texto, p.tipo_conteudo, p.hashtags,
+                        p.curtidas, p.comentarios, p.visualizacoes, p.compartilhamentos, p.engajamento_absoluto,
+                        c.nome AS concorrente_nome
+                 FROM concorrente_posts p
+                 JOIN concorrentes c ON p.concorrente_id = c.id
+                 WHERE p.id = :id AND p.empresa_id = :e
+                 LIMIT 1",
+                ['id' => $postId, 'e' => $empresaId]
+            );
+        } catch (\Throwable $e) {
+            return '';
+        }
+
+        if (!$p) {
+            return '';
+        }
+
+        $hashtags = '';
+        $hj = json_decode((string) ($p['hashtags'] ?? '[]'), true);
+        if (is_array($hj) && !empty($hj)) {
+            $hashtags = implode(' ', array_slice($hj, 0, 10));
+        }
+
+        $metricas = [];
+        foreach (['curtidas' => 'curtidas', 'comentarios' => 'comentários', 'visualizacoes' => 'visualizações', 'compartilhamentos' => 'compartilhamentos', 'engajamento_absoluto' => 'engajamento'] as $col => $rot) {
+            if ($p[$col] !== null) {
+                $metricas[] = $rot . ': ' . (int) $p[$col];
+            }
+        }
+
+        $linhas = [];
+        $linhas[] = 'Publicação de referência do concorrente "' . $p['concorrente_nome'] . '" (use apenas como INSPIRAÇÃO de estrutura/tema/gancho/formato/CTA — NÃO copie):';
+        if (!empty($p['tipo_conteudo'])) $linhas[] = 'Formato: ' . $p['tipo_conteudo'];
+        if (!empty($p['titulo'])) $linhas[] = 'Título/gancho: ' . $p['titulo'];
+        if (!empty($p['texto'])) $linhas[] = 'Texto/legenda: ' . mb_substr((string) $p['texto'], 0, 800);
+        if ($hashtags !== '') $linhas[] = 'Hashtags usadas: ' . $hashtags;
+        if (!empty($metricas)) $linhas[] = 'Desempenho: ' . implode(', ', $metricas);
+
+        return trim(implode("\n", $linhas));
+    }
+
     private static function salvar(int $concorrenteId, int $empresaId, ?int $coletaId, string $resumo, array $dados, array $oportunidades): array
     {
         try {

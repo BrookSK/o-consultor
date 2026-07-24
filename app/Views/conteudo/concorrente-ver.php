@@ -121,10 +121,15 @@ function metricaOuNd($v): string {
                     <th class="py-2 pr-4 text-right">Comentários</th>
                     <th class="py-2 pr-4 text-right">Visualizações</th>
                     <th class="py-2 pr-4 text-right">Engajamento</th>
+                    <th class="py-2 pr-4 text-center">Criar conteúdo</th>
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($posts as $p): ?>
+                <?php
+                $marcaGerar = $dados['marca'] ?? null;
+                foreach ($posts as $p):
+                    $temaPost = trim((string) ($p['titulo'] ?: ''));
+                ?>
                 <tr class="border-b border-gray-100">
                     <td class="py-2 pr-4 max-w-xs truncate">
                         <?php if (!empty($p['url'])): ?>
@@ -139,6 +144,23 @@ function metricaOuNd($v): string {
                     <td class="py-2 pr-4 text-right"><?= metricaOuNd($p['comentarios']) ?></td>
                     <td class="py-2 pr-4 text-right"><?= metricaOuNd($p['visualizacoes']) ?></td>
                     <td class="py-2 pr-4 text-right font-medium"><?= metricaOuNd($p['engajamento_absoluto']) ?></td>
+                    <td class="py-2 pr-4 text-center">
+                        <?php if ($marcaGerar): ?>
+                        <div class="flex items-center gap-1 justify-center">
+                            <select class="tipo-conteudo-post border border-gray-300 rounded text-xs px-1.5 py-1 outline-none focus:border-primary">
+                                <option value="carrossel">Carrossel</option>
+                                <option value="post">Post</option>
+                                <option value="story">Story</option>
+                                <option value="reels">Reels</option>
+                            </select>
+                            <button type="button"
+                                onclick="criarConteudoDoPost(this, <?= (int) $p['id'] ?>, <?= json_encode($temaPost, JSON_HEX_APOS | JSON_HEX_QUOT) ?>)"
+                                class="text-xs px-2 py-1 bg-primary text-white rounded hover:bg-primary-700">Criar</button>
+                        </div>
+                        <?php else: ?>
+                        <span class="text-xs text-gray-400" title="Cadastre uma marca na Máquina de Conteúdo">—</span>
+                        <?php endif; ?>
+                    </td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
@@ -146,6 +168,25 @@ function metricaOuNd($v): string {
     </div>
     <?php endif; ?>
 </div>
+
+<?php if (!empty($dados['marca'])): ?>
+<script>
+// Leva para a Máquina de Conteúdo já com a fonte "concorrência", o concorrente,
+// o tema (título do post) e o tipo escolhido pré-preenchidos.
+function criarConteudoDoPost(btn, postId, tema) {
+    const sel = btn.parentElement.querySelector('.tipo-conteudo-post');
+    const tipo = sel ? sel.value : 'carrossel';
+    const params = new URLSearchParams({
+        id: '<?= (int) $dados['marca']['id'] ?>',
+        fonte: 'concorrencia',
+        post_concorrente_id: String(postId),
+        tipo: tipo,
+        tema: tema || ''
+    });
+    window.location.href = '<?= APP_URL ?>/maquina-de-conteudo/marca?' + params.toString();
+}
+</script>
+<?php endif; ?>
 
 <!-- Histórico de coletas -->
 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">

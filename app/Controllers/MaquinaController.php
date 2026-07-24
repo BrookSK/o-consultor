@@ -997,10 +997,24 @@ class MaquinaController
 
         // Concorrentes com dados coletados (fonte "concorrência" na geração).
         $concorrentes = [];
+        $postsConcorrentes = [];
         try {
-            $concorrentes = Concorrente::listar((int) ($marca['empresa_id'] ?? 0));
+            $empresaMarca = (int) ($marca['empresa_id'] ?? 0);
+            $concorrentes = Concorrente::listar($empresaMarca);
+            // Publicações coletadas dos concorrentes (para escolher uma como base,
+            // igual ao fluxo de notícia). Ordena pelas de maior engajamento.
+            $postsConcorrentes = Database::query(
+                "SELECT p.id, p.titulo, p.tipo_conteudo, p.engajamento_absoluto, c.nome AS concorrente_nome
+                 FROM concorrente_posts p
+                 JOIN concorrentes c ON p.concorrente_id = c.id
+                 WHERE p.empresa_id = :e
+                 ORDER BY p.engajamento_absoluto IS NULL, p.engajamento_absoluto DESC, p.coletado_em DESC
+                 LIMIT 50",
+                ['e' => $empresaMarca]
+            );
         } catch (\Throwable $e) {
             $concorrentes = [];
+            $postsConcorrentes = [];
         }
 
         $dados = [
@@ -1009,6 +1023,7 @@ class MaquinaController
             'noticias' => $noticias,
             'biblioteca' => $biblioteca,
             'concorrentes' => $concorrentes,
+            'posts_concorrentes' => $postsConcorrentes,
             'perfil_templates' => $perfilTemplates,
         ];
         require VIEW_PATH . '/maquina/marca.php';
@@ -1144,14 +1159,20 @@ class MaquinaController
                 exit;
             }
         } elseif ($fonte === 'concorrencia') {
-            // Inteligência competitiva (Scrap da Concorrência). Monta os PADRÕES
-            // dos concorrentes selecionados como inspiração estrutural (spec §9).
-            $concorrenteIds = array_map('intval', (array) ($_POST['concorrente_ids'] ?? []));
-            $metrica = (string) ($_POST['metrica_desempenho'] ?? 'engajamento_absoluto');
-            $concorrenciaBase = ConcorrenteAnalise::montarBaseParaGeracao($empresaId, $concorrenteIds, $metrica);
+            // Inteligência competitiva. Igual ao fluxo de notícia: quando o usuário
+            // escolhe UMA publicação específica (post_concorrente_id), a base é feita
+            // a partir dela; caso contrário, usa os padrões dos concorrentes.
+            $postConcId = (int) ($_POST['post_concorrente_id'] ?? 0);
+            if ($postConcId > 0) {
+                $concorrenciaBase = ConcorrenteAnalise::montarBaseDeUmPost($empresaId, $postConcId);
+            } else {
+                $concorrenteIds = array_map('intval', (array) ($_POST['concorrente_ids'] ?? []));
+                $metrica = (string) ($_POST['metrica_desempenho'] ?? 'engajamento_absoluto');
+                $concorrenciaBase = ConcorrenteAnalise::montarBaseParaGeracao($empresaId, $concorrenteIds, $metrica);
+            }
             if ($concorrenciaBase === '') {
                 header('Content-Type: application/json');
-                echo json_encode(['sucesso' => false, 'erro' => 'Sem dados de concorrência para este tema. Faça ao menos uma coleta/análise na aba "Scrap da Concorrência".']);
+                echo json_encode(['sucesso' => false, 'erro' => 'Sem dados de concorrência para este conteúdo. Faça ao menos uma coleta/análise na aba "Análise".']);
                 exit;
             }
         }

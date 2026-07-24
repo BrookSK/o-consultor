@@ -254,12 +254,24 @@ class ConcorrenteController
             ['id' => $id, 'eid' => $empresaId]
         );
 
+        // Marca ativa da empresa (para gerar conteúdo com base num post do concorrente).
+        $marca = null;
+        try {
+            $marca = Database::queryOne(
+                "SELECT id, nome FROM marcas WHERE empresa_id = :e AND ativo = 1 ORDER BY id LIMIT 1",
+                ['e' => $empresaId]
+            );
+        } catch (\Throwable $e) {
+            $marca = null;
+        }
+
         $dados = [
             'concorrente' => $concorrente,
             'analise' => $analise,
             'posts' => $posts,
             'coletas' => $coletas,
             'resumo' => Concorrente::resumo($id, $empresaId),
+            'marca' => $marca,
         ];
         require VIEW_PATH . '/conteudo/concorrente-ver.php';
     }

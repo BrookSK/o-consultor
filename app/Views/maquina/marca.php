@@ -47,7 +47,14 @@
                 <form id="form-gerar" class="space-y-4">
                     <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
                     <input type="hidden" name="marca_id" value="<?= $marca['id'] ?>">
-                    <div x-data="{ tipo: 'carrossel' }">
+                    <?php
+                        // Pré-preenchimento vindo da tela do concorrente (Análise).
+                        $prefTipo = in_array(($_GET['tipo'] ?? ''), ['carrossel','post','story','reels'], true) ? $_GET['tipo'] : 'carrossel';
+                        $prefFonte = in_array(($_GET['fonte'] ?? ''), ['tema','noticia','biblioteca','concorrencia'], true) ? $_GET['fonte'] : 'tema';
+                        $prefTema = trim((string) ($_GET['tema'] ?? ''));
+                        $prefConcorrente = (int) ($_GET['concorrente_id'] ?? 0);
+                    ?>
+                    <div x-data="{ tipo: '<?= $prefTipo ?>' }">
                         <label class="block text-sm font-medium text-gray-700 mb-1">Tipo de conteúdo</label>
                         <select name="tipo" x-model="tipo" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
                             <option value="carrossel">Carrossel</option>
@@ -67,7 +74,7 @@
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Tema/Assunto *</label>
-                        <input type="text" name="tema" required class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary" placeholder="Ex: Como proteger sua empresa contra ransomware">
+                        <input type="text" name="tema" required value="<?= htmlspecialchars($prefTema) ?>" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary" placeholder="Ex: Como proteger sua empresa contra ransomware">
                         <p class="text-xs text-gray-400 mt-1">Na fonte "Biblioteca", a IA busca na sua literatura os trechos que tratam deste tema, lê e monta um conteúdo educativo (começo, meio e fim).</p>
                     </div>
                     <div>
@@ -82,7 +89,7 @@
                         </select>
                         <p class="text-xs text-gray-400 mt-1">A IA escolhe o template classificado com o objetivo correspondente.</p>
                     </div>
-                    <div x-data="{ fonte: 'tema' }">
+                    <div x-data="{ fonte: '<?= $prefFonte ?>' }">
                         <label class="block text-sm font-medium text-gray-700 mb-1">Fonte do conteúdo</label>
                         <select name="fonte" x-model="fonte" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
                             <option value="tema">Apenas o tema (livre)</option>
@@ -122,31 +129,24 @@
                             <?php endif; ?>
                         </div>
 
-                        <!-- Concorrência -->
+                        <!-- Concorrência: seleciona uma publicação como base (igual notícia) -->
                         <div x-show="fonte === 'concorrencia'" x-transition class="mt-2">
-                            <?php if (empty($dados['concorrentes'])): ?>
+                            <?php $prefPostConc = (int) ($_GET['post_concorrente_id'] ?? 0); ?>
+                            <?php if (empty($dados['posts_concorrentes'])): ?>
                             <p class="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-3">
-                                Nenhum concorrente com dados. Cadastre e colete concorrentes na Central de Conteúdo &gt; Scrap da Concorrência para usar esta fonte.
+                                Nenhuma publicação de concorrente coletada. Cadastre e colete concorrentes na Central de Conteúdo &gt; Análise para usar esta fonte.
                             </p>
                             <?php else: ?>
-                            <label class="block text-xs text-gray-500 mb-1">Concorrentes (deixe vazio para considerar todos)</label>
-                            <div class="max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-1 mb-2">
-                                <?php foreach ($dados['concorrentes'] as $co): ?>
-                                <label class="flex items-center gap-2 text-sm cursor-pointer py-1">
-                                    <input type="checkbox" name="concorrente_ids[]" value="<?= (int) $co['id'] ?>" class="w-4 h-4 text-primary rounded">
-                                    <span class="truncate">🔎 <?= htmlspecialchars($co['nome']) ?></span>
-                                </label>
+                            <select name="post_concorrente_id" id="sel-post-concorrente" onchange="sugerirTituloPostConcorrente(this)" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                                <option value="">Selecione a publicação...</option>
+                                <?php foreach ($dados['posts_concorrentes'] as $pc):
+                                    $lblTitulo = trim((string) ($pc['titulo'] ?: 'Publicação'));
+                                    $lbl = $pc['concorrente_nome'] . ' — ' . $lblTitulo;
+                                ?>
+                                <option value="<?= (int) $pc['id'] ?>" data-titulo="<?= htmlspecialchars($lblTitulo) ?>" <?= ($prefPostConc > 0 && (int) $pc['id'] === $prefPostConc) ? 'selected' : '' ?>><?= htmlspecialchars(mb_substr($lbl, 0, 80)) ?></option>
                                 <?php endforeach; ?>
-                            </div>
-                            <label class="block text-xs text-gray-500 mb-1">Métrica de "melhor desempenho"</label>
-                            <select name="metrica_desempenho" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
-                                <option value="engajamento_absoluto">Engajamento total</option>
-                                <option value="curtidas">Curtidas</option>
-                                <option value="comentarios">Comentários</option>
-                                <option value="visualizacoes">Visualizações</option>
-                                <option value="compartilhamentos">Compartilhamentos</option>
                             </select>
-                            <p class="text-xs text-gray-400 mt-1">A IA usa apenas os PADRÕES (tema, gancho, formato, CTA) como inspiração. Nunca copia textos ou identidade — o conteúdo segue o seu Brand Book.</p>
+                            <p class="text-xs text-gray-400 mt-1">O conteúdo será inspirado nos PADRÕES desta publicação (tema, gancho, formato, CTA). Nunca copia textos ou identidade — segue o seu Brand Book.</p>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -393,6 +393,17 @@ async function sugerirTituloNoticia(sel) {
         if (data.sucesso && data.titulo) campoTema.value = data.titulo;
     } catch (e) { /* mantém o título original */ }
     setTimeout(() => campoTema.classList.remove('bg-yellow-50'), 1200);
+}
+
+// Ao escolher uma publicação de concorrente, sugere o Tema com base no título dela.
+function sugerirTituloPostConcorrente(sel) {
+    const opt = sel.options[sel.selectedIndex];
+    const campoTema = document.querySelector('#form-gerar input[name="tema"]');
+    if (!opt || !opt.value || !campoTema) return;
+    const tituloOriginal = opt.getAttribute('data-titulo') || '';
+    if (tituloOriginal === '') return;
+    if (campoTema.value.trim() !== '' && !confirm('Substituir o Tema pela sugestão baseada nesta publicação?')) return;
+    campoTema.value = tituloOriginal;
 }
 
 // Rola o track do carrossel horizontalmente com as setas.
