@@ -1963,7 +1963,7 @@ Responda APENAS em JSON válido, sem explicações.";
     /**
      * Gera prompt contextualizado com dados da jornada do cliente
      */
-    public static function buildPromptConteudoContextualizado(array $marca, string $tipo, string $tema, string $objetivo, ?string $noticiaBase = null, array $contextoJornada = [], ?string $literaturaBase = null, int $qtdSlides = 7, bool $temFechamentoFixo = false): string
+    public static function buildPromptConteudoContextualizado(array $marca, string $tipo, string $tema, string $objetivo, ?string $noticiaBase = null, array $contextoJornada = [], ?string $literaturaBase = null, int $qtdSlides = 7, bool $temFechamentoFixo = false, ?string $concorrenciaBase = null): string
     {
         $qtdSlides = max(3, min(10, $qtdSlides ?: 7));
         $contextoNoticia = '';
@@ -2001,6 +2001,24 @@ REGRAS PARA CONTEÚDO DE NOTÍCIA (OBRIGATÓRIAS):
 4. VALOR REAL: o post deve ENSINAR algo. Priorize utilidade, clareza e profundidade acessível — nada de texto genérico ou raso. Traga pelo menos uma curiosidade ou insight não óbvio.
 5. DIDÁTICA: linguagem clara, explique termos técnicos, use analogias quando ajudar. Cada slide deve fazer sentido sozinho e também na sequência.
 6. QUANTIDADE: respeite a quantidade de slides solicitada, distribuindo abertura, desenvolvimento e fechamento de forma equilibrada e bem encadeada.";
+        }
+
+        // Base de inteligência competitiva (Scrap da Concorrência): PADRÕES
+        // identificados (temas, formatos, ganchos, CTAs, lacunas). NUNCA é
+        // conteúdo a ser copiado — apenas inspiração estrutural (spec §9).
+        $contextoConcorrencia = '';
+        $regrasConcorrencia = '';
+        if (!empty($concorrenciaBase)) {
+            $contextoConcorrencia = "\n\n🔎 INTELIGÊNCIA COMPETITIVA (padrões observados em concorrentes — use apenas como INSPIRAÇÃO ESTRUTURAL, jamais copie):\n"
+                . "----------------------------------------\n" . $concorrenciaBase . "\n----------------------------------------\n";
+            $regrasConcorrencia = "
+
+🔎 DIRETRIZES PARA CONTEÚDO BASEADO NA CONCORRÊNCIA (OBRIGATÓRIAS — spec §9):
+1. NÃO copie textos, legendas, imagens nem identidade visual dos concorrentes. Proibido reproduzir frases ou títulos deles.
+2. Use os dados apenas para entender PADRÕES que funcionam: estrutura, tema, gancho, formato, emoção e CTA de melhor desempenho.
+3. Gere um material ORIGINAL, adaptado ao Brand Book da marca (tom de voz, arquétipo, palavras que usa/evita). O Brand Book SEMPRE tem prioridade sobre qualquer padrão do concorrente.
+4. Quando fizer sentido, explore LACUNAS/oportunidades pouco exploradas pelos concorrentes, em vez de repetir o que eles já fazem.
+5. O resultado deve soar 100% como a marca do cliente — nunca como o concorrente.";
         }
 
         // Construir contexto da jornada
@@ -2110,8 +2128,8 @@ PROMPT MASTER DA MARCA:
 {$marca['prompt_master']}{$contextoPersonalizado}
 
 TAREFA:
-Crie um {$tipo} sobre o tema: {$tema}{$contextoNoticia}{$contextoLiteratura}
-Objetivo: {$objetivo}{$regrasEducativo}{$regrasNoticia}
+Crie um {$tipo} sobre o tema: {$tema}{$contextoNoticia}{$contextoLiteratura}{$contextoConcorrencia}
+Objetivo: {$objetivo}{$regrasEducativo}{$regrasNoticia}{$regrasConcorrencia}
 
 {$instrucoesTipo}
 

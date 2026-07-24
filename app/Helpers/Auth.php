@@ -13,6 +13,19 @@ class Auth
     const CONSULTOR_INTERNO = 'CONSULTOR_INTERNO';
     const CLIENTE = 'CLIENTE';
 
+    /** E-mail da conta de demonstração (dados mockup, sem config de admin). */
+    const DEMO_EMAIL = 'demo@oconsultor.com.br';
+
+    /**
+     * Indica se a sessão atual é a conta de demonstração.
+     * A conta demo enxerga todas as abas (exceto Configurações do admin) com
+     * dados mockup, mas não pode alterar configurações do sistema.
+     */
+    public static function isDemo(): bool
+    {
+        return strtolower((string) Session::get('usuario_email')) === self::DEMO_EMAIL;
+    }
+
     /**
      * Verifica se o usuário está autenticado
      */
@@ -53,6 +66,13 @@ class Auth
         Session::set('usuario_perfil', $usuario['perfil']);
         Session::set('usuario_empresa_id', $usuario['empresa_id'] ?? null);
         Session::set('login_time', time());
+
+        // Conta demo (ADMIN_HOLDING): fixa a própria empresa demo como
+        // "empresa selecionada", para que as telas de conteúdo (que dependem de
+        // Auth::empresa()) exibam os dados mockup dessa empresa automaticamente.
+        if (strtolower((string) $usuario['email']) === self::DEMO_EMAIL && !empty($usuario['empresa_id'])) {
+            Session::set('admin_empresa_selecionada', (int) $usuario['empresa_id']);
+        }
         
         // Atualizar último login no banco
         try {

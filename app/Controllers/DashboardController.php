@@ -37,14 +37,18 @@ class DashboardController
             'data_atual' => $dataFormatada,
         ];
 
-        match ($perfil) {
+        // A conta demo enxerga a experiência de CLIENTE (dashboard com dados
+        // mockup da empresa demo), independentemente de ser ADMIN_HOLDING.
+        $perfilEfetivo = Auth::isDemo() ? 'CLIENTE' : $perfil;
+
+        match ($perfilEfetivo) {
             'ADMIN_HOLDING' => $this->dadosAdmin($dados),
             'CONSULTOR_INTERNO' => $this->dadosConsultor($dados),
             default => $this->dadosCliente($dados),
         };
 
         // Renderizar view correspondente
-        $viewFile = match ($perfil) {
+        $viewFile = match ($perfilEfetivo) {
             'ADMIN_HOLDING' => '/dashboard/admin.php',
             'CONSULTOR_INTERNO' => '/dashboard/consultor.php',
             default => '/dashboard/cliente.php',

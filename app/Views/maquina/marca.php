@@ -89,6 +89,7 @@
                             <option value="tema">Apenas o tema (livre)</option>
                             <option value="noticia">📰 Notícia da Central de Conteúdo</option>
                             <option value="biblioteca">📚 Biblioteca (conteúdo educativo)</option>
+                            <option value="concorrencia">🔎 Concorrência (padrões de melhor desempenho)</option>
                         </select>
 
                         <!-- Notícia -->
@@ -119,6 +120,34 @@
                                 <?php endforeach; ?>
                             </div>
                             <p class="text-xs text-gray-400 mt-1">Deixe todos desmarcados para a IA considerar toda a biblioteca.</p>
+                            <?php endif; ?>
+                        </div>
+
+                        <!-- Concorrência -->
+                        <div x-show="fonte === 'concorrencia'" x-transition class="mt-2">
+                            <?php if (empty($dados['concorrentes'])): ?>
+                            <p class="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                                Nenhum concorrente com dados. Cadastre e colete concorrentes na Central de Conteúdo &gt; Scrap da Concorrência para usar esta fonte.
+                            </p>
+                            <?php else: ?>
+                            <label class="block text-xs text-gray-500 mb-1">Concorrentes (deixe vazio para considerar todos)</label>
+                            <div class="max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-1 mb-2">
+                                <?php foreach ($dados['concorrentes'] as $co): ?>
+                                <label class="flex items-center gap-2 text-sm cursor-pointer py-1">
+                                    <input type="checkbox" name="concorrente_ids[]" value="<?= (int) $co['id'] ?>" class="w-4 h-4 text-primary rounded">
+                                    <span class="truncate">🔎 <?= htmlspecialchars($co['nome']) ?></span>
+                                </label>
+                                <?php endforeach; ?>
+                            </div>
+                            <label class="block text-xs text-gray-500 mb-1">Métrica de "melhor desempenho"</label>
+                            <select name="metrica_desempenho" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                                <option value="engajamento_absoluto">Engajamento total</option>
+                                <option value="curtidas">Curtidas</option>
+                                <option value="comentarios">Comentários</option>
+                                <option value="visualizacoes">Visualizações</option>
+                                <option value="compartilhamentos">Compartilhamentos</option>
+                            </select>
+                            <p class="text-xs text-gray-400 mt-1">A IA usa apenas os PADRÕES (tema, gancho, formato, CTA) como inspiração. Nunca copia textos ou identidade — o conteúdo segue o seu Brand Book.</p>
                             <?php endif; ?>
                         </div>
                     </div>

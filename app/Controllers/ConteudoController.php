@@ -36,6 +36,8 @@ class ConteudoController
             'paginacao' => $resultadoNoticias['paginacao'],
             'perfil_busca' => $perfilBusca,
             'biblioteca' => $this->listarDocumentosBiblioteca($empresaId),
+            'config_conteudo' => ConfiguracaoConteudo::obter($empresaId),
+            'visao_geral' => VisaoGeralConteudo::montar($empresaId),
             'academy_url' => Configuracao::get('academy_url', 'https://myacademy.com.br'),
             'usuario' => Auth::usuario(),
         ];
@@ -192,6 +194,55 @@ class ConteudoController
         } catch (Exception $e) {
             Logger::error('Erro ao salvar perfil de busca: ' . $e->getMessage());
             echo json_encode(['sucesso' => false, 'erro' => 'Erro ao salvar: ' . $e->getMessage()]);
+        }
+        exit;
+    }
+
+    /**
+     * Salva as Configurações de Conteúdo da empresa (aba na Central).
+     * Reaproveita o Model ConfiguracaoConteudo (isolado por empresa) e mantém
+     * o mesmo padrão de segurança das demais actions (empresa selecionada + CSRF).
+     */
+    public function configSalvar(): void
+    {
+        Auth::proteger();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $empresaId = Auth::empresa();
+        if (!$empresaId) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Selecione uma empresa específica no menu do topo.']);
+            exit;
+        }
+
+        // Checkboxes ausentes no POST significam "desmarcado" (0).
+        $flag = fn(string $campo): int => isset($_POST[$campo]) ? 1 : 0;
+
+        $dados = [
+            'frequencia_padrao'            => in_array(($_POST['frequencia_padrao'] ?? ''), ['diaria','3_dias','semanal','quinzenal','mensal'], true) ? $_POST['frequencia_padrao'] : 'semanal',
+            'redes_sociais'                => array_values(array_intersect((array) ($_POST['redes_sociais'] ?? []), ['instagram','linkedin','facebook','tiktok','youtube'])),
+            'formatos_preferidos'          => array_values(array_intersect((array) ($_POST['formatos_preferidos'] ?? []), ['carrossel','post','reels','story'])),
+            'idioma'                       => trim((string) ($_POST['idioma'] ?? 'Português')) ?: 'Português',
+            'pais'                         => trim((string) ($_POST['pais'] ?? 'Brasil')) ?: 'Brasil',
+            'estado'                       => trim((string) ($_POST['estado'] ?? '')) ?: null,
+            'cidade'                       => trim((string) ($_POST['cidade'] ?? '')) ?: null,
+            'antecedencia_datas_dias'      => max(0, min(90, (int) ($_POST['antecedencia_datas_dias'] ?? 7))),
+            'qtd_sugestoes_semanais'       => max(1, min(30, (int) ($_POST['qtd_sugestoes_semanais'] ?? 3))),
+            'permitir_noticias'            => $flag('permitir_noticias'),
+            'permitir_concorrencia'        => $flag('permitir_concorrencia'),
+            'permitir_datas_comemorativas' => $flag('permitir_datas_comemorativas'),
+            'gerar_imagens_padrao'         => $flag('gerar_imagens_padrao'),
+            'evitar_repeticao_temas'       => $flag('evitar_repeticao_temas'),
+            'periodo_repeticao_dias'       => max(1, min(365, (int) ($_POST['periodo_repeticao_dias'] ?? 30))),
+        ];
+
+        $ok = ConfiguracaoConteudo::salvar((int) $empresaId, $dados);
+
+        if ($ok) {
+            Logger::acao('Configurações de conteúdo salvas', ['empresa_id' => $empresaId]);
+            echo json_encode(['sucesso' => true, 'mensagem' => 'Configurações salvas!']);
+        } else {
+            echo json_encode(['sucesso' => false, 'erro' => 'Não foi possível salvar. Verifique se a migration 054 foi aplicada.']);
         }
         exit;
     }

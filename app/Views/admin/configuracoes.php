@@ -19,7 +19,55 @@
             <button @click="aba='apis'" :class="aba==='apis'?'border-b-2 border-primary text-primary font-semibold':'text-gray-500'" class="px-4 py-3 text-sm">APIs de IA</button>
             <button @click="aba='academy'" :class="aba==='academy'?'border-b-2 border-primary text-primary font-semibold':'text-gray-500'" class="px-4 py-3 text-sm">Academy</button>
             <button @click="aba='email'" :class="aba==='email'?'border-b-2 border-primary text-primary font-semibold':'text-gray-500'" class="px-4 py-3 text-sm">Email/SMTP</button>
+            <button @click="aba='integracoes'" :class="aba==='integracoes'?'border-b-2 border-primary text-primary font-semibold':'text-gray-500'" class="px-4 py-3 text-sm">Integrações</button>
         </nav>
+    </div>
+
+    <!-- ABA INTEGRAÇÕES -->
+    <div x-show="aba==='integracoes'" class="max-w-3xl" style="display:none;">
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h3 class="font-semibold text-gray-800">ScrapingBee</h3>
+                    <p class="text-xs text-gray-500">Coleta de páginas públicas para o Scrap da Concorrência (renderização de JS, proxies).</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div id="status-dot-scrapingbee" class="w-2.5 h-2.5 rounded-full bg-gray-400"></div>
+                    <span id="badge-scrapingbee" class="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Verificando...</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div class="md:col-span-2">
+                    <label class="block text-xs text-gray-500 mb-1">Chave de API</label>
+                    <input type="password" id="scrapingbee-key" placeholder="Sua API key da ScrapingBee"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono outline-none focus:border-primary">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Timeout (segundos)</label>
+                    <input type="number" id="scrapingbee-timeout" min="10" max="120" value="<?= (int) (Configuracao::get('scrapingbee_timeout', '30')) ?>"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">País do proxy (opcional)</label>
+                    <input type="text" id="scrapingbee-country" value="<?= htmlspecialchars((string) Configuracao::get('scrapingbee_country', '')) ?>" placeholder="ex.: br, us"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                </div>
+                <label class="flex items-center gap-2 text-sm text-gray-700">
+                    <input type="checkbox" id="scrapingbee-render-js" <?= Configuracao::get('scrapingbee_render_js', '1') === '1' ? 'checked' : '' ?> class="rounded border-gray-300 text-primary focus:ring-primary/20">
+                    Renderizar JavaScript
+                </label>
+                <label class="flex items-center gap-2 text-sm text-gray-700">
+                    <input type="checkbox" id="scrapingbee-premium-proxy" <?= Configuracao::get('scrapingbee_premium_proxy', '0') === '1' ? 'checked' : '' ?> class="rounded border-gray-300 text-primary focus:ring-primary/20">
+                    Usar proxy premium
+                </label>
+            </div>
+
+            <div class="flex gap-2">
+                <button type="button" onclick="salvarScrapingBee()" class="bg-accent text-white px-4 py-2 rounded-lg text-sm hover:bg-orange-700">💾 Salvar</button>
+                <button type="button" onclick="testarScrapingBee()" class="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">🧪 Testar conexão</button>
+            </div>
+        </div>
     </div>
 
     <!-- ABA GERAL -->
@@ -668,8 +716,50 @@ async function loadApiData() {
     });
 }
 
+// ===== Integrações: ScrapingBee =====
+async function salvarScrapingBee() {
+    const fd = new FormData();
+    fd.append('csrf_token', '<?= Csrf::token() ?>');
+    fd.append('chave', document.getElementById('scrapingbee-key').value.trim());
+    fd.append('timeout', document.getElementById('scrapingbee-timeout').value);
+    fd.append('country', document.getElementById('scrapingbee-country').value.trim());
+    fd.append('render_js', document.getElementById('scrapingbee-render-js').checked ? '1' : '');
+    fd.append('premium_proxy', document.getElementById('scrapingbee-premium-proxy').checked ? '1' : '');
+    try {
+        const res = await fetch('<?= APP_URL ?>/admin/scrapingbee/salvar', { method: 'POST', body: fd });
+        const data = await res.json();
+        showToast(data.sucesso ? data.mensagem : (data.erro || 'Erro'), data.sucesso ? 'success' : 'error');
+        if (data.sucesso) { document.getElementById('scrapingbee-key').value = ''; statusScrapingBee(); }
+    } catch (e) { showToast('Erro de conexão', 'error'); }
+}
+
+async function testarScrapingBee() {
+    updateApiStatus('scrapingbee', 'testing');
+    const fd = new FormData();
+    fd.append('csrf_token', '<?= Csrf::token() ?>');
+    try {
+        const res = await fetch('<?= APP_URL ?>/admin/scrapingbee/testar', { method: 'POST', body: fd });
+        const data = await res.json();
+        updateApiStatus('scrapingbee', data.sucesso ? 'working' : 'error');
+        showToast(data.sucesso ? data.mensagem : (data.erro || 'Falha no teste'), data.sucesso ? 'success' : 'error');
+    } catch (e) { updateApiStatus('scrapingbee', 'error'); showToast('Erro de conexão', 'error'); }
+}
+
+async function statusScrapingBee() {
+    const fd = new FormData();
+    fd.append('csrf_token', '<?= Csrf::token() ?>');
+    try {
+        const res = await fetch('<?= APP_URL ?>/admin/scrapingbee/status', { method: 'POST', body: fd });
+        const data = await res.json();
+        updateApiStatus('scrapingbee', data.configurada ? 'configured' : 'not_configured');
+    } catch (e) { updateApiStatus('scrapingbee', 'error'); }
+}
+
 // Inicializar quando a página carregar
-document.addEventListener('DOMContentLoaded', loadApiData);
+document.addEventListener('DOMContentLoaded', function() {
+    loadApiData();
+    statusScrapingBee();
+});
 
 // Funções SMTP
 async function salvarSmtp() {

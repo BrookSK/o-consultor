@@ -80,17 +80,121 @@ if (!function_exists('renderCardNoticia')) {
 </div>
 
 <!-- Abas -->
-<div x-data="{ aba: 'noticias' }">
+<div x-data="{ aba: 'visao' }">
     <div class="border-b border-gray-200 mb-6">
         <nav class="flex gap-0 overflow-x-auto">
+            <button @click="aba = 'visao'" :class="aba === 'visao' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap transition">📊 Visão Geral</button>
             <button @click="aba = 'noticias'" :class="aba === 'noticias' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap transition">📰 Notícias e Atualidades</button>
+            <button @click="aba = 'calendario'; carregarCalendario()" :class="aba === 'calendario' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap transition">📅 Calendário de Conteúdo</button>
             <button @click="aba = 'academy'" :class="aba === 'academy' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap transition">🎓 Academy</button>
             <button @click="aba = 'biblioteca'" :class="aba === 'biblioteca' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap transition">📚 Biblioteca</button>
+            <button @click="aba = 'concorrencia'; carregarConcorrentes()" :class="aba === 'concorrencia' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap transition">🔎 Scrap da Concorrência</button>
+            <button @click="aba = 'configuracoes'" :class="aba === 'configuracoes' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'" class="px-5 py-3 text-sm whitespace-nowrap transition">⚙️ Configurações de Conteúdo</button>
         </nav>
     </div>
 
+    <!-- ABA: VISÃO GERAL -->
+    <div x-show="aba === 'visao'" x-transition>
+        <?php $vg = $dados['visao_geral'] ?? []; $vgc = $vg['contadores'] ?? []; ?>
+
+        <!-- Alertas -->
+        <?php if (!empty($vg['alertas'])): ?>
+        <div class="space-y-2 mb-6">
+            <?php foreach ($vg['alertas'] as $al): ?>
+            <div class="flex items-start gap-2 p-3 rounded-lg text-sm <?= ($al['nivel'] ?? '') === 'alerta' ? 'bg-red-50 border border-red-200 text-red-700' : 'bg-yellow-50 border border-yellow-200 text-yellow-800' ?>">
+                <span><?= ($al['nivel'] ?? '') === 'alerta' ? '⛔' : '⚠️' ?></span>
+                <span><?= htmlspecialchars($al['mensagem']) ?></span>
+            </div>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+
+        <!-- Contadores -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5 text-center">
+                <p class="text-3xl font-bold text-primary"><?= (int) ($vgc['planejados'] ?? 0) ?></p>
+                <p class="text-xs text-gray-500 mt-1">Planejados</p>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5 text-center">
+                <p class="text-3xl font-bold text-green-600"><?= (int) ($vgc['gerados'] ?? 0) ?></p>
+                <p class="text-xs text-gray-500 mt-1">Gerados</p>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5 text-center">
+                <p class="text-3xl font-bold text-yellow-600"><?= (int) ($vgc['em_revisao'] ?? 0) ?></p>
+                <p class="text-xs text-gray-500 mt-1">Pendentes de revisão</p>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5 text-center">
+                <p class="text-3xl font-bold text-gray-800"><?= (int) ($vg['concorrentes']['total'] ?? 0) ?></p>
+                <p class="text-xs text-gray-500 mt-1">Concorrentes monitorados</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Próximas datas -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+                <h3 class="text-sm font-semibold text-gray-800 mb-3">📅 Próximas datas relevantes</h3>
+                <?php if (empty($vg['proximas_datas'])): ?>
+                <p class="text-sm text-gray-400">Nenhuma data identificada. Gere o calendário na aba correspondente.</p>
+                <?php else: ?>
+                <ul class="space-y-2 text-sm">
+                    <?php foreach ($vg['proximas_datas'] as $d): ?>
+                    <li class="flex items-center justify-between">
+                        <span class="text-gray-700"><?= htmlspecialchars($d['nome']) ?></span>
+                        <span class="text-xs text-gray-400"><?= date('d/m', strtotime($d['proxima_ocorrencia'])) ?> (<?= (int) $d['dias_ate'] ?>d)</span>
+                    </li>
+                    <?php endforeach; ?>
+                </ul>
+                <?php endif; ?>
+            </div>
+
+            <!-- Notícias recentes -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+                <h3 class="text-sm font-semibold text-gray-800 mb-3">📰 Notícias recentes</h3>
+                <?php if (empty($vg['noticias_recentes'])): ?>
+                <p class="text-sm text-gray-400">Nenhuma notícia recente.</p>
+                <?php else: ?>
+                <ul class="space-y-2 text-sm">
+                    <?php foreach ($vg['noticias_recentes'] as $n): ?>
+                    <li class="flex items-center justify-between gap-2">
+                        <a href="<?= APP_URL ?>/central-de-conteudo/noticia?id=<?= (int) $n['id'] ?>" class="text-gray-700 hover:text-primary truncate"><?= htmlspecialchars($n['titulo']) ?></a>
+                        <span class="text-xs text-gray-400 flex-shrink-0"><?= !empty($n['data']) ? date('d/m', strtotime($n['data'])) : '' ?></span>
+                    </li>
+                    <?php endforeach; ?>
+                </ul>
+                <?php endif; ?>
+            </div>
+
+            <!-- Melhores conteúdos de concorrentes -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+                <h3 class="text-sm font-semibold text-gray-800 mb-3">🏆 Melhores conteúdos de concorrentes</h3>
+                <?php if (empty($vg['melhores_concorrentes'])): ?>
+                <p class="text-sm text-gray-400">Sem dados de concorrência ainda.</p>
+                <?php else: ?>
+                <ul class="space-y-2 text-sm">
+                    <?php foreach ($vg['melhores_concorrentes'] as $p): ?>
+                    <li class="flex items-center justify-between gap-2">
+                        <span class="text-gray-700 truncate"><?= htmlspecialchars(mb_substr((string) ($p['titulo'] ?: 'Publicação'), 0, 50)) ?> <span class="text-gray-400">· <?= htmlspecialchars($p['concorrente']) ?></span></span>
+                        <span class="text-xs font-medium text-gray-600 flex-shrink-0"><?= (int) $p['engajamento_absoluto'] ?></span>
+                    </li>
+                    <?php endforeach; ?>
+                </ul>
+                <?php endif; ?>
+            </div>
+
+            <!-- Concorrência: última coleta -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+                <h3 class="text-sm font-semibold text-gray-800 mb-3">🔎 Concorrência</h3>
+                <p class="text-sm text-gray-600">Concorrentes monitorados: <strong><?= (int) ($vg['concorrentes']['total'] ?? 0) ?></strong></p>
+                <p class="text-sm text-gray-600 mt-1">Última coleta:
+                    <strong><?= !empty($vg['concorrentes']['ultima_coleta']) ? date('d/m/Y H:i', strtotime($vg['concorrentes']['ultima_coleta'])) : 'Nunca' ?></strong>
+                </p>
+                <button @click="aba = 'concorrencia'; carregarConcorrentes()" class="mt-3 text-sm text-primary font-medium hover:underline">Ir para Scrap da Concorrência →</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ABA 1: NOTÍCIAS -->
-    <div x-show="aba === 'noticias'" x-transition>
+    <div x-show="aba === 'noticias'" x-transition style="display:none;">
         <!-- Barra de ações -->
         <div class="flex items-center justify-between gap-3 mb-4">
             <button type="button" onclick="abrirModalConfig()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">✏️ Editar informações do conteúdo</button>
@@ -122,6 +226,30 @@ if (!function_exists('renderCardNoticia')) {
         <div id="paginacao-noticias" class="flex items-center justify-between mt-6" data-pagina-atual="<?= (int) $pag['pagina_atual'] ?>" data-total-paginas="<?= (int) $pag['total_paginas'] ?>">
             <p id="paginacao-total" class="text-xs text-gray-400"><?= (int) $pag['total_itens'] ?> notícia(s) no total</p>
             <div id="paginacao-controles" class="flex items-center gap-1"></div>
+        </div>
+    </div>
+
+    <!-- ABA: CALENDÁRIO DE CONTEÚDO -->
+    <div x-show="aba === 'calendario'" x-transition style="display:none;">
+        <div class="flex items-center justify-between gap-3 mb-4 flex-wrap">
+            <div>
+                <h2 class="text-lg font-semibold text-gray-800">Calendário de Conteúdo</h2>
+                <p class="text-sm text-gray-500">Datas comemorativas e sugestões relevantes ao seu nicho, com data ideal de publicação.</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <button type="button" onclick="gerarCalendario(this)" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition">✨ Identificar datas do meu nicho</button>
+                <button type="button" onclick="gerarSemanal(this)" class="px-4 py-2 border border-primary text-primary rounded-lg text-sm font-medium hover:bg-primary/5 transition">🗓️ Sugestões da semana</button>
+                <button type="button" onclick="abrirModalItemCalendario()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">+ Item manual</button>
+            </div>
+        </div>
+
+        <!-- Próximas datas -->
+        <div id="calendario-proximas" class="mb-6"></div>
+
+        <!-- Itens do calendário -->
+        <div id="calendario-lista" class="space-y-3"></div>
+        <div id="calendario-vazio" class="hidden bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500 text-sm">
+            Seu calendário está vazio. Clique em "Identificar datas do meu nicho" para gerar sugestões, ou adicione um item manual.
         </div>
     </div>
 
@@ -184,6 +312,134 @@ if (!function_exists('renderCardNoticia')) {
             Nenhum documento na biblioteca ainda. Envie PDFs acima para começar.
         </div>
     </div>
+
+    <!-- ABA: SCRAP DA CONCORRÊNCIA -->
+    <div x-show="aba === 'concorrencia'" x-transition style="display:none;">
+        <div class="flex items-center justify-between gap-3 mb-4">
+            <div>
+                <h2 class="text-lg font-semibold text-gray-800">Scrap da Concorrência</h2>
+                <p class="text-sm text-gray-500">Monitore perfis públicos de concorrentes e transforme os dados em inteligência para a Máquina de Conteúdo.</p>
+            </div>
+            <button type="button" onclick="abrirModalConcorrente()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition">+ Adicionar concorrente</button>
+        </div>
+
+        <div id="concorrencia-aviso" class="hidden bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4 text-sm text-yellow-800"></div>
+
+        <div id="concorrentes-lista" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- Cards carregados via JS -->
+        </div>
+        <div id="concorrentes-vazio" class="hidden bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500 text-sm">
+            Nenhum concorrente cadastrado ainda. Clique em "Adicionar concorrente" para começar.
+        </div>
+    </div>
+
+    <!-- ABA 4: CONFIGURAÇÕES DE CONTEÚDO -->
+    <div x-show="aba === 'configuracoes'" x-transition style="display:none;">
+        <?php $cfg = $dados['config_conteudo'] ?? ConfiguracaoConteudo::padroes(); ?>
+        <form id="form-config-conteudo" class="space-y-6" onsubmit="salvarConfigConteudo(event)">
+            <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
+
+            <!-- Geração e fontes -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <h2 class="text-lg font-semibold text-gray-800 mb-1">Geração de conteúdo</h2>
+                <p class="text-sm text-gray-500 mb-4">Define o padrão da empresa para a Máquina de Conteúdo. Cada geração ainda pode sobrescrever estas opções.</p>
+
+                <label class="flex items-start gap-3 p-3 border border-gray-200 rounded-lg mb-3 cursor-pointer hover:bg-gray-50">
+                    <input type="checkbox" name="gerar_imagens_padrao" value="1" <?= (int) ($cfg['gerar_imagens_padrao'] ?? 1) === 1 ? 'checked' : '' ?> class="mt-0.5 rounded border-gray-300 text-primary focus:ring-primary/20">
+                    <span>
+                        <span class="block text-sm font-medium text-gray-800">Gerar imagens automaticamente</span>
+                        <span class="block text-xs text-gray-500">Quando desligado, o conteúdo (copy, títulos, legenda, CTA, hashtags) é gerado normalmente, sem consumir créditos de imagem.</span>
+                    </span>
+                </label>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
+                    <label class="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" name="permitir_noticias" value="1" <?= (int) ($cfg['permitir_noticias'] ?? 1) === 1 ? 'checked' : '' ?> class="rounded border-gray-300 text-primary focus:ring-primary/20"> Permitir uso de notícias</label>
+                    <label class="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" name="permitir_concorrencia" value="1" <?= (int) ($cfg['permitir_concorrencia'] ?? 1) === 1 ? 'checked' : '' ?> class="rounded border-gray-300 text-primary focus:ring-primary/20"> Permitir uso de concorrência</label>
+                    <label class="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" name="permitir_datas_comemorativas" value="1" <?= (int) ($cfg['permitir_datas_comemorativas'] ?? 1) === 1 ? 'checked' : '' ?> class="rounded border-gray-300 text-primary focus:ring-primary/20"> Permitir datas comemorativas</label>
+                </div>
+            </div>
+
+            <!-- Frequência e formatos -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <h2 class="text-lg font-semibold text-gray-800 mb-4">Frequência e formatos</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Frequência padrão</label>
+                        <select name="frequencia_padrao" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                            <?php foreach (['diaria'=>'Diária','3_dias'=>'A cada 3 dias','semanal'=>'Semanal','quinzenal'=>'Quinzenal','mensal'=>'Mensal'] as $v=>$l): ?>
+                            <option value="<?= $v ?>" <?= ($cfg['frequencia_padrao'] ?? 'semanal') === $v ? 'selected' : '' ?>><?= $l ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Sugestões semanais</label>
+                        <input type="number" name="qtd_sugestoes_semanais" min="1" max="30" value="<?= (int) ($cfg['qtd_sugestoes_semanais'] ?? 3) ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Idioma</label>
+                        <input type="text" name="idioma" value="<?= htmlspecialchars($cfg['idioma'] ?? 'Português') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Redes sociais</label>
+                        <div class="flex flex-wrap gap-3">
+                            <?php $redes = (array) ($cfg['redes_sociais'] ?? []); foreach (['instagram'=>'Instagram','linkedin'=>'LinkedIn','facebook'=>'Facebook','tiktok'=>'TikTok','youtube'=>'YouTube'] as $v=>$l): ?>
+                            <label class="flex items-center gap-1.5 text-sm text-gray-700"><input type="checkbox" name="redes_sociais[]" value="<?= $v ?>" <?= in_array($v, $redes, true) ? 'checked' : '' ?> class="rounded border-gray-300 text-primary focus:ring-primary/20"> <?= $l ?></label>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Formatos preferidos</label>
+                        <div class="flex flex-wrap gap-3">
+                            <?php $formatos = (array) ($cfg['formatos_preferidos'] ?? []); foreach (['carrossel'=>'Carrossel','post'=>'Post','reels'=>'Reels','story'=>'Story'] as $v=>$l): ?>
+                            <label class="flex items-center gap-1.5 text-sm text-gray-700"><input type="checkbox" name="formatos_preferidos[]" value="<?= $v ?>" <?= in_array($v, $formatos, true) ? 'checked' : '' ?> class="rounded border-gray-300 text-primary focus:ring-primary/20"> <?= $l ?></label>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Região e datas -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <h2 class="text-lg font-semibold text-gray-800 mb-4">Região e datas comemorativas</h2>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">País</label>
+                        <input type="text" name="pais" value="<?= htmlspecialchars($cfg['pais'] ?? 'Brasil') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Estado</label>
+                        <input type="text" name="estado" value="<?= htmlspecialchars($cfg['estado'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Cidade</label>
+                        <input type="text" name="cidade" value="<?= htmlspecialchars($cfg['cidade'] ?? '') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Antecedência (dias)</label>
+                        <input type="number" name="antecedencia_datas_dias" min="0" max="90" value="<?= (int) ($cfg['antecedencia_datas_dias'] ?? 7) ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Anti-repetição -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <h2 class="text-lg font-semibold text-gray-800 mb-4">Repetição de temas</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                    <label class="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" name="evitar_repeticao_temas" value="1" <?= (int) ($cfg['evitar_repeticao_temas'] ?? 1) === 1 ? 'checked' : '' ?> class="rounded border-gray-300 text-primary focus:ring-primary/20"> Evitar repetição de temas</label>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Período para considerar repetido (dias)</label>
+                        <input type="number" name="periodo_repeticao_dias" min="1" max="365" value="<?= (int) ($cfg['periodo_repeticao_dias'] ?? 30) ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex justify-end">
+                <button type="submit" class="px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition">Salvar configurações</button>
+            </div>
+        </form>
+    </div>
 </div>
 
 <!-- Modal: Editar informações do conteúdo -->
@@ -235,7 +491,373 @@ if (!function_exists('renderCardNoticia')) {
     </div>
 </div>
 
+<!-- Modal: Adicionar/editar concorrente -->
+<div id="modal-concorrente" class="fixed inset-0 z-50 hidden" aria-modal="true" role="dialog">
+    <div class="absolute inset-0 bg-black/50" onclick="fecharModalConcorrente()"></div>
+    <div class="relative min-h-full flex items-start justify-center p-4 overflow-y-auto">
+        <div class="bg-white rounded-lg shadow-xl border border-gray-200 w-full max-w-xl my-8">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                <h3 class="text-lg font-semibold text-gray-800">Adicionar concorrente</h3>
+                <button type="button" onclick="fecharModalConcorrente()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+            </div>
+            <form id="form-concorrente" class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4" onsubmit="salvarConcorrente(event)">
+                <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Nome do concorrente *</label>
+                    <input type="text" name="nome" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Nome do perfil (@)</label>
+                    <input type="text" name="nome_perfil" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Plataforma</label>
+                    <select name="plataforma" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                        <option value="instagram">Instagram</option>
+                        <option value="linkedin">LinkedIn</option>
+                        <option value="facebook">Facebook</option>
+                        <option value="tiktok">TikTok</option>
+                        <option value="youtube">YouTube</option>
+                        <option value="blog">Blog / Site</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">URL pública *</label>
+                    <input type="url" name="url_publica" required placeholder="https://..." class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Categoria / nicho</label>
+                    <input type="text" name="categoria" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Frequência de coleta</label>
+                    <select name="frequencia_coleta" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                        <option value="manual">Manual</option>
+                        <option value="diaria">Diária</option>
+                        <option value="3_dias">A cada 3 dias</option>
+                        <option value="semanal">Semanal</option>
+                        <option value="quinzenal">Quinzenal</option>
+                        <option value="mensal">Mensal</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Máx. posts por coleta</label>
+                    <input type="number" name="max_posts_por_coleta" min="1" max="50" value="12" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Seguidores (se souber)</label>
+                    <input type="number" name="seguidores" min="0" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                </div>
+                <div class="md:col-span-2">
+                    <label class="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" name="principal" value="1" class="rounded border-gray-300 text-primary focus:ring-primary/20"> Concorrente principal</label>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Observações</label>
+                    <textarea name="observacoes" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary"></textarea>
+                </div>
+                <div class="md:col-span-2 flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
+                    <button type="button" onclick="fecharModalConcorrente()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">Cancelar</button>
+                    <button type="submit" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: item manual do calendário -->
+<div id="modal-item-calendario" class="fixed inset-0 z-50 hidden" aria-modal="true" role="dialog">
+    <div class="absolute inset-0 bg-black/50" onclick="fecharModalItemCalendario()"></div>
+    <div class="relative min-h-full flex items-start justify-center p-4 overflow-y-auto">
+        <div class="bg-white rounded-lg shadow-xl border border-gray-200 w-full max-w-lg my-8">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                <h3 class="text-lg font-semibold text-gray-800">Adicionar ao calendário</h3>
+                <button type="button" onclick="fecharModalItemCalendario()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+            </div>
+            <form id="form-item-calendario" class="p-6 space-y-4" onsubmit="salvarItemCalendario(event)">
+                <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Tema *</label>
+                    <input type="text" name="tema" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Data de publicação</label>
+                        <input type="date" name="data_publicacao_sugerida" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Formato</label>
+                        <select name="formato_recomendado" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                            <option value="">—</option>
+                            <option value="carrossel">Carrossel</option>
+                            <option value="post">Post</option>
+                            <option value="reels">Reels</option>
+                            <option value="story">Story</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Objetivo</label>
+                        <input type="text" name="objetivo" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary" placeholder="educar, vender...">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Responsável</label>
+                        <input type="text" name="responsavel" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary">
+                    </div>
+                </div>
+                <label class="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" name="gerar_imagem" value="1" checked class="rounded border-gray-300 text-primary focus:ring-primary/20"> Gerar imagem ao criar o conteúdo</label>
+                <div class="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
+                    <button type="button" onclick="fecharModalItemCalendario()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">Cancelar</button>
+                    <button type="submit" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700">Adicionar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
+// Escapador de HTML compartilhado pelas funções deste bloco (calendário/concorrência).
+function esc(s) {
+    return (s == null ? '' : String(s)).replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+}
+
+// ===== Calendário de Conteúdo =====
+function abrirModalItemCalendario() {
+    const m = document.getElementById('modal-item-calendario');
+    if (m) { m.classList.remove('hidden'); document.body.style.overflow = 'hidden'; }
+}
+function fecharModalItemCalendario() {
+    const m = document.getElementById('modal-item-calendario');
+    if (m) { m.classList.add('hidden'); document.body.style.overflow = ''; }
+}
+
+const CAL_ORIGEM_LABEL = {
+    noticia: '📰 Notícia', data_comemorativa: '📅 Data comemorativa', concorrencia: '🔎 Concorrência',
+    conteudo_semanal: '🗓️ Semanal', tema_manual: '✍️ Tema manual', tendencia: '📈 Tendência'
+};
+
+async function carregarCalendario() {
+    const lista = document.getElementById('calendario-lista');
+    const vazio = document.getElementById('calendario-vazio');
+    const proximasEl = document.getElementById('calendario-proximas');
+    if (!lista) return;
+    lista.innerHTML = '<p class="text-sm text-gray-400">Carregando...</p>';
+    try {
+        const res = await fetch('<?= APP_URL ?>/central-de-conteudo/calendario');
+        const data = await res.json();
+        if (!data.sucesso) { lista.innerHTML = ''; return; }
+
+        // Próximas datas (chips informativos)
+        const pd = data.proximas_datas || [];
+        proximasEl.innerHTML = pd.length ? (
+            '<div class="bg-white rounded-lg border border-gray-200 p-4">'
+            + '<p class="text-sm font-semibold text-gray-700 mb-2">Próximas datas relevantes</p>'
+            + '<div class="flex flex-wrap gap-2">'
+            + pd.slice(0, 12).map(d => '<span class="inline-flex items-center gap-1 bg-primary/5 text-primary text-xs px-2 py-1 rounded-full">'
+                + esc(d.nome) + ' • ' + new Date(d.proxima_ocorrencia + 'T00:00:00').toLocaleDateString('pt-BR')
+                + ' <span class="text-gray-400">(' + d.dias_ate + 'd)</span></span>').join('')
+            + '</div></div>'
+        ) : '';
+
+        const itens = data.itens || [];
+        vazio.classList.toggle('hidden', itens.length > 0);
+        lista.innerHTML = itens.map(cardCalendario).join('');
+    } catch (e) {
+        lista.innerHTML = '<p class="text-sm text-red-500">Erro ao carregar o calendário.</p>';
+    }
+}
+
+function cardCalendario(it) {
+    const dataPub = it.data_publicacao_sugerida ? new Date(it.data_publicacao_sugerida + 'T00:00:00').toLocaleDateString('pt-BR') : 'Sem data';
+    const origem = CAL_ORIGEM_LABEL[it.origem] || it.origem;
+    const genUrl = '<?= APP_URL ?>/maquina-de-conteudo?tema=' + encodeURIComponent(it.tema) + '&calendario_id=' + it.id;
+    return '<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex items-center justify-between gap-4">'
+        + '<div class="min-w-0">'
+        + '<div class="flex items-center gap-2 mb-1"><span class="text-xs text-gray-400">' + esc(origem) + '</span>'
+        + '<span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">' + esc(it.status) + '</span></div>'
+        + '<p class="text-sm font-semibold text-gray-800 truncate">' + esc(it.tema) + '</p>'
+        + '<p class="text-xs text-gray-400">📅 ' + dataPub + (it.formato_recomendado ? ' • ' + esc(it.formato_recomendado) : '') + '</p>'
+        + '</div>'
+        + '<div class="flex items-center gap-2 flex-shrink-0">'
+        + '<a href="' + genUrl + '" class="text-xs px-2.5 py-1.5 bg-primary text-white rounded-md hover:bg-primary-700">Gerar conteúdo</a>'
+        + '<button onclick="ignorarItemCalendario(' + it.id + ')" class="text-xs px-2.5 py-1.5 text-gray-400 hover:text-red-600">Ignorar</button>'
+        + '</div></div>';
+}
+
+async function gerarCalendario(btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Identificando...'; }
+    try {
+        const fd = new FormData(); fd.append('csrf_token', CSRF);
+        const res = await fetch('<?= APP_URL ?>/central-de-conteudo/calendario-gerar', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (typeof Toast !== 'undefined') (data.sucesso ? Toast.sucesso(data.mensagem) : Toast.erro(data.erro)); else alert(data.mensagem || data.erro);
+        carregarCalendario();
+    } catch (e) { alert('Erro de conexão.'); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = '✨ Identificar datas do meu nicho'; } }
+}
+
+async function gerarSemanal(btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Gerando...'; }
+    try {
+        const fd = new FormData(); fd.append('csrf_token', CSRF);
+        const res = await fetch('<?= APP_URL ?>/central-de-conteudo/calendario-gerar-semanal', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (typeof Toast !== 'undefined') (data.sucesso ? Toast.sucesso(data.mensagem) : Toast.erro(data.erro)); else alert(data.mensagem || data.erro);
+        carregarCalendario();
+    } catch (e) { alert('Erro de conexão.'); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = '🗓️ Sugestões da semana'; } }
+}
+
+async function salvarItemCalendario(event) {
+    event.preventDefault();
+    const form = document.getElementById('form-item-calendario');
+    const res = await fetch('<?= APP_URL ?>/central-de-conteudo/calendario-adicionar', { method: 'POST', body: new FormData(form) });
+    const data = await res.json();
+    if (data.sucesso) {
+        if (typeof Toast !== 'undefined') Toast.sucesso(data.mensagem); else alert(data.mensagem);
+        fecharModalItemCalendario(); form.reset(); carregarCalendario();
+    } else { alert(data.erro || 'Erro.'); }
+}
+
+async function ignorarItemCalendario(id) {
+    const fd = new FormData(); fd.append('csrf_token', CSRF); fd.append('id', id);
+    const res = await fetch('<?= APP_URL ?>/central-de-conteudo/calendario-ignorar', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.sucesso) carregarCalendario(); else alert(data.erro || 'Erro.');
+}
+
+// ===== Scrap da Concorrência =====
+const CSRF = '<?= Csrf::token() ?>';
+
+function abrirModalConcorrente() {
+    const m = document.getElementById('modal-concorrente');
+    if (m) { m.classList.remove('hidden'); document.body.style.overflow = 'hidden'; }
+}
+function fecharModalConcorrente() {
+    const m = document.getElementById('modal-concorrente');
+    if (m) { m.classList.add('hidden'); document.body.style.overflow = ''; }
+}
+
+async function carregarConcorrentes() {
+    const lista = document.getElementById('concorrentes-lista');
+    const vazio = document.getElementById('concorrentes-vazio');
+    const aviso = document.getElementById('concorrencia-aviso');
+    if (!lista) return;
+    lista.innerHTML = '<p class="text-sm text-gray-400 col-span-full">Carregando...</p>';
+    try {
+        const res = await fetch('<?= APP_URL ?>/central-de-conteudo/concorrentes');
+        const data = await res.json();
+        if (!data.sucesso) { lista.innerHTML = ''; return; }
+
+        if (!data.scrapingbee_ok && aviso) {
+            aviso.classList.remove('hidden');
+            aviso.textContent = 'Atenção: a chave da ScrapingBee ainda não está configurada. Você pode cadastrar concorrentes, mas as coletas só funcionarão após configurar a chave em Admin > Configurações.';
+        }
+
+        const cs = data.concorrentes || [];
+        vazio.classList.toggle('hidden', cs.length > 0);
+        lista.innerHTML = cs.map(cardConcorrente).join('');
+    } catch (e) {
+        lista.innerHTML = '<p class="text-sm text-red-500 col-span-full">Erro ao carregar concorrentes.</p>';
+    }
+}
+
+function cardConcorrente(c) {
+    const eng = c.engajamento_medio == null ? 'n/d' : c.engajamento_medio;
+    const ultima = c.ultima_coleta_em ? new Date(c.ultima_coleta_em.replace(' ', 'T')).toLocaleDateString('pt-BR') : 'Nunca';
+    const statusBadge = c.status === 'ativo' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600';
+    return '<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">'
+        + '<div class="flex items-start justify-between gap-2 mb-2">'
+        + '<div class="min-w-0"><p class="text-sm font-semibold text-gray-800 truncate">' + esc(c.nome) + (c.principal ? ' ⭐' : '') + '</p>'
+        + '<p class="text-xs text-gray-400 truncate">' + esc(c.plataforma) + (c.nome_perfil ? ' • ' + esc(c.nome_perfil) : '') + '</p></div>'
+        + '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold ' + statusBadge + '">' + esc(c.status) + '</span></div>'
+        + '<div class="grid grid-cols-3 gap-2 text-center my-3">'
+        + '<div><p class="text-lg font-bold text-gray-800">' + c.posts + '</p><p class="text-[10px] text-gray-400">posts</p></div>'
+        + '<div><p class="text-lg font-bold text-gray-800">' + eng + '</p><p class="text-[10px] text-gray-400">eng. médio</p></div>'
+        + '<div><p class="text-xs font-medium text-gray-600">' + ultima + '</p><p class="text-[10px] text-gray-400">última coleta</p></div>'
+        + '</div>'
+        + '<div class="flex flex-wrap items-center gap-2 pt-3 border-t border-gray-100">'
+        + '<button onclick="coletarConcorrente(' + c.id + ', this)" class="text-xs px-2.5 py-1.5 bg-primary text-white rounded-md hover:bg-primary-700">Analisar agora</button>'
+        + '<a href="<?= APP_URL ?>/central-de-conteudo/concorrente?id=' + c.id + '" class="text-xs px-2.5 py-1.5 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Ver análise</a>'
+        + '<button onclick="pausarConcorrente(' + c.id + ')" class="text-xs px-2.5 py-1.5 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">' + (c.status === 'ativo' ? 'Pausar' : 'Ativar') + '</button>'
+        + '<button onclick="excluirConcorrente(' + c.id + ')" class="text-xs px-2.5 py-1.5 text-red-500 hover:text-red-700 ml-auto">Excluir</button>'
+        + '</div></div>';
+}
+
+async function salvarConcorrente(event) {
+    event.preventDefault();
+    const form = document.getElementById('form-concorrente');
+    const btn = form.querySelector('button[type="submit"]');
+    btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Salvando...';
+    try {
+        const res = await fetch('<?= APP_URL ?>/central-de-conteudo/concorrente-salvar', { method: 'POST', body: new FormData(form) });
+        const data = await res.json();
+        if (data.sucesso) {
+            if (typeof Toast !== 'undefined') Toast.sucesso(data.mensagem); else alert(data.mensagem);
+            fecharModalConcorrente(); form.reset(); carregarConcorrentes();
+        } else {
+            if (typeof Toast !== 'undefined') Toast.erro(data.erro); else alert(data.erro);
+        }
+    } catch (e) { alert('Erro de conexão.'); }
+    finally { btn.disabled = false; btn.textContent = orig; }
+}
+
+async function coletarConcorrente(id, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Coletando...'; }
+    try {
+        const fd = new FormData(); fd.append('csrf_token', CSRF); fd.append('id', id);
+        const res = await fetch('<?= APP_URL ?>/central-de-conteudo/concorrente-coletar', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (typeof Toast !== 'undefined') (data.sucesso ? Toast.sucesso(data.mensagem) : Toast.erro(data.erro)); else alert(data.mensagem || data.erro);
+        carregarConcorrentes();
+    } catch (e) { alert('Erro de conexão.'); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = 'Analisar agora'; } }
+}
+
+async function pausarConcorrente(id) {
+    const fd = new FormData(); fd.append('csrf_token', CSRF); fd.append('id', id);
+    const res = await fetch('<?= APP_URL ?>/central-de-conteudo/concorrente-pausar', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.sucesso) carregarConcorrentes(); else alert(data.erro || 'Erro.');
+}
+
+async function excluirConcorrente(id) {
+    if (!confirm('Excluir este concorrente e todos os dados coletados?')) return;
+    const fd = new FormData(); fd.append('csrf_token', CSRF); fd.append('id', id);
+    const res = await fetch('<?= APP_URL ?>/central-de-conteudo/concorrente-excluir', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.sucesso) { if (typeof Toast !== 'undefined') Toast.sucesso(data.mensagem); carregarConcorrentes(); } else alert(data.erro || 'Erro.');
+}
+
+// ===== Configurações de Conteúdo =====
+async function salvarConfigConteudo(event) {
+    event.preventDefault();
+    const form = document.getElementById('form-config-conteudo');
+    const btn = form.querySelector('button[type="submit"]');
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Salvando...';
+
+    try {
+        const res = await fetch('<?= APP_URL ?>/central-de-conteudo/config-salvar', {
+            method: 'POST',
+            body: new FormData(form)
+        });
+        const data = await res.json();
+        if (data.sucesso) {
+            if (typeof Toast !== 'undefined') Toast.sucesso(data.mensagem || 'Configurações salvas!'); else alert(data.mensagem || 'Configurações salvas!');
+        } else {
+            const msg = data.erro || 'Erro ao salvar configurações.';
+            if (typeof Toast !== 'undefined') Toast.erro(msg); else alert(msg);
+        }
+    } catch (e) {
+        alert('Erro de conexão ao salvar as configurações.');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+    }
+}
+
 // ===== Sites de referência =====
 function adicionarCampoSite() {
     const div = document.createElement('div');

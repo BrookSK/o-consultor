@@ -207,6 +207,15 @@ $paginaAtual = $_GET['url'] ?? 'dashboard';
                     break;
             }
 
+            // Conta demo: mostra todas as abas com dados mockup, MENOS as
+            // Configurações do admin (item de url 'admin'). Remove também a
+            // gestão de clientes/usuários, que é operação interna da holding.
+            if (Auth::isDemo()) {
+                $menu = array_values(array_filter($menu, function ($item) {
+                    return !in_array($item['url'], ['admin', 'admin/clientes', 'admin/usuarios'], true);
+                }));
+            }
+
             // Determina qual item do menu corresponde à página atual usando
             // correspondência de prefixo mais longa, para que itens específicos
             // (ex.: admin/clientes) vençam itens genéricos (ex.: admin).

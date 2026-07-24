@@ -199,6 +199,7 @@ class Router
         $this->get('central-de-conteudo/noticias-pagina', 'ConteudoController', 'noticiasPagina');
         $this->get('central-de-conteudo/caso', 'ConteudoController', 'casoDetalhe');
         $this->post('central-de-conteudo/perfil-busca', 'ConteudoController', 'salvarPerfilBusca');
+        $this->post('central-de-conteudo/config-salvar', 'ConteudoController', 'configSalvar');
         $this->post('central-de-conteudo/buscar-agora', 'ConteudoController', 'buscarAgora');
         $this->get('central-de-conteudo/noticias-recentes', 'ConteudoController', 'noticiasRecentes');
         $this->post('central-de-conteudo/criar-conteudo', 'ConteudoController', 'criarConteudoDeNoticia');
@@ -208,6 +209,25 @@ class Router
         $this->post('central-de-conteudo/biblioteca-upload', 'ConteudoController', 'bibliotecaUpload');
         $this->post('central-de-conteudo/biblioteca-excluir', 'ConteudoController', 'bibliotecaExcluir');
         $this->get('central-de-conteudo/admin', 'ConteudoController', 'admin');
+
+        // Scrap da Concorrência (Central de Conteúdo)
+        $this->get('central-de-conteudo/concorrentes', 'ConcorrenteController', 'listarJson');
+        $this->post('central-de-conteudo/concorrente-salvar', 'ConcorrenteController', 'salvar');
+        $this->post('central-de-conteudo/concorrente-atualizar', 'ConcorrenteController', 'atualizar');
+        $this->post('central-de-conteudo/concorrente-pausar', 'ConcorrenteController', 'pausar');
+        $this->post('central-de-conteudo/concorrente-excluir', 'ConcorrenteController', 'excluir');
+        $this->post('central-de-conteudo/concorrente-coletar', 'ConcorrenteController', 'coletar');
+        $this->post('central-de-conteudo/concorrente-analisar', 'ConcorrenteController', 'analisar');
+        $this->get('central-de-conteudo/concorrente', 'ConcorrenteController', 'ver');
+
+        // Calendário de Conteúdo (Central de Conteúdo)
+        $this->get('central-de-conteudo/calendario', 'CalendarioController', 'listar');
+        $this->post('central-de-conteudo/calendario-gerar', 'CalendarioController', 'gerar');
+        $this->post('central-de-conteudo/calendario-gerar-semanal', 'CalendarioController', 'gerarSemanal');
+        $this->post('central-de-conteudo/calendario-adicionar', 'CalendarioController', 'adicionar');
+        $this->post('central-de-conteudo/calendario-atualizar', 'CalendarioController', 'atualizar');
+        $this->post('central-de-conteudo/calendario-ignorar', 'CalendarioController', 'ignorar');
+        $this->post('central-de-conteudo/calendario-classificar-data', 'CalendarioController', 'classificarData');
 
         // Sistema de Notícias por IA (F-09)
         $this->get('noticias', 'NoticiasController', 'index');
@@ -343,6 +363,14 @@ class Router
         $this->post('admin/api/status', 'AdminController', 'statusApi');
         $this->post('admin/smtp/salvar', 'AdminController', 'salvarSmtp');
         $this->post('admin/smtp/testar', 'AdminController', 'testarSmtp');
+
+        // Conta de demonstração (seed idempotente de dados mockup)
+        $this->get('admin/seed-demo', 'AdminController', 'seedDemo');
+
+        // Integrações — ScrapingBee (Scrap da Concorrência)
+        $this->post('admin/scrapingbee/salvar', 'AdminController', 'salvarScrapingBee');
+        $this->post('admin/scrapingbee/testar', 'AdminController', 'testarScrapingBee');
+        $this->post('admin/scrapingbee/status', 'AdminController', 'statusScrapingBee');
         
         // Logs e Relatórios
         $this->get('admin/logs', 'AdminController', 'logs');

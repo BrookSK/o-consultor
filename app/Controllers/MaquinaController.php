@@ -982,11 +982,20 @@ class MaquinaController
             $perfilTemplates = trim((string) ($rowPerfil['templates_estilo'] ?? ''));
         } catch (\Throwable $e) { $perfilTemplates = ''; }
 
+        // Concorrentes com dados coletados (fonte "concorrência" na geração).
+        $concorrentes = [];
+        try {
+            $concorrentes = Concorrente::listar((int) ($marca['empresa_id'] ?? 0));
+        } catch (\Throwable $e) {
+            $concorrentes = [];
+        }
+
         $dados = [
             'marca' => $marca,
             'conteudos' => $conteudos,
             'noticias' => $noticias,
             'biblioteca' => $biblioteca,
+            'concorrentes' => $concorrentes,
             'perfil_templates' => $perfilTemplates,
         ];
         require VIEW_PATH . '/maquina/marca.php';
@@ -1012,6 +1021,19 @@ class MaquinaController
         // Fonte do conteúdo: 'tema' (livre), 'noticia' ou 'biblioteca' (RAG na literatura).
         $fonte = htmlspecialchars(trim($_POST['fonte'] ?? ($noticiaId > 0 ? 'noticia' : 'tema')));
         $bibliotecaIds = array_map('intval', (array) ($_POST['biblioteca_ids'] ?? []));
+
+        // Controle de geração de imagens (spec §11): o padrão herda a configuração
+        // da empresa (configuracoes_conteudo.gerar_imagens_padrao), mas pode ser
+        // sobrescrito nesta geração via POST 'gerar_imagem' (1/0). Quando desabilitado,
+        // o texto é gerado normalmente e nenhuma imagem/crédito é consumido.
+        // Compatibilidade: se nada for enviado e não houver config, mantém o
+        // comportamento atual (gera imagens).
+        $empresaMarcaId = (int) (Database::queryOne("SELECT empresa_id FROM marcas WHERE id = :id", ['id' => $marcaId])['empresa_id'] ?? 0);
+        if (isset($_POST['gerar_imagem'])) {
+            $gerarImagensDesejado = in_array((string) $_POST['gerar_imagem'], ['1', 'true', 'on'], true);
+        } else {
+            $gerarImagensDesejado = $empresaMarcaId > 0 ? ConfiguracaoConteudo::gerarImagensPadrao($empresaMarcaId) : true;
+        }
 
         if (empty($tema)) {
             header('Content-Type: application/json');
@@ -1048,6 +1070,7 @@ class MaquinaController
         //    - tema: sem base extra (conteúdo livre a partir do tema).
         $noticiaBase = null;   // base para posts a partir de notícia
         $literaturaBase = null; // base (RAG) para conteúdo educativo da biblioteca
+        $concorrenciaBase = null; // base (padrões) para conteúdo inspirado na concorrência
 
         // A marca tem imagem de fechamento fixa (upload)? Se sim, o último slide
         // será essa imagem — a IA NÃO precisa criar conteúdo para o fechamento,
@@ -1107,15 +1130,27 @@ class MaquinaController
                 echo json_encode(['sucesso' => false, 'erro' => 'Não encontrei conteúdo utilizável na Biblioteca para este tema. Verifique se os PDFs foram processados.']);
                 exit;
             }
+        } elseif ($fonte === 'concorrencia') {
+            // Inteligência competitiva (Scrap da Concorrência). Monta os PADRÕES
+            // dos concorrentes selecionados como inspiração estrutural (spec §9).
+            $concorrenteIds = array_map('intval', (array) ($_POST['concorrente_ids'] ?? []));
+            $metrica = (string) ($_POST['metrica_desempenho'] ?? 'engajamento_absoluto');
+            $concorrenciaBase = ConcorrenteAnalise::montarBaseParaGeracao($empresaId, $concorrenteIds, $metrica);
+            if ($concorrenciaBase === '') {
+                header('Content-Type: application/json');
+                echo json_encode(['sucesso' => false, 'erro' => 'Sem dados de concorrência para este tema. Faça ao menos uma coleta/análise na aba "Scrap da Concorrência".']);
+                exit;
+            }
         }
 
         // 3. PASSO 1 — Geração de texto via IA com contexto da jornada.
         // Usa um limite de tokens folgado para o JSON do conteúdo não ser cortado.
-        $prompt = ApiHelper::buildPromptConteudoContextualizado($marca, $tipo, $tema, $objetivo, $noticiaBase, $contextoJornada, $literaturaBase, $qtdSlides, $temFechamentoFixo);
-        // Log de auditoria: registra a FONTE e se a notícia/biblioteca chegou ao prompt.
+        $prompt = ApiHelper::buildPromptConteudoContextualizado($marca, $tipo, $tema, $objetivo, $noticiaBase, $contextoJornada, $literaturaBase, $qtdSlides, $temFechamentoFixo, $concorrenciaBase);
+        // Log de auditoria: registra a FONTE e se a notícia/biblioteca/concorrência chegou ao prompt.
         $this->logImagem('[Texto] fonte=' . $fonte . ' noticia_id=' . $noticiaId
             . ' tem_noticiaBase=' . ($noticiaBase ? 'sim' : 'NAO')
             . ' tem_literatura=' . ($literaturaBase ? 'sim' : 'nao')
+            . ' tem_concorrencia=' . ($concorrenciaBase ? 'sim' : 'nao')
             . ' prompt_chars=' . mb_strlen($prompt));
         $resIA = ApiHelper::chamarAnalise($prompt, true, 6000);
 
@@ -1188,7 +1223,10 @@ class MaquinaController
         //    ~10-20s; gerar N imagens numa única request estoura o timeout do proxy → 504).
         //    Marcamos os slides que precisam de imagem como "pendente" e o front-end
         //    dispara a geração de UMA imagem por vez via /maquina-de-conteudo/gerar-imagem-slide.
-        $gerarImagens = ($estiloImagem === 'ia');
+        // Só gera imagens se o estilo for IA E o controle de imagens estiver habilitado
+        // (padrão da empresa ou override desta geração). Quando desabilitado, o
+        // conteúdo textual é gerado normalmente e nenhuma imagem é enfileirada.
+        $gerarImagens = ($estiloImagem === 'ia') && $gerarImagensDesejado;
         $slidesPendentes = [];
         if (isset($conteudoGerado['slides']) && is_array($conteudoGerado['slides'])) {
             foreach ($conteudoGerado['slides'] as $index => &$slide) {

@@ -18,7 +18,7 @@ class Configuracao
     /** Campos que devem ser criptografados no banco */
     private const CAMPOS_SENSIVEIS = [
         'openai_key', 'anthropic_key', 'perplexity_key',
-        'academy_jwt_secret', 'smtp_senha'
+        'academy_jwt_secret', 'smtp_senha', 'scrapingbee_key'
     ];
 
     /**

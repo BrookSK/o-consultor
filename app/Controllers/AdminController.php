@@ -59,6 +59,14 @@ class AdminController
                 exit;
             }
         }
+
+        // Conta demo: pode visualizar, mas NUNCA alterar configurações do sistema.
+        // Bloqueia qualquer requisição de escrita (POST) nas áreas de admin.
+        if (Auth::isDemo() && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+            header('Content-Type: application/json');
+            echo json_encode(['sucesso' => false, 'erro' => 'Conta de demonstração: alterações estão desabilitadas.']);
+            exit;
+        }
     }
 
     public function index(): void
@@ -1042,6 +1050,94 @@ class AdminController
             header('Content-Type: application/json');
             echo json_encode(['sucesso' => false, 'erro' => 'Erro interno ao salvar chave.']);
         }
+        exit;
+    }
+
+    /**
+     * Executa o seed da conta de demonstração (empresa + usuário demo + dados
+     * mockup em todos os módulos). Só ADMIN_HOLDING real pode disparar.
+     * Idempotente: pode ser chamado várias vezes com segurança.
+     */
+    public function seedDemo(): void
+    {
+        $this->protegerAdmin();
+        header('Content-Type: application/json');
+
+        try {
+            require_once ROOT_PATH . '/database/seeds/demo_seed.php';
+            $rel = seedDemo();
+            Logger::acao('Seed da conta demo executado', $rel);
+            echo json_encode([
+                'sucesso' => true,
+                'mensagem' => 'Conta demo criada/atualizada. Login: demo@oconsultor.com.br / demo@123',
+                'detalhes' => $rel,
+            ]);
+        } catch (\Throwable $e) {
+            Logger::error('Erro ao executar seed demo: ' . $e->getMessage());
+            echo json_encode(['sucesso' => false, 'erro' => 'Falha ao criar conta demo: ' . $e->getMessage()]);
+        }
+        exit;
+    }
+
+    /**
+     * Salva as configurações da integração ScrapingBee (Integrações).
+     * A chave é criptografada automaticamente pelo Model Configuracao.
+     */
+    public function salvarScrapingBee(): void
+    {
+        $this->protegerAdmin();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $chave   = trim((string) ($_POST['chave'] ?? ''));
+        $timeout = max(10, min(120, (int) ($_POST['timeout'] ?? 30)));
+        $country = trim((string) ($_POST['country'] ?? ''));
+        $renderJs = !empty($_POST['render_js']) ? '1' : '0';
+        $premium  = !empty($_POST['premium_proxy']) ? '1' : '0';
+
+        // Só sobrescreve a chave se uma nova for enviada (evita apagar ao salvar opções).
+        if ($chave !== '') {
+            if (mb_strlen($chave) < 8) {
+                echo json_encode(['sucesso' => false, 'erro' => 'Chave muito curta. Cole a chave completa da ScrapingBee.']);
+                exit;
+            }
+            Configuracao::set('scrapingbee_key', $chave, 'integracoes', 'Chave da API ScrapingBee');
+        }
+
+        Configuracao::set('scrapingbee_timeout', (string) $timeout, 'integracoes', 'Timeout da ScrapingBee (s)');
+        Configuracao::set('scrapingbee_country', $country, 'integracoes', 'País do proxy ScrapingBee');
+        Configuracao::set('scrapingbee_render_js', $renderJs, 'integracoes', 'Renderizar JS na ScrapingBee');
+        Configuracao::set('scrapingbee_premium_proxy', $premium, 'integracoes', 'Proxy premium ScrapingBee');
+
+        Logger::acao('Configuração ScrapingBee salva', ['admin_id' => Auth::id()]);
+        echo json_encode(['sucesso' => true, 'mensagem' => 'Configurações da ScrapingBee salvas!']);
+        exit;
+    }
+
+    /**
+     * Testa a conexão com a ScrapingBee.
+     */
+    public function testarScrapingBee(): void
+    {
+        $this->protegerAdmin();
+        Csrf::verificar();
+        header('Content-Type: application/json');
+
+        $res = ScrapingBee::testarConexao();
+        echo json_encode($res['sucesso']
+            ? ['sucesso' => true, 'mensagem' => 'Conexão com a ScrapingBee OK!']
+            : ['sucesso' => false, 'erro' => $res['erro'] ?? 'Falha na conexão.']);
+        exit;
+    }
+
+    /**
+     * Retorna o status da integração ScrapingBee (configurada ou não).
+     */
+    public function statusScrapingBee(): void
+    {
+        $this->protegerAdmin();
+        header('Content-Type: application/json');
+        echo json_encode(['sucesso' => true, 'configurada' => ScrapingBee::configurada()]);
         exit;
     }
 
