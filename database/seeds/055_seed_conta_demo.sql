@@ -79,16 +79,69 @@ WHERE NOT EXISTS (SELECT 1 FROM plano_tarefas WHERE plano_id = @plano_id);
 -- =====================================================
 -- 5) SOPs
 -- =====================================================
+-- Inserção idempotente por título (garante que cada SOP exista mesmo em re-execução parcial).
 INSERT INTO sops (empresa_id, titulo, departamento, conteudo, status, gerado_por_ia, criado_em)
-SELECT * FROM (
-    SELECT @empresa_id AS a, 'Padrão de Atendimento ao Cliente' AS b, 'Atendimento' AS c, 'Procedimento operacional padrão (demonstração).' AS d, 'ativo' AS e, 1 AS f, NOW() AS g
-    UNION ALL SELECT @empresa_id, 'Preparo e Padronização do Espresso', 'Operações', 'Procedimento operacional padrão (demonstração).', 'ativo', 1, NOW()
-    UNION ALL SELECT @empresa_id, 'Fechamento de Caixa Diário', 'Financeiro', 'Procedimento operacional padrão (demonstração).', 'ativo', 1, NOW()
-    UNION ALL SELECT @empresa_id, 'Limpeza e Higienização', 'Operações', 'Procedimento operacional padrão (demonstração).', 'ativo', 1, NOW()
-) t
-WHERE NOT EXISTS (SELECT 1 FROM sops WHERE empresa_id = @empresa_id);
+SELECT @empresa_id, 'Padrão de Atendimento ao Cliente', 'Atendimento', 'Procedimento operacional padrão (demonstração).', 'ativo', 1, NOW()
+WHERE NOT EXISTS (SELECT 1 FROM sops WHERE empresa_id = @empresa_id AND titulo = 'Padrão de Atendimento ao Cliente');
+
+INSERT INTO sops (empresa_id, titulo, departamento, conteudo, status, gerado_por_ia, criado_em)
+SELECT @empresa_id, 'Preparo e Padronização do Espresso', 'Operações', 'Procedimento operacional padrão (demonstração).', 'ativo', 1, NOW()
+WHERE NOT EXISTS (SELECT 1 FROM sops WHERE empresa_id = @empresa_id AND titulo = 'Preparo e Padronização do Espresso');
+
+INSERT INTO sops (empresa_id, titulo, departamento, conteudo, status, gerado_por_ia, criado_em)
+SELECT @empresa_id, 'Fechamento de Caixa Diário', 'Financeiro', 'Procedimento operacional padrão (demonstração).', 'ativo', 1, NOW()
+WHERE NOT EXISTS (SELECT 1 FROM sops WHERE empresa_id = @empresa_id AND titulo = 'Fechamento de Caixa Diário');
+
+INSERT INTO sops (empresa_id, titulo, departamento, conteudo, status, gerado_por_ia, criado_em)
+SELECT @empresa_id, 'Limpeza e Higienização', 'Operações', 'Procedimento operacional padrão (demonstração).', 'ativo', 1, NOW()
+WHERE NOT EXISTS (SELECT 1 FROM sops WHERE empresa_id = @empresa_id AND titulo = 'Limpeza e Higienização');
 
 SET @sop_id = (SELECT id FROM sops WHERE empresa_id = @empresa_id ORDER BY id LIMIT 1);
+
+-- Conteúdo estruturado (JSON) para os SOPs que serão exibidos em detalhe.
+-- A tela de detalhe do serviço decodifica sops.conteudo como JSON e exige
+-- 'objetivo' + 'procedimentos' (fases com passos) para renderizar o SOP.
+UPDATE sops
+   SET conteudo = JSON_OBJECT(
+        'objetivo', 'Padronizar o preparo do espresso para garantir qualidade e consistência em todas as unidades.',
+        'procedimentos', JSON_ARRAY(
+            JSON_OBJECT('fase', 'Preparação',
+                'descricao', 'Preparar equipamento e insumos antes do preparo.',
+                'passos', JSON_ARRAY(
+                    JSON_OBJECT('passo', 1, 'acao', 'Verificar temperatura da máquina (90-96°C).', 'responsavel', 'Barista', 'tempo_estimado', '2 min', 'criterio_qualidade', 'Temperatura estável na faixa'),
+                    JSON_OBJECT('passo', 2, 'acao', 'Dosar 18g de café moído no porta-filtro.', 'responsavel', 'Barista', 'tempo_estimado', '1 min', 'criterio_qualidade', 'Dose entre 17g e 19g')
+                )
+            ),
+            JSON_OBJECT('fase', 'Extração',
+                'descricao', 'Extrair o espresso dentro dos parâmetros técnicos.',
+                'passos', JSON_ARRAY(
+                    JSON_OBJECT('passo', 1, 'acao', 'Extrair 36g em 25-30s.', 'responsavel', 'Barista', 'tempo_estimado', '30 s', 'criterio_qualidade', 'Crema uniforme e cor avelã')
+                )
+            )
+        )
+   )
+ WHERE empresa_id = @empresa_id AND titulo = 'Preparo e Padronização do Espresso';
+
+UPDATE sops
+   SET conteudo = JSON_OBJECT(
+        'objetivo', 'Padronizar o atendimento no balcão para encantar e reter clientes.',
+        'procedimentos', JSON_ARRAY(
+            JSON_OBJECT('fase', 'Recepção',
+                'descricao', 'Receber o cliente de forma acolhedora.',
+                'passos', JSON_ARRAY(
+                    JSON_OBJECT('passo', 1, 'acao', 'Cumprimentar o cliente em até 10 segundos.', 'responsavel', 'Atendente', 'tempo_estimado', '10 s', 'criterio_qualidade', 'Contato visual e sorriso'),
+                    JSON_OBJECT('passo', 2, 'acao', 'Apresentar sugestões do dia.', 'responsavel', 'Atendente', 'tempo_estimado', '30 s', 'criterio_qualidade', 'Ao menos 1 sugestão oferecida')
+                )
+            ),
+            JSON_OBJECT('fase', 'Fechamento',
+                'descricao', 'Concluir o pedido e agradecer.',
+                'passos', JSON_ARRAY(
+                    JSON_OBJECT('passo', 1, 'acao', 'Confirmar o pedido e informar o tempo de preparo.', 'responsavel', 'Atendente', 'tempo_estimado', '20 s', 'criterio_qualidade', 'Pedido confirmado corretamente')
+                )
+            )
+        )
+   )
+ WHERE empresa_id = @empresa_id AND titulo = 'Padrão de Atendimento ao Cliente';
 
 -- =====================================================
 -- 6) KPIs (sop_kpis)
@@ -149,6 +202,16 @@ INSERT INTO servicos_setor (setor_id, empresa_id, nome_servico, codigo_servico, 
 SELECT @setor_atd, @empresa_id, 'Atendimento no Balcão', 'DEMO-ATD-001', 'core', 'alta', 'diaria', 'media', 'Padrão de atendimento ao cliente no balcão.', TRUE, @sop_atend, 'automatico', 'sop_gerado', 1, NOW(), NOW()
 WHERE @setor_atd IS NOT NULL
   AND NOT EXISTS (SELECT 1 FROM servicos_setor WHERE codigo_servico = 'DEMO-ATD-001');
+
+-- Reconciliação: garante o vínculo do SOP aos serviços mesmo se já existiam com
+-- sop_id NULL (ex.: execução parcial anterior). Vincula por título do SOP.
+UPDATE servicos_setor
+   SET sop_id = @sop_espresso, tem_sop = TRUE, status = 'sop_gerado', sop_gerado_em = COALESCE(sop_gerado_em, NOW())
+ WHERE codigo_servico = 'DEMO-OPS-001' AND @sop_espresso IS NOT NULL;
+
+UPDATE servicos_setor
+   SET sop_id = @sop_atend, tem_sop = TRUE, status = 'sop_gerado', sop_gerado_em = COALESCE(sop_gerado_em, NOW())
+ WHERE codigo_servico = 'DEMO-ATD-001' AND @sop_atend IS NOT NULL;
 
 -- =====================================================
 -- 7) NOTÍCIAS
