@@ -230,6 +230,11 @@ class Auth
      */
     public static function isAdmin(): bool
     {
+        // A conta demo NUNCA é tratada como admin global: fica restrita à sua
+        // própria empresa (dados mockup), evitando qualquer acesso a dados reais.
+        if (self::isDemo()) {
+            return false;
+        }
         return self::temPerfil(self::ADMIN_HOLDING);
     }
 
@@ -255,6 +260,13 @@ class Auth
      */
     public static function empresa(): ?int
     {
+        // Conta demo: SEMPRE presa à própria empresa demo (nunca acesso global),
+        // para exibir apenas os dados mockup e nunca dados reais de outras empresas.
+        if (self::isDemo()) {
+            $empresaId = Session::get('usuario_empresa_id');
+            return $empresaId ? (int) $empresaId : null;
+        }
+
         // ADMIN_HOLDING tem acesso global - pode gerenciar qualquer empresa
         if (self::isAdmin()) {
             // Se não há empresa específica na sessão, pode retornar null (acesso total)

@@ -104,8 +104,8 @@ class SopController
         } else {
             // Fluxo original para quando não vem de diagnóstico
             
-            // Para ADMIN_HOLDING, mostrar lista de empresas
-            if (Auth::perfil() === 'ADMIN_HOLDING') {
+            // Para ADMIN_HOLDING real, mostrar lista de empresas (o demo é escopado).
+            if (Auth::isAdmin()) {
                 // Buscar todas as empresas
                 $empresas = Database::query(
                     "SELECT e.*, 

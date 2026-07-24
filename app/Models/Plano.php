@@ -98,7 +98,11 @@ class Plano
         $usuario = User::buscarPorId($usuarioId);
         
         // Oculta planos cujo usuário criador está arquivado (ativo = 0).
-        if ($usuario['perfil'] === 'ADMIN_HOLDING') {
+        // A conta demo (mesmo sendo ADMIN_HOLDING) é tratada como não-admin,
+        // vendo apenas os planos da própria empresa demo.
+        $ehAdminReal = $usuario['perfil'] === 'ADMIN_HOLDING'
+            && strtolower((string) $usuario['email']) !== Auth::DEMO_EMAIL;
+        if ($ehAdminReal) {
             return Database::query(
                 "SELECT p.*, e.nome as empresa_nome 
                  FROM planos p 

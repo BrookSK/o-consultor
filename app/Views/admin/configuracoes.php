@@ -68,6 +68,16 @@
                 <button type="button" onclick="testarScrapingBee()" class="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">🧪 Testar conexão</button>
             </div>
         </div>
+
+        <!-- Conta de demonstração -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mt-6">
+            <div class="mb-3">
+                <h3 class="font-semibold text-gray-800">Conta de demonstração</h3>
+                <p class="text-xs text-gray-500">Cria/atualiza o login <strong>demo@oconsultor.com.br</strong> (senha <strong>demo@123</strong>) com dados de exemplo em todos os módulos. Pode ser executado várias vezes.</p>
+            </div>
+            <button type="button" onclick="criarContaDemo(this)" class="bg-primary text-white px-4 py-2 rounded-lg text-sm hover:bg-primary-700">👤 Criar/atualizar conta demo</button>
+            <p id="demo-status" class="text-sm mt-3"></p>
+        </div>
     </div>
 
     <!-- ABA GERAL -->
@@ -753,6 +763,26 @@ async function statusScrapingBee() {
         const data = await res.json();
         updateApiStatus('scrapingbee', data.configurada ? 'configured' : 'not_configured');
     } catch (e) { updateApiStatus('scrapingbee', 'error'); }
+}
+
+// ===== Conta de demonstração =====
+async function criarContaDemo(btn) {
+    const status = document.getElementById('demo-status');
+    btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Criando...';
+    if (status) { status.textContent = 'Processando...'; status.className = 'text-sm mt-3 text-gray-500'; }
+    try {
+        const res = await fetch('<?= APP_URL ?>/admin/seed-demo');
+        const data = await res.json();
+        if (data.sucesso) {
+            if (status) { status.textContent = data.mensagem; status.className = 'text-sm mt-3 text-green-600'; }
+            showToast('Conta demo criada/atualizada!', 'success');
+        } else {
+            if (status) { status.textContent = data.erro || 'Falha ao criar conta demo.'; status.className = 'text-sm mt-3 text-red-600'; }
+            showToast(data.erro || 'Falha', 'error');
+        }
+    } catch (e) {
+        if (status) { status.textContent = 'Erro de conexão.'; status.className = 'text-sm mt-3 text-red-600'; }
+    } finally { btn.disabled = false; btn.textContent = orig; }
 }
 
 // Inicializar quando a página carregar

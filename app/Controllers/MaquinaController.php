@@ -36,21 +36,32 @@ class MaquinaController
     {
         Auth::proteger();
         
-        // Carregar marcas do banco (com fallback para mock)
+        // Carregar marcas do banco. Admin real vê todas; demais (inclusive a
+        // conta demo) veem apenas as marcas da própria empresa.
         try {
-            $marcas = Database::query(
-                "SELECT m.*, e.nome as empresa_nome 
-                 FROM marcas m 
-                 LEFT JOIN empresas e ON m.empresa_id = e.id 
-                 WHERE m.ativo = 1 
-                 ORDER BY m.nome ASC"
-            );
-            
-            // Se não tem marcas, retorna empty array para permitir criação
+            if (Auth::isAdmin()) {
+                $marcas = Database::query(
+                    "SELECT m.*, e.nome as empresa_nome 
+                     FROM marcas m 
+                     LEFT JOIN empresas e ON m.empresa_id = e.id 
+                     WHERE m.ativo = 1 
+                     ORDER BY m.nome ASC"
+                );
+            } else {
+                $empresaId = (int) Auth::empresa();
+                $marcas = $empresaId ? Database::query(
+                    "SELECT m.*, e.nome as empresa_nome 
+                     FROM marcas m 
+                     LEFT JOIN empresas e ON m.empresa_id = e.id 
+                     WHERE m.ativo = 1 AND m.empresa_id = :eid
+                     ORDER BY m.nome ASC",
+                    ['eid' => $empresaId]
+                ) : [];
+            }
+
             if (empty($marcas)) {
                 $marcas = [];
             }
-            
         } catch (\Exception $e) {
             // Tabela pode não existir - retornar empty array
             $marcas = [];
@@ -65,9 +76,10 @@ class MaquinaController
         Auth::proteger();
         Auth::exigirPerfil([Auth::ADMIN_HOLDING, Auth::CONSULTOR_INTERNO]);
         
-        // Para ADMIN_HOLDING, buscar empresas disponíveis
+        // Para ADMIN_HOLDING real, buscar empresas disponíveis (o demo é escopado
+        // à própria empresa e não vê a lista real de clientes).
         $empresasDisponiveis = [];
-        if (Auth::perfil() === 'ADMIN_HOLDING') {
+        if (Auth::isAdmin()) {
             try {
                 $empresasDisponiveis = Database::query(
                     "SELECT id, nome, segmento, responsavel_id 
@@ -109,8 +121,8 @@ class MaquinaController
 
         $empresaId = (int) ($_GET['empresa_id'] ?? 0);
 
-        // Cliente/consultor só pode puxar dados da própria empresa.
-        if (Auth::perfil() !== 'ADMIN_HOLDING') {
+        // Cliente/consultor (e a conta demo) só puxam dados da própria empresa.
+        if (!Auth::isAdmin()) {
             $empresaId = (int) Auth::empresa();
         }
 
@@ -786,8 +798,9 @@ class MaquinaController
         Auth::proteger();
         Csrf::verificar();
 
-        // ADMIN_HOLDING escolhe a empresa no wizard; os demais usam a empresa da sessão.
-        if (Auth::perfil() === 'ADMIN_HOLDING') {
+        // ADMIN_HOLDING real escolhe a empresa no wizard; os demais (inclusive
+        // a conta demo) usam a empresa da própria sessão.
+        if (Auth::isAdmin()) {
             $empresaId = (int) ($_POST['empresa_id'] ?? 0) ?: (int) Auth::empresa();
         } else {
             $empresaId = (int) Auth::empresa();

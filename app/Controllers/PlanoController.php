@@ -99,12 +99,15 @@ class PlanoController
         $empresas = [];
         $usuario = Auth::usuario();
         
-        if (Auth::perfil() === 'ADMIN_HOLDING' || Auth::perfil() === 'CONSULTOR_INTERNO') {
+        // isAdmin() é false para a conta demo, então o demo vê apenas a própria
+        // empresa (mockup), nunca a lista real de empresas.
+        if (Auth::isAdmin() || (Auth::perfil() === 'CONSULTOR_INTERNO' && !Auth::isDemo())) {
             $empresas = Database::query("SELECT id, nome FROM empresas ORDER BY nome ASC");
         } else {
-            // Cliente vê apenas sua empresa
-            if ($usuario['empresa_id']) {
-                $empresas = [Database::queryOne("SELECT id, nome FROM empresas WHERE id = ?", [$usuario['empresa_id']])];
+            // Cliente (e demo) vê apenas sua empresa
+            $empId = $usuario['empresa_id'] ?? Auth::empresa();
+            if ($empId) {
+                $empresas = [Database::queryOne("SELECT id, nome FROM empresas WHERE id = ?", [$empId])];
             }
         }
 

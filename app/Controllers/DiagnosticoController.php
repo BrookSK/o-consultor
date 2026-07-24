@@ -18,8 +18,10 @@ class DiagnosticoController
         $usuario = Auth::usuario();
         $diagnosticos = [];
         
-        // Buscar diagnósticos do usuário no banco
-        if (Auth::perfil() === 'ADMIN_HOLDING') {
+        // Buscar diagnósticos do usuário no banco.
+        // isAdmin() é false para a conta demo, então o demo cai no ramo "próprios
+        // diagnósticos" (escopado à empresa demo), sem ver dados reais de outras.
+        if (Auth::isAdmin()) {
             // Admin vê todos os diagnósticos
             // Oculta diagnósticos cujo usuário responsável está arquivado (ativo = 0).
             $diagnosticos = Database::query(
@@ -90,9 +92,9 @@ class DiagnosticoController
         $usuario = Auth::usuario();
         $empresaId = Auth::empresa();
         
-        // Para ADMIN_HOLDING, buscar empresas disponíveis
+        // Para ADMIN_HOLDING real, buscar empresas disponíveis (o demo é escopado).
         $empresasDisponiveis = [];
-        if (Auth::perfil() === 'ADMIN_HOLDING') {
+        if (Auth::isAdmin()) {
             $empresasDisponiveis = Database::query(
                 "SELECT e.id, e.nome, e.segmento, e.responsavel_id, u.nome as responsavel_nome
                  FROM empresas e 
@@ -185,9 +187,9 @@ class DiagnosticoController
         $usuario = Auth::usuario();
         $empresaId = Auth::empresa();
         
-        // Para ADMIN_HOLDING, buscar empresas disponíveis
+        // Para ADMIN_HOLDING real, buscar empresas disponíveis (o demo é escopado).
         $empresasDisponiveis = [];
-        if (Auth::perfil() === 'ADMIN_HOLDING') {
+        if (Auth::isAdmin()) {
             $empresasDisponiveis = Database::query(
                 "SELECT e.id, e.nome, e.segmento, e.responsavel_id, u.nome as responsavel_nome
                  FROM empresas e 
