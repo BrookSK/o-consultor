@@ -1098,7 +1098,7 @@ class AdminController
         // Só sobrescreve a chave se uma nova for enviada (evita apagar ao salvar opções).
         if ($chave !== '') {
             if (mb_strlen($chave) < 8) {
-                echo json_encode(['sucesso' => false, 'erro' => 'Chave muito curta. Cole a chave completa da ScrapingBee.']);
+                echo json_encode(['sucesso' => false, 'erro' => 'Chave muito curta. Cole a chave completa da integração de coleta.']);
                 exit;
             }
             Configuracao::set('scrapingbee_key', $chave, 'integracoes', 'Chave da API ScrapingBee');
@@ -1109,8 +1109,8 @@ class AdminController
         Configuracao::set('scrapingbee_render_js', $renderJs, 'integracoes', 'Renderizar JS na ScrapingBee');
         Configuracao::set('scrapingbee_premium_proxy', $premium, 'integracoes', 'Proxy premium ScrapingBee');
 
-        Logger::acao('Configuração ScrapingBee salva', ['admin_id' => Auth::id()]);
-        echo json_encode(['sucesso' => true, 'mensagem' => 'Configurações da ScrapingBee salvas!']);
+        Logger::acao('Configuração de coleta salva', ['admin_id' => Auth::id()]);
+        echo json_encode(['sucesso' => true, 'mensagem' => 'Configurações de coleta salvas!']);
         exit;
     }
 
@@ -1125,7 +1125,7 @@ class AdminController
 
         $res = ScrapingBee::testarConexao();
         echo json_encode($res['sucesso']
-            ? ['sucesso' => true, 'mensagem' => 'Conexão com a ScrapingBee OK!']
+            ? ['sucesso' => true, 'mensagem' => 'Conexão de coleta OK!']
             : ['sucesso' => false, 'erro' => $res['erro'] ?? 'Falha na conexão.']);
         exit;
     }

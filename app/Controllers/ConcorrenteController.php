@@ -166,7 +166,7 @@ class ConcorrenteController
         header('Content-Type: application/json');
 
         if (!ScrapingBee::configurada()) {
-            echo json_encode(['sucesso' => false, 'erro' => 'Configure a chave da ScrapingBee em Admin > Configurações.']);
+            echo json_encode(['sucesso' => false, 'erro' => 'Configure a integração de coleta em Admin > Configurações.']);
             exit;
         }
 

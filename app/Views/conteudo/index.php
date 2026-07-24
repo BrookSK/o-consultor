@@ -751,7 +751,7 @@ async function carregarConcorrentes() {
 
         if (!data.scrapingbee_ok && aviso) {
             aviso.classList.remove('hidden');
-            aviso.textContent = 'Atenção: a chave da ScrapingBee ainda não está configurada. Você pode cadastrar concorrentes, mas as coletas só funcionarão após configurar a chave em Admin > Configurações.';
+            aviso.textContent = 'Atenção: a integração de coleta ainda não está configurada. Você pode cadastrar concorrentes, mas as coletas só funcionarão após configurá-la em Admin > Configurações.';
         }
 
         const cs = data.concorrentes || [];

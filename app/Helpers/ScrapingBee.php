@@ -77,7 +77,7 @@ class ScrapingBee
     {
         $chave = trim((string) Configuracao::get('scrapingbee_key', ''));
         if ($chave === '') {
-            return self::falha('nao_configurado', 'Chave da ScrapingBee não configurada (Admin > Configurações).');
+            return self::falha('nao_configurado', 'Integração de coleta não configurada (Admin > Configurações).');
         }
 
         $urlSanitizada = self::sanitizarUrl($url);
@@ -129,7 +129,7 @@ class ScrapingBee
         curl_close($ch);
 
         if ($html === false || $erroCurl !== '') {
-            return self::falha('timeout', 'Falha de conexão com a ScrapingBee: ' . $erroCurl, $statusHttp, $creditos);
+            return self::falha('timeout', 'Falha de conexão na coleta: ' . $erroCurl, $statusHttp, $creditos);
         }
 
         // Mapeia os status/erros previstos no spec §19.
@@ -153,7 +153,7 @@ class ScrapingBee
             default                                  => 'erro_desconhecido',
         };
 
-        return self::falha($tipoErro, 'ScrapingBee retornou HTTP ' . $statusHttp . '.', $statusHttp, $creditos);
+        return self::falha($tipoErro, 'A coleta retornou HTTP ' . $statusHttp . '.', $statusHttp, $creditos);
     }
 
     /**

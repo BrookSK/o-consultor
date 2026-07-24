@@ -1172,64 +1172,74 @@ async function cancelarImagemSlideServidor(conteudoId, idx) {
 // === CALENDÁRIO EDITORIAL ===
 
 async function carregarCalendario() {
-    const mes = document.getElementById('mes-calendario').value;
-    const ano = document.getElementById('ano-calendario').value;
-    
+    const mes = parseInt(document.getElementById('mes-calendario').value, 10);
+    const ano = parseInt(document.getElementById('ano-calendario').value, 10);
+
+    // A grade SEMPRE é desenhada (mesmo vazia). Os conteúdos, quando existirem,
+    // apenas colorem os dias correspondentes. Assim o calendário nunca fica só
+    // com o cabeçalho, mesmo sem dados ou se a requisição falhar.
+    let conteudos = [];
     try {
         const res = await fetch(`<?= APP_URL ?>/maquina/calendario?marca_id=<?= $marca['id'] ?>&mes=${mes}&ano=${ano}`);
         const data = await res.json();
-        
-        if (data.sucesso) {
-            renderizarCalendario(data.mes, data.ano, data.conteudos);
+        if (data && data.sucesso && Array.isArray(data.conteudos)) {
+            conteudos = data.conteudos;
         }
-    } catch(e) {
+    } catch (e) {
         console.error('Erro ao carregar calendário:', e);
     }
+    renderizarCalendario(mes, ano, conteudos);
 }
 
 function renderizarCalendario(mes, ano, conteudos) {
+    conteudos = Array.isArray(conteudos) ? conteudos : [];
     const grid = document.getElementById('calendario-grid');
-    const diasSemana = grid.querySelectorAll('div:nth-child(-n+7)'); // Manter cabeçalho
-    
-    // Limpar dias anteriores (manter cabeçalho)
+    if (!grid) return;
+
+    // Limpar dias anteriores (mantém os 7 cabeçalhos Dom..Sáb).
     const diasAntigos = grid.querySelectorAll('div:nth-child(n+8)');
     diasAntigos.forEach(dia => dia.remove());
-    
-    // Calcular primeiro dia do mês e quantos dias tem
+
+    // Primeiro dia da semana do mês e total de dias.
     const primeiroDia = new Date(ano, mes - 1, 1).getDay();
     const diasNoMes = new Date(ano, mes, 0).getDate();
-    
-    // Adicionar espaços vazios antes do primeiro dia
+
+    // Dia de hoje (para destacar).
+    const hoje = new Date();
+    const ehMesAtual = (hoje.getMonth() === (mes - 1)) && (hoje.getFullYear() === ano);
+    const diaHoje = hoje.getDate();
+
+    // Espaços vazios antes do primeiro dia.
     for (let i = 0; i < primeiroDia; i++) {
         const espacoVazio = document.createElement('div');
         espacoVazio.className = 'py-2';
         grid.appendChild(espacoVazio);
     }
-    
-    // Adicionar dias do mês
+
+    // Dias do mês (sempre renderizados).
     for (let dia = 1; dia <= diasNoMes; dia++) {
         const divDia = document.createElement('div');
-        divDia.className = 'py-2 rounded cursor-pointer hover:bg-gray-100 relative';
+        divDia.className = 'py-2 rounded cursor-default hover:bg-gray-100 relative border border-transparent';
         divDia.textContent = dia;
-        
-        // Verificar se há conteúdo neste dia
+
+        // Conteúdos agendados/publicados neste dia.
         const conteudoDoDia = conteudos.filter(c => {
-            const dataConteudo = new Date(c.agendado_para || c.data_publicacao_real);
-            return dataConteudo.getDate() === dia;
+            const ref = c.agendado_para || c.data_publicacao_real;
+            if (!ref) return false;
+            const d = new Date(String(ref).replace(' ', 'T'));
+            return d.getDate() === dia && d.getMonth() === (mes - 1) && d.getFullYear() === ano;
         });
-        
+
         if (conteudoDoDia.length > 0) {
             const primeiroConteudo = conteudoDoDia[0];
-            const cor = primeiroConteudo.status === 'agendado' ? 'bg-orange-200 text-orange-800' : 
-                       primeiroConteudo.status === 'publicado' ? 'bg-green-200 text-green-800' : 'bg-blue-200 text-blue-800';
-            
-            divDia.className = `py-2 rounded cursor-pointer ${cor}`;
+            const cor = primeiroConteudo.status === 'agendado' ? 'bg-orange-200 text-orange-800' :
+                        primeiroConteudo.status === 'publicado' ? 'bg-green-200 text-green-800' : 'bg-blue-200 text-blue-800';
+            divDia.className = `py-2 rounded cursor-pointer relative border border-transparent ${cor}`;
             divDia.title = conteudoDoDia.map(c => c.tema).join(' | ') + ' (clique para abrir)';
-            // Clicar no dia abre a edição do conteúdo (o primeiro do dia).
             divDia.addEventListener('click', () => {
                 window.location.href = '<?= APP_URL ?>/maquina-de-conteudo/editar/' + primeiroConteudo.id;
             });
-            
+
             if (conteudoDoDia.length > 1) {
                 const badge = document.createElement('span');
                 badge.className = 'absolute -top-1 -right-1 bg-gray-600 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center';
@@ -1237,10 +1247,24 @@ function renderizarCalendario(mes, ano, conteudos) {
                 divDia.appendChild(badge);
             }
         }
-        
+
+        // Destaca o dia de hoje (mesmo sem conteúdo).
+        if (ehMesAtual && dia === diaHoje) {
+            divDia.className += ' ring-2 ring-primary font-bold text-primary';
+            divDia.title = (divDia.title ? divDia.title + ' • ' : '') + 'Hoje';
+        }
+
         grid.appendChild(divDia);
     }
 }
+
+// Desenha a grade assim que a página carrega (não espera trocar de aba),
+// garantindo que o calendário nunca apareça vazio/sem os dias.
+document.addEventListener('DOMContentLoaded', function () {
+    if (document.getElementById('calendario-grid')) {
+        carregarCalendario();
+    }
+});
 
 // === LISTAS DE CONTEÚDO ===
 

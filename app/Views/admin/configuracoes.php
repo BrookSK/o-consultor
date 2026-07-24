@@ -28,8 +28,8 @@
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <div class="flex items-center justify-between mb-4">
                 <div>
-                    <h3 class="font-semibold text-gray-800">ScrapingBee</h3>
-                    <p class="text-xs text-gray-500">Coleta de páginas públicas para o Scrap da Concorrência (renderização de JS, proxies).</p>
+                    <h3 class="font-semibold text-gray-800">Coleta de Concorrência</h3>
+                    <p class="text-xs text-gray-500">Integração para coleta de páginas públicas usada no Scrap da Concorrência (renderização de JS, proxies).</p>
                 </div>
                 <div class="flex items-center gap-2">
                     <div id="status-dot-scrapingbee" class="w-2.5 h-2.5 rounded-full bg-gray-400"></div>
@@ -40,7 +40,7 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div class="md:col-span-2">
                     <label class="block text-xs text-gray-500 mb-1">Chave de API</label>
-                    <input type="password" id="scrapingbee-key" placeholder="Sua API key da ScrapingBee"
+                    <input type="password" id="scrapingbee-key" placeholder="Chave da API de coleta"
                            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono outline-none focus:border-primary">
                 </div>
                 <div>
