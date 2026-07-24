@@ -212,7 +212,7 @@ $paginaAtual = $_GET['url'] ?? 'dashboard';
             // gestão de clientes/usuários, que é operação interna da holding.
             if (Auth::isDemo()) {
                 $menu = array_values(array_filter($menu, function ($item) {
-                    return !in_array($item['url'], ['admin', 'admin/clientes', 'admin/usuarios', 'governanca'], true);
+                    return !in_array($item['url'], ['admin', 'admin/clientes', 'admin/usuarios', 'governanca', 'parceiros'], true);
                 }));
             }
 

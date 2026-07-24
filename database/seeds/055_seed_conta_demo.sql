@@ -102,6 +102,55 @@ SELECT * FROM (
 WHERE NOT EXISTS (SELECT 1 FROM sop_kpis WHERE empresa_id = @empresa_id);
 
 -- =====================================================
+-- 6B) NOVA ARQUITETURA DE SOPs (estrutura > setores > serviços)
+-- Necessária para a tela "SOPs por diagnóstico" mostrar dados.
+-- =====================================================
+SET @diag_id = (SELECT id FROM diagnosticos WHERE empresa_id = @empresa_id ORDER BY id LIMIT 1);
+
+INSERT INTO estruturas_organizacionais
+    (diagnostico_id, empresa_id, nome_empresa, nicho, macro_categoria, estrutura_completa_json, total_setores, status, criado_em)
+SELECT @diag_id, @empresa_id, 'Demo Café & Cia', 'Cafeteria artesanal', 'Alimentos e Bebidas', JSON_OBJECT('demo', true), 2, 'ativo', NOW()
+WHERE @diag_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM estruturas_organizacionais WHERE empresa_id = @empresa_id);
+
+SET @estrutura_id = (SELECT id FROM estruturas_organizacionais WHERE empresa_id = @empresa_id ORDER BY id LIMIT 1);
+
+-- Setores
+INSERT INTO setores_empresa (estrutura_id, empresa_id, nome_setor, tipo_setor, descricao, prioridade, funcao_principal, total_servicos, total_sops, status, ativado_manual, criado_em)
+SELECT @estrutura_id, @empresa_id, 'Operações', 'core', 'Produção e padronização de bebidas e alimentos', 1, 'Garantir qualidade e padrão do produto', 2, 1, 'em_desenvolvimento', 0, NOW()
+WHERE @estrutura_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM setores_empresa WHERE estrutura_id = @estrutura_id AND nome_setor = 'Operações');
+
+INSERT INTO setores_empresa (estrutura_id, empresa_id, nome_setor, tipo_setor, descricao, prioridade, funcao_principal, total_servicos, total_sops, status, ativado_manual, criado_em)
+SELECT @estrutura_id, @empresa_id, 'Atendimento', 'core', 'Relacionamento e experiência do cliente', 2, 'Encantar e reter clientes', 1, 1, 'em_desenvolvimento', 0, NOW()
+WHERE @estrutura_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM setores_empresa WHERE estrutura_id = @estrutura_id AND nome_setor = 'Atendimento');
+
+SET @setor_ops = (SELECT id FROM setores_empresa WHERE estrutura_id = @estrutura_id AND nome_setor = 'Operações' LIMIT 1);
+SET @setor_atd = (SELECT id FROM setores_empresa WHERE estrutura_id = @estrutura_id AND nome_setor = 'Atendimento' LIMIT 1);
+
+-- SOPs (tabela sops) referenciados pelos serviços
+SET @sop_espresso = (SELECT id FROM sops WHERE empresa_id = @empresa_id AND titulo = 'Preparo e Padronização do Espresso' LIMIT 1);
+SET @sop_atend = (SELECT id FROM sops WHERE empresa_id = @empresa_id AND titulo = 'Padrão de Atendimento ao Cliente' LIMIT 1);
+
+-- Serviços do setor Operações (um com SOP gerado, um apenas mapeado)
+INSERT INTO servicos_setor (setor_id, empresa_id, nome_servico, codigo_servico, categoria, criticidade, frequencia, complexidade, descricao_resumida, tem_sop, sop_id, origem, status, selecionado, criado_em, sop_gerado_em)
+SELECT @setor_ops, @empresa_id, 'Preparo do Espresso', 'DEMO-OPS-001', 'core', 'alta', 'diaria', 'media', 'Padronização do preparo do espresso.', TRUE, @sop_espresso, 'automatico', 'sop_gerado', 1, NOW(), NOW()
+WHERE @setor_ops IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM servicos_setor WHERE codigo_servico = 'DEMO-OPS-001');
+
+INSERT INTO servicos_setor (setor_id, empresa_id, nome_servico, codigo_servico, categoria, criticidade, frequencia, complexidade, descricao_resumida, tem_sop, origem, status, selecionado, criado_em)
+SELECT @setor_ops, @empresa_id, 'Higienização de Equipamentos', 'DEMO-OPS-002', 'operacional', 'media', 'diaria', 'simples', 'Rotina de limpeza dos equipamentos.', FALSE, 'automatico', 'mapeado', 1, NOW()
+WHERE @setor_ops IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM servicos_setor WHERE codigo_servico = 'DEMO-OPS-002');
+
+-- Serviço do setor Atendimento (com SOP gerado)
+INSERT INTO servicos_setor (setor_id, empresa_id, nome_servico, codigo_servico, categoria, criticidade, frequencia, complexidade, descricao_resumida, tem_sop, sop_id, origem, status, selecionado, criado_em, sop_gerado_em)
+SELECT @setor_atd, @empresa_id, 'Atendimento no Balcão', 'DEMO-ATD-001', 'core', 'alta', 'diaria', 'media', 'Padrão de atendimento ao cliente no balcão.', TRUE, @sop_atend, 'automatico', 'sop_gerado', 1, NOW(), NOW()
+WHERE @setor_atd IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM servicos_setor WHERE codigo_servico = 'DEMO-ATD-001');
+
+-- =====================================================
 -- 7) NOTÍCIAS
 -- =====================================================
 INSERT INTO noticias (empresa_id, titulo, url, fonte, data_publicacao, categoria, relevancia, setor,
